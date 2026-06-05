@@ -1,0 +1,159 @@
+# 《择日飞升：九塔封魔》配置样例表 v0.1
+
+## 一、定位
+
+本文提供 MVP 阶段可直接参考的配置样例，帮助研发和策划对齐字段、命名和配置粒度。样例数值用于结构说明，不代表最终上线数值。
+
+所有配置必须经过配置发布流程，记录 `config_version`、`ruleset_version` 和 `reward_config_version`。
+
+## 二、境界配置样例
+
+`realm_config`
+
+| realm_id | route | realm_name | stage_names | level_count_per_stage | unlock_chapter |
+| --- | --- | --- | --- | ---: | ---: |
+| qi_1 | qi | 练气 | 感应,通脉,周天 | 3 | 1 |
+| body_1 | body | 锻体 | 醒血,开脉,周身 | 3 | 1 |
+| qi_2 | qi | 筑基 | 凝液,稳固,圆满 | 4 | 2 |
+| body_2 | body | 筑身 | 淬骨,固脉,金身 | 4 | 2 |
+
+`breakthrough_config`
+
+| from_realm | to_realm | base_rate | fail_bonus | hard_pity | material_group |
+| --- | --- | ---: | ---: | ---: | --- |
+| qi_1 | qi_2 | 9000 | 1000 | 2 | break_qi_1 |
+| body_1 | body_2 | 9000 | 1000 | 2 | break_body_1 |
+| qi_2 | qi_3 | 8500 | 1000 | 3 | break_qi_2 |
+
+概率使用万分比。
+
+## 三、道具配置样例
+
+`item_config`
+
+| item_id | name | rarity | category | bind_rule | tradeable | auto_consume |
+| --- | --- | --- | --- | --- | --- | --- |
+| herb_low_ji | 冀州灵草 | 凡品 | 炼丹材料 | 非绑定 | 是 | 是 |
+| tower_xuantie_piece | 玄铁残片 | 灵品 | 九塔材料 | 非绑定 | 是 | 是 |
+| pill_juling_1_mid | 一阶中品聚灵丹 | 灵品 | 丹药 | 绑定 | 否 | 否 |
+| ancient_page | 九大古宝残页 | 玄品 | 抽取材料 | 绑定 | 否 | 否 |
+| jade_paid | 仙玉 | 仙品 | 付费货币 | 账号绑定 | 否 | 否 |
+
+## 四、丹药配置样例
+
+`pill_config`
+
+| pill_id | name | pill_rank | pill_type | route_limit | base_effect | can_refine_wuxia |
+| --- | --- | ---: | --- | --- | ---: | --- |
+| pill_juling_1 | 聚灵丹 | 1 | 修为 | qi | 100 | 是 |
+| pill_feixue_1 | 沸血丹 | 1 | 气血精元 | body | 100 | 是 |
+| pill_pojing_1 | 破境丹 | 1 | 突破 | all | 500 | 否 |
+| pill_zhenmo_3 | 镇魔丹 | 3 | 仙道战略 | fairy | 300 | 限 1 |
+
+`pill_quality_config`
+
+| quality | effect_rate | base_rate |
+| --- | ---: | ---: |
+| 下品 | 8000 | 3500 |
+| 中品 | 10000 | 3500 |
+| 上品 | 12000 | 2000 |
+| 极品 | 15000 | 800 |
+| 无瑕 | 20000 | 200 |
+
+## 五、技能配置样例
+
+`skill_config`
+
+| skill_id | name | route | skill_type | cooldown | target_rule | effect_summary |
+| --- | --- | --- | --- | ---: | --- | --- |
+| skill_yuhuo | 御火诀 | qi | 输出 | 2 | 单体 | 160% 术法伤害，低概率灼烧 |
+| skill_lingshield | 灵盾术 | qi | 防御 | 4 | 自身 | 最大生命 18% 护盾 |
+| skill_jinshen | 金身诀 | body | 防御 | 5 | 自身 | 2 回合内受到伤害 -25% |
+| skill_moran | 魔染咒 | demon | 污染 | 4 | 单体 | 伤害并附加魔染 |
+
+## 六、怪物配置样例
+
+`enemy_config`
+
+| enemy_id | name | enemy_type | province_id | realm_base | skill_group | source |
+| --- | --- | --- | --- | ---: | --- | --- |
+| enemy_zheng_shadow | 狰影 | normal | ji | 1 | beast_low | 山海经意象 |
+| enemy_luoyu_young | 蠃鱼幼妖 | normal | qing | 2 | water_low | 山海经意象 |
+| boss_xuantie_spirit | 玄铁塔灵 | tower_boss | ji | 1 | tower_xuantie | 九塔 |
+| boss_qiongqi_form | 穷奇魔相 | world_boss | xu | 3 | qiongqi | 山海经意象 |
+
+## 七、行动与奖励配置样例
+
+`action_config`
+
+| action_id | name | cost_token | cost_count | contribution_base | reward_group |
+| --- | --- | --- | ---: | ---: | --- |
+| explore_ji_low | 冀州探索 | explore_token | 1 | 0 | reward_explore_ji_low |
+| tower_xuantie_seal | 玄铁镇封 | tower_token | 1 | 100 | reward_tower_seal_low |
+| tower_xuantie_supply | 玄铁补给 | tower_token | 1 | 65 | reward_tower_supply_low |
+| pvp_resource_attack | 资源点进攻 | pvp_token | 1 | 0 | reward_pvp_point |
+
+`reward_group_config`
+
+| reward_group | item_id | count_min | count_max | weight | bind_type |
+| --- | --- | ---: | ---: | ---: | --- |
+| reward_explore_ji_low | spirit_stone | 20 | 40 | 10000 | 绑定 |
+| reward_explore_ji_low | herb_low_ji | 1 | 3 | 8000 | 非绑定 |
+| reward_tower_seal_low | tower_xuantie_piece | 1 | 2 | 10000 | 非绑定 |
+| reward_tower_seal_low | merit_lotus_low | 1 | 1 | 1500 | 绑定 |
+
+## 八、任务配置样例
+
+`quest_config`
+
+| quest_id | name | quest_type | condition | active_score | reward_group | async_enabled |
+| --- | --- | --- | --- | ---: | --- | --- |
+| daily_claim_offline | 领取修炼收益 | daily | claim_offline:1 | 10 | reward_daily_10 | 是 |
+| daily_explore_5 | 九州探索五次 | daily | action:explore:5 | 20 | reward_daily_explore | 是 |
+| weekly_tower_15 | 九塔同心 | weekly | action:tower:15 | 0 | reward_weekly_tower | 是 |
+| chapter_ji_tower | 玄铁塔裂 | chapter | tower:xuantie:seal:1 | 0 | reward_chapter_1 | 是 |
+
+## 九、卡池配置样例
+
+`gacha_pool_config`
+
+| pool_id | pool_type | cost_type | pity_rule | inherit_pity | chapter_gate |
+| --- | --- | --- | --- | --- | ---: |
+| pool_normal | 常驻机缘 | bound_jade,normal_ticket | pity_40 | 否 | 1 |
+| pool_ancient | 九大古宝 | paid_jade,monthly_grant,ancient_page | pity_60_120 | 是 | 2 |
+| pool_limited_weapon | 限定本命 | paid_jade | pity_80_160 | 是 | 3 |
+
+`gacha_result_group`
+
+| pool_id | result_item_id | weight | duplicate_rule |
+| --- | --- | ---: | --- |
+| pool_ancient | ancient_taiyi_danding | 1111 | fragment_convert |
+| pool_ancient | ancient_qiankun_lu | 1111 | fragment_convert |
+| pool_ancient | ancient_tianji_pan | 1111 | fragment_convert |
+
+九大古宝池结果组只能包含九大古宝本体。
+
+## 十、月卡与 VIP 配置样例
+
+`monthly_card_config`
+
+| card_id | name | fishpi_point_cost | paid_jade_now | paid_jade_daily | ancient_draw_daily |
+| --- | --- | ---: | ---: | ---: | ---: |
+| monthly_small | 小月卡 | 1024 | 124 | 30 | 1 |
+| monthly_big | 大月卡 | 2048 | 248 | 60 | 2 |
+
+`vip_config`
+
+| vip_level | bound_jade_daily | sweep_limit | strategy_slots | queue_type |
+| --- | ---: | ---: | ---: | --- |
+| VIP1 | 2 | 6 | 1 | 无 |
+| VIP2 | 4 | 8 | 2 | 无 |
+| VIP3 | 6 | 10 | 3 | 单玩法队列 |
+| VIP4 | 8 | 15 | 4 | 跨玩法简化队列 |
+
+## 十一、验收场景
+
+- 研发能用样例配置跑通新手、探索、九塔、任务、抽卡、月卡和 VIP。
+- 九大古宝池样例不混入材料、器魂和低阶古宝碎片。
+- 绑定仙玉不能进入限定本命法宝池和九大古宝池。
+- 配置字段能映射到接口、数据库和测试用例。

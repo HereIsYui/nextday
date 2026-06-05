@@ -2,7 +2,7 @@
 
 ## 文档
 
-- [《择日飞升：九塔封魔》游戏设计文档 v1.12](GAME_DESIGN.md)
+- [《择日飞升：九塔封魔》游戏设计文档 v1.13](GAME_DESIGN.md)
 - [数值配置总表](NUMERIC_DESIGN.md)
 - [战斗与技能表](COMBAT_SKILL_DESIGN.md)
 - [怪物与 Boss 设计](ENEMY_BOSS_DESIGN.md)
@@ -27,6 +27,12 @@
 - [服务器生命周期设计](SERVER_LIFECYCLE_DESIGN.md)
 - [章节剧本与剧情配置设计](STORY_CHAPTER_SCRIPT_DESIGN.md)
 - [研发 Backlog 拆分](DEVELOPMENT_BACKLOG_DESIGN.md)
+- [API 接口契约设计](API_CONTRACT_DESIGN.md)
+- [数据库表结构设计](DATABASE_SCHEMA_DESIGN.md)
+- [配置样例表](CONFIG_SAMPLE_TABLES.md)
+- [QA 测试计划](QA_TEST_PLAN.md)
+- [GM 后台产品需求](ADMIN_PRD.md)
+- [鱼排接入设计](FISHPI_INTEGRATION_DESIGN.md)
 
 ## 背景
 

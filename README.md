@@ -2,10 +2,11 @@
 
 ## 文档
 
-- [《择日飞升：九塔封魔》游戏设计文档 v1.5](GAME_DESIGN.md)
+- [《择日飞升：九塔封魔》游戏设计文档 v1.6](GAME_DESIGN.md)
 - [数值配置总表](NUMERIC_DESIGN.md)
 - [战斗与技能表](COMBAT_SKILL_DESIGN.md)
 - [新手引导与任务链](ONBOARDING_DESIGN.md)
+- [行动与奖励设计](ACTION_REWARD_DESIGN.md)
 - [后台、日志与风控设计](OPS_RISK_DESIGN.md)
 - [核心数据模型草案](DATA_MODEL_DESIGN.md)
 

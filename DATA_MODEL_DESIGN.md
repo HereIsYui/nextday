@@ -1,4 +1,4 @@
-# 《择日飞升：九塔封魔》核心数据模型草案 v0.1
+# 《择日飞升：九塔封魔》核心数据模型草案 v0.2
 
 ## 一、定位
 
@@ -24,6 +24,18 @@
 | trade_record | 交易行记录 |
 | era_record | 纪元记录 |
 | gm_operation_log | GM 操作日志 |
+| config_version | 配置版本快照 |
+
+所有可回放、可补偿、可结算的记录必须保存配置版本。版本字段用于处理长线运营中的数值调整、战报复现、补单、补偿和回滚。
+
+公共版本字段：
+
+| 字段 | 说明 |
+| --- | --- |
+| config_version | 综合配置版本 |
+| ruleset_version | 规则集版本 |
+| reward_config_version | 奖励配置版本 |
+| risk_ruleset_version | 风控规则版本 |
 
 ## 三、玩家模型
 
@@ -176,6 +188,9 @@
 | cost_token_count | 消耗数量 |
 | contribution | 有效贡献 |
 | reward_summary | 奖励摘要 |
+| config_version | 行动配置版本 |
+| ruleset_version | 行动规则版本 |
+| reward_config_version | 奖励配置版本 |
 | status | 已提交 / 已结算 / 已回滚 |
 | created_at | 提交时间 |
 | settled_at | 结算时间 |
@@ -193,6 +208,11 @@
 | attacker_snapshot | 攻击方快照 |
 | defender_snapshot | 防守方快照 |
 | random_seed | 随机种子 |
+| combat_config_version | 战斗配置版本 |
+| skill_config_version | 技能配置版本 |
+| enemy_config_version | 怪物配置版本 |
+| power_cap_config_version | 强度压缩配置版本 |
+| reward_config_version | 奖励配置版本 |
 | result | 胜 / 负 / 超时 |
 | result_reason | 胜负原因 |
 | rounds | 回合摘要 |
@@ -215,6 +235,8 @@
 | paid_jade_amount | 付费仙玉数量 |
 | status | created / pending / paid / delivered / failed / refunded |
 | idempotency_key | 幂等键 |
+| product_config_version | 商品配置版本 |
+| payment_ruleset_version | 支付规则版本 |
 | callback_payload | 回调摘要 |
 | created_at | 创建时间 |
 | delivered_at | 到账时间 |
@@ -233,6 +255,9 @@
 | pity_before | 抽前保底 |
 | pity_after | 抽后保底 |
 | random_seed | 随机种子 |
+| gacha_config_version | 卡池配置版本 |
+| pity_ruleset_version | 保底规则版本 |
+| reward_config_version | 奖励配置版本 |
 | created_at | 时间 |
 
 ## 十、交易行
@@ -250,6 +275,8 @@
 | tax_rate | 税率 |
 | status | 上架 / 成交 / 撤销 / 冻结 / 回滚 |
 | risk_flag | 风控标记 |
+| economy_config_version | 经济配置版本 |
+| risk_ruleset_version | 风控规则版本 |
 | created_at | 上架时间 |
 | settled_at | 成交时间 |
 
@@ -267,6 +294,9 @@
 | status | 进行中 / 最终战 / 结算 / 已结束 |
 | demon_king_form | 魔王形态 |
 | final_result | 结局摘要 |
+| era_config_version | 纪元配置版本 |
+| numeric_config_version | 数值配置版本 |
+| story_ruleset_version | 剧情规则版本 |
 | ended_at | 结束时间 |
 
 `era_player_result`
@@ -281,6 +311,8 @@
 | title_rewards | 称号奖励 |
 | inherited_buff | 继承 Buff |
 | era_point_reward | 纪元积分 |
+| settlement_config_version | 结算配置版本 |
+| reward_config_version | 奖励配置版本 |
 
 ## 十二、GM 操作
 
@@ -298,6 +330,18 @@
 | after_value | 操作后摘要 |
 | created_at | 时间 |
 
+`config_version`
+
+| 字段 | 说明 |
+| --- | --- |
+| config_version | 配置版本号 |
+| config_type | numeric / combat / reward / gacha / economy / story / risk |
+| checksum | 配置摘要，用于校验回放 |
+| active_from | 生效时间 |
+| active_to | 失效时间，可为空 |
+| operator_id | 发布人 |
+| change_reason | 变更原因 |
+
 ## 十三、服务边界建议
 
 | 服务 | 负责 |
@@ -311,11 +355,13 @@
 | 抽卡服务 | gacha_record、保底、卡池 |
 | 纪元服务 | era_record、结算、继承 |
 | GM 服务 | gm_operation_log、封禁、补偿、回滚 |
+| 配置服务 | config_version、配置发布、版本回放 |
 
 ## 十四、验收场景
 
 - 开发能根据本文拆出玩家、宗门、九州、九塔、战斗、订单、抽卡、纪元核心表。
 - 每次货币变化、抽卡、交易、仓库、PVP 和九塔贡献都有记录可查。
 - 战斗日志能支持回放。
+- 行动、战斗、抽卡、交易、纪元结算都能追溯对应配置版本。
 - 纪元结算能生成玩家继承奖励。
 - 鱼排订单能通过幂等键避免重复到账。

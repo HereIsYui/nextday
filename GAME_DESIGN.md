@@ -1,4 +1,4 @@
-# 《择日飞升：九塔封魔》游戏设计文档 v1.6
+# 《择日飞升：九塔封魔》游戏设计文档 v1.7
 
 ## 一、游戏概述
 
@@ -748,6 +748,11 @@ VIP 不发放付费仙玉，绑定仙玉不能抽限定本命法宝池和古宝�
 - 便利福利测试：免费、VIP、月卡完成同一行动时奖励、贡献和战斗结算一致，仅操作耗时不同。
 - VIP 月卡边界测试：VIP3 与小月卡便利一致但不获得付费仙玉，VIP4 强于小月卡但不超过大月卡。
 - 自动消耗测试：自动策略不会消耗限定法宝、古宝、付费道具和高阶终局材料。
+- 怪物 Boss 测试：普通怪、精英怪、塔灵、世界 Boss 和最终魔王都能按境界基准生成属性与阶段机制。
+- 行动奖励测试：每类行动令都有基础产出，异步公共事件具备参与保底、贡献档位、排行、尾刀、过量伤害和阶段补偿。
+- 付费强度公式测试：同境界同活跃下，付费玩家 PVP 有效强度优势不超过 15%。
+- 配置版本测试：行动、战斗、抽卡、交易和纪元结算记录都能追溯配置版本并支持旧战报回放。
+- 新手社交测试：新手 7 天内有临时修行小队或散修导师，15 天内看到宗门候补，不固定时间在线也能完成社交引导。
 
 ## 二十七、设计约束
 
@@ -777,3 +782,11 @@ VIP 不发放付费仙玉，绑定仙玉不能抽限定本命法宝池和古宝�
 - 背景设定：[README.md](README.md)
 - 旧玩法参考：[修仙挂机1.71单文件.html](修仙挂机1.71单文件.html)
 - 鱼排 VIP 页面参考：[vip.html](vip.html)
+- P0 数值配置：[NUMERIC_DESIGN.md](NUMERIC_DESIGN.md)
+- P0 战斗技能：[COMBAT_SKILL_DESIGN.md](COMBAT_SKILL_DESIGN.md)
+- P0 怪物与 Boss：[ENEMY_BOSS_DESIGN.md](ENEMY_BOSS_DESIGN.md)
+- P0 付费强度边界：[POWER_CAP_DESIGN.md](POWER_CAP_DESIGN.md)
+- P0 行动与奖励：[ACTION_REWARD_DESIGN.md](ACTION_REWARD_DESIGN.md)
+- P0 新手引导：[ONBOARDING_DESIGN.md](ONBOARDING_DESIGN.md)
+- P0 后台风控：[OPS_RISK_DESIGN.md](OPS_RISK_DESIGN.md)
+- P0 数据模型：[DATA_MODEL_DESIGN.md](DATA_MODEL_DESIGN.md)

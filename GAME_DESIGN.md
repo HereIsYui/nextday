@@ -1,4 +1,4 @@
-# 《择日飞升：九塔封魔》游戏设计文档 v1.9
+# 《择日飞升：九塔封魔》游戏设计文档 v1.10
 
 ## 一、游戏概述
 
@@ -338,6 +338,8 @@ PVP 保护与收益衰减：
 - 强 PVP 系统：围绕裂隙战场、资源点、宗门战和九塔异步争夺展开。
 - 最终战系统：根据纪元历史生成魔王形态与战场规则。
 - 纪元结算系统：继承称号、收藏、轻量 Buff 和账户级付费货币。
+
+择日、洞府、宗门都应服务“随时玩”的核心目标：天象全天有效，洞府基础收菜控制在 5 分钟内，宗门任务和宗门战全部支持异步提交。
 
 ## 十四、战斗系统
 
@@ -762,6 +764,9 @@ VIP 不发放付费仙玉，绑定仙玉不能抽限定本命法宝池和九大�
 - 付费强度公式测试：同境界同活跃下，付费玩家 PVP 有效强度优势不超过 15%。
 - 配置版本测试：行动、战斗、抽卡、交易和纪元结算记录都能追溯配置版本并支持旧战报回放。
 - 新手社交测试：新手 7 天内有临时修行小队或散修导师，15 天内看到宗门候补，不固定时间在线也能完成社交引导。
+- 宗门细案测试：宗门任务、宗门建设、宗门战和阵营集结均可异步完成，失败不造成不可逆损失。
+- 择日天象测试：天象全天有效，月卡刷新不提高最终奖励倍率，突破加成不能叠成无条件必成。
+- 洞府内天地测试：洞府基础收菜 5 分钟内完成，内天地派驻受九州状态影响但不会永久损失生灵。
 
 ## 二十七、设计约束
 
@@ -797,6 +802,9 @@ VIP 不发放付费仙玉，绑定仙玉不能抽限定本命法宝池和九大�
 - P0 付费强度边界：[POWER_CAP_DESIGN.md](POWER_CAP_DESIGN.md)
 - P0 九大古宝：[ANCIENT_TREASURE_DESIGN.md](ANCIENT_TREASURE_DESIGN.md)
 - P0 九大古宝数值：[ANCIENT_TREASURE_NUMERIC_DESIGN.md](ANCIENT_TREASURE_NUMERIC_DESIGN.md)
+- P0 宗门与阵营：[SECT_FACTION_DESIGN.md](SECT_FACTION_DESIGN.md)
+- P0 择日与天象：[CALENDAR_ASTRONOMY_DESIGN.md](CALENDAR_ASTRONOMY_DESIGN.md)
+- P0 洞府与内天地：[CAVE_INNER_WORLD_DESIGN.md](CAVE_INNER_WORLD_DESIGN.md)
 - P0 行动与奖励：[ACTION_REWARD_DESIGN.md](ACTION_REWARD_DESIGN.md)
 - P0 新手引导：[ONBOARDING_DESIGN.md](ONBOARDING_DESIGN.md)
 - P0 后台风控：[OPS_RISK_DESIGN.md](OPS_RISK_DESIGN.md)

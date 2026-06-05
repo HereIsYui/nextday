@@ -1,4 +1,4 @@
-# 《择日飞升：九塔封魔》核心数据模型草案 v0.4
+# 《择日飞升：九塔封魔》核心数据模型草案 v0.5
 
 ## 一、定位
 
@@ -15,8 +15,14 @@
 | player_inventory | 玩家道具和货币 |
 | sect | 宗门 |
 | sect_member | 宗门成员 |
+| sect_war_record | 宗门战记录 |
 | province_state | 九州状态 |
 | tower_state | 九塔状态 |
+| astronomy_state | 天象状态 |
+| player_astronomy_choice | 玩家择日选择 |
+| cave_facility | 洞府设施 |
+| inner_world_state | 内天地状态 |
+| inner_world_assignment | 内天地派驻 |
 | action_record | 异步行动记录 |
 | battle_log | 战斗日志 |
 | order_record | 鱼排积分订单 |
@@ -365,14 +371,104 @@
 | operator_id | 发布人 |
 | change_reason | 变更原因 |
 
-## 十三、服务边界建议
+## 十三、扩展系统模型
+
+`sect_war_record`
+
+| 字段 | 说明 |
+| --- | --- |
+| war_id | 宗门战 ID |
+| era_id | 纪元 ID |
+| attacker_sect_id | 进攻宗门 |
+| defender_sect_id | 防守宗门 |
+| province_id | 争夺州 |
+| phase | 宣战 / 战备 / 交锋 / 结算 |
+| attacker_score | 进攻方积分 |
+| defender_score | 防守方积分 |
+| result | 进攻胜 / 防守胜 / 平局 |
+| ruleset_version | 宗门战规则版本 |
+| reward_config_version | 奖励配置版本 |
+| created_at | 创建时间 |
+| settled_at | 结算时间 |
+
+`astronomy_state`
+
+| 字段 | 说明 |
+| --- | --- |
+| astronomy_id | 天象 ID |
+| era_id | 纪元 ID |
+| scope_type | 全服 / 州 / 个人 |
+| scope_id | 作用范围 ID |
+| astronomy_type | 天象类型 |
+| quality | 平 / 吉 / 大吉 / 凶 / 异象 |
+| effect_summary | 效果摘要 |
+| config_version | 天象配置版本 |
+| valid_date | 生效日期 |
+| expire_at | 过期时间 |
+
+`player_astronomy_choice`
+
+| 字段 | 说明 |
+| --- | --- |
+| choice_id | 择日选择 ID |
+| player_id | 玩家 ID |
+| astronomy_id | 天象 ID |
+| target_type | 修炼 / 突破 / 炼丹 / 炼器 / 镇塔 / 破塔 / 探索 |
+| saved_by_treasure | 是否由天机星盘保存 |
+| used | 是否已使用 |
+| created_at | 创建时间 |
+| used_at | 使用时间 |
+
+`cave_facility`
+
+| 字段 | 说明 |
+| --- | --- |
+| facility_id | 洞府设施实例 ID |
+| player_id | 玩家 ID |
+| facility_type | 灵田 / 聚灵阵 / 丹炉 / 炼器室 / 灵兽栏 / 阵眼 / 洞天门 |
+| level | 设施等级 |
+| queue_state | 生产队列摘要 |
+| stored_output | 缓存产出摘要 |
+| config_version | 设施配置版本 |
+| updated_at | 更新时间 |
+
+`inner_world_state`
+
+| 字段 | 说明 |
+| --- | --- |
+| player_id | 玩家 ID |
+| unlocked | 是否开启 |
+| world_level | 内天地等级 |
+| spirit_level | 生灵等级摘要 |
+| law_exp | 法则经验 |
+| resource_summary | 绑定资源摘要 |
+| config_version | 内天地配置版本 |
+| updated_at | 更新时间 |
+
+`inner_world_assignment`
+
+| 字段 | 说明 |
+| --- | --- |
+| assignment_id | 派驻 ID |
+| player_id | 玩家 ID |
+| province_id | 派驻州 |
+| assignment_type | 探索 / 采集 / 九塔支援 / 秘境支援 |
+| start_at | 开始时间 |
+| finish_at | 完成时间 |
+| result_summary | 结果摘要 |
+| status | 进行中 / 已完成 / 已取消 |
+| config_version | 派驻配置版本 |
+
+## 十四、服务边界建议
 
 | 服务 | 负责 |
 | --- | --- |
 | 玩家服务 | player、progress、wallet、item |
 | 战斗服务 | battle_log、技能结算、镜像防守 |
 | 九州服务 | province_state、tower_state、action_record |
-| 宗门服务 | sect、sect_member、warehouse_log |
+| 宗门服务 | sect、sect_member、warehouse_log、sect_war_record |
+| 择日服务 | astronomy_state、player_astronomy_choice |
+| 洞府服务 | cave_facility、inner_world_state、inner_world_assignment |
 | 经济服务 | trade_record、货币日志、经济监控 |
 | 付费服务 | order_record、鱼排回调、月卡 |
 | 抽卡服务 | gacha_record、保底、卡池 |
@@ -381,9 +477,10 @@
 | GM 服务 | gm_operation_log、封禁、补偿、回滚 |
 | 配置服务 | config_version、配置发布、版本回放 |
 
-## 十四、验收场景
+## 十五、验收场景
 
 - 开发能根据本文拆出玩家、宗门、九州、九塔、战斗、订单、抽卡、纪元核心表。
+- 开发能根据本文拆出宗门战、择日、洞府和内天地的最小核心表。
 - 每次货币变化、抽卡、交易、仓库、PVP 和九塔贡献都有记录可查。
 - 战斗日志能支持回放。
 - 行动、战斗、抽卡、交易、纪元结算都能追溯对应配置版本。

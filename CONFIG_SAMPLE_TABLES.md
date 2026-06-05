@@ -1,4 +1,4 @@
-# 《择日飞升：九塔封魔》配置样例表 v0.1
+# 《择日飞升：九塔封魔》配置样例表 v0.2
 
 ## 一、定位
 
@@ -135,6 +135,18 @@
 
 ## 十、月卡与 VIP 配置样例
 
+`payment_product_config`
+
+| product_id | name | fishpi_point_cost | paid_jade_amount | bonus_group | product_type |
+| --- | --- | ---: | ---: | --- | --- |
+| jade_pack_1024 | 小袋仙玉 | 1024 | 1024 | bonus_bound_small | jade |
+| jade_pack_4096 | 中袋仙玉 | 4096 | 4096 | bonus_bound_mid | jade |
+| jade_pack_10240 | 大袋仙玉 | 10240 | 10240 | bonus_skin_ticket_low | jade |
+| jade_pack_32768 | 玄玉匣 | 32768 | 32768 | bonus_collection_mid | jade |
+| jade_pack_65536 | 太初玉匣 | 65536 | 65536 | bonus_collection_high | jade |
+
+仙玉包附加赠送只进入绑定仙玉、外观券、称号进度或收藏材料，不额外赠送付费仙玉。
+
 `monthly_card_config`
 
 | card_id | name | fishpi_point_cost | paid_jade_now | paid_jade_daily | ancient_draw_daily |
@@ -157,3 +169,4 @@
 - 九大古宝池样例不混入材料、器魂和低阶古宝碎片。
 - 绑定仙玉不能进入限定本命法宝池和九大古宝池。
 - 配置字段能映射到接口、数据库和测试用例。
+- 仙玉包按 1 积分兑换 1 付费仙玉配置，额外赠送不破坏限定池和古宝池成本。

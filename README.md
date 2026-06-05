@@ -2,7 +2,7 @@
 
 ## 文档
 
-- [《择日飞升：九塔封魔》游戏设计文档 v1.13](GAME_DESIGN.md)
+- [《择日飞升：九塔封魔》游戏设计文档 v1.14](GAME_DESIGN.md)
 - [数值配置总表](NUMERIC_DESIGN.md)
 - [战斗与技能表](COMBAT_SKILL_DESIGN.md)
 - [怪物与 Boss 设计](ENEMY_BOSS_DESIGN.md)
@@ -33,6 +33,7 @@
 - [QA 测试计划](QA_TEST_PLAN.md)
 - [GM 后台产品需求](ADMIN_PRD.md)
 - [鱼排接入设计](FISHPI_INTEGRATION_DESIGN.md)
+- [付费毕业与积分消耗模型](MONETIZATION_GRADUATION_DESIGN.md)
 
 ## 背景
 

@@ -1,4 +1,4 @@
-# 《择日飞升：九塔封魔》核心数据模型草案 v0.5
+# 《择日飞升：九塔封魔》核心数据模型草案 v0.6
 
 ## 一、定位
 
@@ -25,6 +25,13 @@
 | inner_world_assignment | 内天地派驻 |
 | action_record | 异步行动记录 |
 | battle_log | 战斗日志 |
+| quest_record | 任务记录 |
+| event_record | 活动参与记录 |
+| rank_snapshot | 排行榜快照 |
+| rank_entry | 排行榜明细 |
+| achievement_record | 成就记录 |
+| title_record | 称号发放记录 |
+| player_title | 玩家称号持有状态 |
 | order_record | 鱼排积分订单 |
 | gacha_record | 抽卡记录 |
 | monthly_card_draw_grant | 月卡赠抽记录 |
@@ -32,6 +39,9 @@
 | era_record | 纪元记录 |
 | gm_operation_log | GM 操作日志 |
 | config_version | 配置版本快照 |
+| config_publish_record | 配置发布记录 |
+| mail_record | 邮件记录 |
+| announcement_record | 公告记录 |
 
 所有可回放、可补偿、可结算的记录必须保存配置版本。版本字段用于处理长线运营中的数值调整、战报复现、补单、补偿和回滚。
 
@@ -459,7 +469,173 @@
 | status | 进行中 / 已完成 / 已取消 |
 | config_version | 派驻配置版本 |
 
-## 十四、服务边界建议
+## 十四、任务、活动、排行、称号与运营记录
+
+`quest_record`
+
+| 字段 | 说明 |
+| --- | --- |
+| quest_record_id | 任务记录 ID |
+| player_id | 玩家 ID |
+| quest_id | 任务配置 ID |
+| quest_type | 日常 / 周常 / 章节 / 活动 / 回归 |
+| progress | 当前进度摘要 |
+| target_progress | 目标进度 |
+| status | 未完成 / 可领取 / 已领取 / 已过期 / 已回滚 |
+| related_action_ids | 关联行动 ID 摘要 |
+| quest_config_version | 任务配置版本 |
+| reward_config_version | 奖励配置版本 |
+| ruleset_version | 规则版本 |
+| activated_at | 激活时间 |
+| completed_at | 完成时间 |
+| claimed_at | 领取时间 |
+
+`event_record`
+
+| 字段 | 说明 |
+| --- | --- |
+| event_record_id | 活动参与记录 ID |
+| event_id | 活动配置 ID |
+| player_id | 玩家 ID |
+| era_id | 纪元 ID |
+| province_id | 关联州，可为空 |
+| tower_id | 关联塔，可为空 |
+| contribution | 有效贡献 |
+| reward_state | 未结算 / 可领取 / 已领取 / 已补偿 / 已回滚 |
+| rank_score | 活动排行分 |
+| event_config_version | 活动配置版本 |
+| reward_config_version | 奖励配置版本 |
+| ruleset_version | 规则版本 |
+| created_at | 首次参与时间 |
+| settled_at | 结算时间 |
+
+`rank_snapshot`
+
+| 字段 | 说明 |
+| --- | --- |
+| snapshot_id | 快照 ID |
+| rank_id | 榜单配置 ID |
+| era_id | 纪元 ID |
+| period_type | 日 / 周 / 章节 / 纪元 |
+| period_key | 周期标识 |
+| segment_key | 境界、阵营、宗门等级等分段 |
+| status | 生成中 / 已锁定 / 已修正 / 已回滚 |
+| rank_config_version | 排行配置版本 |
+| reward_config_version | 奖励配置版本 |
+| risk_ruleset_version | 风控规则版本 |
+| generated_at | 生成时间 |
+| locked_at | 锁定时间 |
+
+`rank_entry`
+
+| 字段 | 说明 |
+| --- | --- |
+| entry_id | 排行明细 ID |
+| snapshot_id | 快照 ID |
+| target_type | 玩家 / 宗门 / 阵营 |
+| target_id | 目标 ID |
+| rank_no | 名次 |
+| score | 分数 |
+| score_detail | 分数来源摘要 |
+| reward_state | 未发放 / 已发放 / 冻结 / 回收 |
+| risk_flag | 风控标记 |
+| created_at | 时间 |
+
+`achievement_record`
+
+| 字段 | 说明 |
+| --- | --- |
+| achievement_record_id | 成就记录 ID |
+| player_id | 玩家 ID |
+| achievement_id | 成就配置 ID |
+| progress | 当前进度 |
+| status | 进行中 / 已完成 / 已领取 |
+| achievement_config_version | 成就配置版本 |
+| reward_config_version | 奖励配置版本 |
+| completed_at | 完成时间 |
+| claimed_at | 领取时间 |
+
+`title_record`
+
+| 字段 | 说明 |
+| --- | --- |
+| title_record_id | 称号发放记录 ID |
+| player_id | 玩家 ID |
+| title_id | 称号配置 ID |
+| source_type | 成就 / 排行 / 活动 / 纪元 / GM |
+| source_id | 来源记录 ID |
+| era_id | 纪元 ID |
+| inherited | 是否来自纪元继承 |
+| title_config_version | 称号配置版本 |
+| reward_config_version | 奖励配置版本 |
+| granted_at | 发放时间 |
+
+`player_title`
+
+| 字段 | 说明 |
+| --- | --- |
+| player_id | 玩家 ID |
+| title_id | 称号 ID |
+| equipped | 是否佩戴 |
+| display_unlocked | 是否解锁展示 |
+| effect_active | 当前纪元效果是否生效 |
+| expire_at | 过期时间，可为空 |
+| inherited_from_era_id | 来源纪元，可为空 |
+| updated_at | 更新时间 |
+
+`config_publish_record`
+
+| 字段 | 说明 |
+| --- | --- |
+| publish_id | 发布记录 ID |
+| config_version | 配置版本号 |
+| config_type | numeric / combat / reward / gacha / economy / story / risk / quest / event / rank / title |
+| checksum | 配置摘要 |
+| publish_status | draft / testing / gray / online / rollback |
+| operator_id | 发布人 |
+| change_summary | 变更摘要 |
+| validation_summary | 校验摘要 |
+| active_from | 生效时间 |
+| rollback_from | 回滚来源版本，可为空 |
+| created_at | 创建时间 |
+
+`mail_record`
+
+| 字段 | 说明 |
+| --- | --- |
+| mail_id | 邮件 ID |
+| player_id | 收件玩家，群发可为空并使用 target_rule |
+| mail_type | 系统 / 补偿 / 订单 / 排行 / 宗门 / 活动 |
+| title | 邮件标题 |
+| body | 邮件正文 |
+| reward_summary | 附件摘要 |
+| target_rule | 群发范围规则，可为空 |
+| source_type | 来源类型 |
+| source_id | 来源记录 ID |
+| status | 未读 / 已读 / 已领取 / 已过期 / 已回收 |
+| mail_template_version | 邮件模板版本 |
+| reward_config_version | 奖励配置版本 |
+| expire_at | 过期时间 |
+| created_at | 创建时间 |
+| claimed_at | 领取时间 |
+
+`announcement_record`
+
+| 字段 | 说明 |
+| --- | --- |
+| announcement_id | 公告 ID |
+| announcement_type | 维护 / 活动 / 概率 / 规则调整 / 风控说明 |
+| title | 标题 |
+| body | 正文 |
+| visible_rule | 可见范围 |
+| related_config_version | 关联配置版本 |
+| publish_status | 草稿 / 已发布 / 已撤回 |
+| operator_id | 发布人 |
+| publish_at | 发布时间 |
+| expire_at | 过期时间，可为空 |
+| created_at | 创建时间 |
+
+## 十五、服务边界建议
 
 | 服务 | 负责 |
 | --- | --- |
@@ -475,15 +651,20 @@
 | 月卡赠抽服务 | monthly_card_draw_grant、赠抽发放、过期、补发 |
 | 纪元服务 | era_record、结算、继承 |
 | GM 服务 | gm_operation_log、封禁、补偿、回滚 |
-| 配置服务 | config_version、配置发布、版本回放 |
+| 任务活动服务 | quest_record、event_record、任务进度、活动结算 |
+| 排行称号服务 | rank_snapshot、rank_entry、achievement_record、title_record、player_title |
+| 邮件公告服务 | mail_record、announcement_record、补偿和公告发布 |
+| 配置服务 | config_version、config_publish_record、配置发布、版本回放 |
 
-## 十五、验收场景
+## 十六、验收场景
 
 - 开发能根据本文拆出玩家、宗门、九州、九塔、战斗、订单、抽卡、纪元核心表。
 - 开发能根据本文拆出宗门战、择日、洞府和内天地的最小核心表。
+- 开发能根据本文拆出任务、活动、排行、成就、称号、邮件、公告和配置发布记录。
 - 每次货币变化、抽卡、交易、仓库、PVP 和九塔贡献都有记录可查。
 - 战斗日志能支持回放。
-- 行动、战斗、抽卡、交易、纪元结算都能追溯对应配置版本。
+- 行动、战斗、抽卡、任务、活动、排行、交易、纪元结算都能追溯对应配置版本。
 - 月卡赠抽能记录来源、有效期、过期状态、使用记录和是否计入保底。
 - 纪元结算能生成玩家继承奖励。
 - 鱼排订单能通过幂等键避免重复到账。
+- 邮件和公告能追溯模板版本、奖励版本、发布人和生效范围。

@@ -1,4 +1,4 @@
-# 《择日飞升：九塔封魔》核心数据模型草案 v0.3
+# 《择日飞升：九塔封魔》核心数据模型草案 v0.4
 
 ## 一、定位
 
@@ -21,6 +21,7 @@
 | battle_log | 战斗日志 |
 | order_record | 鱼排积分订单 |
 | gacha_record | 抽卡记录 |
+| monthly_card_draw_grant | 月卡赠抽记录 |
 | trade_record | 交易行记录 |
 | era_record | 纪元记录 |
 | gm_operation_log | GM 操作日志 |
@@ -248,8 +249,11 @@
 | gacha_id | 抽卡记录 ID |
 | player_id | 玩家 ID |
 | pool_type | 限定本命 / 九大古宝 / 常驻 |
-| cost_type | 仙玉 / 绑定仙玉 / 机缘券 |
+| cost_type | 仙玉 / 绑定仙玉 / 机缘券 / 月卡赠抽 / 古宝残页合成 |
 | cost_amount | 消耗数量 |
+| draw_source | 付费仙玉 / 月卡赠抽 / 活动券 / 残页合成 |
+| grant_id | 月卡赠抽记录 ID，可为空 |
+| count_to_pity | 是否计入保底 |
 | result_item_id | 结果道具 |
 | rarity | 稀有度 |
 | pity_before | 抽前保底 |
@@ -259,6 +263,25 @@
 | pity_ruleset_version | 保底规则版本 |
 | reward_config_version | 奖励配置版本 |
 | created_at | 时间 |
+
+`monthly_card_draw_grant`
+
+| 字段 | 说明 |
+| --- | --- |
+| grant_id | 赠抽记录 ID |
+| player_id | 玩家 ID |
+| monthly_card_type | 小月卡 / 大月卡 |
+| pool_type | 九大古宝专属池 |
+| grant_count | 发放次数 |
+| used_count | 已使用次数 |
+| source_order_id | 月卡订单 ID |
+| valid_date | 生效日期 |
+| expire_at | 过期时间 |
+| status | 未使用 / 部分使用 / 已使用 / 已过期 / 已回滚 |
+| count_to_pity | 是否计入保底 |
+| gacha_config_version | 卡池配置版本 |
+| created_at | 发放时间 |
+| updated_at | 更新时间 |
 
 ## 十、交易行
 
@@ -353,6 +376,7 @@
 | 经济服务 | trade_record、货币日志、经济监控 |
 | 付费服务 | order_record、鱼排回调、月卡 |
 | 抽卡服务 | gacha_record、保底、卡池 |
+| 月卡赠抽服务 | monthly_card_draw_grant、赠抽发放、过期、补发 |
 | 纪元服务 | era_record、结算、继承 |
 | GM 服务 | gm_operation_log、封禁、补偿、回滚 |
 | 配置服务 | config_version、配置发布、版本回放 |
@@ -363,5 +387,6 @@
 - 每次货币变化、抽卡、交易、仓库、PVP 和九塔贡献都有记录可查。
 - 战斗日志能支持回放。
 - 行动、战斗、抽卡、交易、纪元结算都能追溯对应配置版本。
+- 月卡赠抽能记录来源、有效期、过期状态、使用记录和是否计入保底。
 - 纪元结算能生成玩家继承奖励。
 - 鱼排订单能通过幂等键避免重复到账。

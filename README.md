@@ -2,7 +2,7 @@
 
 ## 文档
 
-- [《择日飞升：九塔封魔》游戏设计文档 v1.17](docs/GAME_DESIGN.md)
+- [《择日飞升：九塔封魔》游戏设计文档 v1.18](docs/GAME_DESIGN.md)
 - [数值配置总表](docs/NUMERIC_DESIGN.md)
 - [战斗与技能表](docs/COMBAT_SKILL_DESIGN.md)
 - [怪物与 Boss 设计](docs/ENEMY_BOSS_DESIGN.md)

@@ -1,4 +1,4 @@
-# 《择日飞升：九塔封魔》核心数据模型草案 v0.7
+# 《择日飞升：九塔封魔》核心数据模型草案 v0.8
 
 ## 一、定位
 
@@ -47,6 +47,8 @@
 | trade_record | 交易行记录 |
 | era_record | 纪元记录 |
 | gm_operation_log | GM 操作日志 |
+| behavior_risk_record | 行为风控记录 |
+| delayed_settlement_record | 收益延迟结算记录 |
 | config_version | 配置版本快照 |
 | config_publish_record | 配置发布记录 |
 | mail_record | 邮件记录 |
@@ -551,6 +553,48 @@
 | after_value | 操作后摘要 |
 | created_at | 时间 |
 
+`behavior_risk_record`
+
+| 字段 | 说明 |
+| --- | --- |
+| risk_record_id | 风控记录 ID |
+| player_id | 玩家 ID |
+| era_id | 纪元 ID |
+| scene_type | 行动 / PVP / 九塔 / 交易 / 宗门仓库 / 抽卡订单 / 登录 |
+| source_type | 触发来源接口或玩法 |
+| source_id | 关联记录 ID，可为空 |
+| request_path | 接口路径 |
+| request_interval_ms | 与上次同类请求间隔 |
+| request_count_window | 统计窗口内请求次数 |
+| idempotency_key | 幂等键，可为空 |
+| device_hash | 设备摘要 |
+| ip_hash | IP 摘要 |
+| risk_score | 风险分 |
+| risk_level | 低 / 中 / 高 / 严重 |
+| matched_rules | 命中规则列表 |
+| action_taken | 观察 / 限频 / 收益延迟 / 衰减 / 人工审核 / 拒绝 |
+| risk_ruleset_version | 风控规则版本 |
+| created_at | 时间 |
+
+`delayed_settlement_record`
+
+| 字段 | 说明 |
+| --- | --- |
+| delayed_record_id | 延迟结算记录 ID |
+| player_id | 玩家 ID |
+| era_id | 纪元 ID |
+| source_type | PVP / 九塔 / 交易 / 宗门仓库 / 其他 |
+| source_id | 关联行动、战斗、交易或仓库记录 |
+| reward_summary | 暂缓奖励摘要 |
+| contribution_summary | 暂缓贡献摘要 |
+| risk_record_id | 关联风控记录 |
+| status | 待审核 / 已发放 / 已回滚 / 已过期 |
+| reviewer_id | 审核人，可为空 |
+| review_reason | 审核原因，可为空 |
+| reviewed_at | 审核时间，可为空 |
+| risk_ruleset_version | 风控规则版本 |
+| created_at | 时间 |
+
 `config_version`
 
 | 字段 | 说明 |
@@ -835,7 +879,7 @@
 | 月卡赠抽服务 | monthly_card_draw_grant、赠抽发放、过期、补发 |
 | 九大古宝服务 | ancient_treasure_state、ancient_treasure_use_record、古宝日课 |
 | 纪元服务 | era_record、结算、继承 |
-| GM 服务 | gm_operation_log、封禁、补偿、回滚 |
+| GM 服务 | gm_operation_log、behavior_risk_record、delayed_settlement_record、封禁、补偿、回滚 |
 | 任务活动服务 | quest_record、event_record、任务进度、活动结算 |
 | 排行称号服务 | rank_snapshot、rank_entry、achievement_record、title_record、player_title |
 | 邮件公告服务 | mail_record、announcement_record、补偿和公告发布 |
@@ -853,5 +897,6 @@
 - 纪元结算能生成玩家继承奖励。
 - 鱼排订单能通过幂等键避免重复到账。
 - 邮件和公告能追溯模板版本、奖励版本、发布人和生效范围。
+- 行为风控能记录脚本点击风险、权益越权、收益延迟和人工审核结果。
 - 炼丹、炼器、古宝日课、交易上架和抽卡保底都有独立记录，能按幂等键和配置版本追溯。
 - 九大古宝付费仙玉预留入口不会写成功抽卡记录，也不会改变 `gacha_pity_state`。

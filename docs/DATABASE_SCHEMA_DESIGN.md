@@ -1,4 +1,4 @@
-# 《择日飞升：九塔封魔》数据库表结构设计 v0.2
+# 《择日飞升：九塔封魔》数据库表结构设计 v0.3
 
 ## 一、定位
 
@@ -716,6 +716,61 @@
 - `idx_gm_operator(operator_id, created_at)`。
 - `idx_gm_type(operation_type, created_at)`。
 
+`behavior_risk_record`
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| risk_record_id | varchar | PK | 风控记录 |
+| player_id | varchar | index | 玩家 |
+| era_id | varchar | index | 纪元 |
+| scene_type | varchar | index | 行动 / PVP / 九塔 / 交易 / 宗门仓库 / 抽卡订单 / 登录 |
+| source_type | varchar | index | 触发来源 |
+| source_id | varchar | index nullable | 关联记录 |
+| request_path | varchar | index | 接口路径 |
+| request_interval_ms | int | nullable | 与上次同类请求间隔 |
+| request_count_window | int |  | 统计窗口请求数 |
+| idempotency_key | varchar | index nullable | 幂等键 |
+| device_hash | varchar | index nullable | 设备摘要 |
+| ip_hash | varchar | index nullable | IP 摘要 |
+| risk_score | int | index | 风险分 |
+| risk_level | varchar | index | 低 / 中 / 高 / 严重 |
+| matched_rules | json |  | 命中规则 |
+| action_taken | varchar | index | 观察 / 限频 / 收益延迟 / 衰减 / 人工审核 / 拒绝 |
+| risk_ruleset_version | varchar |  | 风控规则 |
+| created_at | datetime | index | 时间 |
+
+索引：
+
+- `idx_risk_player_time(player_id, created_at)`。
+- `idx_risk_level_time(risk_level, created_at)`。
+- `idx_risk_source(source_type, source_id)`。
+- `idx_risk_device_ip(device_hash, ip_hash, created_at)`。
+
+`delayed_settlement_record`
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| delayed_record_id | varchar | PK | 延迟结算记录 |
+| player_id | varchar | index | 玩家 |
+| era_id | varchar | index | 纪元 |
+| source_type | varchar | index | PVP / 九塔 / 交易 / 宗门仓库 / 其他 |
+| source_id | varchar | index | 关联行动、战斗、交易或仓库记录 |
+| reward_summary | json |  | 暂缓奖励 |
+| contribution_summary | json | nullable | 暂缓贡献 |
+| risk_record_id | varchar | index | 关联风控记录 |
+| status | varchar | index | 待审核 / 已发放 / 已回滚 / 已过期 |
+| reviewer_id | varchar | index nullable | 审核人 |
+| review_reason | text | nullable | 审核原因 |
+| reviewed_at | datetime | index nullable | 审核时间 |
+| risk_ruleset_version | varchar |  | 风控规则 |
+| created_at | datetime | index | 创建 |
+
+索引：
+
+- `idx_delayed_player_status(player_id, status)`。
+- `idx_delayed_status_time(status, created_at)`。
+- `idx_delayed_source(source_type, source_id)`。
+
 ## 十二、幂等与事务边界
 
 必须具备幂等键的操作：
@@ -738,6 +793,7 @@
 - 炼丹消耗、结果、丹渣返还和炼丹记录应在同一事务。
 - 交易购买、物品转移、扣款、税费和交易记录应在同一事务。
 - 订单到账、货币增加、订单状态变更应在同一事务。
+- 高风险收益进入延迟结算时，原始行动记录、风控记录和延迟结算记录应在同一事务或同一可靠队列链路内完成。
 - 排行结算可先生成快照，再异步发放奖励。
 
 ## 十三、验收场景
@@ -749,3 +805,4 @@
 - 热数据和长日志有归档策略，不影响主流程性能。
 - 炼丹、炼器、九大古宝日课、交易行和抽卡保底都有字段级表结构、主键、唯一键和核心索引。
 - 九大古宝池不能写入付费仙玉成功抽卡记录，预留入口不改变 `gacha_pity_state`。
+- 行为风控和延迟结算有字段级表结构，可追溯脚本点击风险、权益越权、收益暂缓和人工审核结果。

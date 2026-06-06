@@ -287,6 +287,9 @@ export type ItemCategory =
   | "pill"
   | "currency"
   | "equipment_material"
+  | "tower_material"
+  | "sect_material"
+  | "battle_material"
   | "treasure_page"
   | "unknown";
 
@@ -497,6 +500,205 @@ export interface SaveSkillLoadoutRequest {
   auto_priority?: string[];
 }
 
+export type TowerActionType = "seal" | "break" | "supply" | "guard";
+
+export interface TowerStateSummary {
+  tower_id: string;
+  province_id: string;
+  tower_name: string;
+  integrity: number;
+  seal_progress: number;
+  break_progress: number;
+  supply_progress: number;
+  rift_pressure: number;
+  corruption: number;
+  phase: number;
+}
+
+export interface TowerListResponse {
+  towers: TowerStateSummary[];
+}
+
+export interface TowerActionRequest {
+  tower_id: string;
+  action_type: TowerActionType;
+  count?: number;
+}
+
+export interface TowerActionResponse {
+  record_id: string;
+  tower: TowerStateSummary;
+  contribution: number;
+  rewards: RewardBundle;
+  action_state: ActionState;
+  settlement_status: SettlementStatus;
+}
+
+export interface WorldBossStateSummary {
+  boss_id: string;
+  name: string;
+  phase: number;
+  total_hp: number;
+  remaining_hp: number;
+  defeated_count: number;
+}
+
+export interface WorldBossResponse {
+  boss: WorldBossStateSummary;
+}
+
+export interface WorldBossChallengeRequest {
+  boss_id: string;
+}
+
+export interface WorldBossChallengeResponse {
+  record_id: string;
+  boss: WorldBossStateSummary;
+  damage_done: number;
+  contribution: number;
+  result: "active" | "phase_defeated";
+  rewards: RewardBundle;
+  action_state: ActionState;
+  log: BattleRoundLog[];
+}
+
+export type SectAlignment = "immortal" | "demon" | "neutral";
+export type SectRole = "leader" | "elder" | "deacon" | "disciple";
+
+export interface SectSummary {
+  sect_id: string;
+  name: string;
+  alignment: SectAlignment | string;
+  level: number;
+  funds: string;
+  build_exp: number;
+  member_limit: number;
+  member_count: number;
+  my_role: SectRole | null;
+  my_contribution_weekly: number;
+  my_contribution_total: number;
+}
+
+export interface SectMemberSummary {
+  player_id: string;
+  name: string;
+  role: SectRole | string;
+  contribution_weekly: number;
+  contribution_total: number;
+}
+
+export interface SectWarehouseItemState {
+  item_id: string;
+  name: string;
+  count: string;
+}
+
+export interface SectDetailResponse {
+  sect: SectSummary | null;
+  members: SectMemberSummary[];
+  warehouse: SectWarehouseItemState[];
+}
+
+export interface SectListResponse {
+  sects: SectSummary[];
+}
+
+export interface CreateSectRequest {
+  name: string;
+  alignment: SectAlignment;
+}
+
+export interface JoinSectRequest {
+  sect_id: string;
+}
+
+export interface SectMutationResponse {
+  record_id: string;
+  sect: SectSummary;
+  wallet?: PlayerWalletState;
+}
+
+export interface CompleteSectTaskRequest {
+  task_id: string;
+}
+
+export interface SectTaskResponse {
+  record_id: string;
+  sect: SectSummary;
+  contribution: number;
+  rewards: RewardBundle;
+}
+
+export interface SectWarehouseDepositRequest {
+  item_instance_id: string;
+  count: number;
+}
+
+export interface SectWarehouseWithdrawRequest {
+  item_id: string;
+  count: number;
+}
+
+export interface SectWarehouseResponse {
+  record_id: string;
+  sect: SectSummary;
+  warehouse: SectWarehouseItemState[];
+  bag?: BagSummaryResponse;
+}
+
+export interface ResourcePointSummary {
+  resource_point_id: string;
+  province_id: string;
+  name: string;
+  owner_sect_id: string | null;
+  owner_player_id: string | null;
+  control_score: number;
+}
+
+export interface ResourcePointListResponse {
+  resource_points: ResourcePointSummary[];
+}
+
+export interface PvpAttackRequest {
+  defender_player_id: string;
+  resource_point_id?: string;
+}
+
+export interface PvpBattleResponse {
+  record_id: string;
+  result: "win" | "lose";
+  score_delta: number;
+  risk_status: RiskStatus;
+  settlement_status: SettlementStatus;
+  rewards: RewardBundle;
+  action_state: ActionState;
+  battle: {
+    attacker_player_id: string;
+    defender_player_id: string;
+    attacker_power: number;
+    defender_power: number;
+    log: BattleRoundLog[];
+  };
+  resource_point: ResourcePointSummary | null;
+}
+
+export type RankType = "personal" | "sect" | "pvp_week" | "tower_week";
+
+export interface RankEntryState {
+  rank_no: number;
+  target_type: "player" | "sect";
+  target_id: string;
+  display_name: string;
+  score: string;
+  reward_preview: RewardBundle;
+}
+
+export interface RankListResponse {
+  rank_type: RankType;
+  period_key: string;
+  entries: RankEntryState[];
+}
+
 export interface GameOverviewResponse {
   profile: PlayerProfileResponse;
   cultivation: CultivationStatus | null;
@@ -519,7 +721,12 @@ export type ConfigType =
   | "pill"
   | "forge"
   | "skill"
-  | "bag";
+  | "bag"
+  | "tower"
+  | "boss"
+  | "sect"
+  | "pvp"
+  | "rank";
 
 export interface ConfigEnvelope<TPayload = Record<string, unknown>> {
   config_type: string;

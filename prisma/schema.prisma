@@ -62,6 +62,12 @@ model Player {
   equipmentInstances        EquipmentInstance[]
   equipmentOperationRecords EquipmentOperationRecord[]
   skillLoadout              PlayerSkillLoadout?
+  sectMembership            SectMember?
+  towerActionRecords        TowerActionRecord[]
+  bossChallengeRecords      WorldBossChallengeRecord[]
+  pvpAttacks                PvpBattleRecord[]          @relation("PvpAttacker")
+  pvpDefenses               PvpBattleRecord[]          @relation("PvpDefender")
+  sectTaskRecords           SectTaskRecord[]
 
   @@index([accountId])
   @@index([sectId])
@@ -403,6 +409,298 @@ model PlayerSkillLoadout {
   player Player @relation(fields: [playerId], references: [playerId])
 
   @@map("player_skill_loadout")
+}
+
+model TowerState {
+  towerStateId   String   @id @map("tower_state_id")
+  eraId          String   @default("era_mvp_001") @map("era_id")
+  provinceId     String   @map("province_id")
+  towerId        String   @map("tower_id")
+  towerName      String   @map("tower_name")
+  integrity      Int      @default(1000)
+  sealProgress   Int      @default(0) @map("seal_progress")
+  breakProgress  Int      @default(0) @map("break_progress")
+  supplyProgress Int      @default(0) @map("supply_progress")
+  riftPressure   Int      @default(0) @map("rift_pressure")
+  corruption     Int      @default(0)
+  phase          Int      @default(1)
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  actions TowerActionRecord[]
+
+  @@unique([eraId, towerId])
+  @@index([eraId])
+  @@index([provinceId])
+  @@map("tower_state")
+}
+
+model TowerActionRecord {
+  recordId         String   @id @map("record_id")
+  playerId         String   @map("player_id")
+  sectId           String?  @map("sect_id")
+  eraId            String   @default("era_mvp_001") @map("era_id")
+  towerId          String   @map("tower_id")
+  actionType       String   @map("action_type")
+  count            Int
+  contribution     Int
+  actionPointCost  Int      @map("action_point_cost")
+  rewardSnapshot   Json     @map("reward_snapshot")
+  settlementStatus String   @default("settled") @map("settlement_status")
+  configVersion    String   @map("config_version")
+  idempotencyKey   String?  @unique @map("idempotency_key")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  player Player     @relation(fields: [playerId], references: [playerId])
+  tower  TowerState @relation(fields: [eraId, towerId], references: [eraId, towerId])
+  sect   Sect?      @relation(fields: [sectId], references: [sectId])
+
+  @@index([playerId])
+  @@index([sectId])
+  @@index([eraId, towerId])
+  @@index([actionType])
+  @@index([createdAt])
+  @@map("tower_action_record")
+}
+
+model WorldBossState {
+  bossStateId   String   @id @map("boss_state_id")
+  eraId         String   @default("era_mvp_001") @map("era_id")
+  bossId        String   @map("boss_id")
+  name          String
+  phase         Int      @default(1)
+  totalHp       Int      @map("total_hp")
+  remainingHp   Int      @map("remaining_hp")
+  defeatedCount Int      @default(0) @map("defeated_count")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  challenges WorldBossChallengeRecord[]
+
+  @@unique([eraId, bossId])
+  @@index([eraId])
+  @@map("world_boss_state")
+}
+
+model WorldBossChallengeRecord {
+  recordId       String   @id @map("record_id")
+  playerId       String   @map("player_id")
+  sectId         String?  @map("sect_id")
+  eraId          String   @default("era_mvp_001") @map("era_id")
+  bossId         String   @map("boss_id")
+  damageDone     Int      @map("damage_done")
+  contribution   Int
+  result         String
+  rewardSnapshot Json     @map("reward_snapshot")
+  battleLog      Json     @map("battle_log")
+  configVersion  String   @map("config_version")
+  idempotencyKey String?  @unique @map("idempotency_key")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  player Player         @relation(fields: [playerId], references: [playerId])
+  boss   WorldBossState @relation(fields: [eraId, bossId], references: [eraId, bossId])
+  sect   Sect?          @relation(fields: [sectId], references: [sectId])
+
+  @@index([playerId])
+  @@index([sectId])
+  @@index([eraId, bossId])
+  @@index([createdAt])
+  @@map("world_boss_challenge_record")
+}
+
+model Sect {
+  sectId            String   @id @map("sect_id")
+  name              String   @unique
+  alignment         String   @default("neutral")
+  level             Int      @default(1)
+  funds             BigInt   @default(0)
+  buildExp          Int      @default(0) @map("build_exp")
+  memberLimit       Int      @default(20) @map("member_limit")
+  status            String   @default("normal")
+  createdByPlayerId String   @map("created_by_player_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  members        SectMember[]
+  warehouse      SectWarehouseItem[]
+  warehouseLogs  SectWarehouseLog[]
+  taskRecords    SectTaskRecord[]
+  towerActions   TowerActionRecord[]
+  bossChallenges WorldBossChallengeRecord[]
+
+  @@index([alignment])
+  @@index([level])
+  @@index([status])
+  @@map("sect")
+}
+
+model SectMember {
+  sectMemberId       String    @id @map("sect_member_id")
+  sectId             String    @map("sect_id")
+  playerId           String    @unique @map("player_id")
+  role               String    @default("disciple")
+  contributionDaily  Int       @default(0) @map("contribution_daily")
+  contributionWeekly Int       @default(0) @map("contribution_weekly")
+  contributionTotal  Int       @default(0) @map("contribution_total")
+  joinedAt           DateTime  @default(now()) @map("joined_at")
+  cooldownUntil      DateTime? @map("cooldown_until")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  sect   Sect   @relation(fields: [sectId], references: [sectId])
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@index([sectId])
+  @@index([role])
+  @@index([contributionWeekly])
+  @@map("sect_member")
+}
+
+model SectTaskRecord {
+  recordId       String   @id @map("record_id")
+  playerId       String   @map("player_id")
+  sectId         String   @map("sect_id")
+  taskId         String   @map("task_id")
+  contribution   Int
+  fundGain       BigInt   @map("fund_gain")
+  rewardSnapshot Json     @map("reward_snapshot")
+  configVersion  String   @map("config_version")
+  idempotencyKey String?  @unique @map("idempotency_key")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+  sect   Sect   @relation(fields: [sectId], references: [sectId])
+
+  @@index([playerId])
+  @@index([sectId])
+  @@index([taskId])
+  @@index([createdAt])
+  @@map("sect_task_record")
+}
+
+model SectWarehouseItem {
+  warehouseItemId String   @id @map("warehouse_item_id")
+  sectId          String   @map("sect_id")
+  itemId          String   @map("item_id")
+  count           BigInt
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  sect Sect @relation(fields: [sectId], references: [sectId])
+
+  @@unique([sectId, itemId])
+  @@index([sectId])
+  @@index([itemId])
+  @@map("sect_warehouse_item")
+}
+
+model SectWarehouseLog {
+  logId          String   @id @map("log_id")
+  sectId         String   @map("sect_id")
+  playerId       String   @map("player_id")
+  operationType  String   @map("operation_type")
+  itemId         String   @map("item_id")
+  count          BigInt
+  beforeCount    BigInt   @map("before_count")
+  afterCount     BigInt   @map("after_count")
+  reason         String?
+  configVersion  String   @map("config_version")
+  idempotencyKey String?  @unique @map("idempotency_key")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  sect Sect @relation(fields: [sectId], references: [sectId])
+
+  @@index([sectId])
+  @@index([playerId])
+  @@index([itemId])
+  @@index([operationType])
+  @@index([createdAt])
+  @@map("sect_warehouse_log")
+}
+
+model ResourcePointState {
+  resourcePointId String   @id @map("resource_point_id")
+  eraId           String   @default("era_mvp_001") @map("era_id")
+  provinceId      String   @map("province_id")
+  name            String
+  ownerSectId     String?  @map("owner_sect_id")
+  ownerPlayerId   String?  @map("owner_player_id")
+  controlScore    Int      @default(0) @map("control_score")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  pvpRecords PvpBattleRecord[]
+
+  @@unique([eraId, provinceId])
+  @@index([eraId])
+  @@index([ownerSectId])
+  @@index([ownerPlayerId])
+  @@map("resource_point_state")
+}
+
+model PvpBattleRecord {
+  recordId         String   @id @map("record_id")
+  attackerPlayerId String   @map("attacker_player_id")
+  defenderPlayerId String   @map("defender_player_id")
+  attackerSectId   String?  @map("attacker_sect_id")
+  defenderSectId   String?  @map("defender_sect_id")
+  eraId            String   @default("era_mvp_001") @map("era_id")
+  sceneType        String   @default("resource_point") @map("scene_type")
+  resourcePointId  String?  @map("resource_point_id")
+  result           String
+  scoreDelta       Int      @map("score_delta")
+  rewardSnapshot   Json     @map("reward_snapshot")
+  battleLog        Json     @map("battle_log")
+  riskStatus       String   @default("normal") @map("risk_status")
+  settlementStatus String   @default("settled") @map("settlement_status")
+  configVersion    String   @map("config_version")
+  idempotencyKey   String?  @unique @map("idempotency_key")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  attacker      Player              @relation("PvpAttacker", fields: [attackerPlayerId], references: [playerId])
+  defender      Player              @relation("PvpDefender", fields: [defenderPlayerId], references: [playerId])
+  resourcePoint ResourcePointState? @relation(fields: [resourcePointId], references: [resourcePointId])
+
+  @@index([attackerPlayerId])
+  @@index([defenderPlayerId])
+  @@index([attackerSectId])
+  @@index([defenderSectId])
+  @@index([eraId])
+  @@index([sceneType])
+  @@index([resourcePointId])
+  @@index([createdAt])
+  @@map("pvp_battle_record")
+}
+
+model RankSnapshot {
+  rankSnapshotId      String   @id @map("rank_snapshot_id")
+  eraId               String   @default("era_mvp_001") @map("era_id")
+  rankType            String   @map("rank_type")
+  periodKey           String   @map("period_key")
+  configVersion       String   @map("config_version")
+  rewardConfigVersion String   @map("reward_config_version")
+  generatedAt         DateTime @default(now()) @map("generated_at")
+
+  entries RankEntry[]
+
+  @@unique([eraId, rankType, periodKey])
+  @@index([eraId])
+  @@index([rankType])
+  @@map("rank_snapshot")
+}
+
+model RankEntry {
+  rankEntryId    String   @id @map("rank_entry_id")
+  rankSnapshotId String   @map("rank_snapshot_id")
+  targetType     String   @map("target_type")
+  targetId       String   @map("target_id")
+  displayName    String   @map("display_name")
+  score          BigInt
+  rankNo         Int      @map("rank_no")
+  rewardSnapshot Json     @map("reward_snapshot")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  snapshot RankSnapshot @relation(fields: [rankSnapshotId], references: [rankSnapshotId], onDelete: Cascade)
+
+  @@index([rankSnapshotId])
+  @@index([targetType, targetId])
+  @@index([rankNo])
+  @@map("rank_entry")
 }
 
 model ConfigVersion {

@@ -12,8 +12,13 @@ import type {
   HealthStatus,
   LoginResponse,
   PlayerProfileResponse,
+  RankListResponse,
+  ResourcePointListResponse,
+  SectDetailResponse,
   SkillLoadoutResponse,
   TaskState,
+  TowerListResponse,
+  WorldBossResponse,
 } from "@nextday/shared";
 import { Button, StatusBadge } from "@nextday/ui";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
@@ -36,6 +41,11 @@ export default function HomePage() {
   const [alchemyRecipes, setAlchemyRecipes] = useState<AlchemyRecipeListResponse | null>(null);
   const [forgeRecipes, setForgeRecipes] = useState<ForgeRecipeListResponse | null>(null);
   const [skills, setSkills] = useState<SkillLoadoutResponse | null>(null);
+  const [towers, setTowers] = useState<TowerListResponse | null>(null);
+  const [boss, setBoss] = useState<WorldBossResponse | null>(null);
+  const [sect, setSect] = useState<SectDetailResponse | null>(null);
+  const [resourcePoints, setResourcePoints] = useState<ResourcePointListResponse | null>(null);
+  const [personalRank, setPersonalRank] = useState<RankListResponse | null>(null);
   const [playerName, setPlayerName] = useState("云游修士");
   const [route, setRoute] = useState<RouteValue>("qi");
   const [message, setMessage] = useState("尚未登录");
@@ -47,6 +57,9 @@ export default function HomePage() {
   const completedTasks = overview?.tasks.filter((task) => task.status === "completed") ?? [];
   const firstPill = bag?.items.find((item) => item.category === "pill" && !item.locked);
   const firstEquipment = equipment?.equipments[0];
+  const firstTower = towers?.towers[0];
+  const firstResourcePoint = resourcePoints?.resource_points[0];
+  const pvpTarget = personalRank?.entries.find((entry) => entry.target_id !== activePlayerId);
 
   useEffect(() => {
     let ignore = false;
@@ -136,6 +149,34 @@ export default function HomePage() {
     };
   }, [token, activePlayerId]);
 
+  useEffect(() => {
+    if (!token || !activePlayerId) {
+      return;
+    }
+
+    let ignore = false;
+    loadMultiplayer(createClient(token))
+      .then((state) => {
+        if (ignore) {
+          return;
+        }
+        setTowers(state.towers);
+        setBoss(state.boss);
+        setSect(state.sect);
+        setResourcePoints(state.resourcePoints);
+        setPersonalRank(state.personalRank);
+      })
+      .catch(() => {
+        if (!ignore) {
+          setMessage("多人玩法状态读取失败");
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [token, activePlayerId]);
+
   async function handleGuestLogin() {
     await runAction("游客登录", async () => {
       const response = await client.guestLogin({
@@ -182,6 +223,7 @@ export default function HomePage() {
     setOverview(response.data);
     setProfile(response.data.profile);
     await refreshProduction();
+    await refreshMultiplayer();
     setMessage(successMessage);
   }
 
@@ -196,6 +238,19 @@ export default function HomePage() {
     setAlchemyRecipes(state.alchemyRecipes);
     setForgeRecipes(state.forgeRecipes);
     setSkills(state.skills);
+  }
+
+  async function refreshMultiplayer() {
+    if (!token) {
+      return;
+    }
+
+    const state = await loadMultiplayer(createClient(token));
+    setTowers(state.towers);
+    setBoss(state.boss);
+    setSect(state.sect);
+    setResourcePoints(state.resourcePoints);
+    setPersonalRank(state.personalRank);
   }
 
   async function handleClaimCultivation() {
@@ -336,6 +391,91 @@ export default function HomePage() {
       ensureOk(response);
       setSkills(response.data);
       setMessage("技能预设已保存，下一次探索会写入战报");
+    });
+  }
+
+  async function handleTowerAction() {
+    if (!firstTower) {
+      setMessage("九塔状态尚未读取");
+      return;
+    }
+
+    await runAction("九塔提交", async () => {
+      const response = await client.towerAction(
+        { tower_id: firstTower.tower_id, action_type: "seal", count: 1 },
+        createIdempotencyKey("web_tower"),
+      );
+      ensureOk(response);
+      await refreshOverview(`九塔贡献 +${response.data.contribution}`);
+    });
+  }
+
+  async function handleChallengeBoss() {
+    if (!boss) {
+      setMessage("公共 Boss 尚未读取");
+      return;
+    }
+
+    await runAction("挑战 Boss", async () => {
+      const response = await client.challengeBoss(
+        { boss_id: boss.boss.boss_id },
+        createIdempotencyKey("web_boss"),
+      );
+      ensureOk(response);
+      await refreshOverview(`Boss 伤害 ${response.data.damage_done}`);
+    });
+  }
+
+  async function handleCreateSect() {
+    if (sect?.sect) {
+      setMessage("已经加入宗门");
+      return;
+    }
+
+    await runAction("创建宗门", async () => {
+      const response = await client.createSect(
+        { name: `青岚${randomId().slice(0, 4)}`, alignment: "neutral" },
+        createIdempotencyKey("web_sect_create"),
+      );
+      ensureOk(response);
+      await refreshOverview(`创建宗门：${response.data.sect.name}`);
+    });
+  }
+
+  async function handleSectTask() {
+    if (!sect?.sect) {
+      setMessage("请先创建或加入宗门");
+      return;
+    }
+
+    await runAction("宗门任务", async () => {
+      const response = await client.completeSectTask(
+        { task_id: "sect_patrol" },
+        createIdempotencyKey("web_sect_task"),
+      );
+      ensureOk(response);
+      await refreshOverview(`宗门贡献 +${response.data.contribution}`);
+    });
+  }
+
+  async function handlePvpAttack() {
+    if (!pvpTarget) {
+      setMessage("暂无可用 PVP 目标，可先让其他玩家产生排行记录");
+      return;
+    }
+
+    await runAction("资源点 PVP", async () => {
+      const response = await client.pvpAttack(
+        {
+          defender_player_id: pvpTarget.target_id,
+          resource_point_id: firstResourcePoint?.resource_point_id,
+        },
+        createIdempotencyKey("web_pvp"),
+      );
+      ensureOk(response);
+      await refreshOverview(
+        `PVP ${response.data.result === "win" ? "胜" : "负"} +${response.data.score_delta}`,
+      );
     });
   }
 
@@ -572,6 +712,67 @@ export default function HomePage() {
             </div>
           </section>
 
+          <section className="panel" aria-label="多人玩法">
+            <div className="section-title">
+              <h2>多人玩法</h2>
+              <span>九塔、Boss、宗门、资源点与排行</span>
+            </div>
+            <div className="production-grid">
+              <article className="production-box">
+                <strong>九塔</strong>
+                <span>
+                  {firstTower?.tower_name ?? "未读取"} · 完整度 {firstTower?.integrity ?? 0} · 镇封{" "}
+                  {firstTower?.seal_progress ?? 0}
+                </span>
+                <div className="production-actions">
+                  <Button disabled={busy || !firstTower} onClick={handleTowerAction}>
+                    镇封提交
+                  </Button>
+                </div>
+              </article>
+              <article className="production-box">
+                <strong>公共 Boss</strong>
+                <span>
+                  {boss?.boss.name ?? "未读取"} · 阶段 {boss?.boss.phase ?? 0} · 血量{" "}
+                  {boss?.boss.remaining_hp ?? 0}/{boss?.boss.total_hp ?? 0}
+                </span>
+                <div className="production-actions">
+                  <Button disabled={busy || !boss} onClick={handleChallengeBoss}>
+                    镜像挑战
+                  </Button>
+                </div>
+              </article>
+              <article className="production-box">
+                <strong>宗门</strong>
+                <span>
+                  {sect?.sect
+                    ? `${sect.sect.name} · 周贡献 ${sect.sect.my_contribution_weekly}`
+                    : "未入宗门"}
+                </span>
+                <div className="production-actions">
+                  <Button disabled={busy || !!sect?.sect} onClick={handleCreateSect}>
+                    创建宗门
+                  </Button>
+                  <Button disabled={busy || !sect?.sect} onClick={handleSectTask}>
+                    宗门任务
+                  </Button>
+                </div>
+              </article>
+              <article className="production-box">
+                <strong>PVP 与排行</strong>
+                <span>
+                  资源点 {firstResourcePoint?.name ?? "未读取"} · 个人榜{" "}
+                  {personalRank?.entries.length ?? 0} 人
+                </span>
+                <div className="production-actions">
+                  <Button disabled={busy || !pvpTarget} onClick={handlePvpAttack}>
+                    异步进攻
+                  </Button>
+                </div>
+              </article>
+            </div>
+          </section>
+
           <section className="panel" aria-label="最近战报">
             <div className="section-title">
               <h2>最近战报</h2>
@@ -605,7 +806,7 @@ function createClient(authToken?: string): GameClient {
   return new GameClient({
     baseUrl: apiBaseUrl,
     token: authToken,
-    clientVersion: "nextday-web-m3",
+    clientVersion: "nextday-web-m4",
   });
 }
 
@@ -653,6 +854,31 @@ async function loadProduction(client: GameClient) {
     alchemyRecipes: alchemyResponse.data,
     forgeRecipes: forgeResponse.data,
     skills: skillResponse.data,
+  };
+}
+
+async function loadMultiplayer(client: GameClient) {
+  const [towerResponse, bossResponse, sectResponse, resourceResponse, rankResponse] =
+    await Promise.all([
+      client.towers(),
+      client.worldBoss(),
+      client.mySect(),
+      client.resourcePoints(),
+      client.ranks("personal"),
+    ]);
+
+  ensureOk(towerResponse);
+  ensureOk(bossResponse);
+  ensureOk(sectResponse);
+  ensureOk(resourceResponse);
+  ensureOk(rankResponse);
+
+  return {
+    towers: towerResponse.data,
+    boss: bossResponse.data,
+    sect: sectResponse.data,
+    resourcePoints: resourceResponse.data,
+    personalRank: rankResponse.data,
   };
 }
 

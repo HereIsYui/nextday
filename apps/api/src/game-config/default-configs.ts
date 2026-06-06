@@ -1,5 +1,13 @@
 import type { ConfigEnvelope } from "@nextday/shared";
 import {
+  bossConfig,
+  rankRewardPreview,
+  resourcePointConfigs,
+  sectTaskConfigs,
+  towerActionConfigs,
+  towerConfigs,
+} from "../multiplayer/multiplayer.constants";
+import {
   alchemyRecipes,
   forgeRecipes,
   itemCatalog,
@@ -162,6 +170,63 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
         locked_items_consumable: false,
         expired_items_consumable: false,
       },
+    },
+  },
+  tower: {
+    config_type: "tower",
+    config_version: "tower_m4_v1",
+    ruleset_version: "ruleset_m4_v1",
+    reward_config_version: "reward_m4_v1",
+    payload: {
+      towers: towerConfigs,
+      actions: towerActionConfigs,
+      async_rule: "24 小时可提交行动，日结和周结不要求在线",
+    },
+  },
+  boss: {
+    config_type: "boss",
+    config_version: "boss_m4_v1",
+    ruleset_version: "ruleset_m4_v1",
+    reward_config_version: "reward_m4_v1",
+    payload: {
+      boss: bossConfig,
+      mode: "mirror_challenge_with_phase_hp_pool",
+    },
+  },
+  sect: {
+    config_type: "sect",
+    config_version: "sect_m4_v1",
+    ruleset_version: "ruleset_m4_v1",
+    reward_config_version: "reward_m4_v1",
+    payload: {
+      tasks: sectTaskConfigs.map((task) => ({
+        ...task,
+        fundGain: task.fundGain.toString(),
+      })),
+      roles: ["leader", "elder", "deacon", "disciple"],
+      warehouse_rule: "仅未绑定白名单材料可流通，付费与限定产物禁止入库",
+    },
+  },
+  pvp: {
+    config_type: "pvp",
+    config_version: "pvp_m4_v1",
+    ruleset_version: "ruleset_m4_v1",
+    reward_config_version: "reward_m4_v1",
+    payload: {
+      resource_points: resourcePointConfigs,
+      mode: "async_attack_defense_mirror",
+      loss_rule: "失败不掉级、不爆付费道具、不摧毁核心法宝",
+    },
+  },
+  rank: {
+    config_type: "rank",
+    config_version: "rank_m4_v1",
+    ruleset_version: "ruleset_m4_v1",
+    reward_config_version: "reward_m4_v1",
+    payload: {
+      rank_types: ["personal", "sect", "pvp_week", "tower_week"],
+      reward_preview: rankRewardPreview,
+      reward_boundary: "排行奖励不发唯一战力道具",
     },
   },
 };

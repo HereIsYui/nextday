@@ -14,6 +14,7 @@ import type {
   ConfigType,
   CreatePlayerRequest,
   CreatePlayerResponse,
+  CreateSectRequest,
   CultivationClaimResponse,
   EquipmentInscribeRequest,
   EquipmentListResponse,
@@ -26,13 +27,26 @@ import type {
   ForgeRecipeListResponse,
   GameOverviewResponse,
   GuestLoginRequest,
+  JoinSectRequest,
   LoginResponse,
   MockFishpiLoginRequest,
   PillUseRequest,
   PillUseResponse,
   PlayerProfileResponse,
   ProvinceSummary,
+  PvpAttackRequest,
+  PvpBattleResponse,
+  RankListResponse,
+  RankType,
+  ResourcePointListResponse,
   SaveSkillLoadoutRequest,
+  SectDetailResponse,
+  SectListResponse,
+  SectMutationResponse,
+  SectTaskResponse,
+  SectWarehouseDepositRequest,
+  SectWarehouseResponse,
+  SectWarehouseWithdrawRequest,
   SetEquipmentLockRequest,
   SetItemLockRequest,
   SetItemLockResponse,
@@ -40,6 +54,12 @@ import type {
   TaskClaimRequest,
   TaskClaimResponse,
   TaskSummaryResponse,
+  TowerActionRequest,
+  TowerActionResponse,
+  TowerListResponse,
+  WorldBossChallengeRequest,
+  WorldBossChallengeResponse,
+  WorldBossResponse,
 } from "@nextday/shared";
 
 export interface GameClientOptions {
@@ -281,6 +301,118 @@ export class GameClient {
       body,
       { idempotencyKey },
     );
+  }
+
+  towers(): Promise<ApiResponse<TowerListResponse>> {
+    return this.get<TowerListResponse>("/api/multiplayer/towers");
+  }
+
+  towerAction(
+    body: TowerActionRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<TowerActionResponse>> {
+    return this.post<TowerActionResponse, TowerActionRequest>(
+      "/api/multiplayer/towers/action",
+      body,
+      {
+        idempotencyKey,
+      },
+    );
+  }
+
+  worldBoss(): Promise<ApiResponse<WorldBossResponse>> {
+    return this.get<WorldBossResponse>("/api/multiplayer/boss");
+  }
+
+  challengeBoss(
+    body: WorldBossChallengeRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<WorldBossChallengeResponse>> {
+    return this.post<WorldBossChallengeResponse, WorldBossChallengeRequest>(
+      "/api/multiplayer/boss/challenge",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  sects(): Promise<ApiResponse<SectListResponse>> {
+    return this.get<SectListResponse>("/api/multiplayer/sects");
+  }
+
+  mySect(): Promise<ApiResponse<SectDetailResponse>> {
+    return this.get<SectDetailResponse>("/api/multiplayer/sects/me");
+  }
+
+  createSect(
+    body: CreateSectRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<SectMutationResponse>> {
+    return this.post<SectMutationResponse, CreateSectRequest>(
+      "/api/multiplayer/sects/create",
+      body,
+      {
+        idempotencyKey,
+      },
+    );
+  }
+
+  joinSect(
+    body: JoinSectRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<SectMutationResponse>> {
+    return this.post<SectMutationResponse, JoinSectRequest>("/api/multiplayer/sects/join", body, {
+      idempotencyKey,
+    });
+  }
+
+  completeSectTask(
+    body: { task_id: string },
+    idempotencyKey: string,
+  ): Promise<ApiResponse<SectTaskResponse>> {
+    return this.post<SectTaskResponse, { task_id: string }>(
+      "/api/multiplayer/sects/tasks/complete",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  depositSectWarehouse(
+    body: SectWarehouseDepositRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<SectWarehouseResponse>> {
+    return this.post<SectWarehouseResponse, SectWarehouseDepositRequest>(
+      "/api/multiplayer/sects/warehouse/deposit",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  withdrawSectWarehouse(
+    body: SectWarehouseWithdrawRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<SectWarehouseResponse>> {
+    return this.post<SectWarehouseResponse, SectWarehouseWithdrawRequest>(
+      "/api/multiplayer/sects/warehouse/withdraw",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  resourcePoints(): Promise<ApiResponse<ResourcePointListResponse>> {
+    return this.get<ResourcePointListResponse>("/api/multiplayer/resource-points");
+  }
+
+  pvpAttack(
+    body: PvpAttackRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<PvpBattleResponse>> {
+    return this.post<PvpBattleResponse, PvpAttackRequest>("/api/multiplayer/pvp/attack", body, {
+      idempotencyKey,
+    });
+  }
+
+  ranks(rankType: RankType): Promise<ApiResponse<RankListResponse>> {
+    return this.get<RankListResponse>(`/api/multiplayer/ranks/${rankType}`);
   }
 
   getPlayerLogs(input: {

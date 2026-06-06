@@ -7,6 +7,7 @@ import { HealthController } from "./health/health.controller";
 import { createBehaviorLogMiddleware } from "./log/behavior-log.middleware";
 import { LogModule } from "./log/log.module";
 import { LogService } from "./log/log.service";
+import { MultiplayerModule } from "./multiplayer/multiplayer.module";
 import { IdempotencyKeyMiddleware } from "./platform/idempotency-key.middleware";
 import { RequestContextMiddleware } from "./platform/request-context.middleware";
 import { PlayerModule } from "./player/player.module";
@@ -21,6 +22,7 @@ import { ProductionModule } from "./production/production.module";
     GameModule,
     GameConfigModule,
     ProductionModule,
+    MultiplayerModule,
   ],
   controllers: [HealthController],
 })

@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:m1": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/m1.e2e-spec.ts",
     "test:m2": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/m2.e2e-spec.ts",
-    "test:m3": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/m3.e2e-spec.ts"
+    "test:m3": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/m3.e2e-spec.ts",
+    "test:m4": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/m4.e2e-spec.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",

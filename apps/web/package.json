@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3000",
+    "dev": "node ../../scripts/clean-next-cache.mjs . && next dev -p ${WEB_PORT:-3000}",
     "build": "next build",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

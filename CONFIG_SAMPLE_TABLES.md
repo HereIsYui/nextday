@@ -1,4 +1,4 @@
-# 《择日飞升：九塔封魔》配置样例表 v0.2
+# 《择日飞升：九塔封魔》配置样例表 v0.3
 
 ## 一、定位
 
@@ -60,7 +60,39 @@
 | 极品 | 15000 | 800 |
 | 无瑕 | 20000 | 200 |
 
-## 五、技能配置样例
+`pill_decay_config`
+
+| decay_id | pill_rank_scope | pill_type | use_count_min | use_count_max | effect_rate |
+| --- | --- | --- | ---: | ---: | ---: |
+| decay_default_1 | same_rank | same_type | 1 | 3 | 10000 |
+| decay_default_2 | same_rank | same_type | 4 | 10 | 5000 |
+| decay_default_3 | same_rank | same_type | 11 | 999 | 1000 |
+
+丹药递减按“同阶同类型”计数，高一阶丹药重新计算该阶递减，不影响低阶记录。
+
+## 五、炼器与词条配置样例
+
+`forge_result_config`
+
+| forge_result_id | material_group | rarity | base_weight | output_type |
+| --- | --- | --- | ---: | --- |
+| forge_normal_ling | normal_material | 凡品 / 灵品 | 7000 | 普通法宝 |
+| forge_normal_xuan | normal_material | 玄品 / 地品 | 2500 | 普通法宝 |
+| forge_normal_tian | normal_material | 天品 / 仙品 | 500 | 仙品法宝 |
+| forge_endgame_ancient_blank | endgame_material | 古器胚 / 古器铭文 | 1200 | 古器材料 |
+
+炼器不产出九大古宝。古器胚、古器铭文和隐藏词条材料仅用于高阶炼器、铭刻和洗髓。
+
+`affix_config`
+
+| affix_id | name | affix_type | route_limit | rarity | pvp_cap_group |
+| --- | --- | --- | --- | --- | --- |
+| affix_attack_flat | 攻伐 | 通用 | all | 普通 | basic |
+| affix_seal_eff | 镇封 | 仙道 | fairy | 稀有 | contribution_no_multiplier |
+| affix_break_eff | 破封 | 魔道 | demon | 稀有 | contribution_no_multiplier |
+| affix_forge_rate | 炉心 | 生产 | all | 稀有 | non_combat |
+
+## 六、技能配置样例
 
 `skill_config`
 
@@ -71,7 +103,7 @@
 | skill_jinshen | 金身诀 | body | 防御 | 5 | 自身 | 2 回合内受到伤害 -25% |
 | skill_moran | 魔染咒 | demon | 污染 | 4 | 单体 | 伤害并附加魔染 |
 
-## 六、怪物配置样例
+## 七、怪物配置样例
 
 `enemy_config`
 
@@ -82,7 +114,7 @@
 | boss_xuantie_spirit | 玄铁塔灵 | tower_boss | ji | 1 | tower_xuantie | 九塔 |
 | boss_qiongqi_form | 穷奇魔相 | world_boss | xu | 3 | qiongqi | 山海经意象 |
 
-## 七、行动与奖励配置样例
+## 八、行动与奖励配置样例
 
 `action_config`
 
@@ -102,7 +134,7 @@
 | reward_tower_seal_low | tower_xuantie_piece | 1 | 2 | 10000 | 非绑定 |
 | reward_tower_seal_low | merit_lotus_low | 1 | 1 | 1500 | 绑定 |
 
-## 八、任务配置样例
+## 九、任务配置样例
 
 `quest_config`
 
@@ -113,15 +145,15 @@
 | weekly_tower_15 | 九塔同心 | weekly | action:tower:15 | 0 | reward_weekly_tower | 是 |
 | chapter_ji_tower | 玄铁塔裂 | chapter | tower:xuantie:seal:1 | 0 | reward_chapter_1 | 是 |
 
-## 九、卡池配置样例
+## 十、卡池配置样例
 
 `gacha_pool_config`
 
-| pool_id | pool_type | cost_type | pity_rule | inherit_pity | chapter_gate |
-| --- | --- | --- | --- | --- | ---: |
-| pool_normal | 常驻机缘 | bound_jade,normal_ticket | pity_40 | 否 | 1 |
-| pool_ancient | 九大古宝 | paid_jade,monthly_grant,ancient_page | pity_60_120 | 是 | 2 |
-| pool_limited_weapon | 限定本命 | paid_jade | pity_80_160 | 是 | 3 |
+| pool_id | pool_type | cost_type | reserved_cost_type | pity_rule | inherit_pity | chapter_gate |
+| --- | --- | --- | --- | --- | --- | ---: |
+| pool_normal | 常驻机缘 | bound_jade,normal_ticket | - | pity_40 | 否 | 1 |
+| pool_ancient | 九大古宝 | monthly_grant,ancient_page | reserved_paid_jade（未开放） | pity_60_120 | 是 | 2 |
+| pool_limited_weapon | 限定本命 | paid_jade | - | pity_80_160 | 是 | 3 |
 
 `gacha_result_group`
 
@@ -129,11 +161,28 @@
 | --- | --- | ---: | --- |
 | pool_ancient | ancient_taiyi_danding | 1111 | fragment_convert |
 | pool_ancient | ancient_qiankun_lu | 1111 | fragment_convert |
+| pool_ancient | ancient_xuandu_pan | 1111 | fragment_convert |
+| pool_ancient | ancient_qingdi_juan | 1111 | fragment_convert |
+| pool_ancient | ancient_shanhe_tu | 1111 | fragment_convert |
+| pool_ancient | ancient_haotian_zhong | 1111 | fragment_convert |
+| pool_ancient | ancient_jiuyuan_fan | 1111 | fragment_convert |
+| pool_ancient | ancient_zhenyue_yin | 1111 | fragment_convert |
 | pool_ancient | ancient_tianji_pan | 1111 | fragment_convert |
 
-九大古宝池结果组只能包含九大古宝本体。
+九大古宝池结果组只能包含九大古宝本体。`reserved_paid_jade` 只是后期预留字段，当前配置发布校验必须禁止它进入实际消耗类型。
 
-## 十、月卡与 VIP 配置样例
+`ancient_treasure_daily_config`
+
+| treasure_id | active_limit_daily | consume_daily_quota | pvp_modifier |
+| --- | ---: | --- | --- |
+| ancient_taiyi_danding | 2 | 是 | 丹药属性进入 PVP 压缩 |
+| ancient_qiankun_lu | 1 | 是 | 词条收益进入 PVP 压缩 |
+| ancient_haotian_zhong | 1 | 是 | 护盾每场最多 1 次 |
+| ancient_tianji_pan | 1 | 是 | 保存天象不作用于 PVP |
+
+古宝日课全局每日最多主动触发 3 次，被动效果不占主动次数。
+
+## 十一、月卡与 VIP 配置样例
 
 `payment_product_config`
 
@@ -163,10 +212,23 @@
 | VIP3 | 6 | 10 | 3 | 单玩法队列 |
 | VIP4 | 8 | 15 | 4 | 跨玩法简化队列 |
 
-## 十一、验收场景
+## 十二、交易行配置样例
+
+`trade_config`
+
+| config_id | tradeable_categories | tax_rate_min | tax_rate_max | risk_rule |
+| --- | --- | ---: | ---: | --- |
+| trade_default | 基础材料,普通丹药,普通器胚,普通法宝 | 500 | 1500 | abnormal_price_and_device |
+
+交易行禁止上架充值产物、月卡产物、VIP 产物、限定本命法宝、九大古宝、绑定仙玉产物和玩家锁定道具。
+
+## 十三、验收场景
 
 - 研发能用样例配置跑通新手、探索、九塔、任务、抽卡、月卡和 VIP。
 - 九大古宝池样例不混入材料、器魂和低阶古宝碎片。
 - 绑定仙玉不能进入限定本命法宝池和九大古宝池。
+- 付费仙玉不能进入九大古宝池；`reserved_paid_jade` 只作为预留未开放字段。
+- 炼器结果配置不能产出九大古宝。
+- 丹药递减、炼器结果、古宝日课和交易行白名单都能映射到接口与数据库。
 - 配置字段能映射到接口、数据库和测试用例。
-- 仙玉包按 1 积分兑换 1 付费仙玉配置，额外赠送不破坏限定池和古宝池成本。
+- 仙玉包按 1 积分兑换 1 付费仙玉配置，额外赠送不破坏限定池成本和古宝池赠抽 / 残页节奏。

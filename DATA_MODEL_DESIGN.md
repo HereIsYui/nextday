@@ -1,4 +1,4 @@
-# 《择日飞升：九塔封魔》核心数据模型草案 v0.6
+# 《择日飞升：九塔封魔》核心数据模型草案 v0.7
 
 ## 一、定位
 
@@ -13,6 +13,13 @@
 | player | 玩家账号内角色 |
 | player_progress | 玩家修行和章节进度 |
 | player_inventory | 玩家道具和货币 |
+| equipment_instance | 法宝和装备实例 |
+| equipment_affix | 法宝词条 |
+| equipment_operation_record | 炼器、淬炼、铭刻、升星、洗髓、分解记录 |
+| alchemy_record | 炼丹记录 |
+| pill_use_record | 丹药服用和递减记录 |
+| ancient_treasure_state | 九大古宝持有、星级、碎片和图鉴状态 |
+| ancient_treasure_use_record | 九大古宝日课主动触发记录 |
 | sect | 宗门 |
 | sect_member | 宗门成员 |
 | sect_war_record | 宗门战记录 |
@@ -34,7 +41,9 @@
 | player_title | 玩家称号持有状态 |
 | order_record | 鱼排积分订单 |
 | gacha_record | 抽卡记录 |
+| gacha_pity_state | 卡池保底状态 |
 | monthly_card_draw_grant | 月卡赠抽记录 |
+| trade_listing | 交易行上架单 |
 | trade_record | 交易行记录 |
 | era_record | 纪元记录 |
 | gm_operation_log | GM 操作日志 |
@@ -112,6 +121,136 @@
 | bind_type | 非绑定 / 绑定 / 账号绑定 |
 | source | 来源 |
 | expire_at | 过期时间，可为空 |
+
+### 丹药、炼器与九大古宝模型
+
+`alchemy_record`
+
+| 字段 | 说明 |
+| --- | --- |
+| alchemy_record_id | 炼丹记录 ID |
+| player_id | 玩家 ID |
+| era_id | 纪元 ID |
+| recipe_id | 丹方配置 ID |
+| pill_rank | 丹阶 |
+| result_pill_id | 结果丹药 ID，可为空 |
+| quality | 下品 / 中品 / 上品 / 极品 / 无瑕 / 失败 |
+| success | 是否成功 |
+| material_cost_summary | 消耗材料摘要 |
+| refund_summary | 失败返还或丹渣摘要 |
+| idempotency_key | 幂等键 |
+| alchemy_config_version | 炼丹配置版本 |
+| reward_config_version | 奖励配置版本 |
+| created_at | 时间 |
+
+`pill_use_record`
+
+| 字段 | 说明 |
+| --- | --- |
+| pill_use_record_id | 服丹记录 ID |
+| player_id | 玩家 ID |
+| era_id | 纪元 ID |
+| pill_id | 丹药 ID |
+| pill_rank | 丹阶 |
+| pill_type | 丹药类型 |
+| quality | 丹药品质 |
+| same_rank_type_count_before | 同阶同类服用前计数 |
+| effect_rate | 本次递减后倍率 |
+| effect_summary | 实际效果摘要 |
+| idempotency_key | 幂等键 |
+| pill_config_version | 丹药配置版本 |
+| ruleset_version | 递减规则版本 |
+| created_at | 时间 |
+
+`equipment_instance`
+
+| 字段 | 说明 |
+| --- | --- |
+| equipment_id | 法宝实例 ID |
+| player_id | 玩家 ID |
+| era_id | 纪元 ID |
+| item_id | 法宝配置 ID |
+| equipment_type | 普通法宝 / 本命法宝 / 仙品法宝 |
+| slot | 装备位，可为空 |
+| rarity | 稀有度 |
+| star_level | 星级 |
+| durability | 耐久 |
+| bind_type | 非绑定 / 绑定 / 账号绑定 |
+| locked | 是否锁定 |
+| source_type | 炼器 / 掉落 / 任务 / 抽取 |
+| equipment_config_version | 法宝配置版本 |
+| created_at | 创建时间 |
+| updated_at | 更新时间 |
+
+`equipment_affix`
+
+| 字段 | 说明 |
+| --- | --- |
+| affix_instance_id | 词条实例 ID |
+| equipment_id | 法宝实例 ID |
+| player_id | 玩家 ID |
+| affix_id | 词条配置 ID |
+| affix_slot | main / sub / hidden |
+| value | 词条数值 |
+| quality | 词条品质 |
+| locked | 淬炼时是否锁定 |
+| affix_config_version | 词条配置版本 |
+| created_at | 创建时间 |
+| updated_at | 更新时间 |
+
+`equipment_operation_record`
+
+| 字段 | 说明 |
+| --- | --- |
+| operation_record_id | 炼器操作记录 ID |
+| player_id | 玩家 ID |
+| era_id | 纪元 ID |
+| operation_type | 炼制 / 淬炼 / 铭刻 / 升星 / 洗髓 / 分解 / 装备 / 锁定 |
+| equipment_id | 目标法宝，可为空 |
+| before_snapshot | 操作前摘要 |
+| after_snapshot | 操作后摘要 |
+| cost_summary | 消耗摘要 |
+| refund_summary | 返还摘要 |
+| idempotency_key | 幂等键 |
+| forge_config_version | 炼器配置版本 |
+| affix_config_version | 词条配置版本 |
+| reward_config_version | 奖励配置版本 |
+| created_at | 时间 |
+
+`ancient_treasure_state`
+
+| 字段 | 说明 |
+| --- | --- |
+| player_id | 玩家 ID |
+| treasure_id | 九大古宝 ID |
+| era_id | 纪元 ID |
+| owned | 是否拥有当纪元战力状态 |
+| star_level | 当纪元星级 |
+| fragment_count | 当纪元碎片数 |
+| atlas_unlocked | 图鉴是否解锁 |
+| inherited_atlas | 是否来自纪元继承图鉴 |
+| active_use_count_today | 今日主动触发次数 |
+| treasure_config_version | 古宝配置版本 |
+| updated_at | 更新时间 |
+
+`ancient_treasure_use_record`
+
+| 字段 | 说明 |
+| --- | --- |
+| use_record_id | 古宝日课记录 ID |
+| player_id | 玩家 ID |
+| era_id | 纪元 ID |
+| treasure_id | 九大古宝 ID |
+| active_type | 提炼丹药 / 保留词条 / 保存天象等 |
+| target_type | 丹药 / 法宝 / 天象 / 九州事件 |
+| target_id | 目标 ID |
+| daily_count_before | 使用前全局主动次数 |
+| daily_count_after | 使用后全局主动次数 |
+| result_summary | 结果摘要 |
+| idempotency_key | 幂等键 |
+| treasure_config_version | 古宝配置版本 |
+| ruleset_version | 古宝日课规则版本 |
+| created_at | 时间 |
 
 ## 五、宗门
 
@@ -264,10 +403,12 @@
 | --- | --- |
 | gacha_id | 抽卡记录 ID |
 | player_id | 玩家 ID |
+| era_id | 纪元 ID |
+| pool_id | 卡池配置 ID |
 | pool_type | 限定本命 / 九大古宝 / 常驻 |
-| cost_type | 仙玉 / 绑定仙玉 / 机缘券 / 月卡赠抽 / 古宝残页合成 |
+| cost_type | 付费仙玉 / 绑定仙玉 / 机缘券 / 月卡赠抽 / 古宝残页合成 / 预留付费仙玉 |
 | cost_amount | 消耗数量 |
-| draw_source | 付费仙玉 / 月卡赠抽 / 活动券 / 残页合成 |
+| draw_source | 限定本命付费仙玉 / 常驻券 / 月卡赠抽 / 残页合成 |
 | grant_id | 月卡赠抽记录 ID，可为空 |
 | count_to_pity | 是否计入保底 |
 | result_item_id | 结果道具 |
@@ -275,10 +416,29 @@
 | pity_before | 抽前保底 |
 | pity_after | 抽后保底 |
 | random_seed | 随机种子 |
+| idempotency_key | 幂等键 |
 | gacha_config_version | 卡池配置版本 |
 | pity_ruleset_version | 保底规则版本 |
 | reward_config_version | 奖励配置版本 |
 | created_at | 时间 |
+
+九大古宝专属池当前只允许 `月卡赠抽` 和 `古宝残页合成` 产生成功 `gacha_record`。`预留付费仙玉` 请求当前应返回未开放错误，不扣费、不写成功抽卡记录、不改变保底。
+
+`gacha_pity_state`
+
+| 字段 | 说明 |
+| --- | --- |
+| pity_state_id | 保底状态 ID |
+| player_id | 玩家 ID |
+| pool_type | 限定本命 / 九大古宝 / 常驻 |
+| pool_id | 卡池配置 ID |
+| era_id | 纪元 ID |
+| pity_count | 当前保底计数 |
+| directional_choice | 定向目标，可为空 |
+| inherit_to_next_era | 是否继承到下一纪元 |
+| last_gacha_id | 最近抽卡记录 |
+| pity_ruleset_version | 保底规则版本 |
+| updated_at | 更新时间 |
 
 `monthly_card_draw_grant`
 
@@ -301,11 +461,32 @@
 
 ## 十、交易行
 
+`trade_listing`
+
+| 字段 | 说明 |
+| --- | --- |
+| listing_id | 上架单 ID |
+| seller_id | 卖家 |
+| item_instance_id | 道具或法宝实例 ID |
+| item_id | 配置道具 ID |
+| count | 数量 |
+| unit_price | 单价 |
+| total_price | 总价 |
+| bind_type | 绑定状态快照 |
+| status | 上架中 / 已成交 / 已撤销 / 已冻结 / 已过期 |
+| idempotency_key | 上架幂等键 |
+| economy_config_version | 经济配置版本 |
+| risk_ruleset_version | 风控规则版本 |
+| created_at | 上架时间 |
+| expire_at | 过期时间 |
+| updated_at | 更新时间 |
+
 `trade_record`
 
 | 字段 | 说明 |
 | --- | --- |
 | trade_id | 交易 ID |
+| listing_id | 上架单 ID |
 | seller_id | 卖家 |
 | buyer_id | 买家 |
 | item_id | 道具 ID |
@@ -313,6 +494,7 @@
 | price | 成交价 |
 | tax_rate | 税率 |
 | status | 上架 / 成交 / 撤销 / 冻结 / 回滚 |
+| idempotency_key | 幂等键，可为空 |
 | risk_flag | 风控标记 |
 | economy_config_version | 经济配置版本 |
 | risk_ruleset_version | 风控规则版本 |
@@ -645,10 +827,13 @@
 | 宗门服务 | sect、sect_member、warehouse_log、sect_war_record |
 | 择日服务 | astronomy_state、player_astronomy_choice |
 | 洞府服务 | cave_facility、inner_world_state、inner_world_assignment |
-| 经济服务 | trade_record、货币日志、经济监控 |
+| 炼丹服务 | alchemy_record、pill_use_record、丹药递减 |
+| 炼器服务 | equipment_instance、equipment_affix、equipment_operation_record |
+| 经济服务 | trade_listing、trade_record、货币日志、经济监控 |
 | 付费服务 | order_record、鱼排回调、月卡 |
-| 抽卡服务 | gacha_record、保底、卡池 |
+| 抽卡服务 | gacha_record、gacha_pity_state、保底、卡池 |
 | 月卡赠抽服务 | monthly_card_draw_grant、赠抽发放、过期、补发 |
+| 九大古宝服务 | ancient_treasure_state、ancient_treasure_use_record、古宝日课 |
 | 纪元服务 | era_record、结算、继承 |
 | GM 服务 | gm_operation_log、封禁、补偿、回滚 |
 | 任务活动服务 | quest_record、event_record、任务进度、活动结算 |
@@ -668,3 +853,5 @@
 - 纪元结算能生成玩家继承奖励。
 - 鱼排订单能通过幂等键避免重复到账。
 - 邮件和公告能追溯模板版本、奖励版本、发布人和生效范围。
+- 炼丹、炼器、古宝日课、交易上架和抽卡保底都有独立记录，能按幂等键和配置版本追溯。
+- 九大古宝付费仙玉预留入口不会写成功抽卡记录，也不会改变 `gacha_pity_state`。

@@ -81,6 +81,7 @@ model Player {
   appearances               PlayerAppearance[]
   riskRecords               BehaviorRiskRecord[]
   delayedSettlements        DelayedSettlementRecord[]
+  mails                     PlayerMail[]
 
   @@index([accountId])
   @@index([sectId])
@@ -974,6 +975,10 @@ model BehaviorRiskRecord {
   userAgentHash      String?  @map("user_agent_hash")
   metadata           Json?
   riskRulesetVersion String   @map("risk_ruleset_version")
+  resolutionStatus   String   @default("open") @map("resolution_status")
+  resolutionReason   String?  @map("resolution_reason")
+  resolvedBy         String?  @map("resolved_by")
+  resolvedAt         DateTime? @map("resolved_at")
   createdAt          DateTime @default(now()) @map("created_at")
 
   account            Account?                  @relation(fields: [accountId], references: [accountId])
@@ -986,6 +991,7 @@ model BehaviorRiskRecord {
   @@index([riskDomain, actionType])
   @@index([riskStatus])
   @@index([riskLevel])
+  @@index([resolutionStatus])
   @@index([targetType, targetId])
   @@index([sourceRecordId])
   @@index([createdAt])
@@ -1041,6 +1047,71 @@ model ConfigVersion {
   @@unique([configType, configVersion])
   @@index([configType, active])
   @@map("config_version")
+}
+
+model PlayerMail {
+  mailId         String    @id @map("mail_id")
+  playerId       String?   @map("player_id")
+  targetType     String    @map("target_type")
+  title          String
+  content        String
+  rewardSnapshot Json      @map("reward_snapshot")
+  status         String    @default("sent")
+  sentBy         String    @map("sent_by")
+  reason         String?
+  idempotencyKey String?   @unique @map("idempotency_key")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  expiresAt      DateTime? @map("expires_at")
+  readAt         DateTime? @map("read_at")
+  claimedAt      DateTime? @map("claimed_at")
+
+  player Player? @relation(fields: [playerId], references: [playerId])
+
+  @@index([playerId])
+  @@index([targetType])
+  @@index([status])
+  @@index([createdAt])
+  @@map("player_mail")
+}
+
+model Announcement {
+  announcementId       String    @id @map("announcement_id")
+  announcementType     String    @map("announcement_type")
+  title                String
+  content              String
+  visibleScope         String    @default("all") @map("visible_scope")
+  relatedConfigVersion String?   @map("related_config_version")
+  status               String    @default("published")
+  publishedBy          String    @map("published_by")
+  startsAt             DateTime  @default(now()) @map("starts_at")
+  endsAt               DateTime? @map("ends_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  @@index([announcementType])
+  @@index([visibleScope])
+  @@index([status])
+  @@index([startsAt])
+  @@map("announcement")
+}
+
+model GmOperationLog {
+  operationId    String   @id @map("operation_id")
+  operator       String
+  action         String
+  targetType     String   @map("target_type")
+  targetId       String?  @map("target_id")
+  beforeSnapshot Json?    @map("before_snapshot")
+  afterSnapshot  Json?    @map("after_snapshot")
+  reason         String?
+  idempotencyKey String?  @unique @map("idempotency_key")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([operator])
+  @@index([action])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+  @@map("gm_operation_log")
 }
 
 model AuditLog {

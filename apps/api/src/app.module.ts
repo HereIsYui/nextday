@@ -1,4 +1,5 @@
 import { Inject, type MiddlewareConsumer, Module, type NestModule } from "@nestjs/common";
+import { AdminModule } from "./admin/admin.module";
 import { AuthModule } from "./auth/auth.module";
 import { CommerceModule } from "./commerce/commerce.module";
 import { DatabaseModule } from "./database/database.module";
@@ -30,6 +31,7 @@ import { RiskModule } from "./risk/risk.module";
     CommerceModule,
     RiskModule,
     PluginModule,
+    AdminModule,
   ],
   controllers: [HealthController],
 })

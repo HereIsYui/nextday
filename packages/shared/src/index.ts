@@ -56,6 +56,10 @@ export interface BehaviorRiskRecordState {
   idempotency_key: string | null;
   metadata: Record<string, unknown> | null;
   risk_ruleset_version: string;
+  resolution_status: "open" | "resolved";
+  resolution_reason: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
   created_at: string;
 }
 
@@ -113,6 +117,17 @@ export interface ReviewDelayedSettlementRequest {
 
 export interface ReviewDelayedSettlementResponse {
   record: DelayedSettlementRecordState;
+}
+
+export interface ResolveRiskRecordRequest {
+  risk_record_id: string;
+  reason?: string;
+  operator?: string;
+}
+
+export interface ResolveRiskRecordResponse {
+  record: BehaviorRiskRecordState;
+  operation: AdminGmOperationState;
 }
 
 export interface ApiResponse<TData> {
@@ -1172,6 +1187,188 @@ export interface ConfigEnvelope<TPayload = Record<string, unknown>> {
 }
 
 export type AdminLogType = "behavior" | "audit" | "login" | "wallet";
+
+export interface AdminPlayerDigestResponse {
+  player: PlayerSummary;
+  account: PublicAccount;
+  progress: PlayerProgressState | null;
+  wallet: PlayerWalletState | null;
+  orders: AdminOrderState[];
+  gacha_records: AdminGachaRecordState[];
+  battles: BattleSummary[];
+  action_records: AdminActionRecordState[];
+  mails: AdminMailState[];
+  risk: AdminPlayerRiskResponse;
+}
+
+export interface AdminOrderState {
+  order_id: string;
+  player_id: string;
+  product_id: string;
+  product_type: string;
+  fishpi_point_cost: string;
+  paid_jade_amount: string;
+  bound_jade_amount: string;
+  status: string;
+  config_version: string;
+  reward_config_version: string;
+  created_at: string;
+}
+
+export interface AdminGachaRecordState {
+  gacha_id: string;
+  player_id: string;
+  pool_type: string;
+  cost_type: string;
+  result_name: string;
+  duplicate: boolean;
+  pity_before: number;
+  pity_after: number;
+  created_at: string;
+}
+
+export interface AdminActionRecordState {
+  record_id: string;
+  action_type: string;
+  source: "tower" | "boss" | "pvp" | "cave";
+  summary: string;
+  settlement_status: string;
+  created_at: string;
+}
+
+export interface AdminMailState {
+  mail_id: string;
+  player_id: string | null;
+  target_type: "player" | "all" | string;
+  title: string;
+  content: string;
+  reward_snapshot: RewardBundle;
+  status: string;
+  sent_by: string;
+  reason: string | null;
+  created_at: string;
+  expires_at: string | null;
+  read_at: string | null;
+  claimed_at: string | null;
+}
+
+export interface SendAdminMailRequest {
+  target_type: "player" | "all";
+  player_id?: string;
+  title: string;
+  content: string;
+  rewards?: RewardBundle;
+  reason?: string;
+  operator?: string;
+  expires_at?: string;
+}
+
+export interface SendAdminMailResponse {
+  mail: AdminMailState;
+  operation: AdminGmOperationState;
+}
+
+export interface AdminMailListResponse {
+  mails: AdminMailState[];
+}
+
+export interface AnnouncementState {
+  announcement_id: string;
+  announcement_type: string;
+  title: string;
+  content: string;
+  visible_scope: string;
+  related_config_version: string | null;
+  status: string;
+  published_by: string;
+  starts_at: string;
+  ends_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateAnnouncementRequest {
+  announcement_type: "maintenance" | "activity" | "probability" | "rules" | "risk" | "era";
+  title: string;
+  content: string;
+  visible_scope?: string;
+  related_config_version?: string;
+  starts_at?: string;
+  ends_at?: string;
+  operator?: string;
+}
+
+export interface CreateAnnouncementResponse {
+  announcement: AnnouncementState;
+  operation: AdminGmOperationState;
+}
+
+export interface AnnouncementListResponse {
+  announcements: AnnouncementState[];
+}
+
+export interface AdminConfigVersionState {
+  config_id: string;
+  config_type: string;
+  config_version: string;
+  ruleset_version: string | null;
+  reward_config_version: string | null;
+  active: boolean;
+  created_at: string;
+  published_at: string;
+}
+
+export interface AdminConfigVersionListResponse {
+  configs: AdminConfigVersionState[];
+}
+
+export interface PublishAdminConfigRequest {
+  config_type: ConfigType;
+  config_version: string;
+  ruleset_version?: string;
+  reward_config_version?: string;
+  payload: Record<string, unknown>;
+  reason?: string;
+  operator?: string;
+}
+
+export interface PublishAdminConfigResponse {
+  config: AdminConfigVersionState;
+  validation: AdminConfigValidationResult;
+  operation: AdminGmOperationState;
+}
+
+export interface RollbackAdminConfigRequest {
+  config_type: ConfigType;
+  target_config_version: string;
+  reason?: string;
+  operator?: string;
+}
+
+export interface RollbackAdminConfigResponse {
+  config: AdminConfigVersionState;
+  operation: AdminGmOperationState;
+}
+
+export interface AdminConfigValidationResult {
+  passed: boolean;
+  warnings: string[];
+}
+
+export interface AdminGmOperationState {
+  operation_id: string;
+  operator: string;
+  action: string;
+  target_type: string;
+  target_id: string | null;
+  reason: string | null;
+  idempotency_key: string | null;
+  created_at: string;
+}
+
+export interface AdminGmOperationListResponse {
+  operations: AdminGmOperationState[];
+}
 
 export interface AdminPlayerLogsResponse {
   player_id: string;

@@ -25,8 +25,9 @@ export class GameConfigService {
       return {
         config_type: activeConfig.configType,
         config_version: activeConfig.configVersion,
-        ruleset_version: activeConfig.rulesetVersion ?? "",
-        reward_config_version: activeConfig.rewardConfigVersion ?? "",
+        ruleset_version: activeConfig.rulesetVersion || defaultEnvelope.ruleset_version,
+        reward_config_version:
+          activeConfig.rewardConfigVersion || defaultEnvelope.reward_config_version,
         payload: activeConfig.payload as ConfigEnvelope["payload"],
       };
     }

@@ -29,6 +29,10 @@ export function toBehaviorRiskRecordState(record: BehaviorRiskRecord): BehaviorR
     idempotency_key: record.idempotencyKey,
     metadata: normalizeRecord(record.metadata),
     risk_ruleset_version: record.riskRulesetVersion,
+    resolution_status: record.resolutionStatus as "open" | "resolved",
+    resolution_reason: record.resolutionReason,
+    resolved_by: record.resolvedBy,
+    resolved_at: record.resolvedAt?.toISOString() ?? null,
     created_at: record.createdAt.toISOString(),
   };
 }

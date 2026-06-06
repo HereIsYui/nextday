@@ -1,6 +1,10 @@
 import type {
+  AdminConfigVersionListResponse,
   AdminDelayedSettlementListResponse,
+  AdminGmOperationListResponse,
   AdminLogType,
+  AdminMailListResponse,
+  AdminPlayerDigestResponse,
   AdminPlayerLogsResponse,
   AdminPlayerRiskResponse,
   AdminRiskRecordListResponse,
@@ -9,6 +13,7 @@ import type {
   AlchemyRecipeListResponse,
   AlchemyRecordListResponse,
   AncientTreasureListResponse,
+  AnnouncementListResponse,
   ApiResponse,
   AppearanceListResponse,
   AppearanceMutationResponse,
@@ -23,6 +28,8 @@ import type {
   ConfigType,
   ConvenienceBatchPreviewRequest,
   ConvenienceBatchPreviewResponse,
+  CreateAnnouncementRequest,
+  CreateAnnouncementResponse,
   CreateAutomationQueueRequest,
   CreateAutomationQueueResponse,
   CreatePlayerRequest,
@@ -60,15 +67,21 @@ import type {
   PluginSubmitPresetRequest,
   PluginSubmitPresetResponse,
   ProvinceSummary,
+  PublishAdminConfigRequest,
+  PublishAdminConfigResponse,
   PurchaseMonthlyCardRequest,
   PurchaseMonthlyCardResponse,
   PvpAttackRequest,
   PvpBattleResponse,
   RankListResponse,
   RankType,
+  ResolveRiskRecordRequest,
+  ResolveRiskRecordResponse,
   ResourcePointListResponse,
   ReviewDelayedSettlementRequest,
   ReviewDelayedSettlementResponse,
+  RollbackAdminConfigRequest,
+  RollbackAdminConfigResponse,
   SaveConvenienceStrategyRequest,
   SaveConvenienceStrategyResponse,
   SaveSkillLoadoutRequest,
@@ -79,6 +92,8 @@ import type {
   SectWarehouseDepositRequest,
   SectWarehouseResponse,
   SectWarehouseWithdrawRequest,
+  SendAdminMailRequest,
+  SendAdminMailResponse,
   SetEquipmentLockRequest,
   SetItemLockRequest,
   SetItemLockResponse,
@@ -655,6 +670,148 @@ export class GameClient {
         },
       },
     );
+  }
+
+  getAdminPlayerDigest(input: {
+    playerId: string;
+    adminToken: string;
+  }): Promise<ApiResponse<AdminPlayerDigestResponse>> {
+    return this.get<AdminPlayerDigestResponse>(
+      `/api/admin/player-digest?player_id=${encodeURIComponent(input.playerId)}`,
+      {
+        headers: {
+          "X-Admin-Token": input.adminToken,
+        },
+      },
+    );
+  }
+
+  listAdminMails(input: {
+    adminToken: string;
+    playerId?: string;
+  }): Promise<ApiResponse<AdminMailListResponse>> {
+    const params = new URLSearchParams();
+    if (input.playerId) {
+      params.set("player_id", input.playerId);
+    }
+
+    return this.get<AdminMailListResponse>(`/api/admin/mails?${params}`, {
+      headers: {
+        "X-Admin-Token": input.adminToken,
+      },
+    });
+  }
+
+  sendAdminMail(
+    body: SendAdminMailRequest,
+    input: { adminToken: string; idempotencyKey: string },
+  ): Promise<ApiResponse<SendAdminMailResponse>> {
+    return this.post<SendAdminMailResponse, SendAdminMailRequest>("/api/admin/mails/send", body, {
+      idempotencyKey: input.idempotencyKey,
+      headers: {
+        "X-Admin-Token": input.adminToken,
+      },
+    });
+  }
+
+  listAnnouncements(input: {
+    adminToken: string;
+  }): Promise<ApiResponse<AnnouncementListResponse>> {
+    return this.get<AnnouncementListResponse>("/api/admin/announcements", {
+      headers: {
+        "X-Admin-Token": input.adminToken,
+      },
+    });
+  }
+
+  createAnnouncement(
+    body: CreateAnnouncementRequest,
+    input: { adminToken: string; idempotencyKey: string },
+  ): Promise<ApiResponse<CreateAnnouncementResponse>> {
+    return this.post<CreateAnnouncementResponse, CreateAnnouncementRequest>(
+      "/api/admin/announcements",
+      body,
+      {
+        idempotencyKey: input.idempotencyKey,
+        headers: {
+          "X-Admin-Token": input.adminToken,
+        },
+      },
+    );
+  }
+
+  listAdminConfigVersions(input: {
+    adminToken: string;
+    configType?: string;
+  }): Promise<ApiResponse<AdminConfigVersionListResponse>> {
+    const params = new URLSearchParams();
+    if (input.configType) {
+      params.set("config_type", input.configType);
+    }
+
+    return this.get<AdminConfigVersionListResponse>(`/api/admin/configs?${params}`, {
+      headers: {
+        "X-Admin-Token": input.adminToken,
+      },
+    });
+  }
+
+  publishAdminConfig(
+    body: PublishAdminConfigRequest,
+    input: { adminToken: string; idempotencyKey: string },
+  ): Promise<ApiResponse<PublishAdminConfigResponse>> {
+    return this.post<PublishAdminConfigResponse, PublishAdminConfigRequest>(
+      "/api/admin/configs/publish",
+      body,
+      {
+        idempotencyKey: input.idempotencyKey,
+        headers: {
+          "X-Admin-Token": input.adminToken,
+        },
+      },
+    );
+  }
+
+  rollbackAdminConfig(
+    body: RollbackAdminConfigRequest,
+    input: { adminToken: string; idempotencyKey: string },
+  ): Promise<ApiResponse<RollbackAdminConfigResponse>> {
+    return this.post<RollbackAdminConfigResponse, RollbackAdminConfigRequest>(
+      "/api/admin/configs/rollback",
+      body,
+      {
+        idempotencyKey: input.idempotencyKey,
+        headers: {
+          "X-Admin-Token": input.adminToken,
+        },
+      },
+    );
+  }
+
+  resolveRiskRecord(
+    body: ResolveRiskRecordRequest,
+    input: { adminToken: string; idempotencyKey: string },
+  ): Promise<ApiResponse<ResolveRiskRecordResponse>> {
+    return this.post<ResolveRiskRecordResponse, ResolveRiskRecordRequest>(
+      "/api/admin/risk/resolve",
+      body,
+      {
+        idempotencyKey: input.idempotencyKey,
+        headers: {
+          "X-Admin-Token": input.adminToken,
+        },
+      },
+    );
+  }
+
+  listGmOperations(input: {
+    adminToken: string;
+  }): Promise<ApiResponse<AdminGmOperationListResponse>> {
+    return this.get<AdminGmOperationListResponse>("/api/admin/operations", {
+      headers: {
+        "X-Admin-Token": input.adminToken,
+      },
+    });
   }
 
   pluginStatusCard(): Promise<ApiResponse<PluginStatusCardResponse>> {

@@ -1,0 +1,245 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  accountId    String    @id @map("account_id")
+  accountType  String    @map("account_type")
+  deviceId     String?   @unique @map("device_id")
+  fishpiUserId String?   @unique @map("fishpi_user_id")
+  username     String?
+  status       String    @default("normal")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  lastLoginAt  DateTime? @map("last_login_at")
+
+  player       Player?
+  auditLogs    AuditLog[]
+  loginLogs    LoginLog[]
+  behaviorLogs BehaviorLog[]
+  idempotency  IdempotencyRecord[]
+
+  @@index([accountType])
+  @@index([status])
+  @@map("account")
+}
+
+model Player {
+  playerId     String   @id @map("player_id")
+  accountId    String   @unique @map("account_id")
+  name         String   @unique
+  route        String
+  alignment    String   @default("undecided")
+  currentRealm Int      @default(1) @map("current_realm")
+  currentStage Int      @default(1) @map("current_stage")
+  currentLevel Int      @default(1) @map("current_level")
+  sectId       String?  @map("sect_id")
+  status       String   @default("normal")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  account      Account         @relation(fields: [accountId], references: [accountId])
+  progress     PlayerProgress?
+  wallet       PlayerWallet?
+  items        PlayerItem[]
+  walletLogs   WalletLog[]
+  auditLogs    AuditLog[]
+  behaviorLogs BehaviorLog[]
+  loginLogs    LoginLog[]
+
+  @@index([accountId])
+  @@index([sectId])
+  @@index([currentRealm, currentStage, currentLevel])
+  @@index([status])
+  @@map("player")
+}
+
+model PlayerProgress {
+  playerId              String    @id @map("player_id")
+  eraId                 String    @default("era_mvp_001") @map("era_id")
+  cultivationValue      BigInt    @default(0) @map("cultivation_value")
+  breakthroughFailCount Int       @default(0) @map("breakthrough_fail_count")
+  calamityValue         Int       @default(0) @map("calamity_value")
+  chapterId             Int       @default(1) @map("chapter_id")
+  catchupBonusRate      Int       @default(0) @map("catchup_bonus_rate")
+  newbieProtectionUntil DateTime? @map("newbie_protection_until")
+  dailyActiveScore      Int       @default(0) @map("daily_active_score")
+  weeklyActiveScore     Int       @default(0) @map("weekly_active_score")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@index([eraId])
+  @@index([chapterId])
+  @@map("player_progress")
+}
+
+model PlayerWallet {
+  playerId      String   @id @map("player_id")
+  spiritStone   BigInt   @default(0) @map("spirit_stone")
+  immortalStone BigInt   @default(0) @map("immortal_stone")
+  jadePaid      BigInt   @default(0) @map("jade_paid")
+  jadeBound     BigInt   @default(0) @map("jade_bound")
+  eraPoint      BigInt   @default(0) @map("era_point")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@map("player_wallet")
+}
+
+model PlayerItem {
+  itemInstanceId String    @id @map("item_instance_id")
+  playerId       String    @map("player_id")
+  itemId         String    @map("item_id")
+  count          BigInt
+  bindType       String    @map("bind_type")
+  locked         Boolean   @default(false)
+  sourceType     String    @map("source_type")
+  expireAt       DateTime? @map("expire_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@index([playerId])
+  @@index([itemId])
+  @@index([bindType])
+  @@index([sourceType])
+  @@index([expireAt])
+  @@map("player_item")
+}
+
+model ConfigVersion {
+  configId            String   @id @map("config_id")
+  configType          String   @map("config_type")
+  configVersion       String   @map("config_version")
+  rulesetVersion      String?  @map("ruleset_version")
+  rewardConfigVersion String?  @map("reward_config_version")
+  payload             Json
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now()) @map("created_at")
+  publishedAt         DateTime @default(now()) @map("published_at")
+
+  @@unique([configType, configVersion])
+  @@index([configType, active])
+  @@map("config_version")
+}
+
+model AuditLog {
+  auditLogId     String   @id @map("audit_log_id")
+  accountId      String?  @map("account_id")
+  playerId       String?  @map("player_id")
+  action         String
+  targetType     String   @map("target_type")
+  targetId       String?  @map("target_id")
+  beforeSnapshot Json?    @map("before_snapshot")
+  afterSnapshot  Json?    @map("after_snapshot")
+  reason         String?
+  idempotencyKey String?  @map("idempotency_key")
+  configVersion  String?  @map("config_version")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  account Account? @relation(fields: [accountId], references: [accountId])
+  player  Player?  @relation(fields: [playerId], references: [playerId])
+
+  @@index([accountId])
+  @@index([playerId])
+  @@index([action])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+  @@map("audit_log")
+}
+
+model WalletLog {
+  logId          String   @id @map("log_id")
+  playerId       String   @map("player_id")
+  currencyType   String   @map("currency_type")
+  changeAmount   BigInt   @map("change_amount")
+  beforeAmount   BigInt   @map("before_amount")
+  afterAmount    BigInt   @map("after_amount")
+  sourceType     String   @map("source_type")
+  sourceId       String?  @map("source_id")
+  idempotencyKey String?  @unique @map("idempotency_key")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@index([playerId])
+  @@index([currencyType])
+  @@index([sourceType])
+  @@index([sourceId])
+  @@index([createdAt])
+  @@map("wallet_log")
+}
+
+model LoginLog {
+  loginLogId    String   @id @map("login_log_id")
+  accountId     String   @map("account_id")
+  playerId      String?  @map("player_id")
+  loginType     String   @map("login_type")
+  deviceId      String?  @map("device_id")
+  clientVersion String?  @map("client_version")
+  ipHash        String?  @map("ip_hash")
+  userAgentHash String?  @map("user_agent_hash")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  account Account @relation(fields: [accountId], references: [accountId])
+  player  Player? @relation(fields: [playerId], references: [playerId])
+
+  @@index([accountId])
+  @@index([playerId])
+  @@index([loginType])
+  @@index([createdAt])
+  @@map("login_log")
+}
+
+model BehaviorLog {
+  behaviorLogId  String   @id @map("behavior_log_id")
+  requestId      String   @map("request_id")
+  accountId      String?  @map("account_id")
+  playerId       String?  @map("player_id")
+  method         String
+  path           String
+  statusCode     Int      @map("status_code")
+  durationMs     Int      @map("duration_ms")
+  idempotencyKey String?  @map("idempotency_key")
+  clientVersion  String?  @map("client_version")
+  ipHash         String?  @map("ip_hash")
+  userAgentHash  String?  @map("user_agent_hash")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  account Account? @relation(fields: [accountId], references: [accountId])
+  player  Player?  @relation(fields: [playerId], references: [playerId])
+
+  @@index([requestId])
+  @@index([accountId])
+  @@index([playerId])
+  @@index([method, path])
+  @@index([statusCode])
+  @@index([createdAt])
+  @@map("behavior_log")
+}
+
+model IdempotencyRecord {
+  idempotencyKey String   @id @map("idempotency_key")
+  accountId      String?  @map("account_id")
+  endpoint       String
+  requestHash    String   @map("request_hash")
+  responseData   Json     @map("response_data")
+  statusCode     Int      @default(200) @map("status_code")
+  createdAt      DateTime @default(now()) @map("created_at")
+  expiresAt      DateTime @map("expires_at")
+
+  account Account? @relation(fields: [accountId], references: [accountId])
+
+  @@index([accountId])
+  @@index([endpoint])
+  @@index([expiresAt])
+  @@map("idempotency_record")
+}

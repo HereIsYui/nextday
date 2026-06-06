@@ -8,4 +8,4 @@ if (!targetDir) {
 }
 
 const nextCacheDir = resolve(process.cwd(), targetDir, ".next");
-rmSync(nextCacheDir, { force: true, recursive: true });
+rmSync(nextCacheDir, { force: true, maxRetries: 3, recursive: true, retryDelay: 100 });

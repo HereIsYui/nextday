@@ -1,4 +1,17 @@
-import type { ApiResponse } from "@nextday/shared";
+import type {
+  AdminLogType,
+  AdminPlayerLogsResponse,
+  ApiResponse,
+  AuthMeResponse,
+  ConfigEnvelope,
+  ConfigType,
+  CreatePlayerRequest,
+  CreatePlayerResponse,
+  GuestLoginRequest,
+  LoginResponse,
+  MockFishpiLoginRequest,
+  PlayerProfileResponse,
+} from "@nextday/shared";
 
 export interface GameClientOptions {
   baseUrl: string;
@@ -22,7 +35,7 @@ export class GameClient {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
     this.token = options.token;
     this.clientVersion = options.clientVersion;
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
   }
 
   get<TData>(path: string, options: RequestOptions = {}): Promise<ApiResponse<TData>> {
@@ -35,6 +48,50 @@ export class GameClient {
     options: RequestOptions = {},
   ): Promise<ApiResponse<TData>> {
     return this.request<TData>("POST", path, body, options);
+  }
+
+  guestLogin(body: GuestLoginRequest): Promise<ApiResponse<LoginResponse>> {
+    return this.post<LoginResponse, GuestLoginRequest>("/api/auth/guest-login", body);
+  }
+
+  mockFishpiLogin(body: MockFishpiLoginRequest): Promise<ApiResponse<LoginResponse>> {
+    return this.post<LoginResponse, MockFishpiLoginRequest>("/api/auth/mock-fishpi-login", body);
+  }
+
+  me(): Promise<ApiResponse<AuthMeResponse>> {
+    return this.get<AuthMeResponse>("/api/auth/me");
+  }
+
+  playerProfile(): Promise<ApiResponse<PlayerProfileResponse>> {
+    return this.get<PlayerProfileResponse>("/api/player/profile");
+  }
+
+  createPlayer(
+    body: CreatePlayerRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<CreatePlayerResponse>> {
+    return this.post<CreatePlayerResponse, CreatePlayerRequest>("/api/player/create", body, {
+      idempotencyKey,
+    });
+  }
+
+  getConfig(configType: ConfigType): Promise<ApiResponse<ConfigEnvelope>> {
+    return this.get<ConfigEnvelope>(`/api/config/${configType}`);
+  }
+
+  getPlayerLogs(input: {
+    playerId: string;
+    type: AdminLogType;
+    adminToken: string;
+  }): Promise<ApiResponse<AdminPlayerLogsResponse>> {
+    return this.get<AdminPlayerLogsResponse>(
+      `/api/admin/logs/player/${encodeURIComponent(input.playerId)}?type=${input.type}`,
+      {
+        headers: {
+          "X-Admin-Token": input.adminToken,
+        },
+      },
+    );
   }
 
   private async request<TData>(

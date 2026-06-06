@@ -58,6 +58,52 @@ h1 {
   margin: 12px 0 28px;
 }
 
+.panel {
+  border-top: 1px solid #d8e2df;
+  padding: 24px 0;
+}
+
+.profile-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.profile-grid article {
+  background: #ffffff;
+  border: 1px solid #dce6e2;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  min-height: 88px;
+  padding: 16px;
+}
+
+.profile-grid span {
+  color: #617173;
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.create-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.create-form input,
+.create-form select {
+  background: #ffffff;
+  border: 1px solid #cddbd8;
+  border-radius: 8px;
+  color: #172425;
+  font: inherit;
+  min-height: 40px;
+  padding: 0 12px;
+}
+
 .map {
   border-top: 1px solid #d8e2df;
   padding-top: 24px;

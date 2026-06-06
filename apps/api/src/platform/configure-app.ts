@@ -7,6 +7,10 @@ const defaultCorsOrigins = [
   "http://127.0.0.1:3000",
   "http://localhost:3002",
   "http://127.0.0.1:3002",
+  "http://localhost:3010",
+  "http://127.0.0.1:3010",
+  "http://localhost:3012",
+  "http://127.0.0.1:3012",
 ];
 
 export function configureApp(app: INestApplication) {
@@ -19,6 +23,7 @@ export function configureApp(app: INestApplication) {
       "Idempotency-Key",
       "X-Client-Version",
       "X-Request-Id",
+      "X-Admin-Token",
     ],
     credentials: true,
   });

@@ -50,6 +50,47 @@ p {
   line-height: 1.7;
 }
 
+.log-panel {
+  border-bottom: 1px solid #dbe2dc;
+  display: grid;
+  gap: 16px;
+  padding: 24px 0;
+}
+
+.log-panel h2 {
+  font-size: 20px;
+  margin-bottom: 8px;
+}
+
+.log-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.log-form input,
+.log-form select {
+  background: #ffffff;
+  border: 1px solid #ccd9d4;
+  border-radius: 8px;
+  color: #182425;
+  font: inherit;
+  min-height: 40px;
+  min-width: 180px;
+  padding: 0 12px;
+}
+
+.log-output {
+  background: #172425;
+  border-radius: 8px;
+  color: #d7e7e2;
+  margin: 0;
+  max-height: 280px;
+  overflow: auto;
+  padding: 14px;
+  white-space: pre-wrap;
+}
+
 .admin-grid {
   display: grid;
   gap: 12px;

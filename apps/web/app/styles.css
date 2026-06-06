@@ -1,0 +1,109 @@
+:root {
+  color: #172425;
+  background: #f4f7f5;
+  font-family: Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.shell {
+  margin: 0 auto;
+  max-width: 1120px;
+  padding: 32px 20px;
+}
+
+.hero {
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 28px 0;
+}
+
+.eyebrow {
+  color: #2f6f73;
+  font-size: 13px;
+  margin: 0 0 8px;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 0;
+  margin-bottom: 12px;
+}
+
+.summary {
+  color: #526466;
+  line-height: 1.7;
+  margin-bottom: 0;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 12px 0 28px;
+}
+
+.map {
+  border-top: 1px solid #d8e2df;
+  padding-top: 24px;
+}
+
+.section-title {
+  align-items: baseline;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.section-title h2 {
+  font-size: 20px;
+  letter-spacing: 0;
+  margin-bottom: 0;
+}
+
+.section-title span {
+  color: #667779;
+  font-size: 13px;
+}
+
+.province-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.province {
+  background: #ffffff;
+  border: 1px solid #dce6e2;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  min-height: 96px;
+  padding: 16px;
+}
+
+.province strong {
+  font-size: 18px;
+}
+
+.province span {
+  color: #617173;
+  font-size: 13px;
+  line-height: 1.5;
+}

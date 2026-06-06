@@ -1,0 +1,53 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: nextday_game
+      POSTGRES_USER: nextday
+      POSTGRES_PASSWORD: nextday
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  api:
+    image: node:22-alpine
+    working_dir: /workspace
+    command: sh -c "npm ci --ignore-scripts && npm run dev -w @nextday/api"
+    env_file:
+      - .env.example
+    environment:
+      DATABASE_URL: postgresql://nextday:nextday@postgres:5432/nextday_game
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "3001:3001"
+    volumes:
+      - .:/workspace
+      - /workspace/node_modules
+    depends_on:
+      - postgres
+      - redis
+
+  web:
+    image: node:22-alpine
+    working_dir: /workspace
+    command: sh -c "npm ci --ignore-scripts && npm run dev -w @nextday/web"
+    env_file:
+      - .env.example
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:3001
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/workspace
+      - /workspace/node_modules
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:

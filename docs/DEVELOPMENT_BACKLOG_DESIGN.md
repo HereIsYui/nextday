@@ -25,7 +25,7 @@
 
 | 阶段 | 任务 ID | 模块 | 任务内容 | 依赖 | 验收标准 |
 | --- | --- | --- | --- | --- | --- |
-| M0 地基 | M0-01 | Monorepo | 初始化 `pnpm workspace`、TypeScript、基础 lint / test / build | 无 | 根目录可统一安装、构建、测试 |
+| M0 地基 | M0-01 | Monorepo | 初始化 `npm workspaces`、TypeScript、基础 lint / test / build | 无 | 根目录可统一安装、构建、测试 |
 | M0 地基 | M0-02 | 应用骨架 | 初始化 `apps/api`、`apps/web`、`apps/admin`、`apps/fishpi-plugin` | M0-01 | 四个应用可启动空页面或健康检查 |
 | M0 地基 | M0-03 | 共享包 | 初始化 `shared`、`game-client`、`game-rules`、`config-schema`、`ui` | M0-01 | 前后端能共享类型、错误码、权益枚举 |
 | M0 地基 | M0-04 | 本地环境 | 配置 PostgreSQL、Redis、API、Web 的 Docker Compose | M0-02 | 一条命令启动本地依赖 |

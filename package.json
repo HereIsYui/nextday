@@ -1,0 +1,41 @@
+{
+  "name": "nextday-game",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "npm@10.9.2",
+  "workspaces": [
+    "packages/shared",
+    "packages/config-schema",
+    "packages/game-rules",
+    "packages/game-client",
+    "packages/ui",
+    "apps/api",
+    "apps/web",
+    "apps/admin",
+    "apps/fishpi-plugin"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web,admin,plugin \"npm run dev -w @nextday/api\" \"npm run dev -w @nextday/web\" \"npm run dev -w @nextday/admin\" \"npm run dev -w @nextday/fishpi-plugin\"",
+    "build": "npm run build:packages && npm run build -w @nextday/api && npm run build -w @nextday/web && npm run build -w @nextday/admin && npm run build -w @nextday/fishpi-plugin",
+    "build:packages": "npm run build -w @nextday/shared && npm run build -w @nextday/config-schema && npm run build -w @nextday/game-rules && npm run build -w @nextday/game-client && npm run build -w @nextday/ui",
+    "test": "npm run build:packages && npm run test --workspaces --if-present",
+    "lint": "biome check .",
+    "typecheck": "npm run build:packages && npm run typecheck --workspaces --if-present",
+    "format:check": "biome ci ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@nestjs/testing": "^10.4.15",
+    "@types/node": "^22.10.10",
+    "@types/express": "^5.0.0",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "@types/supertest": "^6.0.2",
+    "concurrently": "^9.1.2",
+    "supertest": "^7.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.11",
+    "vitest": "^2.1.8"
+  }
+}

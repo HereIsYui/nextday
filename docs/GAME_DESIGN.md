@@ -865,10 +865,10 @@ VIP 不发放付费仙玉，绑定仙玉不能抽限定本命法宝池和九大�
 
 ## 二十八、参考资料
 
-- 背景设定：[README.md](README.md)
-- 旧玩法参考：[修仙挂机1.71单文件.html](修仙挂机1.71单文件.html)
-- 鱼排 VIP 页面参考：[vip.html](vip.html)
+- 背景设定：[README.md](../README.md)
+- 本地参考资料说明：[references/README.md](../references/README.md)
 - 鱼排复杂界面扩展参考：[关于复杂界面扩展开发指南](https://fishpi.cn/article/1780463167358)
+- P1 落地路线图：[P1_ROADMAP_DESIGN.md](P1_ROADMAP_DESIGN.md)
 - P0 数值配置：[NUMERIC_DESIGN.md](NUMERIC_DESIGN.md)
 - P0 战斗技能：[COMBAT_SKILL_DESIGN.md](COMBAT_SKILL_DESIGN.md)
 - P0 怪物与 Boss：[ENEMY_BOSS_DESIGN.md](ENEMY_BOSS_DESIGN.md)

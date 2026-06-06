@@ -69,6 +69,10 @@ packages/
   config-schema/    配置 schema 和校验
   game-client/      前端 API SDK
   game-rules/       可共享的展示层规则和枚举
+configs/            配置样例和后续导出的环境配置
+scripts/            工具脚本、校验脚本、模拟脚本
+assets/             美术、图标、展示素材
+references/         本地参考资料和离线页面
 docs/
   *.md              当前设计文档
 ```

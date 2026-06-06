@@ -33,6 +33,7 @@ import type { GachaPityState, MonthlyCardDrawGrant, Player, Prisma } from "@pris
 import { PrismaService } from "../database/prisma.service";
 import { defaultEraId } from "../game/game.constants";
 import { hashRequestBody } from "../platform/utils/hash";
+import { RiskService } from "../risk/risk.service";
 import {
   ancientPageDrawCost,
   ancientTreasureConfigVersion,
@@ -72,7 +73,10 @@ type DbClient = Tx | PrismaService;
 
 @Injectable()
 export class CommerceService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(RiskService) private readonly riskService: RiskService,
+  ) {}
 
   async getOverview(accountId: string): Promise<EntitlementOverviewResponse> {
     const player = await this.requirePlayer(accountId);
@@ -451,6 +455,7 @@ export class CommerceService {
   async previewBatch(input: {
     accountId: string;
     body: ConvenienceBatchPreviewRequest;
+    idempotencyKey?: string | null;
   }): Promise<ConvenienceBatchPreviewResponse> {
     const player = await this.requirePlayer(input.accountId);
     const requestedCount = Math.floor(Number(input.body?.requested_count ?? 0));
@@ -459,10 +464,30 @@ export class CommerceService {
     }
     const overview = await this.getOverviewByPlayer(player.playerId);
     const limit = overview.convenience.batch_sweep_limit;
+    const acceptedCount = Math.min(requestedCount, limit);
+    if (requestedCount > acceptedCount) {
+      await this.riskService.evaluateAndRecord({
+        accountId: input.accountId,
+        playerId: player.playerId,
+        riskDomain: "entitlement",
+        actionType: "batch_preview",
+        targetType: "convenience",
+        targetId: overview.effective_tier,
+        path: "/api/commerce/convenience/batch-preview",
+        requestedCount,
+        acceptedCount,
+        idempotencyKey: input.idempotencyKey,
+        metadata: {
+          requested_count: requestedCount,
+          accepted_count: acceptedCount,
+          tier: overview.effective_tier,
+        },
+      });
+    }
 
     return {
       requested_count: requestedCount,
-      accepted_count: Math.min(requestedCount, limit),
+      accepted_count: acceptedCount,
       limit,
       effective_tier: overview.effective_tier,
       reward_multiplier: 1,
@@ -488,6 +513,22 @@ export class CommerceService {
           where: { playerId: player.playerId, status: "active" },
         });
         if (usedSlots >= overview.convenience.strategy_slots) {
+          await this.riskService.evaluateAndRecord({
+            accountId: input.accountId,
+            playerId: player.playerId,
+            riskDomain: "entitlement",
+            actionType: "strategy_slot_exceeded",
+            targetType: "convenience",
+            targetId: body.strategy_type,
+            path: "/api/commerce/convenience/strategies",
+            privilegeViolation: true,
+            idempotencyKey: input.idempotencyKey,
+            metadata: {
+              used_slots: usedSlots,
+              slot_limit: overview.convenience.strategy_slots,
+              tier: overview.effective_tier,
+            },
+          });
           throw new ForbiddenException("自动策略槽位不足");
         }
         const strategy = await tx.convenienceStrategy.create({
@@ -531,6 +572,23 @@ export class CommerceService {
         if (
           automationRank(overview.convenience.automation_queue) < automationRank(body.queue_type)
         ) {
+          await this.riskService.evaluateAndRecord({
+            accountId: input.accountId,
+            playerId: player.playerId,
+            riskDomain: "entitlement",
+            actionType: "automation_queue_unauthorized",
+            targetType: "automation_queue",
+            targetId: body.queue_type,
+            path: "/api/commerce/convenience/automation-queues",
+            privilegeViolation: true,
+            highImpact: true,
+            idempotencyKey: input.idempotencyKey,
+            metadata: {
+              requested_queue_type: body.queue_type,
+              allowed_queue_type: overview.convenience.automation_queue,
+              tier: overview.effective_tier,
+            },
+          });
           throw new ForbiddenException("当前权益不支持该托管队列");
         }
         const acceptedActions = body.actions.slice(0, overview.convenience.batch_sweep_limit);

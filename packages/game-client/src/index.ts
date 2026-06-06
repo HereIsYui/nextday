@@ -1,6 +1,9 @@
 import type {
+  AdminDelayedSettlementListResponse,
   AdminLogType,
   AdminPlayerLogsResponse,
+  AdminPlayerRiskResponse,
+  AdminRiskRecordListResponse,
   AlchemyCraftRequest,
   AlchemyCraftResponse,
   AlchemyRecipeListResponse,
@@ -57,6 +60,8 @@ import type {
   RankListResponse,
   RankType,
   ResourcePointListResponse,
+  ReviewDelayedSettlementRequest,
+  ReviewDelayedSettlementResponse,
   SaveConvenienceStrategyRequest,
   SaveConvenienceStrategyResponse,
   SaveSkillLoadoutRequest,
@@ -557,6 +562,87 @@ export class GameClient {
     return this.get<AdminPlayerLogsResponse>(
       `/api/admin/logs/player/${encodeURIComponent(input.playerId)}?type=${input.type}`,
       {
+        headers: {
+          "X-Admin-Token": input.adminToken,
+        },
+      },
+    );
+  }
+
+  getPlayerRisk(input: {
+    playerId: string;
+    adminToken: string;
+  }): Promise<ApiResponse<AdminPlayerRiskResponse>> {
+    return this.get<AdminPlayerRiskResponse>(
+      `/api/admin/risk/player/${encodeURIComponent(input.playerId)}`,
+      {
+        headers: {
+          "X-Admin-Token": input.adminToken,
+        },
+      },
+    );
+  }
+
+  listRiskRecords(input: {
+    adminToken: string;
+    playerId?: string;
+    riskStatus?: string;
+    limit?: number;
+  }): Promise<ApiResponse<AdminRiskRecordListResponse>> {
+    const params = new URLSearchParams();
+    if (input.playerId) {
+      params.set("player_id", input.playerId);
+    }
+    if (input.riskStatus) {
+      params.set("risk_status", input.riskStatus);
+    }
+    if (input.limit) {
+      params.set("limit", String(input.limit));
+    }
+
+    return this.get<AdminRiskRecordListResponse>(`/api/admin/risk/records?${params}`, {
+      headers: {
+        "X-Admin-Token": input.adminToken,
+      },
+    });
+  }
+
+  listDelayedSettlements(input: {
+    adminToken: string;
+    playerId?: string;
+    status?: string;
+    limit?: number;
+  }): Promise<ApiResponse<AdminDelayedSettlementListResponse>> {
+    const params = new URLSearchParams();
+    if (input.playerId) {
+      params.set("player_id", input.playerId);
+    }
+    if (input.status) {
+      params.set("status", input.status);
+    }
+    if (input.limit) {
+      params.set("limit", String(input.limit));
+    }
+
+    return this.get<AdminDelayedSettlementListResponse>(
+      `/api/admin/risk/delayed-settlements?${params}`,
+      {
+        headers: {
+          "X-Admin-Token": input.adminToken,
+        },
+      },
+    );
+  }
+
+  reviewDelayedSettlement(
+    body: ReviewDelayedSettlementRequest,
+    input: { adminToken: string; idempotencyKey: string },
+  ): Promise<ApiResponse<ReviewDelayedSettlementResponse>> {
+    return this.post<ReviewDelayedSettlementResponse, ReviewDelayedSettlementRequest>(
+      "/api/admin/risk/review",
+      body,
+      {
+        idempotencyKey: input.idempotencyKey,
         headers: {
           "X-Admin-Token": input.adminToken,
         },

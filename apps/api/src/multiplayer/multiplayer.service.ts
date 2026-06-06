@@ -34,6 +34,7 @@ import { toActionState } from "../game/game.mappers";
 import { hashRequestBody } from "../platform/utils/hash";
 import { getItemMeta } from "../production/production.constants";
 import { toBagItemState } from "../production/production.mappers";
+import { RiskService } from "../risk/risk.service";
 import {
   bossConfig,
   getCurrentWeekKey,
@@ -65,7 +66,10 @@ type DbClient = Tx | PrismaService;
 
 @Injectable()
 export class MultiplayerService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(RiskService) private readonly riskService: RiskService,
+  ) {}
 
   async getTowers(): Promise<TowerListResponse> {
     await this.ensureTowerStates();
@@ -100,10 +104,99 @@ export class MultiplayerService {
           throw new BadRequestException("未知封印塔");
         }
 
+        const repeatedTowerCount = await tx.towerActionRecord.count({
+          where: {
+            playerId: player.playerId,
+            towerId: body.tower_id,
+            actionType: body.action_type,
+            createdAt: { gt: new Date(Date.now() - 60 * 60 * 1000) },
+          },
+        });
+        const risk = await this.riskService.evaluateAndRecord(
+          {
+            accountId: input.accountId,
+            playerId: player.playerId,
+            riskDomain: "tower",
+            actionType: body.action_type,
+            targetType: "tower",
+            targetId: body.tower_id,
+            path: "/api/multiplayer/towers/action",
+            targetRepeatCount: repeatedTowerCount,
+            requestedCount: body.count,
+            acceptedCount: body.count,
+            highImpact: true,
+            idempotencyKey: input.idempotencyKey,
+            metadata: { tower_id: body.tower_id, count: body.count },
+          },
+          tx,
+        );
         const actionPointCost = actionConfig.actionPointCost * body.count;
         const actionState = await this.consumeActionPoints(tx, player.playerId, actionPointCost);
         const contribution = actionConfig.contribution * body.count;
         const rewards = multiplyReward(actionConfig.reward, body.count);
+        if (risk.settlement_status === "delayed") {
+          const sectMember = await this.getSectMemberByPlayer(tx, player.playerId);
+          const record = await tx.towerActionRecord.create({
+            data: {
+              recordId: `tower_action_${randomUUID()}`,
+              playerId: player.playerId,
+              sectId: sectMember?.sectId,
+              eraId: defaultEraId,
+              towerId: body.tower_id,
+              actionType: body.action_type,
+              count: body.count,
+              contribution,
+              actionPointCost,
+              rewardSnapshot: rewards as unknown as Prisma.InputJsonValue,
+              settlementStatus: "delayed",
+              configVersion: multiplayerConfigVersion,
+              idempotencyKey: input.idempotencyKey,
+            },
+          });
+          await this.riskService.attachSourceRecord(tx, risk.risk_record_id, record.recordId);
+          await this.riskService.createDelayedSettlement(tx, {
+            playerId: player.playerId,
+            sourceType: "tower_action",
+            sourceId: body.tower_id,
+            sourceRecordId: record.recordId,
+            riskRecordId: risk.risk_record_id,
+            amountSnapshot: {
+              source_record_id: record.recordId,
+              tower_id: body.tower_id,
+              action_type: body.action_type,
+              contribution,
+              rewards,
+            },
+            configVersion: multiplayerConfigVersion,
+            rewardConfigVersion: multiplayerRewardConfigVersion,
+            idempotencyKey: `${input.idempotencyKey}:delayed`,
+          });
+          await this.writeAudit(tx, {
+            accountId: input.accountId,
+            playerId: player.playerId,
+            action: "tower_action_delayed",
+            targetType: "tower_state",
+            targetId: body.tower_id,
+            afterSnapshot: {
+              record_id: record.recordId,
+              contribution,
+              risk_record_id: risk.risk_record_id,
+            } as unknown as Prisma.InputJsonValue,
+            idempotencyKey: input.idempotencyKey,
+          });
+
+          return {
+            record_id: record.recordId,
+            tower: toTowerStateSummary(tower),
+            contribution,
+            rewards,
+            action_state: actionState,
+            risk_status: risk.risk_status,
+            risk_record_id: risk.risk_record_id,
+            settlement_status: "delayed",
+          };
+        }
+
         const updatedTower = await tx.towerState.update({
           where: { eraId_towerId: { eraId: defaultEraId, towerId: body.tower_id } },
           data: getTowerUpdate(body.action_type, contribution),
@@ -134,6 +227,7 @@ export class MultiplayerService {
             idempotencyKey: input.idempotencyKey,
           },
         });
+        await this.riskService.attachSourceRecord(tx, risk.risk_record_id, record.recordId);
         await this.writeAudit(tx, {
           accountId: input.accountId,
           playerId: player.playerId,
@@ -154,6 +248,8 @@ export class MultiplayerService {
           contribution,
           rewards,
           action_state: actionState,
+          risk_status: risk.risk_status,
+          risk_record_id: risk.risk_record_id,
           settlement_status: "settled",
         };
       },
@@ -639,7 +735,31 @@ export class MultiplayerService {
           },
         });
         const realmGap = attacker.currentRealm - defender.currentRealm;
-        const decayed = repeatedCount >= 2 || realmGap > 1;
+        const risk = await this.riskService.evaluateAndRecord(
+          {
+            accountId: input.accountId,
+            playerId: attacker.playerId,
+            riskDomain: "pvp",
+            actionType: "attack",
+            targetType: "player",
+            targetId: defender.playerId,
+            path: "/api/multiplayer/pvp/attack",
+            targetRepeatCount: repeatedCount,
+            highImpact: true,
+            forceRiskStatus: realmGap > 1 ? "decayed" : undefined,
+            idempotencyKey: input.idempotencyKey,
+            metadata: {
+              defender_player_id: defender.playerId,
+              resource_point_id: resourcePoint.resourcePointId,
+              realm_gap: realmGap,
+            },
+          },
+          tx,
+        );
+        const decayed =
+          risk.risk_status === "decayed" ||
+          risk.risk_status === "delayed_settlement" ||
+          realmGap > 1;
         const baseScore = win ? 30 : 10;
         const scoreDelta = decayed ? Math.max(1, Math.floor(baseScore * 0.3)) : baseScore;
         const rewards: RewardBundle = {
@@ -648,21 +768,26 @@ export class MultiplayerService {
         };
         const attackerMember = await this.getSectMemberByPlayer(tx, attacker.playerId);
         const defenderMember = await this.getSectMemberByPlayer(tx, defender.playerId);
-        const updatedResourcePoint = win
-          ? await tx.resourcePointState.update({
-              where: { resourcePointId: resourcePoint.resourcePointId },
-              data: {
-                ownerPlayerId: attacker.playerId,
-                ownerSectId: attackerMember?.sectId,
-                controlScore: { increment: scoreDelta },
-              },
-            })
-          : resourcePoint;
-        await this.applyReward(tx, attacker.playerId, rewards, {
-          sourceType: "pvp_attack",
-          sourceId: defender.playerId,
-          idempotencyKey: `${input.idempotencyKey}:reward`,
-        });
+        const settlementStatus: SettlementStatus =
+          risk.settlement_status === "delayed" ? "delayed" : "settled";
+        const updatedResourcePoint =
+          win && settlementStatus === "settled"
+            ? await tx.resourcePointState.update({
+                where: { resourcePointId: resourcePoint.resourcePointId },
+                data: {
+                  ownerPlayerId: attacker.playerId,
+                  ownerSectId: attackerMember?.sectId,
+                  controlScore: { increment: scoreDelta },
+                },
+              })
+            : resourcePoint;
+        if (settlementStatus === "settled") {
+          await this.applyReward(tx, attacker.playerId, rewards, {
+            sourceType: "pvp_attack",
+            sourceId: defender.playerId,
+            idempotencyKey: `${input.idempotencyKey}:reward`,
+          });
+        }
         const log = createSimpleBattleLog({
           attackerName: attacker.name,
           defenderName: defender.name,
@@ -671,7 +796,6 @@ export class MultiplayerService {
           damageDone: attackerPower,
           damageTaken: Math.floor(defenderPower / 2),
         });
-        const settlementStatus: SettlementStatus = "settled";
         const record = await tx.pvpBattleRecord.create({
           data: {
             recordId: `pvp_${randomUUID()}`,
@@ -686,18 +810,39 @@ export class MultiplayerService {
             scoreDelta,
             rewardSnapshot: rewards as unknown as Prisma.InputJsonValue,
             battleLog: log as unknown as Prisma.InputJsonValue,
-            riskStatus: decayed ? "decayed" : "normal",
+            riskStatus: risk.risk_status,
             settlementStatus,
             configVersion: multiplayerConfigVersion,
             idempotencyKey: input.idempotencyKey,
           },
         });
+        await this.riskService.attachSourceRecord(tx, risk.risk_record_id, record.recordId);
+        if (settlementStatus === "delayed") {
+          await this.riskService.createDelayedSettlement(tx, {
+            playerId: attacker.playerId,
+            sourceType: "pvp_attack",
+            sourceId: defender.playerId,
+            sourceRecordId: record.recordId,
+            riskRecordId: risk.risk_record_id,
+            amountSnapshot: {
+              source_record_id: record.recordId,
+              defender_player_id: defender.playerId,
+              resource_point_id: resourcePoint.resourcePointId,
+              score_delta: scoreDelta,
+              rewards,
+            },
+            configVersion: multiplayerConfigVersion,
+            rewardConfigVersion: multiplayerRewardConfigVersion,
+            idempotencyKey: `${input.idempotencyKey}:delayed`,
+          });
+        }
 
         return {
           record_id: record.recordId,
           result: win ? "win" : "lose",
           score_delta: scoreDelta,
-          risk_status: decayed ? "decayed" : "normal",
+          risk_status: risk.risk_status,
+          risk_record_id: risk.risk_record_id,
           settlement_status: settlementStatus,
           rewards,
           action_state: actionState,

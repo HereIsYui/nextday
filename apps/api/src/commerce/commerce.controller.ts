@@ -99,7 +99,11 @@ export class CommerceController {
     @Body() body: ConvenienceBatchPreviewRequest,
     @Req() request: Request,
   ): Promise<ConvenienceBatchPreviewResponse> {
-    return this.commerceService.previewBatch({ accountId: requireAccountId(request), body });
+    return this.commerceService.previewBatch({
+      accountId: requireAccountId(request),
+      body,
+      idempotencyKey: request.header("Idempotency-Key") ?? null,
+    });
   }
 
   @Post("convenience/strategies")

@@ -26,6 +26,95 @@ export interface RiskResult {
   settlement_status: SettlementStatus;
 }
 
+export type RiskLevel = "normal" | "low" | "medium" | "high";
+export type RiskDecisionAction =
+  | "observe"
+  | "truncate"
+  | "decay"
+  | "delay_settlement"
+  | "reject"
+  | "rate_limit"
+  | "manual_review";
+
+export interface BehaviorRiskRecordState {
+  risk_record_id: string;
+  account_id: string | null;
+  player_id: string | null;
+  era_id: string;
+  risk_domain: string;
+  action_type: string;
+  target_type: string | null;
+  target_id: string | null;
+  source_record_id: string | null;
+  risk_status: RiskStatus;
+  risk_level: RiskLevel;
+  risk_score: number;
+  rule_codes: string[];
+  decision_action: RiskDecisionAction | string;
+  settlement_status: SettlementStatus;
+  request_id: string | null;
+  idempotency_key: string | null;
+  metadata: Record<string, unknown> | null;
+  risk_ruleset_version: string;
+  created_at: string;
+}
+
+export interface DelayedSettlementRecordState {
+  settlement_record_id: string;
+  player_id: string;
+  era_id: string;
+  source_type: string;
+  source_id: string | null;
+  source_record_id: string | null;
+  risk_record_id: string | null;
+  status: SettlementStatus;
+  amount_snapshot: Record<string, unknown>;
+  review_action: string | null;
+  review_reason: string | null;
+  reviewer: string | null;
+  config_version: string;
+  reward_config_version: string;
+  risk_ruleset_version: string;
+  created_at: string;
+  reviewed_at: string | null;
+  settled_at: string | null;
+}
+
+export interface AdminPlayerRiskResponse {
+  player_id: string;
+  risk_score: number;
+  risk_level: RiskLevel;
+  current_status: RiskStatus;
+  recent_rule_codes: string[];
+  behavior_summary: {
+    total_requests_24h: number;
+    high_frequency_paths: Array<{ path: string; count: number }>;
+    distinct_ip_count: number;
+    distinct_user_agent_count: number;
+  };
+  recent_records: BehaviorRiskRecordState[];
+  delayed_settlements: DelayedSettlementRecordState[];
+}
+
+export interface AdminRiskRecordListResponse {
+  records: BehaviorRiskRecordState[];
+}
+
+export interface AdminDelayedSettlementListResponse {
+  records: DelayedSettlementRecordState[];
+}
+
+export interface ReviewDelayedSettlementRequest {
+  settlement_record_id: string;
+  action: "release" | "reject";
+  reason?: string;
+  reviewer?: string;
+}
+
+export interface ReviewDelayedSettlementResponse {
+  record: DelayedSettlementRecordState;
+}
+
 export interface ApiResponse<TData> {
   code: number;
   message: string;
@@ -533,6 +622,8 @@ export interface TowerActionResponse {
   contribution: number;
   rewards: RewardBundle;
   action_state: ActionState;
+  risk_status?: RiskStatus;
+  risk_record_id?: string | null;
   settlement_status: SettlementStatus;
 }
 
@@ -671,6 +762,7 @@ export interface PvpBattleResponse {
   result: "win" | "lose";
   score_delta: number;
   risk_status: RiskStatus;
+  risk_record_id?: string | null;
   settlement_status: SettlementStatus;
   rewards: RewardBundle;
   action_state: ActionState;
@@ -986,7 +1078,8 @@ export type ConfigType =
   | "monthly_card"
   | "vip"
   | "convenience"
-  | "appearance";
+  | "appearance"
+  | "risk";
 
 export interface ConfigEnvelope<TPayload = Record<string, unknown>> {
   config_type: string;

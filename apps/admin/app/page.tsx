@@ -2,7 +2,12 @@
 
 import { GameClient } from "@nextday/game-client";
 import { riskStatusLabels } from "@nextday/game-rules";
-import type { AdminLogType, AdminPlayerLogsResponse, HealthStatus } from "@nextday/shared";
+import type {
+  AdminLogType,
+  AdminPlayerLogsResponse,
+  AdminPlayerRiskResponse,
+  HealthStatus,
+} from "@nextday/shared";
 import { Button, StatusBadge } from "@nextday/ui";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 
@@ -12,6 +17,7 @@ export default function AdminHomePage() {
   const [adminToken, setAdminToken] = useState("nextday-admin-dev");
   const [logType, setLogType] = useState<AdminLogType>("behavior");
   const [logs, setLogs] = useState<AdminPlayerLogsResponse | null>(null);
+  const [risk, setRisk] = useState<AdminPlayerRiskResponse | null>(null);
   const [message, setMessage] = useState("等待查询");
 
   const client = useMemo(
@@ -69,6 +75,13 @@ export default function AdminHomePage() {
     }
 
     setLogs(response.data);
+    const riskResponse = await client.getPlayerRisk({
+      playerId: normalizedPlayerId,
+      adminToken,
+    });
+    if (riskResponse.code === 0) {
+      setRisk(riskResponse.data);
+    }
     setMessage(`已读取 ${response.data.rows.length} 条记录`);
   }
 
@@ -128,7 +141,21 @@ export default function AdminHomePage() {
         </article>
         <article>
           <h2>风控查询</h2>
-          <p>预留风险分、收益延迟池和人工审核入口。</p>
+          {risk ? (
+            <div className="risk-summary">
+              <p>
+                风险分 {risk.risk_score}，等级 {risk.risk_level}，当前状态{" "}
+                {riskStatusLabels[risk.current_status]}
+              </p>
+              <p>延迟池 {risk.delayed_settlements.length} 条</p>
+              <p>
+                规则：
+                {risk.recent_rule_codes.length > 0 ? risk.recent_rule_codes.join("、") : "无"}
+              </p>
+            </div>
+          ) : (
+            <p>输入玩家 ID 查询后展示风险分、收益延迟池和近期命中规则。</p>
+          )}
         </article>
         <article>
           <h2>当前风控状态</h2>

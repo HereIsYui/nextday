@@ -11,8 +11,10 @@ import { LogService } from "./log/log.service";
 import { MultiplayerModule } from "./multiplayer/multiplayer.module";
 import { IdempotencyKeyMiddleware } from "./platform/idempotency-key.middleware";
 import { RequestContextMiddleware } from "./platform/request-context.middleware";
+import { TransientRateLimitMiddleware } from "./platform/transient-rate-limit.middleware";
 import { PlayerModule } from "./player/player.module";
 import { ProductionModule } from "./production/production.module";
+import { RiskModule } from "./risk/risk.module";
 
 @Module({
   imports: [
@@ -25,6 +27,7 @@ import { ProductionModule } from "./production/production.module";
     ProductionModule,
     MultiplayerModule,
     CommerceModule,
+    RiskModule,
   ],
   controllers: [HealthController],
 })
@@ -36,6 +39,7 @@ export class AppModule implements NestModule {
       .apply(
         RequestContextMiddleware,
         createBehaviorLogMiddleware(this.logService),
+        TransientRateLimitMiddleware,
         IdempotencyKeyMiddleware,
       )
       .forRoutes("*");

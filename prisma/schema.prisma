@@ -22,6 +22,7 @@ model Account {
   auditLogs    AuditLog[]
   loginLogs    LoginLog[]
   behaviorLogs BehaviorLog[]
+  riskRecords  BehaviorRiskRecord[]
   idempotency  IdempotencyRecord[]
 
   @@index([accountType])
@@ -78,6 +79,8 @@ model Player {
   convenienceStrategies     ConvenienceStrategy[]
   automationQueues          AutomationQueue[]
   appearances               PlayerAppearance[]
+  riskRecords               BehaviorRiskRecord[]
+  delayedSettlements        DelayedSettlementRecord[]
 
   @@index([accountId])
   @@index([sectId])
@@ -947,6 +950,81 @@ model PlayerAppearance {
   @@index([equipped])
   @@index([expireAt])
   @@map("player_appearance")
+}
+
+model BehaviorRiskRecord {
+  riskRecordId       String   @id @map("risk_record_id")
+  accountId          String?  @map("account_id")
+  playerId           String?  @map("player_id")
+  eraId              String   @default("era_mvp_001") @map("era_id")
+  riskDomain         String   @map("risk_domain")
+  actionType         String   @map("action_type")
+  targetType         String?  @map("target_type")
+  targetId           String?  @map("target_id")
+  sourceRecordId     String?  @map("source_record_id")
+  riskStatus         String   @map("risk_status")
+  riskLevel          String   @map("risk_level")
+  riskScore          Int      @map("risk_score")
+  ruleCodes          Json     @map("rule_codes")
+  decisionAction     String   @map("decision_action")
+  settlementStatus   String   @default("settled") @map("settlement_status")
+  requestId          String?  @map("request_id")
+  idempotencyKey     String?  @map("idempotency_key")
+  ipHash             String?  @map("ip_hash")
+  userAgentHash      String?  @map("user_agent_hash")
+  metadata           Json?
+  riskRulesetVersion String   @map("risk_ruleset_version")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  account            Account?                  @relation(fields: [accountId], references: [accountId])
+  player             Player?                   @relation(fields: [playerId], references: [playerId])
+  delayedSettlements DelayedSettlementRecord[]
+
+  @@index([accountId])
+  @@index([playerId])
+  @@index([eraId])
+  @@index([riskDomain, actionType])
+  @@index([riskStatus])
+  @@index([riskLevel])
+  @@index([targetType, targetId])
+  @@index([sourceRecordId])
+  @@index([createdAt])
+  @@map("behavior_risk_record")
+}
+
+model DelayedSettlementRecord {
+  settlementRecordId  String    @id @map("settlement_record_id")
+  playerId            String    @map("player_id")
+  eraId               String    @default("era_mvp_001") @map("era_id")
+  sourceType          String    @map("source_type")
+  sourceId            String?   @map("source_id")
+  sourceRecordId      String?   @map("source_record_id")
+  riskRecordId        String?   @map("risk_record_id")
+  status              String    @default("delayed")
+  amountSnapshot      Json      @map("amount_snapshot")
+  reviewAction        String?   @map("review_action")
+  reviewReason        String?   @map("review_reason")
+  reviewer            String?
+  configVersion       String    @map("config_version")
+  rewardConfigVersion String    @map("reward_config_version")
+  riskRulesetVersion  String    @map("risk_ruleset_version")
+  idempotencyKey      String?   @unique @map("idempotency_key")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  reviewedAt          DateTime? @map("reviewed_at")
+  settledAt           DateTime? @map("settled_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  player Player              @relation(fields: [playerId], references: [playerId])
+  risk   BehaviorRiskRecord? @relation(fields: [riskRecordId], references: [riskRecordId])
+
+  @@index([playerId])
+  @@index([eraId])
+  @@index([sourceType])
+  @@index([sourceRecordId])
+  @@index([riskRecordId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("delayed_settlement_record")
 }
 
 model ConfigVersion {

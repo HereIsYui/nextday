@@ -24,6 +24,7 @@ import {
   pillQualityConfigs,
   skillConfigs,
 } from "../production/production.constants";
+import { riskConfig, riskConfigVersion, riskRulesetVersion } from "../risk/risk.constants";
 
 export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
   realm: {
@@ -303,6 +304,17 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
     payload: {
       appearances: appearanceConfigs,
       stat_bonus_rule: "展示外观 statBonus 固定为空，不参与战力、贡献和奖励结算",
+    },
+  },
+  risk: {
+    config_type: "risk",
+    config_version: riskConfigVersion,
+    ruleset_version: riskRulesetVersion,
+    reward_config_version: "reward_m6_v1",
+    payload: {
+      behavior_risk: riskConfig,
+      boundary:
+        "允许脚本点击，只做记录、评分、限频、收益延迟和后台审核；不得突破行动令、权益档位、奖励公式和贡献衰减",
     },
   },
 };

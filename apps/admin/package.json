@@ -3,7 +3,6 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "predev": "npm run build:packages --prefix ../..",
     "dev": "node ../../scripts/clean-next-cache.mjs . && next dev -p ${ADMIN_PORT:-3002}",
     "build": "next build",
     "typecheck": "tsc -p tsconfig.json --noEmit"

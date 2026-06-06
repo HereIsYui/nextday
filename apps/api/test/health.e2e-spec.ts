@@ -36,6 +36,18 @@ describe("API 健康检查", () => {
     expect(response.body.trace_id).toMatch(/^req_/);
   });
 
+  it("允许 Web 本地开发来源通过 CORS 预检", async () => {
+    const response = await request(app.getHttpServer())
+      .options("/health")
+      .set("Origin", "http://localhost:3000")
+      .set("Access-Control-Request-Method", "GET")
+      .set("Access-Control-Request-Headers", "content-type,x-request-id,x-client-version")
+      .expect(204);
+
+    expect(response.headers["access-control-allow-origin"]).toBe("http://localhost:3000");
+    expect(response.headers["access-control-allow-headers"]).toContain("X-Request-Id");
+  });
+
   it("状态变更接口缺少幂等键时返回错误", async () => {
     const response = await request(app.getHttpServer())
       .post("/health/idempotency-example")

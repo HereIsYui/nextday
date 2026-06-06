@@ -1,4 +1,11 @@
 import type { ConfigEnvelope } from "@nextday/shared";
+import {
+  alchemyRecipes,
+  forgeRecipes,
+  itemCatalog,
+  pillQualityConfigs,
+  skillConfigs,
+} from "../production/production.constants";
 
 export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
   realm: {
@@ -103,6 +110,58 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
         { facility_id: "alchemy_room", name: "丹炉", output: "low_herb" },
         { facility_id: "refinery_room", name: "炼器室", output: "raw_iron" },
       ],
+    },
+  },
+  pill: {
+    config_type: "pill",
+    config_version: "pill_m3_v1",
+    ruleset_version: "ruleset_m3_v1",
+    reward_config_version: "reward_m3_v1",
+    payload: {
+      recipes: alchemyRecipes.map(({ failure_returns: _failureReturns, ...recipe }) => recipe),
+      qualities: pillQualityConfigs,
+      diminishing: [
+        { range: "1-3", effective_rate: 100 },
+        { range: "4-10", effective_rate: 50 },
+        { range: "11+", effective_rate: 10 },
+      ],
+    },
+  },
+  forge: {
+    config_type: "forge",
+    config_version: "forge_m3_v1",
+    ruleset_version: "ruleset_m3_v1",
+    reward_config_version: "reward_m3_v1",
+    payload: {
+      recipes: forgeRecipes,
+      forbidden_outputs: ["九大古宝", "ancient_treasure"],
+      operations: ["forge", "refine", "inscribe", "decompose"],
+    },
+  },
+  skill: {
+    config_type: "skill",
+    config_version: "skill_m3_v1",
+    ruleset_version: "ruleset_m3_v1",
+    reward_config_version: "reward_m3_v1",
+    payload: {
+      max_active_skills: 3,
+      max_treasure_skills: 1,
+      skills: skillConfigs,
+    },
+  },
+  bag: {
+    config_type: "bag",
+    config_version: "bag_m3_v1",
+    ruleset_version: "ruleset_m3_v1",
+    reward_config_version: "reward_m3_v1",
+    payload: {
+      item_catalog: itemCatalog,
+      trade_rules: {
+        paid_items_tradeable: false,
+        bound_items_tradeable: false,
+        locked_items_consumable: false,
+        expired_items_consumable: false,
+      },
     },
   },
 };

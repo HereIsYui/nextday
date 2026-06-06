@@ -220,6 +220,41 @@ h1 {
   grid-template-columns: minmax(140px, 0.8fr) minmax(180px, 1fr) auto;
 }
 
+.production-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.production-box {
+  background: #ffffff;
+  border: 1px solid #dce4df;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  min-height: 126px;
+  padding: 14px;
+}
+
+.production-box strong {
+  color: #10292b;
+  font-size: 17px;
+}
+
+.production-box span {
+  color: #617173;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.production-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+}
+
 .task-row div {
   display: grid;
   gap: 4px;

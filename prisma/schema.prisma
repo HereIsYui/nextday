@@ -43,20 +43,25 @@ model Player {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  account      Account                  @relation(fields: [accountId], references: [accountId])
-  progress     PlayerProgress?
-  wallet       PlayerWallet?
-  actionState  PlayerActionState?
-  caveState    PlayerCaveState?
-  items        PlayerItem[]
-  walletLogs   WalletLog[]
-  auditLogs    AuditLog[]
-  behaviorLogs BehaviorLog[]
-  loginLogs    LoginLog[]
-  provinces    PlayerProvinceProgress[]
-  tasks        PlayerTaskState[]
-  battleLogs   BattleLog[]
-  caveRecords  CaveCollectRecord[]
+  account                   Account                    @relation(fields: [accountId], references: [accountId])
+  progress                  PlayerProgress?
+  wallet                    PlayerWallet?
+  actionState               PlayerActionState?
+  caveState                 PlayerCaveState?
+  items                     PlayerItem[]
+  walletLogs                WalletLog[]
+  auditLogs                 AuditLog[]
+  behaviorLogs              BehaviorLog[]
+  loginLogs                 LoginLog[]
+  provinces                 PlayerProvinceProgress[]
+  tasks                     PlayerTaskState[]
+  battleLogs                BattleLog[]
+  caveRecords               CaveCollectRecord[]
+  alchemyRecords            AlchemyRecord[]
+  pillUseRecords            PillUseRecord[]
+  equipmentInstances        EquipmentInstance[]
+  equipmentOperationRecords EquipmentOperationRecord[]
+  skillLoadout              PlayerSkillLoadout?
 
   @@index([accountId])
   @@index([sectId])
@@ -109,6 +114,7 @@ model PlayerItem {
   bindType       String    @map("bind_type")
   locked         Boolean   @default(false)
   sourceType     String    @map("source_type")
+  metadata       Json?
   expireAt       DateTime? @map("expire_at")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
@@ -256,6 +262,147 @@ model CaveCollectRecord {
   @@index([playerId])
   @@index([createdAt])
   @@map("cave_collect_record")
+}
+
+model AlchemyRecord {
+  recordId              String   @id @map("record_id")
+  playerId              String   @map("player_id")
+  eraId                 String   @default("era_mvp_001") @map("era_id")
+  recipeId              String   @map("recipe_id")
+  pillItemId            String?  @map("pill_item_id")
+  quality               String?
+  success               Boolean
+  count                 Int      @default(1)
+  materialSnapshot      Json     @map("material_snapshot")
+  failureReturnSnapshot Json?    @map("failure_return_snapshot")
+  resultSnapshot        Json     @map("result_snapshot")
+  configVersion         String   @map("config_version")
+  rewardConfigVersion   String   @map("reward_config_version")
+  idempotencyKey        String?  @unique @map("idempotency_key")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@index([playerId])
+  @@index([eraId])
+  @@index([recipeId])
+  @@index([pillItemId])
+  @@index([createdAt])
+  @@map("alchemy_record")
+}
+
+model PillUseRecord {
+  recordId          String   @id @map("record_id")
+  playerId          String   @map("player_id")
+  eraId             String   @default("era_mvp_001") @map("era_id")
+  pillItemId        String   @map("pill_item_id")
+  pillRank          Int      @map("pill_rank")
+  pillType          String   @map("pill_type")
+  route             String
+  quality           String
+  sameTierUseCount  Int      @map("same_tier_use_count")
+  effectiveRate     Int      @map("effective_rate")
+  effectValue       Int      @map("effect_value")
+  beforeCultivation BigInt   @map("before_cultivation")
+  afterCultivation  BigInt   @map("after_cultivation")
+  configVersion     String   @map("config_version")
+  idempotencyKey    String?  @unique @map("idempotency_key")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@index([playerId])
+  @@index([eraId])
+  @@index([pillItemId])
+  @@index([pillType, pillRank])
+  @@index([createdAt])
+  @@map("pill_use_record")
+}
+
+model EquipmentInstance {
+  equipmentInstanceId String   @id @map("equipment_instance_id")
+  playerId            String   @map("player_id")
+  eraId               String   @default("era_mvp_001") @map("era_id")
+  equipmentId         String   @map("equipment_id")
+  name                String
+  equipmentType       String   @map("equipment_type")
+  rarity              String
+  starLevel           Int      @default(0) @map("star_level")
+  bindType            String   @map("bind_type")
+  locked              Boolean  @default(false)
+  equippedSlot        String?  @map("equipped_slot")
+  durability          Int      @default(100)
+  maxDurability       Int      @default(100) @map("max_durability")
+  sourceType          String   @map("source_type")
+  status              String   @default("active")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  player     Player                     @relation(fields: [playerId], references: [playerId])
+  affixes    EquipmentAffix[]
+  operations EquipmentOperationRecord[]
+
+  @@index([playerId])
+  @@index([eraId])
+  @@index([equipmentId])
+  @@index([equipmentType])
+  @@index([rarity])
+  @@index([status])
+  @@map("equipment_instance")
+}
+
+model EquipmentAffix {
+  affixId             String   @id @map("affix_id")
+  equipmentInstanceId String   @map("equipment_instance_id")
+  affixType           String   @map("affix_type")
+  affixKey            String   @map("affix_key")
+  name                String
+  value               Int
+  locked              Boolean  @default(false)
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  equipment EquipmentInstance @relation(fields: [equipmentInstanceId], references: [equipmentInstanceId], onDelete: Cascade)
+
+  @@index([equipmentInstanceId])
+  @@index([affixType])
+  @@index([affixKey])
+  @@map("equipment_affix")
+}
+
+model EquipmentOperationRecord {
+  recordId            String   @id @map("record_id")
+  playerId            String   @map("player_id")
+  eraId               String   @default("era_mvp_001") @map("era_id")
+  equipmentInstanceId String?  @map("equipment_instance_id")
+  operationType       String   @map("operation_type")
+  materialSnapshot    Json     @map("material_snapshot")
+  resultSnapshot      Json     @map("result_snapshot")
+  configVersion       String   @map("config_version")
+  idempotencyKey      String?  @unique @map("idempotency_key")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  player    Player             @relation(fields: [playerId], references: [playerId])
+  equipment EquipmentInstance? @relation(fields: [equipmentInstanceId], references: [equipmentInstanceId], onDelete: SetNull)
+
+  @@index([playerId])
+  @@index([eraId])
+  @@index([equipmentInstanceId])
+  @@index([operationType])
+  @@index([createdAt])
+  @@map("equipment_operation_record")
+}
+
+model PlayerSkillLoadout {
+  playerId        String   @id @map("player_id")
+  activeSkillIds  Json     @map("active_skill_ids")
+  treasureSkillId String   @map("treasure_skill_id")
+  autoPriority    Json     @map("auto_priority")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@map("player_skill_loadout")
 }
 
 model ConfigVersion {

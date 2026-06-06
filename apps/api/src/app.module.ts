@@ -10,9 +10,18 @@ import { LogService } from "./log/log.service";
 import { IdempotencyKeyMiddleware } from "./platform/idempotency-key.middleware";
 import { RequestContextMiddleware } from "./platform/request-context.middleware";
 import { PlayerModule } from "./player/player.module";
+import { ProductionModule } from "./production/production.module";
 
 @Module({
-  imports: [DatabaseModule, LogModule, AuthModule, PlayerModule, GameModule, GameConfigModule],
+  imports: [
+    DatabaseModule,
+    LogModule,
+    AuthModule,
+    PlayerModule,
+    GameModule,
+    GameConfigModule,
+    ProductionModule,
+  ],
   controllers: [HealthController],
 })
 export class AppModule implements NestModule {

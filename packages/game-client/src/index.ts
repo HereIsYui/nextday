@@ -1,8 +1,13 @@
 import type {
   AdminLogType,
   AdminPlayerLogsResponse,
+  AlchemyCraftRequest,
+  AlchemyCraftResponse,
+  AlchemyRecipeListResponse,
+  AlchemyRecordListResponse,
   ApiResponse,
   AuthMeResponse,
+  BagSummaryResponse,
   BreakthroughResponse,
   CaveCollectResponse,
   ConfigEnvelope,
@@ -10,14 +15,28 @@ import type {
   CreatePlayerRequest,
   CreatePlayerResponse,
   CultivationClaimResponse,
+  EquipmentInscribeRequest,
+  EquipmentListResponse,
+  EquipmentOperationRecordListResponse,
+  EquipmentOperationResponse,
+  EquipmentTargetRequest,
   ExploreRequest,
   ExploreResponse,
+  ForgeCraftRequest,
+  ForgeRecipeListResponse,
   GameOverviewResponse,
   GuestLoginRequest,
   LoginResponse,
   MockFishpiLoginRequest,
+  PillUseRequest,
+  PillUseResponse,
   PlayerProfileResponse,
   ProvinceSummary,
+  SaveSkillLoadoutRequest,
+  SetEquipmentLockRequest,
+  SetItemLockRequest,
+  SetItemLockResponse,
+  SkillLoadoutResponse,
   TaskClaimRequest,
   TaskClaimResponse,
   TaskSummaryResponse,
@@ -138,6 +157,130 @@ export class GameClient {
 
   collectCave(idempotencyKey: string): Promise<ApiResponse<CaveCollectResponse>> {
     return this.post<CaveCollectResponse>("/api/game/cave/collect", {}, { idempotencyKey });
+  }
+
+  bagItems(): Promise<ApiResponse<BagSummaryResponse>> {
+    return this.get<BagSummaryResponse>("/api/production/bag/items");
+  }
+
+  setItemLock(
+    body: SetItemLockRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<SetItemLockResponse>> {
+    return this.post<SetItemLockResponse, SetItemLockRequest>(
+      "/api/production/bag/items/lock",
+      body,
+      {
+        idempotencyKey,
+      },
+    );
+  }
+
+  alchemyRecipes(): Promise<ApiResponse<AlchemyRecipeListResponse>> {
+    return this.get<AlchemyRecipeListResponse>("/api/production/alchemy/recipes");
+  }
+
+  alchemyRecords(): Promise<ApiResponse<AlchemyRecordListResponse>> {
+    return this.get<AlchemyRecordListResponse>("/api/production/alchemy/records");
+  }
+
+  alchemyCraft(
+    body: AlchemyCraftRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<AlchemyCraftResponse>> {
+    return this.post<AlchemyCraftResponse, AlchemyCraftRequest>(
+      "/api/production/alchemy/craft",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  pillUse(body: PillUseRequest, idempotencyKey: string): Promise<ApiResponse<PillUseResponse>> {
+    return this.post<PillUseResponse, PillUseRequest>("/api/production/pills/use", body, {
+      idempotencyKey,
+    });
+  }
+
+  forgeRecipes(): Promise<ApiResponse<ForgeRecipeListResponse>> {
+    return this.get<ForgeRecipeListResponse>("/api/production/forge/recipes");
+  }
+
+  equipmentList(): Promise<ApiResponse<EquipmentListResponse>> {
+    return this.get<EquipmentListResponse>("/api/production/equipment");
+  }
+
+  equipmentRecords(): Promise<ApiResponse<EquipmentOperationRecordListResponse>> {
+    return this.get<EquipmentOperationRecordListResponse>("/api/production/equipment/records");
+  }
+
+  forgeCraft(
+    body: ForgeCraftRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<EquipmentOperationResponse>> {
+    return this.post<EquipmentOperationResponse, ForgeCraftRequest>(
+      "/api/production/forge/craft",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  equipmentRefine(
+    body: EquipmentTargetRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<EquipmentOperationResponse>> {
+    return this.post<EquipmentOperationResponse, EquipmentTargetRequest>(
+      "/api/production/equipment/refine",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  equipmentInscribe(
+    body: EquipmentInscribeRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<EquipmentOperationResponse>> {
+    return this.post<EquipmentOperationResponse, EquipmentInscribeRequest>(
+      "/api/production/equipment/inscribe",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  equipmentDecompose(
+    body: EquipmentTargetRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<EquipmentOperationResponse>> {
+    return this.post<EquipmentOperationResponse, EquipmentTargetRequest>(
+      "/api/production/equipment/decompose",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  setEquipmentLock(
+    body: SetEquipmentLockRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<EquipmentOperationResponse>> {
+    return this.post<EquipmentOperationResponse, SetEquipmentLockRequest>(
+      "/api/production/equipment/lock",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  skillLoadout(): Promise<ApiResponse<SkillLoadoutResponse>> {
+    return this.get<SkillLoadoutResponse>("/api/production/skills/loadout");
+  }
+
+  saveSkillLoadout(
+    body: SaveSkillLoadoutRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<SkillLoadoutResponse>> {
+    return this.post<SkillLoadoutResponse, SaveSkillLoadoutRequest>(
+      "/api/production/skills/loadout",
+      body,
+      { idempotencyKey },
+    );
   }
 
   getPlayerLogs(input: {

@@ -282,6 +282,221 @@ export interface CaveCollectResponse {
   completed_task_ids: string[];
 }
 
+export type ItemCategory =
+  | "material"
+  | "pill"
+  | "currency"
+  | "equipment_material"
+  | "treasure_page"
+  | "unknown";
+
+export type ItemBindType = "bound" | "unbound" | "paid" | "limited";
+
+export interface BagItemState {
+  item_instance_id: string;
+  item_id: string;
+  name: string;
+  category: ItemCategory;
+  count: string;
+  bind_type: ItemBindType | string;
+  locked: boolean;
+  tradeable: boolean;
+  expired: boolean;
+  expire_at: string | null;
+  source_type: string;
+}
+
+export interface BagSummaryResponse {
+  items: BagItemState[];
+}
+
+export interface SetItemLockRequest {
+  item_instance_id: string;
+  locked: boolean;
+}
+
+export interface SetItemLockResponse {
+  record_id: string;
+  item: BagItemState;
+}
+
+export type PillQuality = "low" | "middle" | "high" | "best" | "flawless";
+
+export interface AlchemyRecipeSummary {
+  recipe_id: string;
+  name: string;
+  route: CultivationRoute | "all";
+  pill_item_id: string;
+  pill_rank: number;
+  pill_type: string;
+  base_effect: number;
+  success_rate: number;
+  materials: Array<{ item_id: string; name: string; count: number }>;
+  spirit_stone_cost: string;
+}
+
+export interface AlchemyRecipeListResponse {
+  recipes: AlchemyRecipeSummary[];
+}
+
+export interface AlchemyCraftRequest {
+  recipe_id: string;
+}
+
+export interface AlchemyRecordState {
+  record_id: string;
+  recipe_id: string;
+  pill_item_id: string | null;
+  quality: PillQuality | null;
+  success: boolean;
+  count: number;
+  materials: RewardBundle;
+  failure_returns: RewardBundle | null;
+  result: RewardBundle;
+  config_version: string;
+  reward_config_version: string;
+  created_at: string;
+}
+
+export interface AlchemyCraftResponse {
+  record_id: string;
+  record: AlchemyRecordState;
+  rewards: RewardBundle;
+  wallet: PlayerWalletState;
+  bag: BagSummaryResponse;
+}
+
+export interface AlchemyRecordListResponse {
+  records: AlchemyRecordState[];
+}
+
+export interface PillUseRequest {
+  item_instance_id: string;
+}
+
+export interface PillUseResponse {
+  record_id: string;
+  pill_item_id: string;
+  quality: PillQuality;
+  same_tier_use_count: number;
+  effective_rate: number;
+  effect_value: number;
+  before_cultivation: string;
+  after_cultivation: string;
+  profile: PlayerProfileResponse;
+}
+
+export type EquipmentRarity = "ordinary" | "earth" | "heaven" | "immortal" | "ancient_craft";
+export type EquipmentAffixType = "main" | "sub" | "hidden";
+
+export interface EquipmentAffixState {
+  affix_id: string;
+  affix_type: EquipmentAffixType;
+  affix_key: string;
+  name: string;
+  value: number;
+  locked: boolean;
+}
+
+export interface EquipmentState {
+  equipment_instance_id: string;
+  equipment_id: string;
+  name: string;
+  equipment_type: string;
+  rarity: EquipmentRarity | string;
+  star_level: number;
+  bind_type: ItemBindType | string;
+  locked: boolean;
+  equipped_slot: string | null;
+  durability: number;
+  max_durability: number;
+  source_type: string;
+  status: string;
+  affixes: EquipmentAffixState[];
+  created_at: string;
+}
+
+export interface EquipmentListResponse {
+  equipments: EquipmentState[];
+}
+
+export interface ForgeRecipeSummary {
+  recipe_id: string;
+  name: string;
+  route: CultivationRoute | "all";
+  equipment_id: string;
+  equipment_type: string;
+  rarity: EquipmentRarity;
+  materials: Array<{ item_id: string; name: string; count: number }>;
+  spirit_stone_cost: string;
+}
+
+export interface ForgeRecipeListResponse {
+  recipes: ForgeRecipeSummary[];
+}
+
+export interface ForgeCraftRequest {
+  recipe_id: string;
+}
+
+export interface EquipmentOperationResponse {
+  record_id: string;
+  operation_type: "forge" | "refine" | "inscribe" | "decompose" | "lock";
+  equipment: EquipmentState | null;
+  rewards?: RewardBundle;
+  wallet?: PlayerWalletState;
+  bag?: BagSummaryResponse;
+}
+
+export interface EquipmentOperationRecordState {
+  record_id: string;
+  equipment_instance_id: string | null;
+  operation_type: string;
+  materials: RewardBundle;
+  result: Record<string, unknown>;
+  config_version: string;
+  created_at: string;
+}
+
+export interface EquipmentOperationRecordListResponse {
+  records: EquipmentOperationRecordState[];
+}
+
+export interface EquipmentTargetRequest {
+  equipment_instance_id: string;
+}
+
+export interface EquipmentInscribeRequest extends EquipmentTargetRequest {
+  affix_id: string;
+}
+
+export interface SetEquipmentLockRequest extends EquipmentTargetRequest {
+  locked: boolean;
+}
+
+export interface SkillSummary {
+  skill_id: string;
+  name: string;
+  route: CultivationRoute | "all";
+  skill_type: "active" | "treasure";
+  cooldown_rounds: number;
+  priority_hint: number;
+  description: string;
+}
+
+export interface SkillLoadoutResponse {
+  active_skill_ids: string[];
+  treasure_skill_id: string;
+  auto_priority: string[];
+  available_skills: SkillSummary[];
+}
+
+export interface SaveSkillLoadoutRequest {
+  active_skill_ids: string[];
+  treasure_skill_id: string;
+  auto_priority?: string[];
+}
+
 export interface GameOverviewResponse {
   profile: PlayerProfileResponse;
   cultivation: CultivationStatus | null;
@@ -300,7 +515,11 @@ export type ConfigType =
   | "world"
   | "task"
   | "battle"
-  | "cave";
+  | "cave"
+  | "pill"
+  | "forge"
+  | "skill"
+  | "bag";
 
 export interface ConfigEnvelope<TPayload = Record<string, unknown>> {
   config_type: string;

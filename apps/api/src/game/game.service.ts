@@ -7,6 +7,7 @@ import type {
   BreakthroughResponse,
   CaveCollectResponse,
   CultivationClaimResponse,
+  CultivationRoute,
   CultivationStatus,
   ExploreRequest,
   ExploreResponse,
@@ -23,12 +24,14 @@ import type {
   PlayerActionState,
   PlayerCaveState,
   PlayerProgress,
+  PlayerSkillLoadout,
   PlayerWallet,
   Prisma,
 } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
 import { hashRequestBody } from "../platform/utils/hash";
 import { toPlayerProfileResponse } from "../player/player.mapper";
+import { getDefaultSkillLoadout, getSkillName } from "../production/production.constants";
 import {
   createInitialTaskRows,
   defaultEraId,
@@ -688,12 +691,18 @@ export class GameService {
       },
     );
 
+    const loadout = await tx.playerSkillLoadout.findUnique({
+      where: { playerId: player.playerId },
+    });
+    const skillNames = getCombatSkillNames(player.route, loadout);
     const battleLog: BattleRoundLog[] = createBattleRoundLog({
       playerName: player.name,
       enemyName: config.enemyName,
       damageDone,
       damageTaken,
       result,
+      activeSkillName: skillNames.activeSkillName,
+      treasureSkillName: skillNames.treasureSkillName,
     });
     const battle = await tx.battleLog.create({
       data: {
@@ -981,6 +990,8 @@ function createBattleRoundLog(input: {
   damageDone: number;
   damageTaken: number;
   result: BattleSummary["result"];
+  activeSkillName: string;
+  treasureSkillName: string;
 }): BattleRoundLog[] {
   const enemyRemainingHp = Math.max(0, input.result === "win" ? 0 : input.damageTaken);
 
@@ -988,7 +999,7 @@ function createBattleRoundLog(input: {
     {
       round: 1,
       actor: input.playerName,
-      skill: "引气诀",
+      skill: input.activeSkillName,
       damage: Math.floor(input.damageDone * 0.55),
       target_hp: Math.max(0, input.damageDone - Math.floor(input.damageDone * 0.55)),
     },
@@ -1002,9 +1013,35 @@ function createBattleRoundLog(input: {
     {
       round: 3,
       actor: input.playerName,
-      skill: "本命法光",
+      skill: input.treasureSkillName,
       damage: Math.ceil(input.damageDone * 0.45),
       target_hp: enemyRemainingHp,
     },
   ];
+}
+
+function getCombatSkillNames(
+  route: string,
+  loadout: PlayerSkillLoadout | null,
+): { activeSkillName: string; treasureSkillName: string } {
+  const fallback = getDefaultSkillLoadout(route as CultivationRoute);
+  const activeSkillIds = normalizeStringArray(loadout?.activeSkillIds) ?? fallback.active_skill_ids;
+  const autoPriority = normalizeStringArray(loadout?.autoPriority) ?? fallback.auto_priority;
+  const treasureSkillId = loadout?.treasureSkillId ?? fallback.treasure_skill_id;
+  const activeSkillId =
+    autoPriority.find((skillId) => activeSkillIds.includes(skillId)) ?? activeSkillIds[0];
+
+  return {
+    activeSkillName: getSkillName(activeSkillId),
+    treasureSkillName: getSkillName(treasureSkillId),
+  };
+}
+
+function normalizeStringArray(value: Prisma.JsonValue | undefined): string[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const items = value.filter((item): item is string => typeof item === "string");
+  return items.length ? items : null;
 }

@@ -3,11 +3,16 @@
 import { GameClient } from "@nextday/game-client";
 import { cultivationRouteLabels } from "@nextday/game-rules";
 import type {
+  AlchemyRecipeListResponse,
   ApiResponse,
+  BagSummaryResponse,
+  EquipmentListResponse,
+  ForgeRecipeListResponse,
   GameOverviewResponse,
   HealthStatus,
   LoginResponse,
   PlayerProfileResponse,
+  SkillLoadoutResponse,
   TaskState,
 } from "@nextday/shared";
 import { Button, StatusBadge } from "@nextday/ui";
@@ -26,6 +31,11 @@ export default function HomePage() {
   const [login, setLogin] = useState<LoginResponse | null>(null);
   const [profile, setProfile] = useState<PlayerProfileResponse | null>(null);
   const [overview, setOverview] = useState<GameOverviewResponse | null>(null);
+  const [bag, setBag] = useState<BagSummaryResponse | null>(null);
+  const [equipment, setEquipment] = useState<EquipmentListResponse | null>(null);
+  const [alchemyRecipes, setAlchemyRecipes] = useState<AlchemyRecipeListResponse | null>(null);
+  const [forgeRecipes, setForgeRecipes] = useState<ForgeRecipeListResponse | null>(null);
+  const [skills, setSkills] = useState<SkillLoadoutResponse | null>(null);
   const [playerName, setPlayerName] = useState("云游修士");
   const [route, setRoute] = useState<RouteValue>("qi");
   const [message, setMessage] = useState("尚未登录");
@@ -33,7 +43,10 @@ export default function HomePage() {
 
   const client = useMemo(() => createClient(token ?? undefined), [token]);
   const activeProfile = overview?.profile ?? profile;
+  const activePlayerId = overview?.profile.player?.player_id ?? null;
   const completedTasks = overview?.tasks.filter((task) => task.status === "completed") ?? [];
+  const firstPill = bag?.items.find((item) => item.category === "pill" && !item.locked);
+  const firstEquipment = equipment?.equipments[0];
 
   useEffect(() => {
     let ignore = false;
@@ -95,6 +108,34 @@ export default function HomePage() {
     };
   }, [token]);
 
+  useEffect(() => {
+    if (!token || !activePlayerId) {
+      return;
+    }
+
+    let ignore = false;
+    loadProduction(createClient(token))
+      .then((state) => {
+        if (ignore) {
+          return;
+        }
+        setBag(state.bag);
+        setEquipment(state.equipment);
+        setAlchemyRecipes(state.alchemyRecipes);
+        setForgeRecipes(state.forgeRecipes);
+        setSkills(state.skills);
+      })
+      .catch(() => {
+        if (!ignore) {
+          setMessage("生产成长状态读取失败");
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [token, activePlayerId]);
+
   async function handleGuestLogin() {
     await runAction("游客登录", async () => {
       const response = await client.guestLogin({
@@ -140,7 +181,21 @@ export default function HomePage() {
     ensureOk(response);
     setOverview(response.data);
     setProfile(response.data.profile);
+    await refreshProduction();
     setMessage(successMessage);
+  }
+
+  async function refreshProduction() {
+    if (!token) {
+      return;
+    }
+
+    const state = await loadProduction(createClient(token));
+    setBag(state.bag);
+    setEquipment(state.equipment);
+    setAlchemyRecipes(state.alchemyRecipes);
+    setForgeRecipes(state.forgeRecipes);
+    setSkills(state.skills);
   }
 
   async function handleClaimCultivation() {
@@ -189,6 +244,101 @@ export default function HomePage() {
     });
   }
 
+  async function handleCraftAlchemy() {
+    const recipe = alchemyRecipes?.recipes[0];
+    if (!recipe) {
+      setMessage("暂无可用丹方");
+      return;
+    }
+
+    await runAction("炼丹", async () => {
+      const response = await client.alchemyCraft(
+        { recipe_id: recipe.recipe_id },
+        createIdempotencyKey("web_alchemy"),
+      );
+      ensureOk(response);
+      await refreshOverview(`炼丹${response.data.record.success ? "成功" : "失败返还"}`);
+    });
+  }
+
+  async function handleUsePill() {
+    if (!firstPill) {
+      setMessage("背包中暂无可服用丹药");
+      return;
+    }
+
+    await runAction("服丹", async () => {
+      const response = await client.pillUse(
+        { item_instance_id: firstPill.item_instance_id },
+        createIdempotencyKey("web_pill"),
+      );
+      ensureOk(response);
+      await refreshOverview(`服丹获得 ${response.data.effect_value} 修为`);
+    });
+  }
+
+  async function handleCraftForge() {
+    const recipe = forgeRecipes?.recipes[0];
+    if (!recipe) {
+      setMessage("暂无可用炼器配方");
+      return;
+    }
+
+    await runAction("炼器", async () => {
+      const response = await client.forgeCraft(
+        { recipe_id: recipe.recipe_id },
+        createIdempotencyKey("web_forge"),
+      );
+      ensureOk(response);
+      await refreshOverview(`炼成 ${response.data.equipment?.name ?? "法宝"}`);
+    });
+  }
+
+  async function handleRefineEquipment() {
+    if (!firstEquipment) {
+      setMessage("暂无可淬炼法宝");
+      return;
+    }
+
+    await runAction("淬炼", async () => {
+      const response = await client.equipmentRefine(
+        { equipment_instance_id: firstEquipment.equipment_instance_id },
+        createIdempotencyKey("web_refine"),
+      );
+      ensureOk(response);
+      await refreshOverview(`淬炼 ${response.data.equipment?.name ?? "法宝"}`);
+    });
+  }
+
+  async function handleSaveSkillPreset() {
+    if (!skills) {
+      setMessage("技能配置尚未读取");
+      return;
+    }
+
+    const activeSkills = skills.available_skills
+      .filter((skill) => skill.skill_type === "active")
+      .slice(0, 3)
+      .map((skill) => skill.skill_id);
+    const treasureSkill =
+      skills.available_skills.find((skill) => skill.skill_type === "treasure")?.skill_id ??
+      skills.treasure_skill_id;
+
+    await runAction("保存技能", async () => {
+      const response = await client.saveSkillLoadout(
+        {
+          active_skill_ids: activeSkills,
+          treasure_skill_id: treasureSkill,
+          auto_priority: [treasureSkill, ...activeSkills.slice().reverse()],
+        },
+        createIdempotencyKey("web_skill"),
+      );
+      ensureOk(response);
+      setSkills(response.data);
+      setMessage("技能预设已保存，下一次探索会写入战报");
+    });
+  }
+
   async function runAction(label: string, action: () => Promise<void>) {
     setBusy(true);
     setMessage(`${label}中`);
@@ -205,7 +355,7 @@ export default function HomePage() {
     <main className="shell">
       <section className="topbar">
         <div>
-          <p className="eyebrow">M2 核心循环</p>
+          <p className="eyebrow">M3 生产成长</p>
           <h1>择日飞升</h1>
         </div>
         <div className="status-row">
@@ -374,6 +524,54 @@ export default function HomePage() {
             </section>
           </section>
 
+          <section className="panel" aria-label="生产成长">
+            <div className="section-title">
+              <h2>生产成长</h2>
+              <span>炼丹、炼器、背包与技能预设</span>
+            </div>
+            <div className="production-grid">
+              <article className="production-box">
+                <strong>背包</strong>
+                <span>
+                  材料 {bag?.items.filter((item) => item.category !== "pill").length ?? 0} 类 · 丹药{" "}
+                  {bag?.items.filter((item) => item.category === "pill").length ?? 0} 类
+                </span>
+                <div className="production-actions">
+                  <Button disabled={busy || !overview} onClick={handleCraftAlchemy}>
+                    炼丹
+                  </Button>
+                  <Button disabled={busy || !firstPill} onClick={handleUsePill}>
+                    服丹
+                  </Button>
+                </div>
+              </article>
+              <article className="production-box">
+                <strong>法宝</strong>
+                <span>已有 {equipment?.equipments.length ?? 0} 件 · 炼器不产出九大古宝</span>
+                <div className="production-actions">
+                  <Button disabled={busy || !overview} onClick={handleCraftForge}>
+                    炼器
+                  </Button>
+                  <Button disabled={busy || !firstEquipment} onClick={handleRefineEquipment}>
+                    淬炼
+                  </Button>
+                </div>
+              </article>
+              <article className="production-box">
+                <strong>技能</strong>
+                <span>
+                  主动 {skills?.active_skill_ids.length ?? 0}/3 · 本命{" "}
+                  {skillName(skills, skills?.treasure_skill_id)}
+                </span>
+                <div className="production-actions">
+                  <Button disabled={busy || !skills} onClick={handleSaveSkillPreset}>
+                    保存预设
+                  </Button>
+                </div>
+              </article>
+            </div>
+          </section>
+
           <section className="panel" aria-label="最近战报">
             <div className="section-title">
               <h2>最近战报</h2>
@@ -407,7 +605,7 @@ function createClient(authToken?: string): GameClient {
   return new GameClient({
     baseUrl: apiBaseUrl,
     token: authToken,
-    clientVersion: "nextday-web-m2",
+    clientVersion: "nextday-web-m3",
   });
 }
 
@@ -433,6 +631,31 @@ async function loadGame(client: GameClient, token: string) {
   return { login, profile: overviewResponse.data.profile, overview: overviewResponse.data };
 }
 
+async function loadProduction(client: GameClient) {
+  const [bagResponse, equipmentResponse, alchemyResponse, forgeResponse, skillResponse] =
+    await Promise.all([
+      client.bagItems(),
+      client.equipmentList(),
+      client.alchemyRecipes(),
+      client.forgeRecipes(),
+      client.skillLoadout(),
+    ]);
+
+  ensureOk(bagResponse);
+  ensureOk(equipmentResponse);
+  ensureOk(alchemyResponse);
+  ensureOk(forgeResponse);
+  ensureOk(skillResponse);
+
+  return {
+    bag: bagResponse.data,
+    equipment: equipmentResponse.data,
+    alchemyRecipes: alchemyResponse.data,
+    forgeRecipes: forgeResponse.data,
+    skills: skillResponse.data,
+  };
+}
+
 function MetricCard({ label, value, detail }: { label: string; value: string; detail: string }) {
   return (
     <article className="metric-card">
@@ -451,6 +674,14 @@ function taskTypeLabel(taskType: TaskState["task_type"]): string {
     chapter: "章节",
   };
   return labels[taskType];
+}
+
+function skillName(skills: SkillLoadoutResponse | null, skillId?: string): string {
+  if (!skills || !skillId) {
+    return "未配置";
+  }
+
+  return skills.available_skills.find((skill) => skill.skill_id === skillId)?.name ?? skillId;
 }
 
 function ensureOk<TData>(response: ApiResponse<TData>) {

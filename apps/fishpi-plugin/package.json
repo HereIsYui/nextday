@@ -9,7 +9,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@nextday/game-rules": "0.0.0"
+    "@nextday/game-client": "0.0.0",
+    "@nextday/game-rules": "0.0.0",
+    "@nextday/shared": "0.0.0"
   },
   "devDependencies": {}
 }

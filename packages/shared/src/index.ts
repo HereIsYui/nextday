@@ -1056,6 +1056,88 @@ export interface GameOverviewResponse {
   recent_battles: BattleSummary[];
 }
 
+export interface PluginStatusCardResponse {
+  player: PlayerSummary;
+  realm_text: string;
+  cultivation: {
+    current_value: string;
+    claimable_value: string;
+    can_breakthrough: boolean;
+  };
+  action_state: ActionState;
+  offline_minutes: number;
+  wallet: PlayerWalletState;
+  reminders: string[];
+  monthly_grant_count: number;
+  navigation_links: PluginNavigationLink[];
+}
+
+export interface PluginPanelTaskState {
+  task_id: string;
+  title: string;
+  status: TaskState["status"];
+  progress_text: string;
+}
+
+export interface PluginExpandedPanelResponse {
+  status: PluginStatusCardResponse;
+  tasks: PluginPanelTaskState[];
+  cave: CaveState | null;
+  provinces: ProvinceSummary[];
+  towers: TowerStateSummary[];
+  recent_battles: BattleSummary[];
+  ancient_treasure: {
+    owned_count: number;
+    total_count: number;
+    available_draws: number;
+  };
+  monthly_cards: MonthlyCardStateSummary[];
+  sect: SectSummary | null;
+  boss: WorldBossStateSummary | null;
+}
+
+export interface PluginQuickClaimRequest {
+  include_tasks?: boolean;
+}
+
+export interface PluginQuickClaimItem {
+  action: "cultivation" | "cave" | "task";
+  label: string;
+  record_id: string | null;
+  status: "claimed" | "skipped";
+  message: string;
+}
+
+export interface PluginQuickClaimResponse {
+  record_id: string;
+  items: PluginQuickClaimItem[];
+  status: PluginStatusCardResponse;
+}
+
+export type PluginPresetId = "explore_ji_once" | "tower_seal_once" | "sect_patrol";
+
+export interface PluginSubmitPresetRequest {
+  preset_id: PluginPresetId | string;
+}
+
+export interface PluginSubmitPresetResponse {
+  record_id: string;
+  preset_id: PluginPresetId;
+  label: string;
+  result: unknown;
+  status: PluginStatusCardResponse;
+}
+
+export interface PluginNavigationLink {
+  key: "web" | "h5" | "tasks" | "towers" | "commerce";
+  label: string;
+  url: string;
+}
+
+export interface PluginNavigationLinksResponse {
+  links: PluginNavigationLink[];
+}
+
 export type ConfigType =
   | "realm"
   | "item"

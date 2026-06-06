@@ -52,6 +52,13 @@ import type {
   PillUseRequest,
   PillUseResponse,
   PlayerProfileResponse,
+  PluginExpandedPanelResponse,
+  PluginNavigationLinksResponse,
+  PluginQuickClaimRequest,
+  PluginQuickClaimResponse,
+  PluginStatusCardResponse,
+  PluginSubmitPresetRequest,
+  PluginSubmitPresetResponse,
   ProvinceSummary,
   PurchaseMonthlyCardRequest,
   PurchaseMonthlyCardResponse,
@@ -648,6 +655,40 @@ export class GameClient {
         },
       },
     );
+  }
+
+  pluginStatusCard(): Promise<ApiResponse<PluginStatusCardResponse>> {
+    return this.get<PluginStatusCardResponse>("/api/plugin/status-card");
+  }
+
+  pluginExpandedPanel(): Promise<ApiResponse<PluginExpandedPanelResponse>> {
+    return this.get<PluginExpandedPanelResponse>("/api/plugin/expanded-panel");
+  }
+
+  pluginQuickClaim(
+    body: PluginQuickClaimRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<PluginQuickClaimResponse>> {
+    return this.post<PluginQuickClaimResponse, PluginQuickClaimRequest>(
+      "/api/plugin/quick-claim",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  pluginSubmitPreset(
+    body: PluginSubmitPresetRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<PluginSubmitPresetResponse>> {
+    return this.post<PluginSubmitPresetResponse, PluginSubmitPresetRequest>(
+      "/api/plugin/submit-preset",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  pluginNavigationLinks(): Promise<ApiResponse<PluginNavigationLinksResponse>> {
+    return this.get<PluginNavigationLinksResponse>("/api/plugin/navigation-links");
   }
 
   private async request<TData>(

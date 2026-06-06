@@ -1,0 +1,19 @@
+{
+  "name": "择日飞升",
+  "short_name": "择日飞升",
+  "description": "九州异步文字修仙游戏",
+  "start_url": "/?mode=h5",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f6f1",
+  "theme_color": "#14383b",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

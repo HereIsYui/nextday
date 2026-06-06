@@ -13,6 +13,7 @@ import { IdempotencyKeyMiddleware } from "./platform/idempotency-key.middleware"
 import { RequestContextMiddleware } from "./platform/request-context.middleware";
 import { TransientRateLimitMiddleware } from "./platform/transient-rate-limit.middleware";
 import { PlayerModule } from "./player/player.module";
+import { PluginModule } from "./plugin/plugin.module";
 import { ProductionModule } from "./production/production.module";
 import { RiskModule } from "./risk/risk.module";
 
@@ -28,6 +29,7 @@ import { RiskModule } from "./risk/risk.module";
     MultiplayerModule,
     CommerceModule,
     RiskModule,
+    PluginModule,
   ],
   controllers: [HealthController],
 })

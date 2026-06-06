@@ -25,17 +25,27 @@ import type {
   WorldBossResponse,
 } from "@nextday/shared";
 import { Button, StatusBadge } from "@nextday/ui";
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 
 type HealthText = "检测中" | "正常" | "不可用";
 type RouteValue = "qi" | "body";
+type ActiveTab = "overview" | "growth" | "multiplayer" | "market" | "battle";
 
 const tokenStorageKey = "nextday_m1_token";
 const deviceStorageKey = "nextday_m1_device_id";
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
 
+const navItems: Array<{ key: ActiveTab; label: string }> = [
+  { key: "overview", label: "总览" },
+  { key: "growth", label: "成长" },
+  { key: "multiplayer", label: "多人" },
+  { key: "market", label: "市肆" },
+  { key: "battle", label: "战报" },
+];
+
 export default function HomePage() {
   const [healthText, setHealthText] = useState<HealthText>("检测中");
+  const [activeTab, setActiveTab] = useState<ActiveTab>("overview");
   const [token, setToken] = useState<string | null>(null);
   const [login, setLogin] = useState<LoginResponse | null>(null);
   const [profile, setProfile] = useState<PlayerProfileResponse | null>(null);
@@ -105,6 +115,11 @@ export default function HomePage() {
     const savedToken = localStorage.getItem(tokenStorageKey);
     if (savedToken) {
       setToken(savedToken);
+    }
+
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    if (isActiveTab(tab)) {
+      setActiveTab(tab);
     }
   }, []);
 
@@ -350,6 +365,18 @@ export default function HomePage() {
       );
       ensureOk(response);
       await refreshOverview(`领取任务：${response.data.task.title}`);
+    });
+  }
+
+  async function handleQuickClaim() {
+    await runAction("一键领取", async () => {
+      const response = await client.pluginQuickClaim(
+        { include_tasks: true },
+        createIdempotencyKey("web_quick_claim"),
+      );
+      ensureOk(response);
+      const claimedCount = response.data.items.filter((item) => item.status === "claimed").length;
+      await refreshOverview(`一键领取完成 ${claimedCount} 项`);
     });
   }
 
@@ -678,11 +705,19 @@ export default function HomePage() {
   }
 
   return (
-    <main className="shell">
+    <main className="shell app-shell">
       <section className="topbar">
         <div>
-          <p className="eyebrow">M5 商业化闭环</p>
+          <p className="eyebrow">M7 前端体验闭环</p>
           <h1>择日飞升</h1>
+          {activeProfile?.player ? (
+            <p className="subline">
+              {activeProfile.player.name} · {cultivationRouteLabels[activeProfile.player.route]} ·
+              第 {activeProfile.progress?.chapter_id ?? 1} 章
+            </p>
+          ) : (
+            <p className="subline">九州异步修仙文字游戏</p>
+          )}
         </div>
         <div className="status-row">
           <StatusBadge
@@ -696,58 +731,40 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="toolbar" aria-label="快捷操作">
-        <Button disabled={busy} onClick={handleGuestLogin}>
-          游客登录
-        </Button>
-        <Button disabled={busy || !activeProfile?.player} onClick={() => refreshOverview()}>
-          刷新状态
-        </Button>
-        <Button disabled={busy || !overview} onClick={handleClaimCultivation}>
-          领取修为
-        </Button>
-        <Button
-          disabled={busy || !overview?.cultivation?.can_breakthrough}
-          onClick={handleBreakthrough}
-        >
-          突破
-        </Button>
-        <Button disabled={busy || !overview} onClick={() => handleExplore(1)}>
-          探索 1 次
-        </Button>
-        <Button disabled={busy || !overview} onClick={() => handleExplore(3)}>
-          探索 3 次
-        </Button>
-        <Button disabled={busy || !overview} onClick={() => handleExplore(5)}>
-          批量 5 次
-        </Button>
-        <Button disabled={busy || !overview} onClick={handleCollectCave}>
-          洞府收取
-        </Button>
-      </section>
-
       {!activeProfile?.player ? (
-        <section className="panel" aria-label="创建角色">
+        <section className="onboarding-panel" aria-label="进入游戏">
           <div className="section-title">
-            <h2>创建角色</h2>
-            <span>选择第一条修行路线后即可进入冀州</span>
+            <h2>进入冀州</h2>
+            <span>{token ? "创建角色后开始今日修行" : "先使用开发期游客登录"}</span>
+          </div>
+          <div className="login-actions">
+            <Button disabled={busy} onClick={handleGuestLogin}>
+              游客登录
+            </Button>
+            <StatusBadge tone={token ? "success" : "neutral"}>
+              {token ? "已登录" : "未登录"}
+            </StatusBadge>
           </div>
           <form className="create-form" onSubmit={handleCreatePlayer}>
-            <input
-              aria-label="角色名"
-              maxLength={16}
-              minLength={2}
-              onChange={(event) => setPlayerName(event.target.value)}
-              value={playerName}
-            />
-            <select
-              aria-label="修行路线"
-              onChange={(event) => setRoute(event.target.value as RouteValue)}
-              value={route}
-            >
-              <option value="qi">练气</option>
-              <option value="body">炼体</option>
-            </select>
+            <label>
+              <span>角色名</span>
+              <input
+                maxLength={16}
+                minLength={2}
+                onChange={(event) => setPlayerName(event.target.value)}
+                value={playerName}
+              />
+            </label>
+            <label>
+              <span>路线</span>
+              <select
+                onChange={(event) => setRoute(event.target.value as RouteValue)}
+                value={route}
+              >
+                <option value="qi">练气</option>
+                <option value="body">炼体</option>
+              </select>
+            </label>
             <Button disabled={busy || !token} type="submit">
               创建角色
             </Button>
@@ -757,14 +774,9 @@ export default function HomePage() {
         <>
           <section className="overview-grid" aria-label="修行总览">
             <MetricCard
-              label="角色"
-              value={activeProfile.player.name}
-              detail={cultivationRouteLabels[activeProfile.player.route]}
-            />
-            <MetricCard
               label="境界"
               value={`${activeProfile.player.current_realm} 境 ${activeProfile.player.current_level} 层`}
-              detail={`章节 ${activeProfile.progress?.chapter_id ?? 1}`}
+              detail={overview?.cultivation?.can_breakthrough ? "可突破" : "修行中"}
             />
             <MetricCard
               label="修为"
@@ -781,316 +793,372 @@ export default function HomePage() {
               detail={`每小时 +${overview?.action_state?.action_point_restore_per_hour ?? 0}`}
             />
             <MetricCard
-              label="灵石"
-              value={activeProfile.wallet?.spirit_stone ?? "0"}
-              detail="绑定资产"
-            />
-            <MetricCard
-              label="仙玉"
-              value={`${activeProfile.wallet?.jade_paid ?? "0"} / ${activeProfile.wallet?.jade_bound ?? "0"}`}
-              detail="付费 / 绑定"
-            />
-            <MetricCard
               label="洞府"
               value={`${overview?.cave?.claimable_minutes ?? 0} 分钟`}
-              detail={`预估灵石 ${overview?.cave?.preview_rewards.spirit_stone ?? "0"}`}
+              detail={`灵石 ${overview?.cave?.preview_rewards.spirit_stone ?? "0"}`}
+            />
+            <MetricCard
+              label="资产"
+              value={activeProfile.wallet?.spirit_stone ?? "0"}
+              detail={`仙玉 ${activeProfile.wallet?.jade_paid ?? "0"} / ${activeProfile.wallet?.jade_bound ?? "0"}`}
             />
           </section>
 
-          <section className="main-grid">
-            <section className="panel" aria-label="九州地图">
-              <div className="section-title">
-                <h2>九州地图</h2>
-                <span>首版开放四州</span>
-              </div>
-              <div className="province-grid">
-                {overview?.provinces.map((province) => (
-                  <article
-                    className={province.unlocked ? "province" : "province locked"}
-                    key={province.province_id}
-                  >
-                    <div className="province-head">
-                      <strong>{province.name}</strong>
-                      <StatusBadge tone={province.unlocked ? "success" : "neutral"}>
-                        {province.unlocked ? "已开放" : `章节 ${province.chapter_required}`}
-                      </StatusBadge>
-                    </div>
-                    <span>{province.tower_name}</span>
-                    <span>{province.recommended_action}</span>
-                    <div className="mini-stats">
-                      <span>探索 {province.exploration_count}</span>
-                      <span>魔染 {province.corruption}</span>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
-
-            <section className="panel" aria-label="今日任务">
-              <div className="section-title">
-                <h2>任务</h2>
-                <span>{completedTasks.length} 个可领取</span>
-              </div>
-              <div className="task-list">
-                {overview?.tasks.slice(0, 7).map((task) => (
-                  <article className="task-row" key={task.task_state_id}>
-                    <div>
-                      <strong>{task.title}</strong>
-                      <span>
-                        {task.progress_value}/{task.target_value} · {taskTypeLabel(task.task_type)}
-                      </span>
-                    </div>
-                    {task.status === "completed" ? (
-                      <Button disabled={busy} onClick={() => handleClaimTask(task)}>
-                        领取
-                      </Button>
-                    ) : (
-                      <StatusBadge tone={task.status === "claimed" ? "success" : "neutral"}>
-                        {task.status === "claimed" ? "已领" : "进行中"}
-                      </StatusBadge>
-                    )}
-                  </article>
-                ))}
-              </div>
-            </section>
-          </section>
-
-          <section className="panel" aria-label="生产成长">
-            <div className="section-title">
-              <h2>生产成长</h2>
-              <span>炼丹、炼器、背包与技能预设</span>
+          <section className="daily-strip" aria-label="今日核心操作">
+            <div>
+              <strong>今日核心</strong>
+              <span>{completedTasks.length} 个任务可领 · 30 分钟内完成基础收益</span>
             </div>
-            <div className="production-grid">
-              <article className="production-box">
-                <strong>背包</strong>
-                <span>
-                  材料 {bag?.items.filter((item) => item.category !== "pill").length ?? 0} 类 · 丹药{" "}
-                  {bag?.items.filter((item) => item.category === "pill").length ?? 0} 类
-                </span>
-                <div className="production-actions">
-                  <Button disabled={busy || !overview} onClick={handleCraftAlchemy}>
-                    炼丹
-                  </Button>
-                  <Button disabled={busy || !firstPill} onClick={handleUsePill}>
-                    服丹
-                  </Button>
-                </div>
-              </article>
-              <article className="production-box">
-                <strong>法宝</strong>
-                <span>已有 {equipment?.equipments.length ?? 0} 件 · 炼器不产出九大古宝</span>
-                <div className="production-actions">
-                  <Button disabled={busy || !overview} onClick={handleCraftForge}>
-                    炼器
-                  </Button>
-                  <Button disabled={busy || !firstEquipment} onClick={handleRefineEquipment}>
-                    淬炼
-                  </Button>
-                </div>
-              </article>
-              <article className="production-box">
-                <strong>技能</strong>
-                <span>
-                  主动 {skills?.active_skill_ids.length ?? 0}/3 · 本命{" "}
-                  {skillName(skills, skills?.treasure_skill_id)}
-                </span>
-                <div className="production-actions">
-                  <Button disabled={busy || !skills} onClick={handleSaveSkillPreset}>
-                    保存预设
-                  </Button>
-                </div>
-              </article>
+            <div className="quick-actions">
+              <Button disabled={busy || !overview} onClick={handleQuickClaim}>
+                一键领取
+              </Button>
+              <Button disabled={busy || !overview} onClick={() => handleExplore(5)}>
+                批量探索
+              </Button>
+              <Button
+                disabled={busy || !overview?.cultivation?.can_breakthrough}
+                onClick={handleBreakthrough}
+              >
+                突破
+              </Button>
+              <Button disabled={busy || !activeProfile?.player} onClick={() => refreshOverview()}>
+                刷新
+              </Button>
             </div>
           </section>
 
-          <section className="panel" aria-label="多人玩法">
-            <div className="section-title">
-              <h2>多人玩法</h2>
-              <span>九塔、Boss、宗门、资源点与排行</span>
-            </div>
-            <div className="production-grid">
-              <article className="production-box">
-                <strong>九塔</strong>
-                <span>
-                  {firstTower?.tower_name ?? "未读取"} · 完整度 {firstTower?.integrity ?? 0} · 镇封{" "}
-                  {firstTower?.seal_progress ?? 0}
-                </span>
-                <div className="production-actions">
-                  <Button disabled={busy || !firstTower} onClick={handleTowerAction}>
-                    镇封提交
-                  </Button>
-                </div>
-              </article>
-              <article className="production-box">
-                <strong>公共 Boss</strong>
-                <span>
-                  {boss?.boss.name ?? "未读取"} · 阶段 {boss?.boss.phase ?? 0} · 血量{" "}
-                  {boss?.boss.remaining_hp ?? 0}/{boss?.boss.total_hp ?? 0}
-                </span>
-                <div className="production-actions">
-                  <Button disabled={busy || !boss} onClick={handleChallengeBoss}>
-                    镜像挑战
-                  </Button>
-                </div>
-              </article>
-              <article className="production-box">
-                <strong>宗门</strong>
-                <span>
-                  {sect?.sect
-                    ? `${sect.sect.name} · 周贡献 ${sect.sect.my_contribution_weekly}`
-                    : "未入宗门"}
-                </span>
-                <div className="production-actions">
-                  <Button disabled={busy || !!sect?.sect} onClick={handleCreateSect}>
-                    创建宗门
-                  </Button>
-                  <Button disabled={busy || !sect?.sect} onClick={handleSectTask}>
-                    宗门任务
-                  </Button>
-                </div>
-              </article>
-              <article className="production-box">
-                <strong>PVP 与排行</strong>
-                <span>
-                  资源点 {firstResourcePoint?.name ?? "未读取"} · 个人榜{" "}
-                  {personalRank?.entries.length ?? 0} 人
-                </span>
-                <div className="production-actions">
-                  <Button disabled={busy || !pvpTarget} onClick={handlePvpAttack}>
-                    异步进攻
-                  </Button>
-                </div>
-              </article>
-            </div>
-          </section>
+          <nav className="tab-nav" aria-label="功能分区">
+            {navItems.map((item) => (
+              <button
+                aria-current={activeTab === item.key ? "page" : undefined}
+                className={activeTab === item.key ? "active" : ""}
+                key={item.key}
+                onClick={() => setActiveTab(item.key)}
+                type="button"
+              >
+                {item.label}
+              </button>
+            ))}
+          </nav>
 
-          <section className="panel" aria-label="商业化">
-            <div className="section-title">
-              <h2>市肆权益</h2>
-              <span>月卡、VIP、抽卡、便利与展示外观</span>
-            </div>
-            <div className="production-grid">
-              <article className="production-box">
-                <strong>月卡</strong>
-                <span>
-                  档位 {commerce?.effective_tier ?? "free"} · 古宝赠抽{" "}
-                  {commerce?.available_monthly_grants.reduce(
-                    (sum, grant) => sum + grant.draw_count - grant.used_count,
-                    0,
-                  ) ?? 0}
-                </span>
-                <div className="production-actions">
-                  <Button
-                    disabled={busy || !overview}
-                    onClick={() => handlePurchaseMonthly("small_monthly")}
-                  >
-                    小月卡
-                  </Button>
-                  <Button
-                    disabled={busy || !overview}
-                    onClick={() => handlePurchaseMonthly("large_monthly")}
-                  >
-                    大月卡
-                  </Button>
-                  <Button
-                    disabled={busy || !overview}
-                    onClick={() => handleClaimMonthly("small_monthly")}
-                  >
-                    领小月卡
-                  </Button>
-                  <Button
-                    disabled={busy || !overview}
-                    onClick={() => handleClaimMonthly("large_monthly")}
-                  >
-                    领大月卡
-                  </Button>
+          <section className="tab-surface" aria-live="polite">
+            {activeTab === "overview" ? (
+              <div className="main-grid">
+                <section className="panel" aria-label="九州地图">
+                  <div className="section-title">
+                    <h2>九州地图</h2>
+                    <span>首版开放四州</span>
+                  </div>
+                  <div className="province-grid">
+                    {overview?.provinces.map((province) => (
+                      <article
+                        className={province.unlocked ? "province" : "province locked"}
+                        key={province.province_id}
+                      >
+                        <div className="province-head">
+                          <strong>{province.name}</strong>
+                          <StatusBadge tone={province.unlocked ? "success" : "neutral"}>
+                            {province.unlocked ? "已开放" : `章节 ${province.chapter_required}`}
+                          </StatusBadge>
+                        </div>
+                        <span>{province.tower_name}</span>
+                        <span>{province.recommended_action}</span>
+                        <div className="mini-stats">
+                          <span>探索 {province.exploration_count}</span>
+                          <span>魔染 {province.corruption}</span>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="panel" aria-label="今日任务">
+                  <div className="section-title">
+                    <h2>任务</h2>
+                    <span>{completedTasks.length} 个可领取</span>
+                  </div>
+                  <div className="task-list">
+                    {overview?.tasks.slice(0, 7).map((task) => (
+                      <article className="task-row" key={task.task_state_id}>
+                        <div>
+                          <strong>{task.title}</strong>
+                          <span>
+                            {task.progress_value}/{task.target_value} ·{" "}
+                            {taskTypeLabel(task.task_type)}
+                          </span>
+                        </div>
+                        {task.status === "completed" ? (
+                          <Button disabled={busy} onClick={() => handleClaimTask(task)}>
+                            领取
+                          </Button>
+                        ) : (
+                          <StatusBadge tone={task.status === "claimed" ? "success" : "neutral"}>
+                            {task.status === "claimed" ? "已领" : "进行中"}
+                          </StatusBadge>
+                        )}
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              </div>
+            ) : null}
+
+            {activeTab === "growth" ? (
+              <section className="panel" aria-label="生产成长">
+                <div className="section-title">
+                  <h2>成长</h2>
+                  <span>炼丹、炼器、背包与技能预设</span>
                 </div>
-              </article>
-              <article className="production-box">
-                <strong>九大古宝</strong>
-                <span>
-                  已收集 {ownedTreasureCount}/9 ·{" "}
-                  {gachaPools?.pools
-                    .find((pool) => pool.pool_type === "ancient_treasure")
-                    ?.allowed_cost_types.join(" / ") ?? "月卡赠抽 / 残页"}
-                </span>
-                <div className="production-actions">
-                  <Button disabled={busy || !firstAncientGrant} onClick={handleDrawAncientTreasure}>
-                    赠抽古宝
-                  </Button>
-                  <Button disabled={busy || !overview} onClick={handleDrawPermanent}>
-                    常驻机缘
-                  </Button>
-                </div>
-              </article>
-              <article className="production-box">
-                <strong>VIP 与便利</strong>
-                <span>
-                  VIP {commerce?.vip.vip_level ?? 0} · 批量上限{" "}
-                  {commerce?.convenience.batch_sweep_limit ?? 5} · 奖励倍率 1
-                </span>
-                <div className="production-actions">
-                  <Button disabled={busy || !overview} onClick={() => handleSyncVip(3)}>
-                    VIP3
-                  </Button>
-                  <Button disabled={busy || !overview} onClick={() => handleSyncVip(4)}>
-                    VIP4
-                  </Button>
-                  <Button disabled={busy || !overview} onClick={handleBatchPreview}>
-                    便利预览
-                  </Button>
-                  <Button disabled={busy || !overview} onClick={handleAutomationQueue}>
-                    托管队列
-                  </Button>
-                </div>
-              </article>
-              <article className="production-box">
-                <strong>展示外观</strong>
-                <span>
-                  已拥有{" "}
-                  {appearances?.appearances.filter((appearance) => appearance.owned).length ?? 0} ·
-                  不提供战力
-                </span>
-                <div className="production-actions">
-                  <Button disabled={busy || !overview} onClick={handleClaimAppearance}>
-                    领取外观
-                  </Button>
-                  <Button
-                    disabled={
-                      busy || !appearances?.appearances.some((appearance) => appearance.owned)
+                <div className="production-grid">
+                  <ActionBox
+                    actions={
+                      <>
+                        <Button disabled={busy || !overview} onClick={handleCraftAlchemy}>
+                          炼丹
+                        </Button>
+                        <Button disabled={busy || !firstPill} onClick={handleUsePill}>
+                          服丹
+                        </Button>
+                      </>
                     }
-                    onClick={handleEquipAppearance}
-                  >
-                    装备外观
-                  </Button>
+                    detail={`材料 ${bag?.items.filter((item) => item.category !== "pill").length ?? 0} 类 · 丹药 ${bag?.items.filter((item) => item.category === "pill").length ?? 0} 类`}
+                    title="背包丹药"
+                  />
+                  <ActionBox
+                    actions={
+                      <>
+                        <Button disabled={busy || !overview} onClick={handleCraftForge}>
+                          炼器
+                        </Button>
+                        <Button disabled={busy || !firstEquipment} onClick={handleRefineEquipment}>
+                          淬炼
+                        </Button>
+                      </>
+                    }
+                    detail={`已有 ${equipment?.equipments.length ?? 0} 件 · 炼器不产出九大古宝`}
+                    title="法宝炼器"
+                  />
+                  <ActionBox
+                    actions={
+                      <Button disabled={busy || !skills} onClick={handleSaveSkillPreset}>
+                        保存预设
+                      </Button>
+                    }
+                    detail={`主动 ${skills?.active_skill_ids.length ?? 0}/3 · 本命 ${skillName(skills, skills?.treasure_skill_id)}`}
+                    title="技能"
+                  />
                 </div>
-              </article>
-            </div>
+              </section>
+            ) : null}
+
+            {activeTab === "multiplayer" ? (
+              <section className="panel" aria-label="多人玩法">
+                <div className="section-title">
+                  <h2>多人</h2>
+                  <span>九塔、Boss、宗门、资源点与排行</span>
+                </div>
+                <div className="production-grid">
+                  <ActionBox
+                    actions={
+                      <Button disabled={busy || !firstTower} onClick={handleTowerAction}>
+                        镇封提交
+                      </Button>
+                    }
+                    detail={`${firstTower?.tower_name ?? "未读取"} · 完整度 ${firstTower?.integrity ?? 0} · 镇封 ${firstTower?.seal_progress ?? 0}`}
+                    title="九塔"
+                  />
+                  <ActionBox
+                    actions={
+                      <Button disabled={busy || !boss} onClick={handleChallengeBoss}>
+                        镜像挑战
+                      </Button>
+                    }
+                    detail={`${boss?.boss.name ?? "未读取"} · 阶段 ${boss?.boss.phase ?? 0} · 血量 ${boss?.boss.remaining_hp ?? 0}/${boss?.boss.total_hp ?? 0}`}
+                    title="公共 Boss"
+                  />
+                  <ActionBox
+                    actions={
+                      <>
+                        <Button disabled={busy || !!sect?.sect} onClick={handleCreateSect}>
+                          创建宗门
+                        </Button>
+                        <Button disabled={busy || !sect?.sect} onClick={handleSectTask}>
+                          宗门任务
+                        </Button>
+                      </>
+                    }
+                    detail={
+                      sect?.sect
+                        ? `${sect.sect.name} · 周贡献 ${sect.sect.my_contribution_weekly}`
+                        : "未入宗门"
+                    }
+                    title="宗门"
+                  />
+                  <ActionBox
+                    actions={
+                      <Button disabled={busy || !pvpTarget} onClick={handlePvpAttack}>
+                        异步进攻
+                      </Button>
+                    }
+                    detail={`资源点 ${firstResourcePoint?.name ?? "未读取"} · 个人榜 ${personalRank?.entries.length ?? 0} 人`}
+                    title="PVP 与排行"
+                  />
+                </div>
+              </section>
+            ) : null}
+
+            {activeTab === "market" ? (
+              <section className="panel" aria-label="市肆权益">
+                <div className="section-title">
+                  <h2>市肆</h2>
+                  <span>月卡、VIP、抽卡、便利与展示外观</span>
+                </div>
+                <div className="production-grid">
+                  <ActionBox
+                    actions={
+                      <>
+                        <Button
+                          disabled={busy || !overview}
+                          onClick={() => handlePurchaseMonthly("small_monthly")}
+                        >
+                          小月卡
+                        </Button>
+                        <Button
+                          disabled={busy || !overview}
+                          onClick={() => handlePurchaseMonthly("large_monthly")}
+                        >
+                          大月卡
+                        </Button>
+                        <Button
+                          disabled={busy || !overview}
+                          onClick={() => handleClaimMonthly("small_monthly")}
+                        >
+                          领小月卡
+                        </Button>
+                        <Button
+                          disabled={busy || !overview}
+                          onClick={() => handleClaimMonthly("large_monthly")}
+                        >
+                          领大月卡
+                        </Button>
+                      </>
+                    }
+                    detail={`档位 ${commerce?.effective_tier ?? "free"} · 古宝赠抽 ${
+                      commerce?.available_monthly_grants.reduce(
+                        (sum, grant) => sum + grant.draw_count - grant.used_count,
+                        0,
+                      ) ?? 0
+                    }`}
+                    title="月卡"
+                  />
+                  <ActionBox
+                    actions={
+                      <>
+                        <Button
+                          disabled={busy || !firstAncientGrant}
+                          onClick={handleDrawAncientTreasure}
+                        >
+                          赠抽古宝
+                        </Button>
+                        <Button disabled={busy || !overview} onClick={handleDrawPermanent}>
+                          常驻机缘
+                        </Button>
+                      </>
+                    }
+                    detail={`已收集 ${ownedTreasureCount}/9 · ${
+                      gachaPools?.pools
+                        .find((pool) => pool.pool_type === "ancient_treasure")
+                        ?.allowed_cost_types.join(" / ") ?? "月卡赠抽 / 残页"
+                    }`}
+                    title="九大古宝"
+                  />
+                  <ActionBox
+                    actions={
+                      <>
+                        <Button disabled={busy || !overview} onClick={() => handleSyncVip(3)}>
+                          VIP3
+                        </Button>
+                        <Button disabled={busy || !overview} onClick={() => handleSyncVip(4)}>
+                          VIP4
+                        </Button>
+                        <Button disabled={busy || !overview} onClick={handleBatchPreview}>
+                          便利预览
+                        </Button>
+                        <Button disabled={busy || !overview} onClick={handleAutomationQueue}>
+                          托管队列
+                        </Button>
+                      </>
+                    }
+                    detail={`VIP ${commerce?.vip.vip_level ?? 0} · 批量上限 ${commerce?.convenience.batch_sweep_limit ?? 5} · 奖励倍率 1`}
+                    title="VIP 与便利"
+                  />
+                  <ActionBox
+                    actions={
+                      <>
+                        <Button disabled={busy || !overview} onClick={handleClaimAppearance}>
+                          领取外观
+                        </Button>
+                        <Button
+                          disabled={
+                            busy || !appearances?.appearances.some((appearance) => appearance.owned)
+                          }
+                          onClick={handleEquipAppearance}
+                        >
+                          装备外观
+                        </Button>
+                      </>
+                    }
+                    detail={`已拥有 ${
+                      appearances?.appearances.filter((appearance) => appearance.owned).length ?? 0
+                    } · 不提供战力`}
+                    title="展示外观"
+                  />
+                </div>
+              </section>
+            ) : null}
+
+            {activeTab === "battle" ? (
+              <section className="panel" aria-label="最近战报">
+                <div className="section-title">
+                  <h2>战报</h2>
+                  <span>普通探索自动结算</span>
+                </div>
+                <div className="battle-list">
+                  {overview?.recent_battles.length ? (
+                    overview.recent_battles.map((battle) => (
+                      <article className="battle-row" key={battle.battle_id}>
+                        <strong>
+                          {battle.enemy_name} · {battle.result === "win" ? "胜" : "败"}
+                        </strong>
+                        <span>
+                          {battle.rounds} 回合 · 造成 {battle.damage_done} · 承受{" "}
+                          {battle.damage_taken}
+                        </span>
+                        <span>奖励灵石 {battle.rewards.spirit_stone ?? "0"}</span>
+                      </article>
+                    ))
+                  ) : (
+                    <p className="empty">尚无战报，先探索冀州试试。</p>
+                  )}
+                </div>
+              </section>
+            ) : null}
           </section>
 
-          <section className="panel" aria-label="最近战报">
-            <div className="section-title">
-              <h2>最近战报</h2>
-              <span>普通探索自动结算</span>
-            </div>
-            <div className="battle-list">
-              {overview?.recent_battles.length ? (
-                overview.recent_battles.map((battle) => (
-                  <article className="battle-row" key={battle.battle_id}>
-                    <strong>
-                      {battle.enemy_name} · {battle.result === "win" ? "胜" : "败"}
-                    </strong>
-                    <span>
-                      {battle.rounds} 回合 · 造成 {battle.damage_done} · 承受 {battle.damage_taken}
-                    </span>
-                    <span>奖励灵石 {battle.rewards.spirit_stone ?? "0"}</span>
-                  </article>
-                ))
-              ) : (
-                <p className="empty">尚无战报，先探索冀州试试。</p>
-              )}
-            </div>
-          </section>
+          <nav className="bottom-nav" aria-label="移动端功能分区">
+            {navItems.map((item) => (
+              <button
+                aria-current={activeTab === item.key ? "page" : undefined}
+                className={activeTab === item.key ? "active" : ""}
+                key={item.key}
+                onClick={() => setActiveTab(item.key)}
+                type="button"
+              >
+                {item.label}
+              </button>
+            ))}
+          </nav>
         </>
       )}
     </main>
@@ -1101,7 +1169,7 @@ function createClient(authToken?: string): GameClient {
   return new GameClient({
     baseUrl: apiBaseUrl,
     token: authToken,
-    clientVersion: "nextday-web-m5",
+    clientVersion: "nextday-web-m7",
   });
 }
 
@@ -1208,6 +1276,24 @@ function MetricCard({ label, value, detail }: { label: string; value: string; de
   );
 }
 
+function ActionBox({
+  actions,
+  detail,
+  title,
+}: {
+  actions: ReactNode;
+  detail: string;
+  title: string;
+}) {
+  return (
+    <article className="production-box">
+      <strong>{title}</strong>
+      <span>{detail}</span>
+      <div className="production-actions">{actions}</div>
+    </article>
+  );
+}
+
 function taskTypeLabel(taskType: TaskState["task_type"]): string {
   const labels: Record<TaskState["task_type"], string> = {
     novice: "新手",
@@ -1224,6 +1310,16 @@ function skillName(skills: SkillLoadoutResponse | null, skillId?: string): strin
   }
 
   return skills.available_skills.find((skill) => skill.skill_id === skillId)?.name ?? skillId;
+}
+
+function isActiveTab(value: string | null): value is ActiveTab {
+  return (
+    value === "overview" ||
+    value === "growth" ||
+    value === "multiplayer" ||
+    value === "market" ||
+    value === "battle"
+  );
 }
 
 function ensureOk<TData>(response: ApiResponse<TData>) {

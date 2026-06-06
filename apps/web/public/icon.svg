@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="择日飞升">
+  <rect width="128" height="128" rx="24" fill="#14383b"/>
+  <path d="M27 83c17-2 24-12 31-34 7 22 14 32 31 34-15 4-24 13-31 31-7-18-16-27-31-31Z" fill="#f4d48a"/>
+  <path d="M52 28h24l8 18H44l8-18Z" fill="#ffffff"/>
+  <path d="M37 58h54" stroke="#ffffff" stroke-width="8" stroke-linecap="round"/>
+</svg>

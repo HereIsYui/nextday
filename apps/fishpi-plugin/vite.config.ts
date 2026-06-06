@@ -4,7 +4,9 @@ import { defineConfig } from "vite";
 export default defineConfig({
   resolve: {
     alias: {
+      "@nextday/game-client": resolve(__dirname, "../../packages/game-client/src/index.ts"),
       "@nextday/game-rules": resolve(__dirname, "../../packages/game-rules/src/index.ts"),
+      "@nextday/shared": resolve(__dirname, "../../packages/shared/src/index.ts"),
     },
   },
   build: {

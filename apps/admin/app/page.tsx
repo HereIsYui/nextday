@@ -1,27 +1,26 @@
 "use client";
 
-import { GameClient } from "@nextday/game-client";
 import { riskStatusLabels } from "@nextday/game-rules";
 import type { HealthStatus } from "@nextday/shared";
 import { StatusBadge } from "@nextday/ui";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function AdminHomePage() {
   const [apiAvailable, setApiAvailable] = useState<boolean | null>(null);
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
-  const client = useMemo(
-    () => new GameClient({ baseUrl: apiBaseUrl, clientVersion: "m0-admin" }),
-    [apiBaseUrl],
-  );
 
   useEffect(() => {
     let ignore = false;
 
-    client
-      .get<HealthStatus>("/health")
+    fetch("/api/health")
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("API 健康检查失败");
+        }
+        return response.json() as Promise<HealthStatus>;
+      })
       .then((response) => {
         if (!ignore) {
-          setApiAvailable(response.data.status === "ok");
+          setApiAvailable(response.status === "ok");
         }
       })
       .catch(() => {
@@ -33,7 +32,7 @@ export default function AdminHomePage() {
     return () => {
       ignore = true;
     };
-  }, [client]);
+  }, []);
 
   return (
     <main className="admin-shell">

@@ -1,29 +1,28 @@
 "use client";
 
-import { GameClient } from "@nextday/game-client";
 import { mvpProvinceLabels } from "@nextday/game-rules";
 import type { HealthStatus } from "@nextday/shared";
 import { Button, StatusBadge } from "@nextday/ui";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 type HealthText = "检测中" | "正常" | "不可用";
 
 export default function HomePage() {
   const [healthText, setHealthText] = useState<HealthText>("检测中");
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
-  const client = useMemo(
-    () => new GameClient({ baseUrl: apiBaseUrl, clientVersion: "m0-web" }),
-    [apiBaseUrl],
-  );
 
   useEffect(() => {
     let ignore = false;
 
-    client
-      .get<HealthStatus>("/health")
+    fetch("/api/health")
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("API 健康检查失败");
+        }
+        return response.json() as Promise<HealthStatus>;
+      })
       .then((response) => {
         if (!ignore) {
-          setHealthText(response.data.status === "ok" ? "正常" : "不可用");
+          setHealthText(response.status === "ok" ? "正常" : "不可用");
         }
       })
       .catch(() => {
@@ -35,7 +34,7 @@ export default function HomePage() {
     return () => {
       ignore = true;
     };
-  }, [client]);
+  }, []);
 
   return (
     <main className="shell">

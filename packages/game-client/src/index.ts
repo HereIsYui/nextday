@@ -3,14 +3,24 @@ import type {
   AdminPlayerLogsResponse,
   ApiResponse,
   AuthMeResponse,
+  BreakthroughResponse,
+  CaveCollectResponse,
   ConfigEnvelope,
   ConfigType,
   CreatePlayerRequest,
   CreatePlayerResponse,
+  CultivationClaimResponse,
+  ExploreRequest,
+  ExploreResponse,
+  GameOverviewResponse,
   GuestLoginRequest,
   LoginResponse,
   MockFishpiLoginRequest,
   PlayerProfileResponse,
+  ProvinceSummary,
+  TaskClaimRequest,
+  TaskClaimResponse,
+  TaskSummaryResponse,
 } from "@nextday/shared";
 
 export interface GameClientOptions {
@@ -77,6 +87,57 @@ export class GameClient {
 
   getConfig(configType: ConfigType): Promise<ApiResponse<ConfigEnvelope>> {
     return this.get<ConfigEnvelope>(`/api/config/${configType}`);
+  }
+
+  gameOverview(): Promise<ApiResponse<GameOverviewResponse>> {
+    return this.get<GameOverviewResponse>("/api/game/overview");
+  }
+
+  provinces(): Promise<ApiResponse<{ provinces: ProvinceSummary[] }>> {
+    return this.get<{ provinces: ProvinceSummary[] }>("/api/game/provinces");
+  }
+
+  claimCultivation(idempotencyKey: string): Promise<ApiResponse<CultivationClaimResponse>> {
+    return this.post<CultivationClaimResponse>(
+      "/api/game/cultivation/claim",
+      {},
+      {
+        idempotencyKey,
+      },
+    );
+  }
+
+  breakthrough(idempotencyKey: string): Promise<ApiResponse<BreakthroughResponse>> {
+    return this.post<BreakthroughResponse>(
+      "/api/game/cultivation/breakthrough",
+      {},
+      {
+        idempotencyKey,
+      },
+    );
+  }
+
+  explore(body: ExploreRequest, idempotencyKey: string): Promise<ApiResponse<ExploreResponse>> {
+    return this.post<ExploreResponse, ExploreRequest>("/api/game/explore", body, {
+      idempotencyKey,
+    });
+  }
+
+  tasks(): Promise<ApiResponse<TaskSummaryResponse>> {
+    return this.get<TaskSummaryResponse>("/api/game/tasks");
+  }
+
+  claimTask(
+    body: TaskClaimRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<TaskClaimResponse>> {
+    return this.post<TaskClaimResponse, TaskClaimRequest>("/api/game/tasks/claim", body, {
+      idempotencyKey,
+    });
+  }
+
+  collectCave(idempotencyKey: string): Promise<ApiResponse<CaveCollectResponse>> {
+    return this.post<CaveCollectResponse>("/api/game/cave/collect", {}, { idempotencyKey });
   }
 
   getPlayerLogs(input: {

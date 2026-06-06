@@ -24,6 +24,7 @@
     "db:studio": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game prisma studio",
     "test": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run build:packages && DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run test --workspaces --if-present",
     "test:m1": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run build:packages && DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run test:m1 -w @nextday/api",
+    "test:m2": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run build:packages && DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run test:m2 -w @nextday/api",
     "lint": "biome check .",
     "typecheck": "npm run build:packages && npm run typecheck --workspaces --if-present",
     "format:check": "biome ci ."

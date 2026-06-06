@@ -38,6 +38,8 @@ function toProgressState(progress: PlayerProgress): PlayerProgressState {
     newbie_protection_until: progress.newbieProtectionUntil?.toISOString() ?? null,
     daily_active_score: progress.dailyActiveScore,
     weekly_active_score: progress.weeklyActiveScore,
+    cultivation_rate_per_hour: progress.cultivationRatePerHour,
+    last_cultivation_at: progress.lastCultivationAt.toISOString(),
   };
 }
 

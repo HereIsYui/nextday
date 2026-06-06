@@ -43,14 +43,20 @@ model Player {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  account      Account         @relation(fields: [accountId], references: [accountId])
+  account      Account                  @relation(fields: [accountId], references: [accountId])
   progress     PlayerProgress?
   wallet       PlayerWallet?
+  actionState  PlayerActionState?
+  caveState    PlayerCaveState?
   items        PlayerItem[]
   walletLogs   WalletLog[]
   auditLogs    AuditLog[]
   behaviorLogs BehaviorLog[]
   loginLogs    LoginLog[]
+  provinces    PlayerProvinceProgress[]
+  tasks        PlayerTaskState[]
+  battleLogs   BattleLog[]
+  caveRecords  CaveCollectRecord[]
 
   @@index([accountId])
   @@index([sectId])
@@ -60,17 +66,19 @@ model Player {
 }
 
 model PlayerProgress {
-  playerId              String    @id @map("player_id")
-  eraId                 String    @default("era_mvp_001") @map("era_id")
-  cultivationValue      BigInt    @default(0) @map("cultivation_value")
-  breakthroughFailCount Int       @default(0) @map("breakthrough_fail_count")
-  calamityValue         Int       @default(0) @map("calamity_value")
-  chapterId             Int       @default(1) @map("chapter_id")
-  catchupBonusRate      Int       @default(0) @map("catchup_bonus_rate")
-  newbieProtectionUntil DateTime? @map("newbie_protection_until")
-  dailyActiveScore      Int       @default(0) @map("daily_active_score")
-  weeklyActiveScore     Int       @default(0) @map("weekly_active_score")
-  updatedAt             DateTime  @updatedAt @map("updated_at")
+  playerId               String    @id @map("player_id")
+  eraId                  String    @default("era_mvp_001") @map("era_id")
+  cultivationValue       BigInt    @default(0) @map("cultivation_value")
+  breakthroughFailCount  Int       @default(0) @map("breakthrough_fail_count")
+  calamityValue          Int       @default(0) @map("calamity_value")
+  chapterId              Int       @default(1) @map("chapter_id")
+  catchupBonusRate       Int       @default(0) @map("catchup_bonus_rate")
+  newbieProtectionUntil  DateTime? @map("newbie_protection_until")
+  dailyActiveScore       Int       @default(0) @map("daily_active_score")
+  weeklyActiveScore      Int       @default(0) @map("weekly_active_score")
+  cultivationRatePerHour Int       @default(240) @map("cultivation_rate_per_hour")
+  lastCultivationAt      DateTime  @default(now()) @map("last_cultivation_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
 
   player Player @relation(fields: [playerId], references: [playerId])
 
@@ -113,6 +121,141 @@ model PlayerItem {
   @@index([sourceType])
   @@index([expireAt])
   @@map("player_item")
+}
+
+model PlayerActionState {
+  playerId                  String   @id @map("player_id")
+  eraId                     String   @default("era_mvp_001") @map("era_id")
+  actionPoints              Int      @default(60) @map("action_points")
+  actionPointCap            Int      @default(180) @map("action_point_cap")
+  actionPointRestorePerHour Int      @default(12) @map("action_point_restore_per_hour")
+  lastRecoveredAt           DateTime @default(now()) @map("last_recovered_at")
+  updatedAt                 DateTime @updatedAt @map("updated_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@index([eraId])
+  @@map("player_action_state")
+}
+
+model ProvinceState {
+  provinceStateId String   @id @map("province_state_id")
+  eraId           String   @default("era_mvp_001") @map("era_id")
+  provinceId      String   @map("province_id")
+  name            String
+  towerName       String   @map("tower_name")
+  chapterRequired Int      @default(1) @map("chapter_required")
+  unlocked        Boolean  @default(true)
+  towerIntegrity  Int      @default(1000) @map("tower_integrity")
+  riftPressure    Int      @default(0) @map("rift_pressure")
+  corruption      Int      @default(0)
+  spiritVeinLevel Int      @default(1) @map("spirit_vein_level")
+  factionControl  Json     @map("faction_control")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([eraId, provinceId])
+  @@index([eraId])
+  @@index([provinceId])
+  @@map("province_state")
+}
+
+model PlayerProvinceProgress {
+  provinceProgressId String    @id @map("province_progress_id")
+  playerId           String    @map("player_id")
+  eraId              String    @default("era_mvp_001") @map("era_id")
+  provinceId         String    @map("province_id")
+  unlocked           Boolean   @default(false)
+  bestExploreStage   Int       @default(0) @map("best_explore_stage")
+  explorationCount   Int       @default(0) @map("exploration_count")
+  lastActionAt       DateTime? @map("last_action_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@unique([playerId, provinceId])
+  @@index([playerId])
+  @@index([eraId, provinceId])
+  @@map("player_province_progress")
+}
+
+model BattleLog {
+  battleId       String   @id @map("battle_id")
+  playerId       String   @map("player_id")
+  eraId          String   @default("era_mvp_001") @map("era_id")
+  battleType     String   @map("battle_type")
+  provinceId     String?  @map("province_id")
+  enemyId        String   @map("enemy_id")
+  enemyName      String   @map("enemy_name")
+  result         String
+  rounds         Int
+  damageDone     Int      @map("damage_done")
+  damageTaken    Int      @map("damage_taken")
+  rewardSnapshot Json     @map("reward_snapshot")
+  battleLog      Json     @map("battle_log")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@index([playerId])
+  @@index([eraId])
+  @@index([battleType])
+  @@index([provinceId])
+  @@index([createdAt])
+  @@map("battle_log")
+}
+
+model PlayerTaskState {
+  taskStateId    String   @id @map("task_state_id")
+  playerId       String   @map("player_id")
+  taskId         String   @map("task_id")
+  taskType       String   @map("task_type")
+  title          String
+  targetValue    Int      @map("target_value")
+  progressValue  Int      @default(0) @map("progress_value")
+  status         String   @default("in_progress")
+  resetKey       String   @default("permanent") @map("reset_key")
+  rewardSnapshot Json     @map("reward_snapshot")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@unique([playerId, taskId, resetKey])
+  @@index([playerId])
+  @@index([taskType, status])
+  @@map("player_task_state")
+}
+
+model PlayerCaveState {
+  playerId          String   @id @map("player_id")
+  spiritFieldLevel  Int      @default(1) @map("spirit_field_level")
+  spiritArrayLevel  Int      @default(1) @map("spirit_array_level")
+  alchemyRoomLevel  Int      @default(1) @map("alchemy_room_level")
+  refineryRoomLevel Int      @default(1) @map("refinery_room_level")
+  lastCollectedAt   DateTime @default(now()) @map("last_collected_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@map("player_cave_state")
+}
+
+model CaveCollectRecord {
+  recordId         String   @id @map("record_id")
+  playerId         String   @map("player_id")
+  spiritStone      BigInt   @map("spirit_stone")
+  herbCount        Int      @map("herb_count")
+  oreCount         Int      @map("ore_count")
+  collectedMinutes Int      @map("collected_minutes")
+  rewardSnapshot   Json     @map("reward_snapshot")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@index([playerId])
+  @@index([createdAt])
+  @@map("cave_collect_record")
 }
 
 model ConfigVersion {

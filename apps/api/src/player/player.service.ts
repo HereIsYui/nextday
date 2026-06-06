@@ -8,11 +8,12 @@ import type {
 } from "@nextday/shared";
 import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
+import { createInitialTaskRows, defaultEraId } from "../game/game.constants";
 import { hashRequestBody } from "../platform/utils/hash";
 import { toPlayerProfileResponse } from "./player.mapper";
 
 const validRoutes = new Set<CultivationRoute>(["qi", "body"]);
-const defaultEraId = "era_mvp_001";
+const defaultProvinceIds = ["ji", "yan", "qing", "xu"] as const;
 
 @Injectable()
 export class PlayerService {
@@ -82,6 +83,7 @@ export class PlayerService {
         data: {
           playerId,
           eraId: defaultEraId,
+          lastCultivationAt: new Date(Date.now() - 30 * 60 * 1000),
           newbieProtectionUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         },
       });
@@ -89,6 +91,30 @@ export class PlayerService {
         data: {
           playerId,
         },
+      });
+      await tx.playerActionState.create({
+        data: {
+          playerId,
+          eraId: defaultEraId,
+        },
+      });
+      await tx.playerCaveState.create({
+        data: {
+          playerId,
+          lastCollectedAt: new Date(Date.now() - 30 * 60 * 1000),
+        },
+      });
+      await tx.playerProvinceProgress.createMany({
+        data: defaultProvinceIds.map((provinceId) => ({
+          provinceProgressId: `province_progress_${randomUUID()}`,
+          playerId,
+          eraId: defaultEraId,
+          provinceId,
+          unlocked: provinceId === "ji",
+        })),
+      });
+      await tx.playerTaskState.createMany({
+        data: createInitialTaskRows(playerId),
       });
 
       const responseData: CreatePlayerResponse = {

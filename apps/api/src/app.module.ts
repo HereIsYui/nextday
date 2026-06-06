@@ -2,6 +2,7 @@ import { Inject, type MiddlewareConsumer, Module, type NestModule } from "@nestj
 import { AuthModule } from "./auth/auth.module";
 import { DatabaseModule } from "./database/database.module";
 import { GameConfigModule } from "./game-config/game-config.module";
+import { GameModule } from "./game/game.module";
 import { HealthController } from "./health/health.controller";
 import { createBehaviorLogMiddleware } from "./log/behavior-log.middleware";
 import { LogModule } from "./log/log.module";
@@ -11,7 +12,7 @@ import { RequestContextMiddleware } from "./platform/request-context.middleware"
 import { PlayerModule } from "./player/player.module";
 
 @Module({
-  imports: [DatabaseModule, LogModule, AuthModule, PlayerModule, GameConfigModule],
+  imports: [DatabaseModule, LogModule, AuthModule, PlayerModule, GameModule, GameConfigModule],
   controllers: [HealthController],
 })
 export class AppModule implements NestModule {

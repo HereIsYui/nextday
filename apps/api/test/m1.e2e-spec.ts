@@ -138,9 +138,10 @@ describe("M1 数据层与模拟登录", () => {
 
       expect(response.body.data).toMatchObject({
         config_type: configType,
-        ruleset_version: "ruleset_m1_v1",
       });
       expect(response.body.data.config_version).toContain(configType);
+      expect(response.body.data.ruleset_version).toMatch(/^ruleset_/);
+      expect(response.body.data.reward_config_version).toMatch(/^reward_/);
     }
   });
 

@@ -5,17 +5,29 @@ import type {
   AlchemyCraftResponse,
   AlchemyRecipeListResponse,
   AlchemyRecordListResponse,
+  AncientTreasureListResponse,
   ApiResponse,
+  AppearanceListResponse,
+  AppearanceMutationResponse,
   AuthMeResponse,
   BagSummaryResponse,
   BreakthroughResponse,
   CaveCollectResponse,
+  ClaimAppearanceRequest,
+  ClaimMonthlyDailyRequest,
+  ClaimMonthlyDailyResponse,
   ConfigEnvelope,
   ConfigType,
+  ConvenienceBatchPreviewRequest,
+  ConvenienceBatchPreviewResponse,
+  CreateAutomationQueueRequest,
+  CreateAutomationQueueResponse,
   CreatePlayerRequest,
   CreatePlayerResponse,
   CreateSectRequest,
   CultivationClaimResponse,
+  EntitlementOverviewResponse,
+  EquipAppearanceRequest,
   EquipmentInscribeRequest,
   EquipmentListResponse,
   EquipmentOperationRecordListResponse,
@@ -25,6 +37,10 @@ import type {
   ExploreResponse,
   ForgeCraftRequest,
   ForgeRecipeListResponse,
+  GachaDrawRequest,
+  GachaDrawResponse,
+  GachaHistoryResponse,
+  GachaPoolListResponse,
   GameOverviewResponse,
   GuestLoginRequest,
   JoinSectRequest,
@@ -34,11 +50,15 @@ import type {
   PillUseResponse,
   PlayerProfileResponse,
   ProvinceSummary,
+  PurchaseMonthlyCardRequest,
+  PurchaseMonthlyCardResponse,
   PvpAttackRequest,
   PvpBattleResponse,
   RankListResponse,
   RankType,
   ResourcePointListResponse,
+  SaveConvenienceStrategyRequest,
+  SaveConvenienceStrategyResponse,
   SaveSkillLoadoutRequest,
   SectDetailResponse,
   SectListResponse,
@@ -51,6 +71,8 @@ import type {
   SetItemLockRequest,
   SetItemLockResponse,
   SkillLoadoutResponse,
+  SyncVipRequest,
+  SyncVipResponse,
   TaskClaimRequest,
   TaskClaimResponse,
   TaskSummaryResponse,
@@ -413,6 +435,118 @@ export class GameClient {
 
   ranks(rankType: RankType): Promise<ApiResponse<RankListResponse>> {
     return this.get<RankListResponse>(`/api/multiplayer/ranks/${rankType}`);
+  }
+
+  commerceOverview(): Promise<ApiResponse<EntitlementOverviewResponse>> {
+    return this.get<EntitlementOverviewResponse>("/api/commerce/overview");
+  }
+
+  purchaseMonthlyCard(
+    body: PurchaseMonthlyCardRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<PurchaseMonthlyCardResponse>> {
+    return this.post<PurchaseMonthlyCardResponse, PurchaseMonthlyCardRequest>(
+      "/api/commerce/monthly-cards/purchase",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  claimMonthlyDaily(
+    body: ClaimMonthlyDailyRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<ClaimMonthlyDailyResponse>> {
+    return this.post<ClaimMonthlyDailyResponse, ClaimMonthlyDailyRequest>(
+      "/api/commerce/monthly-cards/claim-daily",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  syncVip(body: SyncVipRequest, idempotencyKey: string): Promise<ApiResponse<SyncVipResponse>> {
+    return this.post<SyncVipResponse, SyncVipRequest>("/api/commerce/vip/sync", body, {
+      idempotencyKey,
+    });
+  }
+
+  gachaPools(): Promise<ApiResponse<GachaPoolListResponse>> {
+    return this.get<GachaPoolListResponse>("/api/commerce/gacha/pools");
+  }
+
+  gachaDraw(
+    body: GachaDrawRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<GachaDrawResponse>> {
+    return this.post<GachaDrawResponse, GachaDrawRequest>("/api/commerce/gacha/draw", body, {
+      idempotencyKey,
+    });
+  }
+
+  gachaHistory(): Promise<ApiResponse<GachaHistoryResponse>> {
+    return this.get<GachaHistoryResponse>("/api/commerce/gacha/history");
+  }
+
+  ancientTreasures(): Promise<ApiResponse<AncientTreasureListResponse>> {
+    return this.get<AncientTreasureListResponse>("/api/commerce/ancient-treasures");
+  }
+
+  convenienceBatchPreview(
+    body: ConvenienceBatchPreviewRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<ConvenienceBatchPreviewResponse>> {
+    return this.post<ConvenienceBatchPreviewResponse, ConvenienceBatchPreviewRequest>(
+      "/api/commerce/convenience/batch-preview",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  saveConvenienceStrategy(
+    body: SaveConvenienceStrategyRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<SaveConvenienceStrategyResponse>> {
+    return this.post<SaveConvenienceStrategyResponse, SaveConvenienceStrategyRequest>(
+      "/api/commerce/convenience/strategies",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  createAutomationQueue(
+    body: CreateAutomationQueueRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<CreateAutomationQueueResponse>> {
+    return this.post<CreateAutomationQueueResponse, CreateAutomationQueueRequest>(
+      "/api/commerce/convenience/automation-queues",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  appearances(): Promise<ApiResponse<AppearanceListResponse>> {
+    return this.get<AppearanceListResponse>("/api/commerce/appearances");
+  }
+
+  claimAppearance(
+    body: ClaimAppearanceRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<AppearanceMutationResponse>> {
+    return this.post<AppearanceMutationResponse, ClaimAppearanceRequest>(
+      "/api/commerce/appearances/claim",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  equipAppearance(
+    body: EquipAppearanceRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<AppearanceMutationResponse>> {
+    return this.post<AppearanceMutationResponse, EquipAppearanceRequest>(
+      "/api/commerce/appearances/equip",
+      body,
+      { idempotencyKey },
+    );
   }
 
   getPlayerLogs(input: {

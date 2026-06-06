@@ -1,5 +1,6 @@
 import { Inject, type MiddlewareConsumer, Module, type NestModule } from "@nestjs/common";
 import { AuthModule } from "./auth/auth.module";
+import { CommerceModule } from "./commerce/commerce.module";
 import { DatabaseModule } from "./database/database.module";
 import { GameConfigModule } from "./game-config/game-config.module";
 import { GameModule } from "./game/game.module";
@@ -23,6 +24,7 @@ import { ProductionModule } from "./production/production.module";
     GameConfigModule,
     ProductionModule,
     MultiplayerModule,
+    CommerceModule,
   ],
   controllers: [HealthController],
 })

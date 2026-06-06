@@ -68,6 +68,16 @@ model Player {
   pvpAttacks                PvpBattleRecord[]          @relation("PvpAttacker")
   pvpDefenses               PvpBattleRecord[]          @relation("PvpDefender")
   sectTaskRecords           SectTaskRecord[]
+  purchaseOrders            PurchaseOrder[]
+  monthlyCards              MonthlyCardState[]
+  monthlyDrawGrants         MonthlyCardDrawGrant[]
+  vipState                  PlayerVipState?
+  gachaRecords              GachaRecord[]
+  gachaPityStates           GachaPityState[]
+  ancientTreasures          AncientTreasureState[]
+  convenienceStrategies     ConvenienceStrategy[]
+  automationQueues          AutomationQueue[]
+  appearances               PlayerAppearance[]
 
   @@index([accountId])
   @@index([sectId])
@@ -701,6 +711,242 @@ model RankEntry {
   @@index([targetType, targetId])
   @@index([rankNo])
   @@map("rank_entry")
+}
+
+model PurchaseOrder {
+  orderId             String   @id @map("order_id")
+  playerId            String   @map("player_id")
+  eraId               String   @default("era_mvp_001") @map("era_id")
+  productId           String   @map("product_id")
+  productType         String   @map("product_type")
+  fishpiPointCost     BigInt   @map("fishpi_point_cost")
+  paidJadeAmount      BigInt   @default(0) @map("paid_jade_amount")
+  boundJadeAmount     BigInt   @default(0) @map("bound_jade_amount")
+  status              String   @default("paid")
+  configVersion       String   @map("config_version")
+  rewardConfigVersion String   @map("reward_config_version")
+  idempotencyKey      String?  @unique @map("idempotency_key")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@index([playerId])
+  @@index([eraId])
+  @@index([productId])
+  @@index([productType])
+  @@index([status])
+  @@index([createdAt])
+  @@map("purchase_order")
+}
+
+model MonthlyCardState {
+  monthlyCardStateId String   @id @map("monthly_card_state_id")
+  playerId           String   @map("player_id")
+  cardType           String   @map("card_type")
+  activeUntil        DateTime @map("active_until")
+  remainingDays      Int      @map("remaining_days")
+  lastClaimDate      String?  @map("last_claim_date")
+  sourceOrderId      String   @map("source_order_id")
+  configVersion      String   @map("config_version")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@unique([playerId, cardType])
+  @@index([playerId])
+  @@index([cardType])
+  @@index([activeUntil])
+  @@map("monthly_card_state")
+}
+
+model MonthlyCardDrawGrant {
+  grantId            String   @id @map("grant_id")
+  playerId           String   @map("player_id")
+  cardType           String   @map("card_type")
+  poolType           String   @map("pool_type")
+  grantDate          String   @map("grant_date")
+  drawCount          Int      @map("draw_count")
+  usedCount          Int      @default(0) @map("used_count")
+  expiresAt          DateTime @map("expires_at")
+  sourceOrderId      String   @map("source_order_id")
+  gachaConfigVersion String   @map("gacha_config_version")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  player  Player        @relation(fields: [playerId], references: [playerId])
+  records GachaRecord[]
+
+  @@unique([playerId, cardType, poolType, grantDate])
+  @@index([playerId])
+  @@index([poolType])
+  @@index([grantDate])
+  @@index([expiresAt])
+  @@map("monthly_card_draw_grant")
+}
+
+model PlayerVipState {
+  playerId      String    @id @map("player_id")
+  vipLevel      Int       @default(0) @map("vip_level")
+  activeUntil   DateTime? @map("active_until")
+  sourceType    String    @default("mock_fishpi") @map("source_type")
+  configVersion String    @map("config_version")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@index([vipLevel])
+  @@index([activeUntil])
+  @@map("player_vip_state")
+}
+
+model GachaRecord {
+  gachaId             String   @id @map("gacha_id")
+  playerId            String   @map("player_id")
+  eraId               String   @default("era_mvp_001") @map("era_id")
+  poolType            String   @map("pool_type")
+  costType            String   @map("cost_type")
+  costAmount          BigInt   @default(0) @map("cost_amount")
+  grantId             String?  @map("grant_id")
+  resultType          String   @map("result_type")
+  resultId            String   @map("result_id")
+  resultName          String   @map("result_name")
+  duplicate           Boolean  @default(false)
+  pityBefore          Int      @default(0) @map("pity_before")
+  pityAfter           Int      @default(0) @map("pity_after")
+  conversionSnapshot  Json?    @map("conversion_snapshot")
+  resultSnapshot      Json     @map("result_snapshot")
+  gachaConfigVersion  String   @map("gacha_config_version")
+  rewardConfigVersion String   @map("reward_config_version")
+  idempotencyKey      String?  @unique @map("idempotency_key")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  player Player                @relation(fields: [playerId], references: [playerId])
+  grant  MonthlyCardDrawGrant? @relation(fields: [grantId], references: [grantId])
+
+  @@index([playerId])
+  @@index([eraId])
+  @@index([poolType])
+  @@index([costType])
+  @@index([grantId])
+  @@index([resultId])
+  @@index([createdAt])
+  @@map("gacha_record")
+}
+
+model GachaPityState {
+  gachaPityStateId   String   @id @map("gacha_pity_state_id")
+  playerId           String   @map("player_id")
+  eraId              String   @default("era_mvp_001") @map("era_id")
+  poolType           String   @map("pool_type")
+  pityCount          Int      @default(0) @map("pity_count")
+  totalDraws         Int      @default(0) @map("total_draws")
+  guaranteeAt        Int      @map("guarantee_at")
+  lastGachaId        String?  @map("last_gacha_id")
+  gachaConfigVersion String   @map("gacha_config_version")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@unique([playerId, eraId, poolType])
+  @@index([playerId])
+  @@index([eraId, poolType])
+  @@index([lastGachaId])
+  @@map("gacha_pity_state")
+}
+
+model AncientTreasureState {
+  ancientTreasureStateId String    @id @map("ancient_treasure_state_id")
+  playerId               String    @map("player_id")
+  eraId                  String    @default("era_mvp_001") @map("era_id")
+  treasureId             String    @map("treasure_id")
+  owned                  Boolean   @default(false)
+  starLevel              Int       @default(0) @map("star_level")
+  fragmentCount          Int       @default(0) @map("fragment_count")
+  soulCount              Int       @default(0) @map("soul_count")
+  catalogInherited       Boolean   @default(false) @map("catalog_inherited")
+  sourceGachaId          String?   @map("source_gacha_id")
+  treasureConfigVersion  String    @map("treasure_config_version")
+  acquiredAt             DateTime? @map("acquired_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@unique([playerId, eraId, treasureId])
+  @@index([playerId])
+  @@index([eraId])
+  @@index([treasureId])
+  @@index([sourceGachaId])
+  @@map("ancient_treasure_state")
+}
+
+model ConvenienceStrategy {
+  strategyId     String   @id @map("strategy_id")
+  playerId       String   @map("player_id")
+  strategyName   String   @map("strategy_name")
+  strategyType   String   @map("strategy_type")
+  tierAtCreate   String   @map("tier_at_create")
+  configSnapshot Json     @map("config_snapshot")
+  status         String   @default("active")
+  configVersion  String   @map("config_version")
+  idempotencyKey String?  @unique @map("idempotency_key")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@index([playerId])
+  @@index([strategyType])
+  @@index([tierAtCreate])
+  @@index([status])
+  @@map("convenience_strategy")
+}
+
+model AutomationQueue {
+  queueId          String   @id @map("queue_id")
+  playerId         String   @map("player_id")
+  queueType        String   @map("queue_type")
+  entitlementTier  String   @map("entitlement_tier")
+  requestedActions Json     @map("requested_actions")
+  acceptedActions  Json     @map("accepted_actions")
+  status           String   @default("pending")
+  configVersion    String   @map("config_version")
+  idempotencyKey   String?  @unique @map("idempotency_key")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@index([playerId])
+  @@index([queueType])
+  @@index([entitlementTier])
+  @@index([status])
+  @@map("automation_queue")
+}
+
+model PlayerAppearance {
+  playerAppearanceId String    @id @map("player_appearance_id")
+  playerId           String    @map("player_id")
+  appearanceId       String    @map("appearance_id")
+  appearanceType     String    @map("appearance_type")
+  sourceType         String    @map("source_type")
+  inherited          Boolean   @default(false)
+  equipped           Boolean   @default(false)
+  expireAt           DateTime? @map("expire_at")
+  configVersion      String    @map("config_version")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@unique([playerId, appearanceId])
+  @@index([playerId])
+  @@index([appearanceType])
+  @@index([sourceType])
+  @@index([equipped])
+  @@index([expireAt])
+  @@map("player_appearance")
 }
 
 model ConfigVersion {

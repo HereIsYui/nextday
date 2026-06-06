@@ -4,10 +4,14 @@ import { GameClient } from "@nextday/game-client";
 import { cultivationRouteLabels } from "@nextday/game-rules";
 import type {
   AlchemyRecipeListResponse,
+  AncientTreasureListResponse,
   ApiResponse,
+  AppearanceListResponse,
   BagSummaryResponse,
+  EntitlementOverviewResponse,
   EquipmentListResponse,
   ForgeRecipeListResponse,
+  GachaPoolListResponse,
   GameOverviewResponse,
   HealthStatus,
   LoginResponse,
@@ -46,6 +50,12 @@ export default function HomePage() {
   const [sect, setSect] = useState<SectDetailResponse | null>(null);
   const [resourcePoints, setResourcePoints] = useState<ResourcePointListResponse | null>(null);
   const [personalRank, setPersonalRank] = useState<RankListResponse | null>(null);
+  const [commerce, setCommerce] = useState<EntitlementOverviewResponse | null>(null);
+  const [gachaPools, setGachaPools] = useState<GachaPoolListResponse | null>(null);
+  const [ancientTreasures, setAncientTreasures] = useState<AncientTreasureListResponse | null>(
+    null,
+  );
+  const [appearances, setAppearances] = useState<AppearanceListResponse | null>(null);
   const [playerName, setPlayerName] = useState("云游修士");
   const [route, setRoute] = useState<RouteValue>("qi");
   const [message, setMessage] = useState("尚未登录");
@@ -60,6 +70,10 @@ export default function HomePage() {
   const firstTower = towers?.towers[0];
   const firstResourcePoint = resourcePoints?.resource_points[0];
   const pvpTarget = personalRank?.entries.find((entry) => entry.target_id !== activePlayerId);
+  const firstAncientGrant = commerce?.available_monthly_grants[0];
+  const ownedTreasureCount =
+    ancientTreasures?.treasures.filter((treasure) => treasure.owned).length ?? 0;
+  const firstAppearance = appearances?.appearances[0];
 
   useEffect(() => {
     let ignore = false;
@@ -155,6 +169,33 @@ export default function HomePage() {
     }
 
     let ignore = false;
+    loadCommerce(createClient(token))
+      .then((state) => {
+        if (ignore) {
+          return;
+        }
+        setCommerce(state.commerce);
+        setGachaPools(state.gachaPools);
+        setAncientTreasures(state.ancientTreasures);
+        setAppearances(state.appearances);
+      })
+      .catch(() => {
+        if (!ignore) {
+          setMessage("商业化状态读取失败");
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [token, activePlayerId]);
+
+  useEffect(() => {
+    if (!token || !activePlayerId) {
+      return;
+    }
+
+    let ignore = false;
     loadMultiplayer(createClient(token))
       .then((state) => {
         if (ignore) {
@@ -224,6 +265,7 @@ export default function HomePage() {
     setProfile(response.data.profile);
     await refreshProduction();
     await refreshMultiplayer();
+    await refreshCommerce();
     setMessage(successMessage);
   }
 
@@ -251,6 +293,18 @@ export default function HomePage() {
     setSect(state.sect);
     setResourcePoints(state.resourcePoints);
     setPersonalRank(state.personalRank);
+  }
+
+  async function refreshCommerce() {
+    if (!token) {
+      return;
+    }
+
+    const state = await loadCommerce(createClient(token));
+    setCommerce(state.commerce);
+    setGachaPools(state.gachaPools);
+    setAncientTreasures(state.ancientTreasures);
+    setAppearances(state.appearances);
   }
 
   async function handleClaimCultivation() {
@@ -479,6 +533,138 @@ export default function HomePage() {
     });
   }
 
+  async function handlePurchaseMonthly(cardType: "small_monthly" | "large_monthly") {
+    await runAction(cardType === "small_monthly" ? "购买小月卡" : "购买大月卡", async () => {
+      const response = await client.purchaseMonthlyCard(
+        { card_type: cardType },
+        createIdempotencyKey(`web_monthly_${cardType}`),
+      );
+      ensureOk(response);
+      await refreshOverview(`${response.data.monthly_card.card_type} 已生效`);
+    });
+  }
+
+  async function handleClaimMonthly(cardType: "small_monthly" | "large_monthly") {
+    await runAction("领取月卡日权益", async () => {
+      const response = await client.claimMonthlyDaily(
+        { card_type: cardType },
+        createIdempotencyKey(`web_monthly_claim_${cardType}`),
+      );
+      ensureOk(response);
+      await refreshOverview(
+        response.data.claimed
+          ? `领取仙玉 ${response.data.rewards.jade_paid ?? "0"} / 绑定仙玉 ${response.data.rewards.jade_bound ?? "0"}`
+          : "今日月卡权益已领取",
+      );
+    });
+  }
+
+  async function handleDrawAncientTreasure() {
+    if (!firstAncientGrant) {
+      setMessage("暂无可用九大古宝赠抽，请先领取月卡日权益");
+      return;
+    }
+
+    await runAction("九大古宝抽取", async () => {
+      const response = await client.gachaDraw(
+        {
+          pool_type: "ancient_treasure",
+          cost_type: "monthly_grant",
+          grant_id: firstAncientGrant.grant_id,
+        },
+        createIdempotencyKey("web_ancient_gacha"),
+      );
+      ensureOk(response);
+      await refreshOverview(`获得 ${response.data.result.result_name}`);
+    });
+  }
+
+  async function handleDrawPermanent() {
+    await runAction("常驻机缘抽取", async () => {
+      const response = await client.gachaDraw(
+        { pool_type: "permanent", cost_type: "bound_jade" },
+        createIdempotencyKey("web_permanent_gacha"),
+      );
+      ensureOk(response);
+      await refreshOverview(`抽得 ${response.data.result.result_name}`);
+    });
+  }
+
+  async function handleSyncVip(vipLevel: 3 | 4) {
+    await runAction(`同步 VIP${vipLevel}`, async () => {
+      const response = await client.syncVip(
+        { vip_level: vipLevel, active_days: 30 },
+        createIdempotencyKey(`web_vip${vipLevel}`),
+      );
+      ensureOk(response);
+      await refreshOverview(`VIP${vipLevel} 便利已同步`);
+    });
+  }
+
+  async function handleBatchPreview() {
+    await runAction("便利预览", async () => {
+      const response = await client.convenienceBatchPreview(
+        { requested_count: 20 },
+        createIdempotencyKey("web_batch_preview"),
+      );
+      ensureOk(response);
+      setMessage(
+        `${response.data.effective_tier} 批量上限 ${response.data.limit}，本次可执行 ${response.data.accepted_count}`,
+      );
+    });
+  }
+
+  async function handleAutomationQueue() {
+    await runAction("创建托管队列", async () => {
+      const response = await client.createAutomationQueue(
+        {
+          queue_type: "core_daily",
+          actions: [
+            { action_type: "claim_cultivation" },
+            { action_type: "cave_collect" },
+            { action_type: "tower", count: 1 },
+          ],
+        },
+        createIdempotencyKey("web_auto_queue"),
+      );
+      ensureOk(response);
+      setMessage(`托管队列已创建：${response.data.queue.accepted_actions.length} 个行动`);
+    });
+  }
+
+  async function handleClaimAppearance() {
+    const target = firstAppearance?.appearance_id ?? "title_style_qingtian";
+    await runAction("领取外观", async () => {
+      const response = await client.claimAppearance(
+        { appearance_id: target },
+        createIdempotencyKey("web_appearance_claim"),
+      );
+      ensureOk(response);
+      await refreshCommerce();
+      setMessage(`领取外观：${response.data.appearance.name}`);
+    });
+  }
+
+  async function handleEquipAppearance() {
+    const target =
+      appearances?.appearances.find((appearance) => appearance.owned)?.appearance_id ??
+      firstAppearance?.appearance_id;
+    if (!target) {
+      setMessage("暂无可装备外观");
+      return;
+    }
+
+    await runAction("装备外观", async () => {
+      const response = await client.equipAppearance(
+        { appearance_id: target },
+        createIdempotencyKey("web_appearance_equip"),
+      );
+      ensureOk(response);
+      await refreshCommerce();
+      setMessage(`已装备外观：${response.data.appearance.name}`);
+    });
+  }
+
   async function runAction(label: string, action: () => Promise<void>) {
     setBusy(true);
     setMessage(`${label}中`);
@@ -495,7 +681,7 @@ export default function HomePage() {
     <main className="shell">
       <section className="topbar">
         <div>
-          <p className="eyebrow">M3 生产成长</p>
+          <p className="eyebrow">M5 商业化闭环</p>
           <h1>择日飞升</h1>
         </div>
         <div className="status-row">
@@ -598,6 +784,11 @@ export default function HomePage() {
               label="灵石"
               value={activeProfile.wallet?.spirit_stone ?? "0"}
               detail="绑定资产"
+            />
+            <MetricCard
+              label="仙玉"
+              value={`${activeProfile.wallet?.jade_paid ?? "0"} / ${activeProfile.wallet?.jade_bound ?? "0"}`}
+              detail="付费 / 绑定"
             />
             <MetricCard
               label="洞府"
@@ -773,6 +964,110 @@ export default function HomePage() {
             </div>
           </section>
 
+          <section className="panel" aria-label="商业化">
+            <div className="section-title">
+              <h2>市肆权益</h2>
+              <span>月卡、VIP、抽卡、便利与展示外观</span>
+            </div>
+            <div className="production-grid">
+              <article className="production-box">
+                <strong>月卡</strong>
+                <span>
+                  档位 {commerce?.effective_tier ?? "free"} · 古宝赠抽{" "}
+                  {commerce?.available_monthly_grants.reduce(
+                    (sum, grant) => sum + grant.draw_count - grant.used_count,
+                    0,
+                  ) ?? 0}
+                </span>
+                <div className="production-actions">
+                  <Button
+                    disabled={busy || !overview}
+                    onClick={() => handlePurchaseMonthly("small_monthly")}
+                  >
+                    小月卡
+                  </Button>
+                  <Button
+                    disabled={busy || !overview}
+                    onClick={() => handlePurchaseMonthly("large_monthly")}
+                  >
+                    大月卡
+                  </Button>
+                  <Button
+                    disabled={busy || !overview}
+                    onClick={() => handleClaimMonthly("small_monthly")}
+                  >
+                    领小月卡
+                  </Button>
+                  <Button
+                    disabled={busy || !overview}
+                    onClick={() => handleClaimMonthly("large_monthly")}
+                  >
+                    领大月卡
+                  </Button>
+                </div>
+              </article>
+              <article className="production-box">
+                <strong>九大古宝</strong>
+                <span>
+                  已收集 {ownedTreasureCount}/9 ·{" "}
+                  {gachaPools?.pools
+                    .find((pool) => pool.pool_type === "ancient_treasure")
+                    ?.allowed_cost_types.join(" / ") ?? "月卡赠抽 / 残页"}
+                </span>
+                <div className="production-actions">
+                  <Button disabled={busy || !firstAncientGrant} onClick={handleDrawAncientTreasure}>
+                    赠抽古宝
+                  </Button>
+                  <Button disabled={busy || !overview} onClick={handleDrawPermanent}>
+                    常驻机缘
+                  </Button>
+                </div>
+              </article>
+              <article className="production-box">
+                <strong>VIP 与便利</strong>
+                <span>
+                  VIP {commerce?.vip.vip_level ?? 0} · 批量上限{" "}
+                  {commerce?.convenience.batch_sweep_limit ?? 5} · 奖励倍率 1
+                </span>
+                <div className="production-actions">
+                  <Button disabled={busy || !overview} onClick={() => handleSyncVip(3)}>
+                    VIP3
+                  </Button>
+                  <Button disabled={busy || !overview} onClick={() => handleSyncVip(4)}>
+                    VIP4
+                  </Button>
+                  <Button disabled={busy || !overview} onClick={handleBatchPreview}>
+                    便利预览
+                  </Button>
+                  <Button disabled={busy || !overview} onClick={handleAutomationQueue}>
+                    托管队列
+                  </Button>
+                </div>
+              </article>
+              <article className="production-box">
+                <strong>展示外观</strong>
+                <span>
+                  已拥有{" "}
+                  {appearances?.appearances.filter((appearance) => appearance.owned).length ?? 0} ·
+                  不提供战力
+                </span>
+                <div className="production-actions">
+                  <Button disabled={busy || !overview} onClick={handleClaimAppearance}>
+                    领取外观
+                  </Button>
+                  <Button
+                    disabled={
+                      busy || !appearances?.appearances.some((appearance) => appearance.owned)
+                    }
+                    onClick={handleEquipAppearance}
+                  >
+                    装备外观
+                  </Button>
+                </div>
+              </article>
+            </div>
+          </section>
+
           <section className="panel" aria-label="最近战报">
             <div className="section-title">
               <h2>最近战报</h2>
@@ -806,7 +1101,7 @@ function createClient(authToken?: string): GameClient {
   return new GameClient({
     baseUrl: apiBaseUrl,
     token: authToken,
-    clientVersion: "nextday-web-m4",
+    clientVersion: "nextday-web-m5",
   });
 }
 
@@ -879,6 +1174,27 @@ async function loadMultiplayer(client: GameClient) {
     sect: sectResponse.data,
     resourcePoints: resourceResponse.data,
     personalRank: rankResponse.data,
+  };
+}
+
+async function loadCommerce(client: GameClient) {
+  const [overviewResponse, poolResponse, treasureResponse, appearanceResponse] = await Promise.all([
+    client.commerceOverview(),
+    client.gachaPools(),
+    client.ancientTreasures(),
+    client.appearances(),
+  ]);
+
+  ensureOk(overviewResponse);
+  ensureOk(poolResponse);
+  ensureOk(treasureResponse);
+  ensureOk(appearanceResponse);
+
+  return {
+    commerce: overviewResponse.data,
+    gachaPools: poolResponse.data,
+    ancientTreasures: treasureResponse.data,
+    appearances: appearanceResponse.data,
   };
 }
 

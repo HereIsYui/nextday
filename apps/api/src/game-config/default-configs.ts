@@ -1,5 +1,15 @@
 import type { ConfigEnvelope } from "@nextday/shared";
 import {
+  ancientPageDrawCost,
+  ancientTreasures,
+  appearanceConfigs,
+  convenienceRules,
+  gachaPoolConfigs,
+  monthlyCardProducts,
+  permanentPoolRewards,
+  vipBoundJadeRewards,
+} from "../commerce/commerce.constants";
+import {
   bossConfig,
   rankRewardPreview,
   resourcePointConfigs,
@@ -227,6 +237,72 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
       rank_types: ["personal", "sect", "pvp_week", "tower_week"],
       reward_preview: rankRewardPreview,
       reward_boundary: "排行奖励不发唯一战力道具",
+    },
+  },
+  gacha: {
+    config_type: "gacha",
+    config_version: "gacha_m5_v1",
+    ruleset_version: "ruleset_m5_v1",
+    reward_config_version: "reward_m5_v1",
+    payload: {
+      pools: {
+        permanent: {
+          ...gachaPoolConfigs.permanent,
+          singleCost: gachaPoolConfigs.permanent.singleCost.toString(),
+          results: permanentPoolRewards,
+        },
+        ancient_treasure: {
+          ...gachaPoolConfigs.ancient_treasure,
+          singleCost: gachaPoolConfigs.ancient_treasure.singleCost.toString(),
+          results: ancientTreasures.map((treasure) => ({
+            treasure_id: treasure.treasureId,
+            name: treasure.name,
+            role: treasure.role,
+          })),
+          ancient_page_draw_cost: ancientPageDrawCost,
+          paid_jade_entry: "reserved_unopened",
+        },
+      },
+    },
+  },
+  monthly_card: {
+    config_type: "monthly_card",
+    config_version: "monthly_card_m5_v1",
+    ruleset_version: "ruleset_m5_v1",
+    reward_config_version: "reward_m5_v1",
+    payload: {
+      products: monthlyCardProducts,
+      daily_grant_rule: "小月卡每日 1 次九大古宝赠抽，大月卡每日 2 次，当日有效",
+    },
+  },
+  vip: {
+    config_type: "vip",
+    config_version: "vip_m5_v1",
+    ruleset_version: "ruleset_m5_v1",
+    reward_config_version: "reward_m5_v1",
+    payload: {
+      bound_jade_rewards: vipBoundJadeRewards,
+      boundary: "VIP3 等同小月卡便利，VIP4 高于小月卡但不高于大月卡；VIP 不提供九大古宝赠抽",
+    },
+  },
+  convenience: {
+    config_type: "convenience",
+    config_version: "convenience_m5_v1",
+    ruleset_version: "ruleset_m5_v1",
+    reward_config_version: "reward_m5_v1",
+    payload: {
+      rules: convenienceRules,
+      reward_rule: "便利只减少操作，不提高奖励倍率、贡献倍率或战斗强度",
+    },
+  },
+  appearance: {
+    config_type: "appearance",
+    config_version: "appearance_m5_v1",
+    ruleset_version: "ruleset_m5_v1",
+    reward_config_version: "reward_m5_v1",
+    payload: {
+      appearances: appearanceConfigs,
+      stat_bonus_rule: "展示外观 statBonus 固定为空，不参与战力、贡献和奖励结算",
     },
   },
 };

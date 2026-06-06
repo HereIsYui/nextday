@@ -214,6 +214,8 @@ export interface BattleSummary {
 export interface RewardBundle {
   cultivation?: string;
   spirit_stone?: string;
+  jade_paid?: string;
+  jade_bound?: string;
   action_points?: number;
   items?: Array<{
     item_id: string;
@@ -699,6 +701,259 @@ export interface RankListResponse {
   entries: RankEntryState[];
 }
 
+export type MonthlyCardType = "small_monthly" | "large_monthly";
+export type GachaPoolType = "permanent" | "ancient_treasure";
+export type GachaCostType =
+  | "paid_jade"
+  | "bound_jade"
+  | "monthly_grant"
+  | "ancient_page"
+  | "reserved_paid_jade";
+
+export interface MonthlyCardProductState {
+  product_id: string;
+  card_type: MonthlyCardType;
+  name: string;
+  fishpi_point_cost: string;
+  duration_days: number;
+  daily_paid_jade: string;
+  daily_bound_jade: string;
+  daily_ancient_draws: number;
+}
+
+export interface MonthlyCardStateSummary {
+  card_type: MonthlyCardType;
+  active: boolean;
+  active_until: string;
+  remaining_days: number;
+  last_claim_date: string | null;
+}
+
+export interface MonthlyCardDrawGrantState {
+  grant_id: string;
+  card_type: MonthlyCardType;
+  pool_type: GachaPoolType;
+  grant_date: string;
+  draw_count: number;
+  used_count: number;
+  expires_at: string;
+}
+
+export interface PurchaseMonthlyCardRequest {
+  card_type: MonthlyCardType;
+}
+
+export interface PurchaseMonthlyCardResponse {
+  order_id: string;
+  monthly_card: MonthlyCardStateSummary;
+  wallet: PlayerWalletState;
+}
+
+export interface ClaimMonthlyDailyRequest {
+  card_type: MonthlyCardType;
+}
+
+export interface ClaimMonthlyDailyResponse {
+  record_id: string;
+  claimed: boolean;
+  card_type: MonthlyCardType;
+  rewards: RewardBundle;
+  grants: MonthlyCardDrawGrantState[];
+  wallet: PlayerWalletState;
+}
+
+export interface VipStateSummary {
+  vip_level: 0 | 1 | 2 | 3 | 4;
+  active: boolean;
+  active_until: string | null;
+  convenience_tier: EntitlementTier;
+}
+
+export interface SyncVipRequest {
+  vip_level: 0 | 1 | 2 | 3 | 4;
+  active_days?: number;
+}
+
+export interface SyncVipResponse {
+  record_id: string;
+  vip: VipStateSummary;
+  rewards: RewardBundle;
+  wallet: PlayerWalletState;
+}
+
+export interface ConvenienceRuleState {
+  tier: EntitlementTier;
+  batch_sweep_limit: number;
+  strategy_slots: number;
+  preset_slots: number;
+  automation_queue: "none" | "single_play" | "simple_cross_play" | "core_daily";
+  reward_multiplier: 1;
+}
+
+export interface EntitlementOverviewResponse {
+  effective_tier: EntitlementTier;
+  monthly_cards: MonthlyCardStateSummary[];
+  vip: VipStateSummary;
+  convenience: ConvenienceRuleState;
+  available_monthly_grants: MonthlyCardDrawGrantState[];
+}
+
+export interface GachaPoolState {
+  pool_type: GachaPoolType;
+  name: string;
+  allowed_cost_types: GachaCostType[];
+  reserved_cost_types: GachaCostType[];
+  single_cost: string;
+  guarantee_at: number;
+  pity_count: number;
+  total_draws: number;
+  result_ids: string[];
+}
+
+export interface GachaPoolListResponse {
+  pools: GachaPoolState[];
+}
+
+export interface GachaDrawRequest {
+  pool_type: GachaPoolType;
+  cost_type: GachaCostType;
+  grant_id?: string;
+}
+
+export interface GachaResultState {
+  result_type: "item" | "ancient_treasure";
+  result_id: string;
+  result_name: string;
+  duplicate: boolean;
+  conversion: RewardBundle | null;
+}
+
+export interface GachaDrawResponse {
+  gacha_id: string;
+  pool_type: GachaPoolType;
+  cost_type: GachaCostType;
+  result: GachaResultState;
+  pity_before: number;
+  pity_after: number;
+  wallet: PlayerWalletState;
+}
+
+export interface GachaRecordState {
+  gacha_id: string;
+  pool_type: GachaPoolType;
+  cost_type: GachaCostType;
+  result: GachaResultState;
+  pity_before: number;
+  pity_after: number;
+  created_at: string;
+}
+
+export interface GachaHistoryResponse {
+  records: GachaRecordState[];
+}
+
+export interface AncientTreasureStateSummary {
+  treasure_id: string;
+  name: string;
+  owned: boolean;
+  star_level: number;
+  fragment_count: number;
+  soul_count: number;
+}
+
+export interface AncientTreasureListResponse {
+  treasures: AncientTreasureStateSummary[];
+}
+
+export interface ConvenienceBatchPreviewRequest {
+  requested_count: number;
+}
+
+export interface ConvenienceBatchPreviewResponse {
+  requested_count: number;
+  accepted_count: number;
+  limit: number;
+  effective_tier: EntitlementTier;
+  reward_multiplier: 1;
+}
+
+export interface SaveConvenienceStrategyRequest {
+  strategy_name: string;
+  strategy_type: "daily" | "tower" | "boss" | "pvp";
+  config: Record<string, unknown>;
+}
+
+export interface ConvenienceStrategyState {
+  strategy_id: string;
+  strategy_name: string;
+  strategy_type: string;
+  tier_at_create: EntitlementTier;
+  config: Record<string, unknown>;
+  status: string;
+}
+
+export interface SaveConvenienceStrategyResponse {
+  strategy: ConvenienceStrategyState;
+  used_slots: number;
+  slot_limit: number;
+}
+
+export interface CreateAutomationQueueRequest {
+  queue_type: "single_play" | "simple_cross_play" | "core_daily";
+  actions: Array<{ action_type: string; count?: number; target_id?: string }>;
+}
+
+export interface AutomationQueueState {
+  queue_id: string;
+  queue_type: string;
+  entitlement_tier: EntitlementTier;
+  requested_actions: Array<Record<string, unknown>>;
+  accepted_actions: Array<Record<string, unknown>>;
+  status: string;
+}
+
+export interface CreateAutomationQueueResponse {
+  queue: AutomationQueueState;
+  convenience: ConvenienceRuleState;
+}
+
+export type AppearanceType =
+  | "title_style"
+  | "avatar_frame"
+  | "battle_report"
+  | "cave"
+  | "sect"
+  | "era_archive"
+  | "catalog";
+
+export interface AppearanceState {
+  appearance_id: string;
+  name: string;
+  appearance_type: AppearanceType | string;
+  source_type: string;
+  owned: boolean;
+  equipped: boolean;
+  inherited: boolean;
+  stat_bonus: null;
+}
+
+export interface AppearanceListResponse {
+  appearances: AppearanceState[];
+}
+
+export interface ClaimAppearanceRequest {
+  appearance_id: string;
+}
+
+export interface EquipAppearanceRequest {
+  appearance_id: string;
+}
+
+export interface AppearanceMutationResponse {
+  record_id: string;
+  appearance: AppearanceState;
+}
+
 export interface GameOverviewResponse {
   profile: PlayerProfileResponse;
   cultivation: CultivationStatus | null;
@@ -726,7 +981,12 @@ export type ConfigType =
   | "boss"
   | "sect"
   | "pvp"
-  | "rank";
+  | "rank"
+  | "gacha"
+  | "monthly_card"
+  | "vip"
+  | "convenience"
+  | "appearance";
 
 export interface ConfigEnvelope<TPayload = Record<string, unknown>> {
   config_type: string;

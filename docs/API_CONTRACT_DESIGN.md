@@ -336,7 +336,7 @@ PVP 匹配响应必须返回收益衰减、保护状态和跨境界提示，客�
 ```json
 {
   "pool_id": "pool_ancient",
-  "cost_type": "monthly_card_grant",
+  "cost_type": "monthly_grant",
   "count": 1,
   "grant_id": "grant_10001"
 }
@@ -348,7 +348,7 @@ PVP 匹配响应必须返回收益衰减、保护状态和跨境界提示，客�
 {
   "gacha_id": "g_10001",
   "pool_type": "ancient_treasure",
-  "cost_type": "monthly_card_grant",
+  "cost_type": "monthly_grant",
   "result_item_id": "ancient_taiyi_danding",
   "duplicate_converted": false,
   "pity_before": 12,
@@ -357,7 +357,7 @@ PVP 匹配响应必须返回收益衰减、保护状态和跨境界提示，客�
 }
 ```
 
-九大古宝专属池当前只允许 `monthly_card_grant` 和 `ancient_page` 两类消耗。`reserved_paid_jade` 仅为后期预留入口，当前请求必须返回未开放错误，不扣仙玉、不产生抽卡记录、不计入保底。常驻池和限定本命法宝池按各自配置处理，不得复用九大古宝限制口径。
+九大古宝专属池当前只允许 `monthly_grant` 和 `ancient_page` 两类消耗。`reserved_paid_jade` 仅为后期预留入口，当前请求必须返回未开放错误，不扣仙玉、不产生抽卡记录、不计入保底。常驻池和限定本命法宝池按各自配置处理，不得复用九大古宝限制口径。
 
 生产记录聚合接口：
 

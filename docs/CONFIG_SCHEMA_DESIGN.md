@@ -60,6 +60,7 @@
 | `rank_config` | 排行榜 | rank_id、rank_type、period、segment_rule |
 | `achievement_config` | 成就 | achievement_id、condition_group、reward_group |
 | `title_config` | 称号 | title_id、rarity、effect_rule、inherit_rule |
+| `appearance_config` | 展示外观 | appearance_id、appearance_type、display_slot、source_type、inherit_rule |
 | `gacha_pool_config` | 卡池 | pool_id、cost_type、pity_rule、result_group |
 | `monthly_card_config` | 月卡 | card_id、fishpi_point_cost、daily_jade、daily_grant |
 | `vip_config` | 鱼排 VIP 联动 | vip_level、benefit_group、validity_rule |
@@ -128,6 +129,20 @@
 | inherit_rule | 不继承 / 展示继承 / 图鉴继承 |
 | expire_rule | 永久 / 当纪元 / 限时 |
 
+`appearance_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| appearance_id | 展示外观 ID |
+| appearance_type | 称号样式 / 头像框 / 名片框 / 聊天气泡 / 发言前缀 / 战报样式 / 洞府外观 / 宗门外观 / 纪元史册外观 / 图鉴外观 |
+| display_slot | 展示位置，例如玩家名片、排行榜、宗门、战报、聊天、鱼排插件小卡片、纪元史册 |
+| source_type | 付费仙玉 / 外观券 / 排行奖励 / 活动奖励 / 纪元结算 / VIP 展示权益 / 月卡展示权益 |
+| inherit_rule | 不继承 / 跨纪元展示继承 / 纪元史册继承 / 图鉴继承 |
+| expire_rule | 永久 / 当纪元 / 限时 |
+| preview_text_id | 预览文案 ID |
+| risk_rule | 展示占用、敏感词和风控规则 |
+| stat_effect_allowed | 固定为 false，展示外观不得配置战力或贡献效果 |
+
 ## 六、抽卡和付费配置
 
 `gacha_pool_config`
@@ -174,6 +189,7 @@
 - 月卡、VIP 便利是否突破大月卡上限。
 - 任务和活动是否支持异步完成。
 - 排行奖励是否包含唯一战力道具。
+- 展示外观是否误配置攻击、防御、生命、PVP 伤害、九塔贡献倍率、世界 Boss 贡献倍率、最终魔王贡献倍率或资源掉落倍率。
 
 ## 八、版本追溯要求
 
@@ -208,3 +224,4 @@
 - 九大古宝专属池配置无法混入普通材料、器魂或低阶古宝碎片。
 - 九大古宝专属池当前只能配置月卡赠抽和残页合成，仙玉入口只能以预留未开放状态存在。
 - VIP3、小月卡、VIP4、大月卡便利边界可配置且可校验。
+- 展示外观配置只能影响玩家名片、排行榜、宗门、战报、聊天、鱼排插件小卡片、纪元史册和图鉴展示，不得配置战力、奖励倍率和贡献倍率。

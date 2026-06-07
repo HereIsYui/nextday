@@ -29,6 +29,7 @@ import type {
   Prisma,
 } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
+import { buildCaveCollectExperience, buildExploreExperience } from "../platform/experience";
 import { hashRequestBody } from "../platform/utils/hash";
 import { toPlayerProfileResponse } from "../player/player.mapper";
 import { getDefaultSkillLoadout, getSkillName } from "../production/production.constants";
@@ -298,6 +299,14 @@ export class GameService {
           battles,
           rewards: rewardTotal,
           completed_task_ids: completedTaskIds,
+          experience: buildExploreExperience({
+            provinceName: province.name,
+            count: body.count,
+            battles,
+            rewards: rewardTotal,
+            actionPointsAfter: afterActionState.actionPoints,
+            completedTaskCount: completedTaskIds.length,
+          }),
         };
 
         await this.writeAudit(tx, {
@@ -414,13 +423,20 @@ export class GameService {
           daily_cave_collect: 1,
         });
 
-        return {
+        const response: CaveCollectResponse = {
           record_id: `cave_collect_${randomUUID()}`,
           cave: toCaveState(updatedCave),
           rewards,
           wallet: await this.getWalletState(player.playerId, tx),
           completed_task_ids: completedTaskIds,
+          experience: buildCaveCollectExperience({
+            collectedMinutes: caveState.claimable_minutes,
+            cave: toCaveState(updatedCave),
+            rewards,
+          }),
         };
+
+        return response;
       },
     });
   }

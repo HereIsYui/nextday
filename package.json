@@ -34,6 +34,7 @@
     "test:m9": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run build:packages && DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run test:m9 -w @nextday/api",
     "simulate:p1": "npm run build -w @nextday/config-schema && tsx scripts/simulate-p1.ts configs/p1-simulation.json",
     "test:p1-simulation": "npm run build -w @nextday/config-schema && npm run test:p1-simulation -w @nextday/config-schema",
+    "test:p1-web-experience": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run build:packages && DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run test:p1-web-experience -w @nextday/api",
     "lint": "biome check .",
     "typecheck": "npm run build:packages && npm run typecheck --workspaces --if-present",
     "format:check": "biome ci ."

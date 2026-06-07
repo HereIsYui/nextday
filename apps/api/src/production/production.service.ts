@@ -28,6 +28,7 @@ import type { EquipmentAffix, EquipmentInstance, Player, PlayerItem, Prisma } fr
 import { PrismaService } from "../database/prisma.service";
 import { defaultEraId } from "../game/game.constants";
 import { normalizeRewardBundle } from "../game/game.mappers";
+import { buildAlchemyExperience, buildEquipmentExperience } from "../platform/experience";
 import { hashRequestBody } from "../platform/utils/hash";
 import { toPlayerProfileResponse } from "../player/player.mapper";
 import {
@@ -219,6 +220,14 @@ export class ProductionService {
           rewards,
           wallet: await this.getWalletState(tx, player.playerId),
           bag: await this.getBagByPlayerId(player.playerId, tx),
+          experience: buildAlchemyExperience({
+            recipeName: recipe.name,
+            success,
+            quality,
+            rewards,
+            failureReturns: success ? null : recipe.failure_returns,
+            configVersion: productionConfigVersion,
+          }),
         };
       },
     });
@@ -420,6 +429,11 @@ export class ProductionService {
           equipment: equipmentState,
           wallet: await this.getWalletState(tx, player.playerId),
           bag: await this.getBagByPlayerId(player.playerId, tx),
+          experience: buildEquipmentExperience({
+            operationType: "forge",
+            equipment: equipmentState,
+            materials: recipeCostBundle(recipe),
+          }),
         };
       },
     });
@@ -521,6 +535,11 @@ export class ProductionService {
           equipment: toEquipmentState(updated),
           wallet: await this.getWalletState(tx, player.playerId),
           bag: await this.getBagByPlayerId(player.playerId, tx),
+          experience: buildEquipmentExperience({
+            operationType: "inscribe",
+            equipment: toEquipmentState(updated),
+            materials,
+          }),
         };
       },
     });
@@ -593,6 +612,10 @@ export class ProductionService {
           record_id: `equipment_lock_${randomUUID()}`,
           operation_type: "lock",
           equipment: equipmentState,
+          experience: buildEquipmentExperience({
+            operationType: "lock",
+            equipment: equipmentState,
+          }),
         };
       },
     });
@@ -714,6 +737,12 @@ export class ProductionService {
           rewards: result.rewards,
           wallet: await this.getWalletState(tx, player.playerId),
           bag: await this.getBagByPlayerId(player.playerId, tx),
+          experience: buildEquipmentExperience({
+            operationType,
+            equipment: equipmentState,
+            materials: result.materials,
+            rewards: result.rewards,
+          }),
         };
       },
     });

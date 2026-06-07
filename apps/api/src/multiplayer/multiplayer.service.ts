@@ -31,6 +31,12 @@ import type { Player, PlayerActionState, Prisma, SectMember } from "@prisma/clie
 import { PrismaService } from "../database/prisma.service";
 import { defaultEraId, maxOfflineCultivationHours } from "../game/game.constants";
 import { toActionState } from "../game/game.mappers";
+import {
+  buildBossExperience,
+  buildPvpExperience,
+  buildSectTaskExperience,
+  buildTowerExperience,
+} from "../platform/experience";
 import { hashRequestBody } from "../platform/utils/hash";
 import { getItemMeta } from "../production/production.constants";
 import { toBagItemState } from "../production/production.mappers";
@@ -194,6 +200,16 @@ export class MultiplayerService {
             risk_status: risk.risk_status,
             risk_record_id: risk.risk_record_id,
             settlement_status: "delayed",
+            experience: buildTowerExperience({
+              towerBefore: toTowerStateSummary(tower),
+              towerAfter: toTowerStateSummary(tower),
+              actionType: body.action_type,
+              count: body.count,
+              contribution,
+              rewards,
+              riskStatus: risk.risk_status,
+              settlementStatus: "delayed",
+            }),
           };
         }
 
@@ -251,6 +267,16 @@ export class MultiplayerService {
           risk_status: risk.risk_status,
           risk_record_id: risk.risk_record_id,
           settlement_status: "settled",
+          experience: buildTowerExperience({
+            towerBefore: toTowerStateSummary(tower),
+            towerAfter: toTowerStateSummary(updatedTower),
+            actionType: body.action_type,
+            count: body.count,
+            contribution,
+            rewards,
+            riskStatus: risk.risk_status,
+            settlementStatus: "settled",
+          }),
         };
       },
     });
@@ -279,6 +305,7 @@ export class MultiplayerService {
       requestBody: body,
       handler: async (tx) => {
         let boss = await this.ensureBossState(tx);
+        const bossBefore = toBossStateSummary(boss);
         const actionState = await this.consumeActionPoints(
           tx,
           player.playerId,
@@ -348,6 +375,15 @@ export class MultiplayerService {
           rewards,
           action_state: actionState,
           log,
+          experience: buildBossExperience({
+            bossBefore,
+            bossAfter: toBossStateSummary(boss),
+            damageDone,
+            contribution: damageDone,
+            result: defeated ? "phase_defeated" : "active",
+            rewards,
+            log,
+          }),
         };
       },
     });
@@ -538,6 +574,11 @@ export class MultiplayerService {
           sect: detail.sect,
           contribution: task.contribution,
           rewards,
+          experience: buildSectTaskExperience({
+            sectName: detail.sect.name,
+            contribution: task.contribution,
+            rewards,
+          }),
         };
       },
     });
@@ -854,6 +895,17 @@ export class MultiplayerService {
             log,
           },
           resource_point: toResourcePointSummary(updatedResourcePoint),
+          experience: buildPvpExperience({
+            result: win ? "win" : "lose",
+            attackerPower,
+            defenderPower,
+            scoreDelta,
+            rewards,
+            riskStatus: risk.risk_status,
+            settlementStatus,
+            resourcePoint: toResourcePointSummary(updatedResourcePoint),
+            log,
+          }),
         };
       },
     });

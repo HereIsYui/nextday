@@ -32,6 +32,7 @@ import type {
 import type { GachaPityState, MonthlyCardDrawGrant, Player, Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
 import { defaultEraId } from "../game/game.constants";
+import { buildGachaExperience } from "../platform/experience";
 import { hashRequestBody } from "../platform/utils/hash";
 import { RiskService } from "../risk/risk.service";
 import {
@@ -780,6 +781,13 @@ export class CommerceService {
       pity_before: pityBefore,
       pity_after: pityAfter,
       wallet: await this.getWalletState(tx, player.playerId),
+      experience: buildGachaExperience({
+        poolType: permanentPoolType,
+        costType: body.cost_type,
+        result: toGachaResult(gacha),
+        pityBefore,
+        pityAfter,
+      }),
     };
   }
 
@@ -903,6 +911,13 @@ export class CommerceService {
       pity_before: pityBefore,
       pity_after: pityAfter,
       wallet: await this.getWalletState(tx, player.playerId),
+      experience: buildGachaExperience({
+        poolType: ancientTreasurePoolType,
+        costType: body.cost_type,
+        result: toGachaResult(gacha),
+        pityBefore,
+        pityAfter,
+      }),
     };
   }
 

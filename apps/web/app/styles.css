@@ -66,6 +66,10 @@ button:disabled {
 .task-row span,
 .battle-row span,
 .empty,
+.experience-summary,
+.experience-step p,
+.recommendation-list span,
+.delta-item span,
 .province span {
   color: #5f6f70;
   font-size: 13px;
@@ -118,6 +122,7 @@ h2 {
 .onboarding-panel,
 .panel,
 .daily-strip,
+.experience-panel,
 .tab-surface {
   background: #ffffff;
   border: 1px solid #dce4df;
@@ -126,6 +131,7 @@ h2 {
 
 .onboarding-panel,
 .panel,
+.experience-panel,
 .tab-surface {
   padding: 18px;
 }
@@ -227,6 +233,145 @@ h2 {
 .daily-strip span {
   color: #5f6f70;
   font-size: 13px;
+}
+
+.experience-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.experience-panel .section-title {
+  margin-bottom: 0;
+}
+
+.experience-summary {
+  background: #f7f9f5;
+  border: 1px solid #dce4df;
+  border-radius: 8px;
+  margin: 0;
+  padding: 10px 12px;
+}
+
+.experience-layout {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+}
+
+.experience-timeline {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.experience-step {
+  align-items: flex-start;
+  background: #fbfcfa;
+  border: 1px solid #dce4df;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 32px minmax(0, 1fr);
+  padding: 12px;
+}
+
+.experience-step > span {
+  align-items: center;
+  background: #e9efe9;
+  border-radius: 999px;
+  color: #14383b;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 700;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+
+.experience-step strong,
+.delta-item strong,
+.recommendation-list strong {
+  color: #10292b;
+  overflow-wrap: anywhere;
+}
+
+.experience-step p {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.experience-step.tone-success > span,
+.reason-tag.tone-success {
+  background: #dfeee5;
+  color: #1f6b3a;
+}
+
+.experience-step.tone-warning > span,
+.reason-tag.tone-warning {
+  background: #f7ead2;
+  color: #8a5a12;
+}
+
+.experience-step.tone-danger > span,
+.reason-tag.tone-danger {
+  background: #f3dada;
+  color: #9a2e2e;
+}
+
+.experience-side {
+  display: grid;
+  gap: 12px;
+}
+
+.delta-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.delta-item {
+  background: #fbfcfa;
+  border: 1px solid #dce4df;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  min-height: 72px;
+  padding: 10px;
+}
+
+.delta-item strong {
+  font-size: 15px;
+}
+
+.reason-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.reason-tag {
+  background: #edf1ef;
+  border-radius: 999px;
+  color: #42585a;
+  font-size: 12px;
+  line-height: 1;
+  padding: 8px 10px;
+}
+
+.recommendation-list {
+  display: grid;
+  gap: 8px;
+}
+
+.recommendation-list article {
+  background: #fbfcfa;
+  border: 1px solid #dce4df;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 10px;
 }
 
 .tab-nav,
@@ -388,6 +533,7 @@ h2 {
   }
 
   .main-grid,
+  .experience-layout,
   .battle-row {
     grid-template-columns: 1fr;
   }
@@ -415,6 +561,7 @@ h2 {
   }
 
   .create-form,
+  .delta-grid,
   .overview-grid {
     grid-template-columns: 1fr;
   }

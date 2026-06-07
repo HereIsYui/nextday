@@ -10,6 +10,7 @@ import type {
   BagSummaryResponse,
   EntitlementOverviewResponse,
   EquipmentListResponse,
+  ExperiencePayload,
   ForgeRecipeListResponse,
   GachaPoolListResponse,
   GameOverviewResponse,
@@ -69,6 +70,7 @@ export default function HomePage() {
   const [playerName, setPlayerName] = useState("云游修士");
   const [route, setRoute] = useState<RouteValue>("qi");
   const [message, setMessage] = useState("尚未登录");
+  const [lastExperience, setLastExperience] = useState<ExperiencePayload | null>(null);
   const [busy, setBusy] = useState(false);
 
   const client = useMemo(() => createClient(token ?? undefined), [token]);
@@ -345,6 +347,7 @@ export default function HomePage() {
         createIdempotencyKey(`web_explore_${count}`),
       );
       ensureOk(response);
+      rememberExperience(response.data.experience);
       await refreshOverview(`完成 ${response.data.battles.length} 次冀州探索`);
     });
   }
@@ -353,6 +356,7 @@ export default function HomePage() {
     await runAction("洞府收取", async () => {
       const response = await client.collectCave(createIdempotencyKey("web_cave"));
       ensureOk(response);
+      rememberExperience(response.data.experience);
       await refreshOverview(`洞府收取灵石 ${response.data.rewards.spirit_stone ?? "0"}`);
     });
   }
@@ -393,6 +397,7 @@ export default function HomePage() {
         createIdempotencyKey("web_alchemy"),
       );
       ensureOk(response);
+      rememberExperience(response.data.experience);
       await refreshOverview(`炼丹${response.data.record.success ? "成功" : "失败返还"}`);
     });
   }
@@ -426,6 +431,7 @@ export default function HomePage() {
         createIdempotencyKey("web_forge"),
       );
       ensureOk(response);
+      rememberExperience(response.data.experience);
       await refreshOverview(`炼成 ${response.data.equipment?.name ?? "法宝"}`);
     });
   }
@@ -442,6 +448,7 @@ export default function HomePage() {
         createIdempotencyKey("web_refine"),
       );
       ensureOk(response);
+      rememberExperience(response.data.experience);
       await refreshOverview(`淬炼 ${response.data.equipment?.name ?? "法宝"}`);
     });
   }
@@ -487,6 +494,7 @@ export default function HomePage() {
         createIdempotencyKey("web_tower"),
       );
       ensureOk(response);
+      rememberExperience(response.data.experience);
       await refreshOverview(`九塔贡献 +${response.data.contribution}`);
     });
   }
@@ -503,6 +511,7 @@ export default function HomePage() {
         createIdempotencyKey("web_boss"),
       );
       ensureOk(response);
+      rememberExperience(response.data.experience);
       await refreshOverview(`Boss 伤害 ${response.data.damage_done}`);
     });
   }
@@ -535,6 +544,7 @@ export default function HomePage() {
         createIdempotencyKey("web_sect_task"),
       );
       ensureOk(response);
+      rememberExperience(response.data.experience);
       await refreshOverview(`宗门贡献 +${response.data.contribution}`);
     });
   }
@@ -554,6 +564,7 @@ export default function HomePage() {
         createIdempotencyKey("web_pvp"),
       );
       ensureOk(response);
+      rememberExperience(response.data.experience);
       await refreshOverview(
         `PVP ${response.data.result === "win" ? "胜" : "负"} +${response.data.score_delta}`,
       );
@@ -602,6 +613,7 @@ export default function HomePage() {
         createIdempotencyKey("web_ancient_gacha"),
       );
       ensureOk(response);
+      rememberExperience(response.data.experience);
       await refreshOverview(`获得 ${response.data.result.result_name}`);
     });
   }
@@ -613,8 +625,15 @@ export default function HomePage() {
         createIdempotencyKey("web_permanent_gacha"),
       );
       ensureOk(response);
+      rememberExperience(response.data.experience);
       await refreshOverview(`抽得 ${response.data.result.result_name}`);
     });
+  }
+
+  function rememberExperience(experience?: ExperiencePayload) {
+    if (experience) {
+      setLastExperience(experience);
+    }
   }
 
   async function handleSyncVip(vipLevel: 3 | 4) {
@@ -827,6 +846,8 @@ export default function HomePage() {
               </Button>
             </div>
           </section>
+
+          {lastExperience ? <ExperiencePanel experience={lastExperience} /> : null}
 
           <nav className="tab-nav" aria-label="功能分区">
             {navItems.map((item) => (
@@ -1163,6 +1184,71 @@ export default function HomePage() {
       )}
     </main>
   );
+}
+
+function ExperiencePanel({ experience }: { experience: ExperiencePayload }) {
+  return (
+    <section className="experience-panel" aria-label="最近行动回放">
+      <div className="section-title">
+        <div>
+          <h2>最近行动回放</h2>
+          <span>{experience.title}</span>
+        </div>
+        <StatusBadge tone="neutral">服务端结算</StatusBadge>
+      </div>
+      <p className="experience-summary">{experience.summary}</p>
+      <div className="experience-layout">
+        <ol className="experience-timeline">
+          {experience.timeline.map((entry) => (
+            <li className={`experience-step tone-${entry.tone ?? "neutral"}`} key={entry.step}>
+              <span>{entry.step}</span>
+              <div>
+                <strong>{entry.title}</strong>
+                <p>{entry.description}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+        <aside className="experience-side">
+          <div className="delta-grid">
+            {experience.delta_summary.map((item) => (
+              <div className="delta-item" key={`${item.label}-${item.after ?? item.delta}`}>
+                <span>{item.label}</span>
+                <strong>{formatDeltaValue(item)}</strong>
+              </div>
+            ))}
+          </div>
+          <div className="reason-tags">
+            {experience.reason_tags.map((tag) => (
+              <span className={`reason-tag tone-${tag.tone ?? "neutral"}`} key={tag.code}>
+                {tag.label}
+              </span>
+            ))}
+          </div>
+          <div className="recommendation-list">
+            {experience.next_recommendations.map((item) => (
+              <article key={`${item.label}-${item.action_hint ?? "none"}`}>
+                <strong>{item.label}</strong>
+                <span>{item.reason}</span>
+              </article>
+            ))}
+          </div>
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+function formatDeltaValue(item: ExperiencePayload["delta_summary"][number]): string {
+  if (item.delta !== undefined && item.delta !== null) {
+    return String(item.delta);
+  }
+
+  const values = [item.before, item.after]
+    .filter((value) => value !== undefined && value !== null)
+    .map((value) => String(value));
+
+  return values.length > 0 ? values.join(" → ") : "-";
 }
 
 function createClient(authToken?: string): GameClient {

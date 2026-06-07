@@ -138,6 +138,46 @@ export interface ApiResponse<TData> {
   trace_id: string;
 }
 
+export type ExperienceTone = "neutral" | "success" | "warning" | "danger";
+
+export interface ExperienceTimelineEntry {
+  step: number;
+  title: string;
+  description: string;
+  tone?: ExperienceTone;
+}
+
+export interface ExperienceDeltaSummary {
+  label: string;
+  before?: string | number | null;
+  after?: string | number | null;
+  delta?: string | number | null;
+  tone?: ExperienceTone;
+}
+
+export interface ExperienceRecommendation {
+  label: string;
+  reason: string;
+  action_hint?: string;
+  priority?: "low" | "medium" | "high";
+}
+
+export interface ExperienceReasonTag {
+  code: string;
+  label: string;
+  description?: string;
+  tone?: ExperienceTone;
+}
+
+export interface ExperiencePayload {
+  title: string;
+  summary: string;
+  timeline: ExperienceTimelineEntry[];
+  delta_summary: ExperienceDeltaSummary[];
+  next_recommendations: ExperienceRecommendation[];
+  reason_tags: ExperienceReasonTag[];
+}
+
 export const ErrorCode = {
   ok: 0,
   authRequired: 10000,
@@ -340,6 +380,7 @@ export interface ExploreResponse {
   battles: BattleSummary[];
   rewards: RewardBundle;
   completed_task_ids: string[];
+  experience?: ExperiencePayload;
 }
 
 export interface TaskState {
@@ -386,6 +427,7 @@ export interface CaveCollectResponse {
   rewards: RewardBundle;
   wallet: PlayerWalletState;
   completed_task_ids: string[];
+  experience?: ExperiencePayload;
 }
 
 export type ItemCategory =
@@ -473,6 +515,7 @@ export interface AlchemyCraftResponse {
   rewards: RewardBundle;
   wallet: PlayerWalletState;
   bag: BagSummaryResponse;
+  experience?: ExperiencePayload;
 }
 
 export interface AlchemyRecordListResponse {
@@ -555,6 +598,7 @@ export interface EquipmentOperationResponse {
   rewards?: RewardBundle;
   wallet?: PlayerWalletState;
   bag?: BagSummaryResponse;
+  experience?: ExperiencePayload;
 }
 
 export interface EquipmentOperationRecordState {
@@ -640,6 +684,7 @@ export interface TowerActionResponse {
   risk_status?: RiskStatus;
   risk_record_id?: string | null;
   settlement_status: SettlementStatus;
+  experience?: ExperiencePayload;
 }
 
 export interface WorldBossStateSummary {
@@ -668,6 +713,7 @@ export interface WorldBossChallengeResponse {
   rewards: RewardBundle;
   action_state: ActionState;
   log: BattleRoundLog[];
+  experience?: ExperiencePayload;
 }
 
 export type SectAlignment = "immortal" | "demon" | "neutral";
@@ -735,6 +781,7 @@ export interface SectTaskResponse {
   sect: SectSummary;
   contribution: number;
   rewards: RewardBundle;
+  experience?: ExperiencePayload;
 }
 
 export interface SectWarehouseDepositRequest {
@@ -789,6 +836,7 @@ export interface PvpBattleResponse {
     log: BattleRoundLog[];
   };
   resource_point: ResourcePointSummary | null;
+  experience?: ExperiencePayload;
 }
 
 export type RankType = "personal" | "sect" | "pvp_week" | "tower_week";
@@ -943,6 +991,7 @@ export interface GachaDrawResponse {
   pity_before: number;
   pity_after: number;
   wallet: PlayerWalletState;
+  experience?: ExperiencePayload;
 }
 
 export interface GachaRecordState {

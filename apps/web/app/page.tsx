@@ -64,6 +64,7 @@ interface DailyGoal {
   status: string;
   tone: ExperienceTone;
   actionLabel: string;
+  actionUnavailableReason?: string;
   disabled?: boolean;
   onAction: () => void | Promise<void>;
 }
@@ -73,6 +74,7 @@ interface RecommendedAction {
   title: string;
   detail: string;
   buttonLabel: string;
+  actionUnavailableReason?: string;
   disabled?: boolean;
   onAction: () => void | Promise<void>;
 }
@@ -94,6 +96,7 @@ interface GrowthTarget {
   title: string;
   detail: string;
   actionLabel: string;
+  actionUnavailableReason?: string;
   disabled?: boolean;
   onAction: () => void | Promise<void>;
 }
@@ -827,7 +830,7 @@ export default function HomePage() {
       );
       ensureOk(response);
       rememberExperience(undefined, {
-        summary: `服用 ${response.data.pill_item_id}，本次效果 ${response.data.effect_value}，有效倍率 ${Math.round(
+        summary: `服用 ${selectedPill.name}，本次效果 ${response.data.effect_value}，有效倍率 ${Math.round(
           response.data.effective_rate * 100,
         )}%。`,
         tags: ["丹药", "修为成长"],
@@ -1202,13 +1205,14 @@ export default function HomePage() {
         createIdempotencyKey(`web_monthly_${cardType}`),
       );
       ensureOk(response);
+      const cardLabel = monthlyCardLabel(response.data.monthly_card.card_type);
       rememberExperience(undefined, {
-        summary: `${response.data.monthly_card.card_type} 已生效，月卡只提供便利、赠抽和付费资产记录，不提高战斗倍率。`,
+        summary: `${cardLabel} 已生效，月卡只提供便利、赠抽和付费资产记录，不提高战斗倍率。`,
         tags: ["月卡", "权益"],
         title: "月卡生效",
         tone: "success",
       });
-      await refreshOverview(`${response.data.monthly_card.card_type} 已生效`);
+      await refreshOverview(`${cardLabel} 已生效`);
     });
   }
 
@@ -1359,14 +1363,15 @@ export default function HomePage() {
         createIdempotencyKey("web_batch_preview"),
       );
       ensureOk(response);
+      const tierLabel = commerceTierLabel(response.data.effective_tier);
       rememberExperience(undefined, {
-        summary: `${response.data.effective_tier} 批量上限 ${response.data.limit}，本次可执行 ${response.data.accepted_count} 次。`,
+        summary: `${tierLabel}批量上限 ${response.data.limit}，本次可执行 ${response.data.accepted_count} 次。`,
         tags: ["便利预览", "不增收益"],
         title: "检查批量上限",
         tone: response.data.accepted_count < response.data.requested_count ? "warning" : "success",
       });
       setMessage(
-        `${response.data.effective_tier} 批量上限 ${response.data.limit}，本次可执行 ${response.data.accepted_count}`,
+        `${tierLabel}批量上限 ${response.data.limit}，本次可执行 ${response.data.accepted_count}`,
       );
     });
   }
@@ -1387,7 +1392,7 @@ export default function HomePage() {
       ensureOk(response);
       rememberExperience(undefined, {
         summary: `托管队列接收 ${response.data.queue.accepted_actions.length} 个行动，服务端按权益档位限制队列。`,
-        tags: ["托管队列", response.data.queue.status],
+        tags: ["托管队列", queueStatusLabel(response.data.queue.status)],
         title: "创建今日托管",
         tone: "success",
       });
@@ -1513,9 +1518,13 @@ export default function HomePage() {
                 <option value="body">炼体</option>
               </select>
             </label>
-            <Button disabled={busy || !token} type="submit">
-              创建角色
-            </Button>
+            {token ? (
+              <Button disabled={busy} type="submit">
+                创建角色
+              </Button>
+            ) : (
+              <span className="action-note">先使用游客登录</span>
+            )}
           </form>
         </section>
       ) : (
@@ -1593,9 +1602,13 @@ export default function HomePage() {
                     <strong>{action.title}</strong>
                     <span>{action.detail}</span>
                   </div>
-                  <Button disabled={action.disabled} onClick={action.onAction}>
-                    {action.buttonLabel}
-                  </Button>
+                  {action.actionUnavailableReason ? (
+                    <span className="action-note">{action.actionUnavailableReason}</span>
+                  ) : (
+                    <Button disabled={action.disabled} onClick={action.onAction}>
+                      {action.buttonLabel}
+                    </Button>
+                  )}
                 </article>
               ))}
             </div>
@@ -1770,7 +1783,7 @@ export default function HomePage() {
                       <div className="province-head">
                         <strong>{activity.name}</strong>
                         <StatusBadge tone={activity.claimable ? "success" : "neutral"}>
-                          {activity.claimable ? "可领取" : activity.status}
+                          {activity.claimable ? "可领取" : activityStatusLabel(activity.status)}
                         </StatusBadge>
                       </div>
                       <p>{activity.description}</p>
@@ -1778,30 +1791,29 @@ export default function HomePage() {
                         <span>
                           进度 {activity.progress}/{activity.target_progress}
                         </span>
-                        <span>奖励 {activity.reward_state}</span>
+                        <span>奖励 {rewardStateLabel(activity.reward_state)}</span>
                       </div>
                       <div className="mini-stats">
                         <span>{activity.async_enabled ? "异步" : "定时"}</span>
                         <span>结算 {formatShortDate(activity.settlement_at)}</span>
                       </div>
                       <div className="production-actions">
-                        <Button
-                          disabled={
-                            busy ||
-                            activity.claimable ||
-                            activity.progress >= activity.target_progress
-                          }
-                          onClick={() => handleSubmitActivity(activity)}
-                        >
-                          {activity.action_label}
-                        </Button>
-                        <Button
-                          disabled={busy || !activity.claimable}
-                          onClick={() => handleClaimActivity(activity)}
-                        >
-                          领取
-                        </Button>
+                        {!activity.claimable && activity.progress < activity.target_progress ? (
+                          <Button disabled={busy} onClick={() => handleSubmitActivity(activity)}>
+                            {activity.action_label}
+                          </Button>
+                        ) : null}
+                        {activity.claimable ? (
+                          <Button disabled={busy} onClick={() => handleClaimActivity(activity)}>
+                            领取
+                          </Button>
+                        ) : null}
                       </div>
+                      {!activity.claimable && activity.progress >= activity.target_progress ? (
+                        <span className="action-note">
+                          {rewardStateLabel(activity.reward_state)}
+                        </span>
+                      ) : null}
                     </article>
                   )) ?? <p>活动中心尚未读取</p>}
                 </div>
@@ -1831,32 +1843,37 @@ export default function HomePage() {
                           )} · 灵石 ${selectedAlchemyRecipe.spirit_stone_cost}`
                         : "暂无可用丹方"}
                     </span>
-                    <label className="choice-field">
-                      <span>选择丹方</span>
-                      <select
-                        disabled={busy || !alchemyRecipes?.recipes.length}
-                        onChange={(event) => setSelectedAlchemyRecipeId(event.target.value)}
-                        value={selectedAlchemyRecipe?.recipe_id ?? ""}
-                      >
-                        {alchemyRecipes?.recipes.map((recipe) => (
-                          <option key={recipe.recipe_id} value={recipe.recipe_id}>
-                            {recipe.name} ·{" "}
-                            {recipe.route === "all" ? "通用" : cultivationRouteLabels[recipe.route]}{" "}
-                            ·{" "}
-                            {recipe.materials
-                              .map((item) => `${item.name}x${item.count}`)
-                              .join("、")}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                    {alchemyRecipes?.recipes.length ? (
+                      <label className="choice-field">
+                        <span>选择丹方</span>
+                        <select
+                          disabled={busy}
+                          onChange={(event) => setSelectedAlchemyRecipeId(event.target.value)}
+                          value={selectedAlchemyRecipe?.recipe_id ?? ""}
+                        >
+                          {alchemyRecipes.recipes.map((recipe) => (
+                            <option key={recipe.recipe_id} value={recipe.recipe_id}>
+                              {recipe.name} ·{" "}
+                              {recipe.route === "all"
+                                ? "通用"
+                                : cultivationRouteLabels[recipe.route]}{" "}
+                              ·{" "}
+                              {recipe.materials
+                                .map((item) => `${item.name}x${item.count}`)
+                                .join("、")}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : (
+                      <span className="action-note">暂无可用丹方</span>
+                    )}
                     <div className="production-actions">
-                      <Button
-                        disabled={busy || !selectedAlchemyRecipe}
-                        onClick={handleCraftAlchemy}
-                      >
-                        炼制所选丹方
-                      </Button>
+                      {selectedAlchemyRecipe ? (
+                        <Button disabled={busy} onClick={handleCraftAlchemy}>
+                          炼制所选丹方
+                        </Button>
+                      ) : null}
                     </div>
                   </article>
                   <article className="production-box production-choice">
@@ -1866,46 +1883,64 @@ export default function HomePage() {
                         ? `${selectedPill.name} x${selectedPill.count} · 服用后按同阶递减`
                         : "背包中暂无可服用丹药"}
                     </span>
-                    <label className="choice-field">
-                      <span>选择丹药</span>
-                      <select
-                        disabled={busy || availablePills.length === 0}
-                        onChange={(event) => setSelectedPillItemInstanceId(event.target.value)}
-                        value={selectedPill?.item_instance_id ?? ""}
-                      >
-                        {availablePills.map((item) => (
-                          <option key={item.item_instance_id} value={item.item_instance_id}>
-                            {item.name} x{item.count}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                    {availablePills.length ? (
+                      <label className="choice-field">
+                        <span>选择丹药</span>
+                        <select
+                          disabled={busy}
+                          onChange={(event) => setSelectedPillItemInstanceId(event.target.value)}
+                          value={selectedPill?.item_instance_id ?? ""}
+                        >
+                          {availablePills.map((item) => (
+                            <option key={item.item_instance_id} value={item.item_instance_id}>
+                              {item.name} x{item.count}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : (
+                      <span className="action-note">暂无可服丹药</span>
+                    )}
                     <div className="production-actions">
-                      <Button disabled={busy || !selectedPill} onClick={handleUsePill}>
-                        服用所选丹药
-                      </Button>
+                      {selectedPill ? (
+                        <Button disabled={busy} onClick={handleUsePill}>
+                          服用所选丹药
+                        </Button>
+                      ) : null}
                     </div>
                   </article>
                   <ActionBox
                     actions={
                       <>
-                        <Button disabled={busy || !overview} onClick={handleCraftForge}>
-                          炼器
-                        </Button>
-                        <Button disabled={busy || !firstEquipment} onClick={handleRefineEquipment}>
-                          淬炼
-                        </Button>
+                        {forgeRecipes?.recipes.length ? (
+                          <Button disabled={busy} onClick={handleCraftForge}>
+                            炼器
+                          </Button>
+                        ) : null}
+                        {firstEquipment ? (
+                          <Button disabled={busy} onClick={handleRefineEquipment}>
+                            淬炼
+                          </Button>
+                        ) : null}
                       </>
+                    }
+                    actionNote={
+                      !forgeRecipes?.recipes.length && !firstEquipment
+                        ? "暂无可炼器配方或可淬炼法宝"
+                        : undefined
                     }
                     detail={`已有 ${equipment?.equipments.length ?? 0} 件 · 炼器不产出九大古宝`}
                     title="法宝炼器"
                   />
                   <ActionBox
                     actions={
-                      <Button disabled={busy || !skills} onClick={handleSaveSkillPreset}>
-                        保存预设
-                      </Button>
+                      skills ? (
+                        <Button disabled={busy} onClick={handleSaveSkillPreset}>
+                          保存预设
+                        </Button>
+                      ) : null
                     }
+                    actionNote={skills ? undefined : "技能配置尚未读取"}
                     detail={`主动 ${skills?.active_skill_ids.length ?? 0}/3 · 本命 ${skillName(skills, skills?.treasure_skill_id)}`}
                     title="技能"
                   />
@@ -1933,41 +1968,38 @@ export default function HomePage() {
                         {innerWorld?.state.creature_capacity ?? 0}
                       </span>
                       <div className="production-actions">
-                        <Button
-                          disabled={busy || !innerWorld?.state.unlocked || !firstUnlockedProvince}
-                          onClick={handleInnerWorldDispatch}
-                        >
-                          派驻
-                        </Button>
-                        <Button
-                          disabled={
-                            busy ||
-                            !innerWorld?.state.unlocked ||
-                            (innerWorld?.state.claimable_assignment_count ?? 0) <= 0
-                          }
-                          onClick={handleInnerWorldClaim}
-                        >
-                          收取
-                        </Button>
-                        <Button
-                          disabled={busy || !innerWorld?.state.unlocked}
-                          onClick={handleInnerWorldUpgradeWorld}
-                        >
-                          升级洞天
-                        </Button>
-                        <Button
-                          disabled={busy || !innerWorld?.state.unlocked || !firstInnerCreature}
-                          onClick={handleInnerWorldUpgradeCreature}
-                        >
-                          培养生灵
-                        </Button>
-                        <Button
-                          disabled={busy || !innerWorld?.state.unlocked || !firstUnlockedProvince}
-                          onClick={handleInnerWorldSupport}
-                        >
-                          九州支援
-                        </Button>
+                        {innerWorld?.state.unlocked && firstUnlockedProvince ? (
+                          <Button disabled={busy} onClick={handleInnerWorldDispatch}>
+                            派驻
+                          </Button>
+                        ) : null}
+                        {innerWorld?.state.unlocked &&
+                        (innerWorld?.state.claimable_assignment_count ?? 0) > 0 ? (
+                          <Button disabled={busy} onClick={handleInnerWorldClaim}>
+                            收取
+                          </Button>
+                        ) : null}
+                        {innerWorld?.state.unlocked ? (
+                          <Button disabled={busy} onClick={handleInnerWorldUpgradeWorld}>
+                            升级洞天
+                          </Button>
+                        ) : null}
+                        {innerWorld?.state.unlocked && firstInnerCreature ? (
+                          <Button disabled={busy} onClick={handleInnerWorldUpgradeCreature}>
+                            培养生灵
+                          </Button>
+                        ) : null}
+                        {innerWorld?.state.unlocked && firstUnlockedProvince ? (
+                          <Button disabled={busy} onClick={handleInnerWorldSupport}>
+                            九州支援
+                          </Button>
+                        ) : null}
                       </div>
+                      {!innerWorld?.state.unlocked ? (
+                        <span className="action-note">
+                          {innerWorld?.state.unlock_hint ?? "内天地尚未开启"}
+                        </span>
+                      ) : null}
                     </article>
                     <div className="inner-world-lists">
                       <div>
@@ -1985,9 +2017,9 @@ export default function HomePage() {
                           innerWorld.assignments.slice(0, 4).map((assignment) => (
                             <p key={assignment.assignment_id}>
                               {assignment.creature_name} 至 {assignment.province_name} ·{" "}
-                              {assignment.status === "claimable"
-                                ? "可收取"
-                                : formatRemainingSeconds(assignment.remaining_seconds)}
+                              {assignment.status === "active"
+                                ? formatRemainingSeconds(assignment.remaining_seconds)
+                                : assignmentStatusLabel(assignment.status)}
                             </p>
                           ))
                         ) : (
@@ -1999,7 +2031,8 @@ export default function HomePage() {
                         {innerWorld?.recent_law_records.length ? (
                           innerWorld.recent_law_records.slice(0, 3).map((record) => (
                             <p key={record.law_record_id}>
-                              {record.source_type} · 经验 {record.exp_delta >= 0 ? "+" : ""}
+                              {sourceTypeLabel(record.source_type)} · 经验{" "}
+                              {record.exp_delta >= 0 ? "+" : ""}
                               {record.exp_delta}
                             </p>
                           ))
@@ -2026,44 +2059,59 @@ export default function HomePage() {
                 <div className="production-grid">
                   <ActionBox
                     actions={
-                      <Button disabled={busy || !selectedTower} onClick={handleTowerAction}>
-                        镇封提交
-                      </Button>
+                      selectedTower ? (
+                        <Button disabled={busy} onClick={handleTowerAction}>
+                          镇封提交
+                        </Button>
+                      ) : null
                     }
+                    actionNote={selectedTower ? undefined : "九塔状态尚未读取"}
                     detail={`${selectedTower ? `${provinceNameById(overview?.provinces, selectedTower.province_id)} · ${selectedTower.tower_name}` : "未读取"} · 完整度 ${selectedTower?.integrity ?? 0} · 镇封 ${selectedTower?.seal_progress ?? 0}`}
                     title="九塔"
                   />
                   <ActionBox
                     actions={
-                      <Button disabled={busy || !boss} onClick={handleChallengeBoss}>
-                        镜像挑战
-                      </Button>
+                      boss ? (
+                        <Button disabled={busy} onClick={handleChallengeBoss}>
+                          镜像挑战
+                        </Button>
+                      ) : null
                     }
+                    actionNote={boss ? undefined : "公共 Boss 尚未读取"}
                     detail={`${boss?.boss.name ?? "未读取"} · 阶段 ${boss?.boss.phase ?? 0} · 血量 ${boss?.boss.remaining_hp ?? 0}/${boss?.boss.total_hp ?? 0}`}
                     title="公共 Boss"
                   />
                   <ActionBox
                     actions={
                       <>
-                        <Button disabled={busy || !!sect?.sect} onClick={handleCreateSect}>
-                          创建宗门
-                        </Button>
-                        <Button disabled={busy || !sect?.sect} onClick={handleSectTask}>
-                          宗门任务
-                        </Button>
-                        <Button
-                          disabled={busy || !sect?.sect || !firstWarehouseDepositItem}
-                          onClick={handleSectWarehouseDeposit}
-                        >
-                          入库材料
-                        </Button>
-                        <Button
-                          disabled={busy || !sect?.sect || !firstWarehouseItem}
-                          onClick={handleSectWarehouseWithdraw}
-                        >
-                          取用材料
-                        </Button>
+                        {!sect?.sect ? (
+                          <Button disabled={busy} onClick={handleCreateSect}>
+                            创建宗门
+                          </Button>
+                        ) : null}
+                        {sect?.sect ? (
+                          <Button disabled={busy} onClick={handleSectTask}>
+                            宗门任务
+                          </Button>
+                        ) : null}
+                        {sect?.sect && firstWarehouseDepositItem ? (
+                          <Button disabled={busy} onClick={handleSectWarehouseDeposit}>
+                            入库材料
+                          </Button>
+                        ) : null}
+                        {sect?.sect && firstWarehouseItem ? (
+                          <Button disabled={busy} onClick={handleSectWarehouseWithdraw}>
+                            取用材料
+                          </Button>
+                        ) : null}
                       </>
+                    }
+                    actionNote={
+                      sect?.sect
+                        ? !firstWarehouseDepositItem && !firstWarehouseItem
+                          ? "暂无可流转的宗门仓库材料"
+                          : undefined
+                        : "未入宗门，可先创建宗门"
                     }
                     detail={
                       sect?.sect
@@ -2076,10 +2124,13 @@ export default function HomePage() {
                   />
                   <ActionBox
                     actions={
-                      <Button disabled={busy || !pvpTarget} onClick={handlePvpAttack}>
-                        异步进攻
-                      </Button>
+                      pvpTarget ? (
+                        <Button disabled={busy} onClick={handlePvpAttack}>
+                          异步进攻
+                        </Button>
+                      ) : null
                     }
+                    actionNote={pvpTarget ? undefined : "暂无可用 PVP 目标"}
                     detail={`资源点 ${firstResourcePoint?.name ?? "未读取"} · 个人榜 ${personalRank?.entries.length ?? 0} 人`}
                     title="PVP 与排行"
                   />
@@ -2148,19 +2199,28 @@ export default function HomePage() {
                             <p>{routeConfig.core_goal}</p>
                             <span>{routeConfig.weekly_focus.join(" / ")}</span>
                             <div className="production-actions">
-                              <Button
-                                disabled={busy || !canChoose}
-                                onClick={() => handleChooseFactionRoute(routeConfig)}
-                              >
-                                选择
-                              </Button>
-                              <Button
-                                disabled={busy || !canTransfer}
-                                onClick={() => handleTransferFactionRoute(routeConfig)}
-                              >
-                                转道
-                              </Button>
+                              {canChoose ? (
+                                <Button
+                                  disabled={busy}
+                                  onClick={() => handleChooseFactionRoute(routeConfig)}
+                                >
+                                  选择
+                                </Button>
+                              ) : null}
+                              {canTransfer ? (
+                                <Button
+                                  disabled={busy}
+                                  onClick={() => handleTransferFactionRoute(routeConfig)}
+                                >
+                                  转道
+                                </Button>
+                              ) : null}
                             </div>
+                            {!canChoose && !canTransfer ? (
+                              <span className="action-note">
+                                {faction?.state.unlocked ? "当前路线不可操作" : "路线系统尚未开启"}
+                              </span>
+                            ) : null}
                           </article>
                         );
                       })}
@@ -2185,31 +2245,33 @@ export default function HomePage() {
                   <div className="title-claim-row">
                     <span>{titles?.reward_boundary ?? "排行奖励不发唯一战力道具"}</span>
                     <div className="production-actions">
-                      <Button
-                        disabled={busy || !eraRank?.entries.length}
-                        onClick={() => handleClaimRankTitle("era")}
-                      >
-                        领纪元称号
-                      </Button>
-                      <Button
-                        disabled={busy || !productionRank?.entries.length}
-                        onClick={() => handleClaimRankTitle("production")}
-                      >
-                        领生产称号
-                      </Button>
-                      <Button
-                        disabled={busy || !innerWorldRank?.entries.length}
-                        onClick={() => handleClaimRankTitle("inner_world")}
-                      >
-                        领洞天称号
-                      </Button>
-                      <Button
-                        disabled={busy || !factionRank?.entries.length}
-                        onClick={() => handleClaimRankTitle("faction")}
-                      >
-                        领阵营称号
-                      </Button>
+                      {eraRank?.entries.length ? (
+                        <Button disabled={busy} onClick={() => handleClaimRankTitle("era")}>
+                          领纪元称号
+                        </Button>
+                      ) : null}
+                      {productionRank?.entries.length ? (
+                        <Button disabled={busy} onClick={() => handleClaimRankTitle("production")}>
+                          领生产称号
+                        </Button>
+                      ) : null}
+                      {innerWorldRank?.entries.length ? (
+                        <Button disabled={busy} onClick={() => handleClaimRankTitle("inner_world")}>
+                          领洞天称号
+                        </Button>
+                      ) : null}
+                      {factionRank?.entries.length ? (
+                        <Button disabled={busy} onClick={() => handleClaimRankTitle("faction")}>
+                          领阵营称号
+                        </Button>
+                      ) : null}
                     </div>
+                    {!eraRank?.entries.length &&
+                    !productionRank?.entries.length &&
+                    !innerWorldRank?.entries.length &&
+                    !factionRank?.entries.length ? (
+                      <span className="action-note">暂无可领取排行称号</span>
+                    ) : null}
                   </div>
                 </section>
                 <div className="tower-grid" aria-label="九塔全域状态">
@@ -2248,34 +2310,37 @@ export default function HomePage() {
                 <div className="production-grid">
                   <ActionBox
                     actions={
-                      <>
-                        <Button
-                          disabled={busy || !overview}
-                          onClick={() => handlePurchaseMonthly("small_monthly")}
-                        >
-                          小月卡
-                        </Button>
-                        <Button
-                          disabled={busy || !overview}
-                          onClick={() => handlePurchaseMonthly("large_monthly")}
-                        >
-                          大月卡
-                        </Button>
-                        <Button
-                          disabled={busy || !overview}
-                          onClick={() => handleClaimMonthly("small_monthly")}
-                        >
-                          领小月卡
-                        </Button>
-                        <Button
-                          disabled={busy || !overview}
-                          onClick={() => handleClaimMonthly("large_monthly")}
-                        >
-                          领大月卡
-                        </Button>
-                      </>
+                      overview ? (
+                        <>
+                          <Button
+                            disabled={busy}
+                            onClick={() => handlePurchaseMonthly("small_monthly")}
+                          >
+                            小月卡
+                          </Button>
+                          <Button
+                            disabled={busy}
+                            onClick={() => handlePurchaseMonthly("large_monthly")}
+                          >
+                            大月卡
+                          </Button>
+                          <Button
+                            disabled={busy}
+                            onClick={() => handleClaimMonthly("small_monthly")}
+                          >
+                            领小月卡
+                          </Button>
+                          <Button
+                            disabled={busy}
+                            onClick={() => handleClaimMonthly("large_monthly")}
+                          >
+                            领大月卡
+                          </Button>
+                        </>
+                      ) : null
                     }
-                    detail={`档位 ${commerce?.effective_tier ?? "free"} · 古宝赠抽 ${
+                    actionNote={overview ? undefined : "角色状态尚未读取"}
+                    detail={`档位 ${commerceTierLabel(commerce?.effective_tier)} · 古宝赠抽 ${
                       commerce?.available_monthly_grants.reduce(
                         (sum, grant) => sum + grant.draw_count - grant.used_count,
                         0,
@@ -2286,59 +2351,69 @@ export default function HomePage() {
                   <ActionBox
                     actions={
                       <>
-                        <Button
-                          disabled={busy || !firstAncientGrant}
-                          onClick={handleDrawAncientTreasure}
-                        >
-                          赠抽古宝
-                        </Button>
-                        <Button disabled={busy || !overview} onClick={handleDrawPermanent}>
-                          常驻机缘
-                        </Button>
+                        {firstAncientGrant ? (
+                          <Button disabled={busy} onClick={handleDrawAncientTreasure}>
+                            赠抽古宝
+                          </Button>
+                        ) : null}
+                        {overview ? (
+                          <Button disabled={busy} onClick={handleDrawPermanent}>
+                            常驻机缘
+                          </Button>
+                        ) : null}
                       </>
                     }
+                    actionNote={firstAncientGrant ? undefined : "当前无可领取赠抽"}
                     detail={`已收集 ${ownedTreasureCount}/9 · ${
                       gachaPools?.pools
                         .find((pool) => pool.pool_type === "ancient_treasure")
-                        ?.allowed_cost_types.join(" / ") ?? "月卡赠抽 / 残页"
+                        ?.allowed_cost_types.map(gachaCostTypeLabel)
+                        .join(" / ") ?? "月卡赠抽 / 残页合成"
                     }`}
                     title="九大古宝"
                   />
                   <ActionBox
                     actions={
-                      <>
-                        <Button disabled={busy || !overview} onClick={() => handleSyncVip(3)}>
-                          VIP3
-                        </Button>
-                        <Button disabled={busy || !overview} onClick={() => handleSyncVip(4)}>
-                          VIP4
-                        </Button>
-                        <Button disabled={busy || !overview} onClick={handleBatchPreview}>
-                          便利预览
-                        </Button>
-                        <Button disabled={busy || !overview} onClick={handleAutomationQueue}>
-                          托管队列
-                        </Button>
-                      </>
+                      overview ? (
+                        <>
+                          <Button disabled={busy} onClick={() => handleSyncVip(3)}>
+                            VIP3
+                          </Button>
+                          <Button disabled={busy} onClick={() => handleSyncVip(4)}>
+                            VIP4
+                          </Button>
+                          <Button disabled={busy} onClick={handleBatchPreview}>
+                            便利预览
+                          </Button>
+                          <Button disabled={busy} onClick={handleAutomationQueue}>
+                            托管队列
+                          </Button>
+                        </>
+                      ) : null
                     }
+                    actionNote={overview ? undefined : "角色状态尚未读取"}
                     detail={`VIP ${commerce?.vip.vip_level ?? 0} · 批量上限 ${commerce?.convenience.batch_sweep_limit ?? 5} · 奖励倍率 1`}
                     title="VIP 与便利"
                   />
                   <ActionBox
                     actions={
                       <>
-                        <Button disabled={busy || !overview} onClick={handleClaimAppearance}>
-                          领取外观
-                        </Button>
-                        <Button
-                          disabled={
-                            busy || !appearances?.appearances.some((appearance) => appearance.owned)
-                          }
-                          onClick={handleEquipAppearance}
-                        >
-                          装备外观
-                        </Button>
+                        {overview ? (
+                          <Button disabled={busy} onClick={handleClaimAppearance}>
+                            领取外观
+                          </Button>
+                        ) : null}
+                        {appearances?.appearances.some((appearance) => appearance.owned) ? (
+                          <Button disabled={busy} onClick={handleEquipAppearance}>
+                            装备外观
+                          </Button>
+                        ) : null}
                       </>
+                    }
+                    actionNote={
+                      appearances?.appearances.some((appearance) => appearance.owned)
+                        ? undefined
+                        : "暂无可装备外观"
                     }
                     detail={`已拥有 ${
                       appearances?.appearances.filter((appearance) => appearance.owned).length ?? 0
@@ -2450,9 +2525,13 @@ function DailyGoalCard({ goal }: { goal: DailyGoal }) {
         </div>
         <p>{goal.detail}</p>
       </div>
-      <Button disabled={goal.disabled} onClick={goal.onAction}>
-        {goal.actionLabel}
-      </Button>
+      {goal.actionUnavailableReason ? (
+        <span className="action-note">{goal.actionUnavailableReason}</span>
+      ) : (
+        <Button disabled={goal.disabled} onClick={goal.onAction}>
+          {goal.actionLabel}
+        </Button>
+      )}
     </article>
   );
 }
@@ -2464,9 +2543,13 @@ function GrowthTargetCard({ target }: { target: GrowthTarget }) {
         <strong>{target.title}</strong>
         <span>{target.detail}</span>
       </div>
-      <Button disabled={target.disabled} onClick={target.onAction}>
-        {target.actionLabel}
-      </Button>
+      {target.actionUnavailableReason ? (
+        <span className="action-note">{target.actionUnavailableReason}</span>
+      ) : (
+        <Button disabled={target.disabled} onClick={target.onAction}>
+          {target.actionLabel}
+        </Button>
+      )}
     </article>
   );
 }
@@ -2517,10 +2600,12 @@ function ExploreQueueCard({
       </div>
       {isClaimed ? (
         <StatusBadge tone="success">已领取</StatusBadge>
-      ) : (
+      ) : isReady ? (
         <Button disabled={busy || !isReady} onClick={onClaim}>
-          {isReady ? "领取探索" : exploreStatusLabel(explore.status)}
+          领取探索
         </Button>
+      ) : (
+        <StatusBadge tone="neutral">{exploreStatusLabel(explore.status)}</StatusBadge>
       )}
     </article>
   );
@@ -2602,7 +2687,7 @@ function BattleReportCard({ battle }: { battle: BattleSummary }) {
         <div>
           <strong>{battle.enemy_name}</strong>
           <span>
-            {battle.battle_type} · {battle.rounds} 回合
+            {battleTypeLabel(battle.battle_type)} · {battle.rounds} 回合
           </span>
         </div>
         <StatusBadge tone={battle.result === "win" ? "success" : "warning"}>
@@ -2718,13 +2803,14 @@ function buildDailyGoals(input: {
   const goals: DailyGoal[] = [
     {
       actionLabel: input.claimableTasks.length ? "查看任务" : "去探索",
+      actionUnavailableReason: input.overview ? undefined : "角色状态尚未读取",
       detail: input.claimableTasks.length
         ? `${input.claimableTasks
             .map((task) => task.title)
             .slice(0, 2)
             .join("、")} 等待领取。`
         : "完成探索、洞府和九塔会继续推进今日任务。",
-      disabled: input.busy || !input.overview,
+      disabled: input.busy,
       id: "tasks",
       onAction: input.claimableTasks.length ? input.onTasks : input.onExplore,
       status: input.claimableTasks.length ? `${input.claimableTasks.length} 个可领` : "推进中",
@@ -2732,9 +2818,12 @@ function buildDailyGoals(input: {
       tone: input.claimableTasks.length ? "success" : "neutral",
     },
     {
-      actionLabel: hasPositiveString(input.claimableCultivation) ? "领取修为" : "稍后领取",
+      actionLabel: "领取修为",
+      actionUnavailableReason: hasPositiveString(input.claimableCultivation)
+        ? undefined
+        : "修为还在积累",
       detail: `当前可领取修为 ${input.claimableCultivation}，离线收益不会因为错过时间点丢失。`,
-      disabled: input.busy || !hasPositiveString(input.claimableCultivation),
+      disabled: input.busy,
       id: "cultivation",
       onAction: input.onClaimCultivation,
       status: hasPositiveString(input.claimableCultivation) ? "可领取" : "积累中",
@@ -2743,11 +2832,16 @@ function buildDailyGoals(input: {
     },
     {
       actionLabel: "批量探索",
+      actionUnavailableReason: !input.overview
+        ? "角色状态尚未读取"
+        : actionPoints <= 0
+          ? "行动令不足"
+          : undefined,
       detail:
         actionPoints > 0
           ? `行动令剩余 ${actionPoints}，探索会产生战报、掉落和任务进度。`
           : "行动令不足时可先领取收益、处理洞府或查看活动。",
-      disabled: input.busy || !input.overview || actionPoints <= 0,
+      disabled: input.busy,
       id: "explore",
       onAction: input.onExplore,
       status: actionPoints > 0 ? "可行动" : "令不足",
@@ -2756,10 +2850,11 @@ function buildDailyGoals(input: {
     },
     {
       actionLabel: input.canBreakthrough ? "尝试突破" : "去探索",
+      actionUnavailableReason: input.overview ? undefined : "角色状态尚未读取",
       detail: input.canBreakthrough
         ? "当前修为满足突破条件，可以推进境界。"
         : "继续探索、服丹和领取修为来补足下一层需求。",
-      disabled: input.busy || !input.overview,
+      disabled: input.busy,
       id: "breakthrough",
       onAction: input.canBreakthrough ? input.onBreakthrough : input.onExplore,
       status: input.canBreakthrough ? "可突破" : "未满足",
@@ -2768,10 +2863,11 @@ function buildDailyGoals(input: {
     },
     {
       actionLabel: "镇封提交",
+      actionUnavailableReason: input.firstTower ? undefined : "九塔状态尚未读取",
       detail: input.firstTower
         ? `${input.firstTower.tower_name} 完整度 ${input.firstTower.integrity}，镇封 ${input.firstTower.seal_progress}。`
         : "九塔状态读取后可随时提交镇封行动。",
-      disabled: input.busy || !input.firstTower,
+      disabled: input.busy,
       id: "tower",
       onAction: input.onTower,
       status: input.firstTower ? "可提交" : "未读取",
@@ -2780,10 +2876,11 @@ function buildDailyGoals(input: {
     },
     {
       actionLabel: input.activity?.claimable ? "领取活动" : "推进活动",
+      actionUnavailableReason: input.activity ? undefined : "活动中心尚未读取",
       detail: input.activity
         ? `${input.activity.name} 进度 ${input.activity.progress}/${input.activity.target_progress}。`
         : "活动中心全部支持异步参与。",
-      disabled: input.busy || !input.activity,
+      disabled: input.busy,
       id: "activity",
       onAction: input.onActivity,
       status: input.activity?.claimable ? "可领取" : input.activity ? "进行中" : "未读取",
@@ -2811,7 +2908,8 @@ function buildDailyGoals(input: {
     goals.splice(2, 0, {
       actionLabel: "一键领取",
       detail: `洞府已有 ${caveMinutes} 分钟产出，可和任务收益一起收束。`,
-      disabled: input.busy || !input.overview,
+      actionUnavailableReason: input.overview ? undefined : "角色状态尚未读取",
+      disabled: input.busy,
       id: "cave",
       onAction: input.onCave,
       status: "可收取",
@@ -2856,10 +2954,11 @@ function buildRecommendedActions(input: {
     },
     {
       buttonLabel: `探索 ${input.exploreCount} 次`,
+      actionUnavailableReason: input.canExplore ? undefined : "暂无可开始的探索队列",
       detail: input.province
         ? `${input.province.name} · ${input.province.recommended_action}`
         : "选择已开放州域后开始探索。",
-      disabled: input.busy || !input.canExplore,
+      disabled: input.busy,
       id: "explore",
       onAction: input.onExplore,
       title: "推进游历",
@@ -2874,26 +2973,30 @@ function buildRecommendedActions(input: {
     },
     {
       buttonLabel: "镇封一次",
+      actionUnavailableReason: input.canTower ? undefined : "九塔状态尚未读取",
       detail: input.tower
         ? `${input.tower.tower_name} · 魔染 ${input.tower.corruption}`
         : "读取九塔后提交贡献。",
-      disabled: input.busy || !input.canTower,
+      disabled: input.busy,
       id: "tower",
       onAction: input.onTower,
       title: "九塔留痕",
     },
     {
       buttonLabel: input.activity?.claimable ? "领取" : "推进",
+      actionUnavailableReason: input.activity ? undefined : "活动中心尚未读取",
       detail: input.activity ? input.activity.name : "活动读取后显示可执行目标。",
-      disabled: input.busy || !input.activity,
+      disabled: input.busy,
       id: "activity",
       onAction: input.onActivity,
       title: "活动日课",
     },
     {
       buttonLabel: input.canCraftAlchemy ? "炼丹" : "炼器",
+      actionUnavailableReason:
+        input.canCraftAlchemy || input.canCraftForge ? undefined : "暂无可用丹器配方",
       detail: input.canCraftAlchemy ? "尝试炼制丹药，补充修为成长。" : "炼器生成或淬炼法宝词条。",
-      disabled: input.busy || (!input.canCraftAlchemy && !input.canCraftForge),
+      disabled: input.busy,
       id: "craft",
       onAction: input.canCraftAlchemy ? input.onAlchemy : input.onForge,
       title: "生产成长",
@@ -2922,60 +3025,66 @@ function buildGrowthTargets(input: {
   return [
     {
       actionLabel: canBreakthrough ? "突破" : "去探索",
+      actionUnavailableReason: input.overview ? undefined : "角色状态尚未读取",
       detail: input.overview?.cultivation
         ? `当前 ${input.overview.cultivation.cultivation_value}/${input.overview.cultivation.current_level_required}`
         : "创建角色后显示修为缺口。",
-      disabled: input.busy || !input.overview,
+      disabled: input.busy,
       id: "breakthrough",
       onAction: canBreakthrough ? input.onBreakthrough : input.onExplore,
       title: "下一境界",
     },
     {
       actionLabel: input.firstPill ? "服丹" : "炼丹",
+      actionUnavailableReason: input.overview ? undefined : "角色状态尚未读取",
       detail: input.firstPill
         ? `${input.firstPill.name} 可服用。`
         : "暂无可服丹药，先炼制基础丹药。",
-      disabled: input.busy || !input.overview,
+      disabled: input.busy,
       id: "pill",
       onAction: input.onPill,
       title: "丹药成长",
     },
     {
       actionLabel: "炼器",
+      actionUnavailableReason: input.overview ? undefined : "角色状态尚未读取",
       detail: input.firstEquipment
         ? `${input.firstEquipment.name} 可继续淬炼或铭刻。`
         : "先炼制第一件普通法宝。",
-      disabled: input.busy || !input.overview,
+      disabled: input.busy,
       id: "equipment",
       onAction: input.onForge,
       title: "法宝目标",
     },
     {
       actionLabel: "镇封",
+      actionUnavailableReason: input.firstTower ? undefined : "九塔状态尚未读取",
       detail: input.firstTower
         ? `${input.firstTower.tower_name} 当前完整度 ${input.firstTower.integrity}。`
         : "九塔读取后显示贡献入口。",
-      disabled: input.busy || !input.firstTower,
+      disabled: input.busy,
       id: "tower",
       onAction: input.onTower,
       title: "九塔贡献",
     },
     {
       actionLabel: input.activity?.claimable ? "领奖" : "推进",
+      actionUnavailableReason: input.activity ? undefined : "活动中心尚未读取",
       detail: input.activity
         ? `${input.activity.name} ${input.activity.progress}/${input.activity.target_progress}`
         : "活动中心读取后显示奖励进度。",
-      disabled: input.busy || !input.activity,
+      disabled: input.busy,
       id: "activity",
       onAction: input.onActivity,
       title: "活动奖励",
     },
     {
       actionLabel: input.innerWorld?.state.unlocked ? "查看洞天" : "查看条件",
+      actionUnavailableReason: input.overview ? undefined : "角色状态尚未读取",
       detail: input.innerWorld?.state.unlocked
         ? `内天地 ${input.innerWorld.state.world_level} 级，派驻 ${input.innerWorld.state.active_assignment_count}/${input.innerWorld.state.assignment_limit}。`
         : (input.innerWorld?.state.unlock_hint ?? "内天地后续章节开启。"),
-      disabled: input.busy || !input.overview,
+      disabled: input.busy,
       id: "inner_world",
       onAction: input.onInnerWorld,
       title: "内天地",
@@ -3148,10 +3257,12 @@ function MetricCard({ label, value, detail }: { label: string; value: string; de
 
 function ActionBox({
   actions,
+  actionNote,
   detail,
   title,
 }: {
-  actions: ReactNode;
+  actions?: ReactNode;
+  actionNote?: string;
   detail: string;
   title: string;
 }) {
@@ -3160,6 +3271,7 @@ function ActionBox({
       <strong>{title}</strong>
       <span>{detail}</span>
       <div className="production-actions">{actions}</div>
+      {actionNote ? <span className="action-note">{actionNote}</span> : null}
     </article>
   );
 }
@@ -3174,12 +3286,112 @@ function taskTypeLabel(taskType: TaskState["task_type"]): string {
   return labels[taskType];
 }
 
+function activityStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    active: "进行中",
+    ended: "已结束",
+    preview: "预告中",
+    rolled_back: "已回滚",
+    settling: "结算中",
+  };
+  return labels[status] ?? "未知状态";
+}
+
+function rewardStateLabel(state: string): string {
+  const labels: Record<string, string> = {
+    claimable: "可领取",
+    claimed: "已领取",
+    compensated: "已补偿",
+    rolled_back: "已回滚",
+    unsettled: "未结算",
+  };
+  return labels[state] ?? "未知奖励状态";
+}
+
+function sourceTypeLabel(sourceType: string): string {
+  const labels: Record<string, string> = {
+    activity: "活动",
+    cave_collect: "洞府收取",
+    era_rank: "纪元排行",
+    explore: "州域探索",
+    inner_world_assignment: "内天地派驻",
+    inner_world_support: "九州支援",
+    manual: "手动记录",
+    pvp: "资源点争夺",
+    sect: "宗门",
+    tower: "九塔",
+  };
+  return labels[sourceType] ?? "未知来源";
+}
+
+function battleTypeLabel(battleType: string): string {
+  const labels: Record<string, string> = {
+    boss: "公共 Boss",
+    explore: "普通探索",
+    pvp: "资源点争夺",
+    tower: "九塔战斗",
+  };
+  return labels[battleType] ?? "战斗";
+}
+
+function commerceTierLabel(tier?: string): string {
+  const labels: Record<string, string> = {
+    free: "免费",
+    large_monthly: "大月卡",
+    small_monthly: "小月卡",
+    vip1: "VIP1",
+    vip2: "VIP2",
+    vip3: "VIP3",
+    vip4: "VIP4",
+  };
+  return tier ? (labels[tier] ?? "未知档位") : "免费";
+}
+
+function monthlyCardLabel(cardType: string): string {
+  const labels: Record<string, string> = {
+    large_monthly: "大月卡",
+    small_monthly: "小月卡",
+  };
+  return labels[cardType] ?? "月卡";
+}
+
+function gachaCostTypeLabel(costType: string): string {
+  const labels: Record<string, string> = {
+    ancient_page: "残页合成",
+    bound_jade: "绑定仙玉",
+    monthly_grant: "月卡赠抽",
+    paid_jade: "付费仙玉",
+    reserved_paid_jade: "仙玉抽取预留",
+  };
+  return labels[costType] ?? "未知消耗";
+}
+
+function queueStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    accepted: "已接收",
+    completed: "已完成",
+    pending: "排队中",
+    rejected: "已拒绝",
+    running: "执行中",
+  };
+  return labels[status] ?? "未知队列状态";
+}
+
+function assignmentStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    active: "派驻中",
+    claimable: "可收取",
+    claimed: "已收取",
+  };
+  return labels[status] ?? "未知派驻状态";
+}
+
 function skillName(skills: SkillLoadoutResponse | null, skillId?: string): string {
   if (!skills || !skillId) {
     return "未配置";
   }
 
-  return skills.available_skills.find((skill) => skill.skill_id === skillId)?.name ?? skillId;
+  return skills.available_skills.find((skill) => skill.skill_id === skillId)?.name ?? "未命名技能";
 }
 
 function creatureStatusLabel(status: string): string {
@@ -3188,7 +3400,7 @@ function creatureStatusLabel(status: string): string {
     assigned: "派驻中",
     training: "培养中",
   };
-  return labels[status] ?? status;
+  return labels[status] ?? "未知状态";
 }
 
 function factionTransferTaskId(routeId: string): string {

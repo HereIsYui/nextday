@@ -1,4 +1,4 @@
-# 《择日飞升：九塔封魔》配置表结构设计 v0.2
+# 《择日飞升：九塔封魔》配置表结构设计 v0.3
 
 ## 一、定位
 
@@ -40,6 +40,7 @@
 | `currency_config` | 货币定义 | currency_id、source_type、tradeable、era_inherit_rule |
 | `item_config` | 道具基础信息 | item_id、rarity、bind_rule、tradeable、source |
 | `material_drop_config` | 材料投放 | province_id、chapter_id、drop_group_id、weight |
+| `simulation_config` | P1 数值模拟 | profile_group、active_player_count、era_days、resource_flow |
 | `pill_config` | 丹药定义 | pill_id、pill_rank、quality_type、effect_type |
 | `pill_recipe_config` | 丹方与炼丹 | recipe_id、main_material、sub_materials、furnace_level |
 | `pill_quality_config` | 丹药品质概率 | pill_rank、quality、base_rate、max_rate |
@@ -52,12 +53,16 @@
 | `combat_rule_config` | 战斗规则 | scene_type、max_round、timeout_rule、manual_bonus_cap |
 | `enemy_config` | 怪物和 Boss | enemy_id、enemy_type、realm_base、skill_group |
 | `province_config` | 九州地图 | province_id、tower_id、resource_group、unlock_chapter |
+| `province_full_config` | P1 九州全域 | province_id、node_group、event_group、long_term_goal |
 | `tower_config` | 九塔机制 | tower_id、state_fields、boss_id、contribution_rule |
 | `action_config` | 异步行动 | action_id、cost_token、base_reward、contribution_base |
+| `web_experience_config` | P1 Web 体验 | scene_type、timeline_template、delta_fields、recommendation_rule |
 | `reward_group_config` | 奖励组 | reward_group_id、item_id、count_range、weight |
 | `quest_config` | 任务 | quest_id、quest_type、condition_group、reward_group |
 | `event_config` | 活动 | event_id、event_type、schedule_rule、settlement_rule |
+| `activity_template_config` | P1 活动模板 | template_id、activity_type、async_rule、reward_boundary |
 | `rank_config` | 排行榜 | rank_id、rank_type、period、segment_rule |
+| `era_rank_config` | P1 纪元排行 | rank_id、era_scope、inherit_rule、snapshot_rule |
 | `achievement_config` | 成就 | achievement_id、condition_group、reward_group |
 | `title_config` | 称号 | title_id、rarity、effect_rule、inherit_rule |
 | `appearance_config` | 展示外观 | appearance_id、appearance_type、display_slot、source_type、inherit_rule |
@@ -68,6 +73,8 @@
 | `astronomy_config` | 天象择日 | astronomy_id、quality、effect_group、refresh_rule |
 | `cave_facility_config` | 洞府设施 | facility_id、level_cost、output_rule、queue_limit |
 | `inner_world_config` | 内天地 | world_level、assignment_rule、output_group |
+| `faction_route_config` | P1 仙魔路线 | route_id、reputation_rule、transfer_cost、cooldown_rule |
+| `merge_dry_run_config` | P1 合服演练 | merge_condition、conflict_rule、compensation_rule、rollback_rule |
 | `payment_product_config` | 付费商品 | product_id、fishpi_point_cost、deliver_rule |
 | `mail_template_config` | 邮件模板 | template_id、title、body、reward_group |
 | `announcement_config` | 公告 | announcement_id、type、content、visible_rule |
@@ -168,7 +175,110 @@
 - 绑定仙玉不能作为消耗。
 - 重复古宝转化为该古宝碎片和器魂。
 
-## 七、配置发布流程
+## 七、P1 配置类型
+
+`simulation_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| simulation_id | 模拟方案 ID |
+| profile_group | 玩家画像组：免费 / 小月卡 / 大月卡 / VIP / 重肝 / 高消费 |
+| active_player_count | 活跃人数，例如 30 / 100 / 300 |
+| era_days | 模拟纪元天数 |
+| resource_flow | 资源产销参数 |
+| payment_profile | 付费档位和抽卡行为参数 |
+| pvp_power_cap | PVP 付费强度上限 |
+| warning_threshold | 通胀、断供、强度超限和节奏异常阈值 |
+
+`web_experience_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| scene_type | 探索 / 战斗 / 九塔 / Boss / PVP / 洞府 / 炼丹 / 炼器 / 抽卡 |
+| timeline_template | 时间线展示模板 |
+| delta_fields | 可展示变化字段白名单 |
+| recommendation_rule | 下一步推荐规则 |
+| reason_tag_mapping | 胜负、衰减、未开放、风控原因标签映射 |
+| reward_mutation_allowed | 固定为 false，体验配置不得改变奖励 |
+
+`province_full_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| province_id | 州 ID：`ji`、`yan`、`qing`、`xu`、`yang`、`jing`、`yu`、`liang`、`yong` |
+| node_group | 地图节点组 |
+| resource_group | 特色资源组 |
+| monster_group | 怪物和 Boss 组，名称可参考《山海经》 |
+| event_group | 州事件组 |
+| unlock_condition | 开放条件 |
+| low_level_entry | 低等级参与方式 |
+| long_term_goal | 高等级长期目标 |
+
+`inner_world_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| world_level | 内天地等级 |
+| assignment_rule | 派驻队列、时长和消耗 |
+| creature_rule | 生灵培养规则 |
+| law_exp_rule | 法则经验产出和上限 |
+| support_rule | 九州支援规则 |
+| output_group | 绑定产出奖励组 |
+| forbidden_output_rule | 禁止产出规则 |
+
+`faction_route_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| route_id | 成仙 / 成魔 / 散修 |
+| unlock_realm | 解锁境界 |
+| reputation_rule | 声望获取和衰减 |
+| task_chain | 路线任务链 |
+| transfer_cost | 转道消耗 |
+| cooldown_rule | 转道冷却 |
+| sect_conflict_rule | 宗门立场冲突处理 |
+| reward_group | 荣誉、外观、纪念和非核心材料奖励 |
+
+`era_rank_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| rank_id | 榜单 ID |
+| era_scope | 纪元范围 |
+| rank_type | 生产 / 纪元 / 内天地 / 阵营 |
+| snapshot_rule | 快照生成和锁定规则 |
+| reward_boundary | 奖励边界 |
+| title_inherit_rule | 称号继承和 Buff 限幅 |
+| anti_abuse_rule | 防刷规则 |
+
+`activity_template_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| template_id | 活动模板 ID |
+| activity_type | 九州游历 / 丹器加试 / 宗门同贺 / 回归 / 补偿 |
+| async_rule | 异步参与规则 |
+| progress_rule | 进度规则 |
+| settlement_rule | 结算规则 |
+| reward_boundary | 奖励边界 |
+| announcement_template_id | 公告模板 |
+| mail_template_id | 邮件模板 |
+
+`merge_dry_run_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| merge_rule_id | 合服演练规则 ID |
+| merge_condition | 合服触发条件 |
+| freeze_rank_rule | 排行冻结规则 |
+| sect_conflict_rule | 宗门冲突处理 |
+| asset_inherit_rule | 资产继承规则 |
+| pity_inherit_rule | 保底继承规则 |
+| compensation_rule | 补偿建议规则 |
+| rollback_rule | 回滚建议规则 |
+| execute_allowed | P1 固定为 false，不开放真实执行 |
+
+## 八、配置发布流程
 
 1. 策划在草稿环境编辑配置。
 2. 系统校验字段、引用、概率和奖励边界。
@@ -190,8 +300,13 @@
 - 任务和活动是否支持异步完成。
 - 排行奖励是否包含唯一战力道具。
 - 展示外观是否误配置攻击、防御、生命、PVP 伤害、九塔贡献倍率、世界 Boss 贡献倍率、最终魔王贡献倍率或资源掉落倍率。
+- `web_experience_config` 是否试图改变奖励倍率、贡献倍率、战斗结果、抽卡结果或风控结论。
+- `inner_world_config` 是否误产出付费货币、九大古宝本体、限定本命法宝或可交易付费产物。
+- `activity_template_config` 是否不支持异步参与，或奖励组包含唯一战力道具。
+- `era_rank_config` 是否让多纪元称号 Buff 叠加滚雪球。
+- `merge_dry_run_config` 是否开放真实执行，或允许 dry-run 修改真实玩家、宗门、订单、排行、保底和纪元数据。
 
-## 八、版本追溯要求
+## 九、版本追溯要求
 
 以下记录必须保存配置版本：
 
@@ -206,8 +321,12 @@
 | 交易记录 | economy_config_version、risk_ruleset_version |
 | 订单记录 | product_config_version、payment_ruleset_version |
 | 纪元结算 | settlement_config_version、reward_config_version、story_ruleset_version |
+| Web 体验展示 | web_experience_config_version、config_version |
+| 内天地派驻 | inner_world_config_version、reward_config_version |
+| 阵营转道 | faction_route_config_version、ruleset_version |
+| 合服 dry-run | merge_config_version、risk_ruleset_version |
 
-## 九、命名和 ID 规范
+## 十、命名和 ID 规范
 
 - 配置 ID 使用小写英文、数字和下划线，例如 `pill_juling_rank_1`。
 - 中文名用于展示，英文 ID 用于程序引用。
@@ -215,13 +334,18 @@
 - 怪物和 Boss 名称可参考《山海经》，配置 ID 不使用生僻字拼音缩写。
 - 运营活动 ID 应包含年份和活动类型，例如 `event_2026_spring_festival`。
 
-## 十、验收场景
+## 十一、验收场景
 
 - 开发能根据本文拆出核心配置文件和后台配置入口。
 - 所有核心玩法均能通过配置调整数值、奖励和开放章节。
 - 配置发布能校验禁止奖励和概率错误。
 - 行动、战斗、抽卡、任务、活动、排行和纪元结算可追溯历史配置。
+- P1 数值模拟、Web 体验、九州全域、内天地、阵营路线、纪元排行、活动模板和合服 dry-run 都有配置入口。
 - 九大古宝专属池配置无法混入普通材料、器魂或低阶古宝碎片。
 - 九大古宝专属池当前只能配置月卡赠抽和残页合成，仙玉入口只能以预留未开放状态存在。
 - VIP3、小月卡、VIP4、大月卡便利边界可配置且可校验。
 - 展示外观配置只能影响玩家名片、排行榜、宗门、战报、聊天、鱼排插件小卡片、纪元史册和图鉴展示，不得配置战力、奖励倍率和贡献倍率。
+- Web 体验配置只改变展示过程，不改变收益、贡献、抽卡、战斗和风控结果。
+- 内天地配置无法配置付费货币、九大古宝本体、限定本命法宝和可交易付费产物。
+- 活动配置全部支持异步参与，排行冲刺奖励不补发。
+- 合服 dry-run 配置只能生成报告和建议，不允许真实执行。

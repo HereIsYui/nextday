@@ -1,4 +1,4 @@
-# 《择日飞升：九塔封魔》核心数据模型草案 v0.8
+# 《择日飞升：九塔封魔》核心数据模型草案 v0.9
 
 ## 一、定位
 
@@ -30,12 +30,20 @@
 | cave_facility | 洞府设施 |
 | inner_world_state | 内天地状态 |
 | inner_world_assignment | 内天地派驻 |
+| inner_world_creature | P1 内天地生灵 |
+| inner_world_law_record | P1 法则经验记录 |
+| inner_world_support_record | P1 九州支援记录 |
+| player_faction_state | P1 玩家阵营路线状态 |
+| faction_transfer_record | P1 转道记录 |
 | action_record | 异步行动记录 |
 | battle_log | 战斗日志 |
 | quest_record | 任务记录 |
+| event_instance | P1 活动实例 |
 | event_record | 活动参与记录 |
+| event_reward_record | P1 活动奖励记录 |
 | rank_snapshot | 排行榜快照 |
 | rank_entry | 排行榜明细 |
+| title_inheritance_record | P1 称号继承记录 |
 | achievement_record | 成就记录 |
 | title_record | 称号发放记录 |
 | player_title | 玩家称号持有状态 |
@@ -53,6 +61,8 @@
 | config_publish_record | 配置发布记录 |
 | mail_record | 邮件记录 |
 | announcement_record | 公告记录 |
+| merge_dry_run_report | P1 合服演练报告 |
+| merge_conflict_item | P1 合服冲突项 |
 
 所有可回放、可补偿、可结算的记录必须保存配置版本。版本字段用于处理长线运营中的数值调整、战报复现、补单、补偿和回滚。
 
@@ -861,7 +871,205 @@
 | expire_at | 过期时间，可为空 |
 | created_at | 创建时间 |
 
-## 十五、服务边界建议
+## 十五、P1 数据模型增量
+
+P1 v2 先补 Web 玩法体验厚度，再扩中后期内容。Web 体验字段优先从现有记录派生，不在 P1-00 强制新增状态表：
+
+| 展示字段 | 推荐来源 | 说明 |
+| --- | --- | --- |
+| `timeline` | `action_record`、`battle_log.rounds`、`alchemy_record`、`equipment_operation_record`、`gacha_record` | 用于探索、战斗、生产、抽卡和九塔过程展示 |
+| `delta_summary` | 行动、战斗、生产、抽卡、钱包、背包、九塔状态变更记录 | 用于展示行动前后资源、贡献、状态和保底变化 |
+| `next_recommendations` | `quest_record`、`province_state`、`player_progress`、配置缺口计算 | 用于推荐下一步玩法和材料缺口 |
+| `reason_tags` | `battle_log.result_reason`、风控记录、收益衰减记录、配置未开放状态 | 用于展示胜负、衰减、未开放和风控原因 |
+
+如后续需要缓存复杂展示结果，可增加只读派生表 `experience_render_cache`，但该表不能成为奖励、贡献、战斗或风控的权威来源。
+
+### P1 内天地增量
+
+`inner_world_creature`
+
+| 字段 | 说明 |
+| --- | --- |
+| creature_id | 生灵实例 ID |
+| player_id | 玩家 ID |
+| era_id | 纪元 ID |
+| creature_type | 生灵类型 |
+| level | 生灵等级 |
+| affinity_province_id | 擅长支援州，可为空 |
+| assignment_bonus_summary | 派驻加成摘要 |
+| status | 闲置 / 派驻中 / 培养中 |
+| config_version | 生灵配置版本 |
+| updated_at | 更新时间 |
+
+`inner_world_law_record`
+
+| 字段 | 说明 |
+| --- | --- |
+| law_record_id | 法则记录 ID |
+| player_id | 玩家 ID |
+| era_id | 纪元 ID |
+| law_type | 五行 / 阴阳 / 剑意 / 魔念等 |
+| exp_delta | 本次法则经验变化 |
+| source_type | 派驻 / 任务 / 九州支援 / 活动 |
+| source_id | 来源记录 ID |
+| before_level | 变化前等级 |
+| after_level | 变化后等级 |
+| config_version | 法则配置版本 |
+| created_at | 时间 |
+
+`inner_world_support_record`
+
+| 字段 | 说明 |
+| --- | --- |
+| support_record_id | 九州支援记录 ID |
+| player_id | 玩家 ID |
+| era_id | 纪元 ID |
+| province_id | 支援州 |
+| tower_id | 关联塔，可为空 |
+| support_type | 灵脉支援 / 九塔补给 / 秘境支援 |
+| cost_summary | 消耗摘要 |
+| reward_summary | 绑定产出摘要 |
+| contribution_summary | 个人支援贡献摘要 |
+| idempotency_key | 幂等键 |
+| config_version | 内天地配置版本 |
+| reward_config_version | 奖励配置版本 |
+| created_at | 时间 |
+
+内天地产出必须是绑定资源或个人成长材料，不得产出付费货币、九大古宝本体、限定本命法宝和可交易付费产物。
+
+### P1 阵营路线增量
+
+`player_faction_state`
+
+| 字段 | 说明 |
+| --- | --- |
+| player_id | 玩家 ID |
+| era_id | 纪元 ID |
+| route | 未定 / 成仙 / 成魔 / 散修 |
+| locked | 是否正式锁定路线 |
+| reputation_fairy | 仙盟声望 |
+| reputation_demon | 魔宗声望 |
+| reputation_free | 散修声望 |
+| sect_stance_conflict | 是否与宗门立场冲突 |
+| transfer_cooldown_until | 转道冷却结束时间，可为空 |
+| faction_config_version | 阵营配置版本 |
+| updated_at | 更新时间 |
+
+`faction_transfer_record`
+
+| 字段 | 说明 |
+| --- | --- |
+| transfer_record_id | 转道记录 ID |
+| player_id | 玩家 ID |
+| era_id | 纪元 ID |
+| from_route | 原路线 |
+| to_route | 目标路线 |
+| task_state | 任务状态摘要 |
+| cost_summary | 转道消耗 |
+| reputation_clear_summary | 声望清除摘要 |
+| sect_conflict_result | 宗门立场冲突处理结果 |
+| cooldown_until | 新冷却结束时间 |
+| idempotency_key | 幂等键 |
+| faction_config_version | 阵营配置版本 |
+| ruleset_version | 转道规则版本 |
+| created_at | 时间 |
+
+### P1 活动增量
+
+`event_instance`
+
+| 字段 | 说明 |
+| --- | --- |
+| event_instance_id | 活动实例 ID |
+| event_id | 活动配置 ID |
+| era_id | 纪元 ID |
+| server_id | 服务器 ID |
+| event_type | 九州游历 / 丹器加试 / 宗门同贺 / 回归 / 补偿 |
+| status | 预告 / 进行中 / 结算中 / 已结束 / 已回滚 |
+| async_enabled | 是否支持异步参与 |
+| start_at | 开始时间 |
+| end_at | 结束时间 |
+| settlement_at | 结算时间 |
+| event_config_version | 活动配置版本 |
+| reward_config_version | 奖励配置版本 |
+| created_at | 创建时间 |
+
+`event_reward_record`
+
+| 字段 | 说明 |
+| --- | --- |
+| reward_record_id | 活动奖励记录 ID |
+| event_instance_id | 活动实例 ID |
+| player_id | 玩家 ID |
+| era_id | 纪元 ID |
+| reward_type | 基础参与 / 进度 / 排行 / 补偿 |
+| reward_summary | 奖励摘要 |
+| status | 待领取 / 已领取 / 已补偿 / 已冻结 / 已回滚 |
+| claim_idempotency_key | 领取幂等键 |
+| reward_config_version | 奖励配置版本 |
+| risk_ruleset_version | 风控规则版本 |
+| created_at | 创建时间 |
+| claimed_at | 领取时间，可为空 |
+
+基础参与奖励可补偿，排行冲刺奖励不补发。活动奖励不得包含唯一战力道具。
+
+### P1 排行与称号继承增量
+
+`title_inheritance_record`
+
+| 字段 | 说明 |
+| --- | --- |
+| inheritance_record_id | 称号继承记录 ID |
+| player_id | 玩家 ID |
+| source_era_id | 来源纪元 |
+| target_era_id | 目标纪元 |
+| title_id | 称号 ID |
+| display_inherited | 展示是否继承 |
+| buff_inherited | Buff 是否继承 |
+| buff_cap_summary | 继承 Buff 限幅摘要 |
+| title_config_version | 称号配置版本 |
+| settlement_config_version | 纪元结算配置版本 |
+| created_at | 时间 |
+
+称号展示可跨纪元继承，战力或效率 Buff 必须限幅，多纪元不得叠加滚雪球。
+
+### P1 合服 dry-run 增量
+
+`merge_dry_run_report`
+
+| 字段 | 说明 |
+| --- | --- |
+| report_id | 合服演练报告 ID |
+| source_server_ids | 来源服务器列表 |
+| target_server_id | 目标服务器 ID |
+| era_id | 演练关联纪元 |
+| status | 生成中 / 已完成 / 已废弃 |
+| summary | 影响摘要 |
+| compensation_plan_summary | 补偿建议摘要 |
+| rollback_plan_summary | 回滚建议摘要 |
+| risk_summary | 风险摘要 |
+| operator_id | 发起 GM |
+| merge_config_version | 合服配置版本 |
+| created_at | 创建时间 |
+| generated_at | 生成时间 |
+
+`merge_conflict_item`
+
+| 字段 | 说明 |
+| --- | --- |
+| conflict_id | 冲突项 ID |
+| report_id | 关联演练报告 |
+| conflict_type | 角色名 / 宗门名 / 排行冻结 / 仓库 / 订单 / 保底 / 称号 / 九州状态 |
+| source_id | 冲突来源 ID |
+| severity | 低 / 中 / 高 / 阻断 |
+| suggested_action | 建议处理方式 |
+| auto_resolvable | 是否可自动处理 |
+| detail_summary | 详情摘要 |
+| created_at | 时间 |
+
+合服 dry-run 只能读取和生成报告，不得修改真实玩家、宗门、排行、订单、保底、纪元和九州状态。
+
+## 十六、服务边界建议
 
 | 服务 | 负责 |
 | --- | --- |
@@ -879,17 +1087,20 @@
 | 月卡赠抽服务 | monthly_card_draw_grant、赠抽发放、过期、补发 |
 | 九大古宝服务 | ancient_treasure_state、ancient_treasure_use_record、古宝日课 |
 | 纪元服务 | era_record、结算、继承 |
+| 阵营服务 | player_faction_state、faction_transfer_record、阵营路线和转道 |
 | GM 服务 | gm_operation_log、behavior_risk_record、delayed_settlement_record、封禁、补偿、回滚 |
 | 任务活动服务 | quest_record、event_record、任务进度、活动结算 |
 | 排行称号服务 | rank_snapshot、rank_entry、achievement_record、title_record、player_title |
 | 邮件公告服务 | mail_record、announcement_record、补偿和公告发布 |
 | 配置服务 | config_version、config_publish_record、配置发布、版本回放 |
+| 合服演练服务 | merge_dry_run_report、merge_conflict_item、合服影响报告 |
 
-## 十六、验收场景
+## 十七、验收场景
 
 - 开发能根据本文拆出玩家、宗门、九州、九塔、战斗、订单、抽卡、纪元核心表。
 - 开发能根据本文拆出宗门战、择日、洞府和内天地的最小核心表。
 - 开发能根据本文拆出任务、活动、排行、成就、称号、邮件、公告和配置发布记录。
+- 开发能根据本文拆出 P1 内天地生灵、法则、九州支援、阵营路线、转道、活动实例、称号继承和合服 dry-run 报告。
 - 每次货币变化、抽卡、交易、仓库、PVP 和九塔贡献都有记录可查。
 - 战斗日志能支持回放。
 - 行动、战斗、抽卡、任务、活动、排行、交易、纪元结算都能追溯对应配置版本。
@@ -900,3 +1111,5 @@
 - 行为风控能记录脚本点击风险、权益越权、收益延迟和人工审核结果。
 - 炼丹、炼器、古宝日课、交易上架和抽卡保底都有独立记录，能按幂等键和配置版本追溯。
 - 九大古宝付费仙玉预留入口不会写成功抽卡记录，也不会改变 `gacha_pity_state`。
+- P1 Web 体验展示字段可由现有记录派生，不成为奖励、贡献和风控的权威来源。
+- 合服 dry-run 只生成报告和冲突项，不修改真实数据。

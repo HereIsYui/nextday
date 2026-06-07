@@ -106,6 +106,28 @@ interface GrowthTarget {
   onAction: () => void | Promise<void>;
 }
 
+type MainlineStepStatus = "done" | "active" | "pending";
+
+interface MainlineStep {
+  id: string;
+  title: string;
+  detail: string;
+  status: MainlineStepStatus;
+}
+
+interface MainlineGuide {
+  chapterId: number;
+  title: string;
+  subtitle: string;
+  progressPercent: number;
+  progressText: string;
+  primaryLabel: string;
+  primaryHint: string;
+  primaryDisabled?: boolean;
+  onPrimary: () => void | Promise<void>;
+  steps: MainlineStep[];
+}
+
 export default function HomePage() {
   const [healthText, setHealthText] = useState<HealthText>("检测中");
   const [activeTab, setActiveTab] = useState<ActiveTab>("overview");
@@ -154,6 +176,7 @@ export default function HomePage() {
   const [pendingExploreEvents, setPendingExploreEvents] = useState<ExploreEventState[]>([]);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
+  const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
 
   const client = useMemo(() => createClient(token ?? undefined), [token]);
   const activeProfile = overview?.profile ?? profile;
@@ -218,6 +241,23 @@ export default function HomePage() {
     selectedProvince ?? overview?.provinces.find((province) => province.unlocked);
   const availableFactionRoutes =
     faction?.routes.filter((item) => item.route_id !== "undecided") ?? [];
+  const mainlineTask = selectMainlineTask(overview?.tasks ?? []);
+  const mainlineGuide = buildMainlineGuide({
+    activeExplore,
+    activeProfile,
+    busy,
+    canClaimExplore,
+    chapterTask: mainlineTask,
+    event: firstPendingExploreEvent,
+    onClaimExplore: handleClaimExplore,
+    onExplore: () => handleExplore(exploreCount),
+    onFocusEvent: handleFocusExploreEvent,
+    onTask: () => handleMainlineTask(mainlineTask),
+    onTower: handleTowerAction,
+    overview,
+    selectedProvince,
+    selectedTower,
+  });
   const dailyGoals = buildDailyGoals({
     activity: firstClaimableActivity ?? firstActivity,
     busy,
@@ -237,7 +277,7 @@ export default function HomePage() {
     onClaimCultivation: handleClaimCultivation,
     onExplore: () => handleExplore(exploreCount),
     onMonthlyGrant: firstAncientGrant ? handleDrawAncientTreasure : () => setActiveTab("market"),
-    onTasks: () => setActiveTab("overview"),
+    onTasks: () => handleMainlineTask(mainlineTask),
     onTower: handleTowerAction,
   });
   const recommendedActions = buildRecommendedActions({
@@ -1401,6 +1441,41 @@ export default function HomePage() {
     }
   }
 
+  async function handleMainlineTask(task: TaskState | undefined) {
+    if (!task) {
+      handleFocusTask();
+      return;
+    }
+
+    if (task.status === "completed") {
+      await handleClaimTask(task);
+      return;
+    }
+
+    handleFocusTask(task);
+  }
+
+  function handleFocusTask(task?: TaskState) {
+    setActiveTab("overview");
+    setFocusedTaskId(task?.task_id ?? null);
+    setMessage(task ? `已定位任务：${task.title}` : "已切换到任务列表");
+    window.setTimeout(() => {
+      const selector = task
+        ? `[data-task-id="${CSS.escape(task.task_id)}"]`
+        : '[aria-label="今日任务"]';
+      document.querySelector(selector)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 0);
+  }
+
+  function handleFocusExploreEvent() {
+    setMessage("请选择一个探索奇遇处理方式");
+    window.setTimeout(() => {
+      document
+        .querySelector(".explore-event-card")
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 0);
+  }
+
   function rememberExperience(
     experience?: ExperiencePayload,
     fallback?: {
@@ -1578,7 +1653,7 @@ export default function HomePage() {
     <main className={activeProfile?.player ? "shell app-shell text-game-shell" : "shell app-shell"}>
       <section className="topbar">
         <div>
-          <p className="eyebrow">M7 前端体验闭环</p>
+          <p className="eyebrow">九州纪元 · 文字修行</p>
           <h1>择日飞升</h1>
           {activeProfile?.player ? (
             <p className="subline">
@@ -1656,6 +1731,7 @@ export default function HomePage() {
                 {firstClaimableActivity ? `${firstClaimableActivity.name} 可领奖` : "活动可推进"}
               </p>
             </div>
+            <MainlineGuideCard guide={mainlineGuide} />
             <div className="today-controls" aria-label="今日行动选择">
               <label>
                 <span>探索州域</span>
@@ -1856,7 +1932,13 @@ export default function HomePage() {
                   </div>
                   <div className="task-list">
                     {overview?.tasks.slice(0, 7).map((task) => (
-                      <article className="task-row" key={task.task_state_id}>
+                      <article
+                        className={`task-row ${
+                          focusedTaskId === task.task_id ? "task-row-focused" : ""
+                        }`}
+                        data-task-id={task.task_id}
+                        key={task.task_state_id}
+                      >
                         <div>
                           <strong>{task.title}</strong>
                           <span>
@@ -2756,6 +2838,46 @@ function LedgerExperienceDetails({ experience }: { experience: ExperiencePayload
   );
 }
 
+function MainlineGuideCard({ guide }: { guide: MainlineGuide }) {
+  return (
+    <section className="mainline-guide" aria-label="主线目标">
+      <div className="mainline-guide-head">
+        <div>
+          <span>第 {guide.chapterId} 章</span>
+          <strong>{guide.title}</strong>
+          <p>{guide.subtitle}</p>
+        </div>
+        <div className="mainline-progress-summary">
+          <strong>{guide.progressText}</strong>
+          <span>主线完成度</span>
+        </div>
+      </div>
+      <div aria-hidden="true" className="mainline-progress-bar">
+        <span style={{ width: `${guide.progressPercent}%` }} />
+      </div>
+      <div className="mainline-step-list">
+        {guide.steps.map((step) => (
+          <article className={`mainline-step status-${step.status}`} key={step.id}>
+            <div>
+              <strong>{step.title}</strong>
+              <span>{step.detail}</span>
+            </div>
+            <StatusBadge tone={mainlineStepTone(step.status)}>
+              {mainlineStepStatusLabel(step.status)}
+            </StatusBadge>
+          </article>
+        ))}
+      </div>
+      <div className="mainline-action-row">
+        <span>{guide.primaryHint}</span>
+        <Button disabled={guide.primaryDisabled} onClick={guide.onPrimary}>
+          {guide.primaryLabel}
+        </Button>
+      </div>
+    </section>
+  );
+}
+
 function DailyGoalCard({ goal }: { goal: DailyGoal }) {
   return (
     <article className={`goal-card tone-${goal.tone}`}>
@@ -3289,6 +3411,237 @@ function resolveExperienceTone(experience: ExperiencePayload): ExperienceTone {
 
 function toBadgeTone(tone: ExperienceTone): "neutral" | "success" | "warning" {
   return tone === "success" ? "success" : tone === "neutral" ? "neutral" : "warning";
+}
+
+function selectMainlineTask(tasks: TaskState[]): TaskState | undefined {
+  const chapterTasks = tasks.filter((task) => task.task_type === "chapter");
+  return (
+    chapterTasks.find((task) => task.status === "completed") ??
+    chapterTasks.find((task) => task.status === "in_progress") ??
+    chapterTasks.find((task) => task.status !== "claimed")
+  );
+}
+
+function buildMainlineGuide(input: {
+  activeExplore: ExploreResponse | null;
+  activeProfile: PlayerProfileResponse | null;
+  busy: boolean;
+  canClaimExplore: boolean;
+  chapterTask: TaskState | undefined;
+  event: ExploreEventState | undefined;
+  overview: GameOverviewResponse | null;
+  selectedProvince: ProvinceSummary | undefined;
+  selectedTower: TowerStateSummary | undefined;
+  onClaimExplore: () => void | Promise<void>;
+  onExplore: () => void | Promise<void>;
+  onFocusEvent: () => void;
+  onTask: () => void | Promise<void>;
+  onTower: () => void | Promise<void>;
+}): MainlineGuide {
+  const chapterId = input.activeProfile?.progress?.chapter_id ?? 1;
+  const chapterTitle = chapterTitleById(chapterId);
+  const mainProvince =
+    input.overview?.provinces.find((province) => province.province_id === "ji") ??
+    input.selectedProvince;
+  const explorationTarget = chapterId <= 1 ? 3 : 5;
+  const explorationCount = Math.min(mainProvince?.exploration_count ?? 0, explorationTarget);
+  const hasPendingEvent = Boolean(input.event);
+  const hasTowerTrace = (input.selectedTower?.seal_progress ?? 0) > 0;
+  const taskStepStatus = mainlineTaskStatus(input.chapterTask);
+  const exploreStepStatus: MainlineStepStatus =
+    explorationCount >= explorationTarget
+      ? "done"
+      : taskStepStatus === "done"
+        ? "active"
+        : "pending";
+  const eventStepStatus: MainlineStepStatus = hasPendingEvent
+    ? "active"
+    : explorationCount >= explorationTarget
+      ? "done"
+      : "pending";
+  const towerStepStatus: MainlineStepStatus = hasTowerTrace
+    ? "done"
+    : eventStepStatus === "done"
+      ? "active"
+      : "pending";
+
+  const steps: MainlineStep[] = [
+    {
+      detail: input.chapterTask
+        ? `${input.chapterTask.progress_value}/${input.chapterTask.target_value} · ${taskStatusLabel(
+            input.chapterTask.status,
+          )}`
+        : "当前章节任务已整理。",
+      id: "chapter_task",
+      status: taskStepStatus,
+      title: input.chapterTask?.title ?? "章节任务",
+    },
+    {
+      detail: `${mainProvince?.name ?? "冀州"}探索 ${explorationCount}/${explorationTarget}`,
+      id: "province_explore",
+      status: exploreStepStatus,
+      title: "稳住州域",
+    },
+    {
+      detail: hasPendingEvent ? `${input.event?.title} · 等待处理` : "途中见闻会记录到修行日志。",
+      id: "explore_event",
+      status: eventStepStatus,
+      title: "处理见闻",
+    },
+    {
+      detail: input.selectedTower
+        ? `${input.selectedTower.tower_name}镇封 ${input.selectedTower.seal_progress}`
+        : "九塔状态读取后开放镇封目标。",
+      id: "tower",
+      status: towerStepStatus,
+      title: "镇封九塔",
+    },
+  ];
+  const activeStep = steps.find((step) => step.status === "active") ?? steps.at(-1);
+  const doneCount = steps.filter((step) => step.status === "done").length;
+  const progressPercent = Math.round((doneCount / steps.length) * 100);
+  const primary = mainlinePrimaryAction({
+    activeStepId: activeStep?.id,
+    busy: input.busy,
+    canClaimExplore: input.canClaimExplore,
+    hasActiveExplore: Boolean(input.activeExplore),
+    onClaimExplore: input.onClaimExplore,
+    onExplore: input.onExplore,
+    onFocusEvent: input.onFocusEvent,
+    onTask: input.onTask,
+    onTower: input.onTower,
+    task: input.chapterTask,
+  });
+
+  return {
+    chapterId,
+    primaryDisabled: primary.disabled,
+    primaryHint: primary.hint,
+    primaryLabel: primary.label,
+    progressPercent,
+    progressText: `${progressPercent}%`,
+    steps,
+    subtitle:
+      chapterId <= 1
+        ? "先把冀州、玄铁塔和基础任务串起来，后续州域会自然展开。"
+        : "按当前章节目标推进州域、九塔和生产成长。",
+    title: chapterTitle,
+    onPrimary: primary.onAction,
+  };
+}
+
+function mainlineTaskStatus(task: TaskState | undefined): MainlineStepStatus {
+  if (!task || task.status === "claimed") {
+    return "done";
+  }
+  return "active";
+}
+
+function mainlinePrimaryAction(input: {
+  activeStepId: string | undefined;
+  busy: boolean;
+  canClaimExplore: boolean;
+  hasActiveExplore: boolean;
+  task: TaskState | undefined;
+  onClaimExplore: () => void | Promise<void>;
+  onExplore: () => void | Promise<void>;
+  onFocusEvent: () => void;
+  onTask: () => void | Promise<void>;
+  onTower: () => void | Promise<void>;
+}): {
+  disabled?: boolean;
+  hint: string;
+  label: string;
+  onAction: () => void | Promise<void>;
+} {
+  if (input.activeStepId === "chapter_task") {
+    return {
+      disabled: input.busy,
+      hint:
+        input.task?.status === "completed"
+          ? "章节任务已经完成，先领取奖励。"
+          : "先看清本章任务，再继续推进。",
+      label: input.task?.status === "completed" ? "领取章节奖励" : "查看章节任务",
+      onAction: input.onTask,
+    };
+  }
+
+  if (input.activeStepId === "province_explore") {
+    if (input.canClaimExplore) {
+      return {
+        disabled: input.busy,
+        hint: "探索已经完成，先领取战报和奖励。",
+        label: "领取探索",
+        onAction: input.onClaimExplore,
+      };
+    }
+
+    return {
+      disabled: input.busy || input.hasActiveExplore,
+      hint: input.hasActiveExplore ? "探索队列正在进行，稍后领取结果。" : "安排一次州域探索。",
+      label: input.hasActiveExplore ? "等待探索完成" : "开始探索",
+      onAction: input.onExplore,
+    };
+  }
+
+  if (input.activeStepId === "explore_event") {
+    return {
+      disabled: input.busy,
+      hint: "途中见闻会给少量普通奖励，也会写入日志。",
+      label: "处理探索奇遇",
+      onAction: input.onFocusEvent,
+    };
+  }
+
+  if (input.activeStepId === "tower") {
+    return {
+      disabled: input.busy,
+      hint: "镇封九塔会推动本州公共目标。",
+      label: "镇封九塔",
+      onAction: input.onTower,
+    };
+  }
+
+  return {
+    disabled: input.busy,
+    hint: "今日主线已整理完，继续完成日课和生产成长。",
+    label: "查看今日目标",
+    onAction: input.onTask,
+  };
+}
+
+function chapterTitleById(chapterId: number): string {
+  const titles: Record<number, string> = {
+    1: "玄铁塔裂",
+    2: "礼法重建",
+    3: "海岱兵争",
+    4: "商路与万木",
+    5: "天衡转折",
+    6: "镇岳太初",
+  };
+  return titles[chapterId] ?? "九州续章";
+}
+
+function mainlineStepTone(status: MainlineStepStatus): "neutral" | "success" | "warning" {
+  return status === "done" ? "success" : status === "active" ? "warning" : "neutral";
+}
+
+function mainlineStepStatusLabel(status: MainlineStepStatus): string {
+  const labels: Record<MainlineStepStatus, string> = {
+    active: "当前",
+    done: "完成",
+    pending: "稍后",
+  };
+  return labels[status];
+}
+
+function taskStatusLabel(status: TaskState["status"]): string {
+  const labels: Record<TaskState["status"], string> = {
+    claimed: "已领取",
+    completed: "可领取",
+    in_progress: "进行中",
+  };
+  return labels[status];
 }
 
 function buildDailyGoals(input: {

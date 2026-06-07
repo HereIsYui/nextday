@@ -15,6 +15,7 @@ import type {
   GachaPoolListResponse,
   GameOverviewResponse,
   HealthStatus,
+  InnerWorldSummaryResponse,
   LoginResponse,
   PlayerProfileResponse,
   RankListResponse,
@@ -56,6 +57,7 @@ export default function HomePage() {
   const [alchemyRecipes, setAlchemyRecipes] = useState<AlchemyRecipeListResponse | null>(null);
   const [forgeRecipes, setForgeRecipes] = useState<ForgeRecipeListResponse | null>(null);
   const [skills, setSkills] = useState<SkillLoadoutResponse | null>(null);
+  const [innerWorld, setInnerWorld] = useState<InnerWorldSummaryResponse | null>(null);
   const [towers, setTowers] = useState<TowerListResponse | null>(null);
   const [boss, setBoss] = useState<WorldBossResponse | null>(null);
   const [sect, setSect] = useState<SectDetailResponse | null>(null);
@@ -95,6 +97,8 @@ export default function HomePage() {
   const ownedTreasureCount =
     ancientTreasures?.treasures.filter((treasure) => treasure.owned).length ?? 0;
   const firstAppearance = appearances?.appearances[0];
+  const firstInnerCreature = innerWorld?.creatures.find((creature) => creature.status === "idle");
+  const firstUnlockedProvince = overview?.provinces.find((province) => province.unlocked);
 
   useEffect(() => {
     let ignore = false;
@@ -181,6 +185,29 @@ export default function HomePage() {
       .catch(() => {
         if (!ignore) {
           setMessage("生产成长状态读取失败");
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [token, activePlayerId]);
+
+  useEffect(() => {
+    if (!token || !activePlayerId) {
+      return;
+    }
+
+    let ignore = false;
+    loadInnerWorld(createClient(token))
+      .then((state) => {
+        if (!ignore) {
+          setInnerWorld(state);
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setMessage("内天地状态读取失败");
         }
       });
 
@@ -290,6 +317,7 @@ export default function HomePage() {
     setOverview(response.data);
     setProfile(response.data.profile);
     await refreshProduction();
+    await refreshInnerWorld();
     await refreshMultiplayer();
     await refreshCommerce();
     setMessage(successMessage);
@@ -306,6 +334,15 @@ export default function HomePage() {
     setAlchemyRecipes(state.alchemyRecipes);
     setForgeRecipes(state.forgeRecipes);
     setSkills(state.skills);
+  }
+
+  async function refreshInnerWorld() {
+    if (!token) {
+      return;
+    }
+
+    const state = await loadInnerWorld(createClient(token));
+    setInnerWorld(state);
   }
 
   async function refreshMultiplayer() {
@@ -488,6 +525,80 @@ export default function HomePage() {
       ensureOk(response);
       setSkills(response.data);
       setMessage("技能预设已保存，下一次探索会写入战报");
+    });
+  }
+
+  async function handleInnerWorldDispatch() {
+    const province = firstUnlockedProvince;
+    if (!province) {
+      setMessage("暂无可派驻州域");
+      return;
+    }
+
+    await runAction("内天地派驻", async () => {
+      const response = await client.innerWorldDispatch(
+        { province_id: province.province_id, creature_id: firstInnerCreature?.creature_id },
+        createIdempotencyKey("web_inner_dispatch"),
+      );
+      ensureOk(response);
+      rememberExperience(response.data.experience);
+      await refreshOverview(`派驻 ${response.data.assignment.creature_name} 至 ${province.name}`);
+    });
+  }
+
+  async function handleInnerWorldClaim() {
+    await runAction("内天地收取", async () => {
+      const response = await client.innerWorldClaim({}, createIdempotencyKey("web_inner_claim"));
+      ensureOk(response);
+      rememberExperience(response.data.experience);
+      await refreshOverview(`收取法则经验 ${response.data.law_exp_gained}`);
+    });
+  }
+
+  async function handleInnerWorldUpgradeWorld() {
+    await runAction("内天地升级", async () => {
+      const response = await client.innerWorldUpgrade(
+        { target_type: "world" },
+        createIdempotencyKey("web_inner_upgrade_world"),
+      );
+      ensureOk(response);
+      rememberExperience(response.data.experience);
+      await refreshOverview(`内天地升至 ${response.data.state.world_level} 级`);
+    });
+  }
+
+  async function handleInnerWorldUpgradeCreature() {
+    if (!firstInnerCreature) {
+      setMessage("暂无空闲生灵可培养");
+      return;
+    }
+
+    await runAction("生灵培养", async () => {
+      const response = await client.innerWorldUpgrade(
+        { target_type: "creature", creature_id: firstInnerCreature.creature_id },
+        createIdempotencyKey("web_inner_upgrade_creature"),
+      );
+      ensureOk(response);
+      rememberExperience(response.data.experience);
+      await refreshOverview(`${response.data.creature?.name ?? "生灵"} 培养完成`);
+    });
+  }
+
+  async function handleInnerWorldSupport() {
+    const province = firstUnlockedProvince;
+    if (!province) {
+      setMessage("暂无可支援州域");
+      return;
+    }
+
+    await runAction("九州支援", async () => {
+      const response = await client.innerWorldSupport(
+        { province_id: province.province_id, support_type: "spirit_vein" },
+        createIdempotencyKey("web_inner_support"),
+      );
+      ensureOk(response);
+      rememberExperience(response.data.experience);
+      await refreshOverview(`支援 ${response.data.support.province_name}`);
     });
   }
 
@@ -1025,6 +1136,110 @@ export default function HomePage() {
                     title="技能"
                   />
                 </div>
+                <section className="inner-world-panel" id="inner-world" aria-label="内天地">
+                  <div className="section-title">
+                    <h2>内天地</h2>
+                    <span>
+                      {innerWorld?.state.unlocked
+                        ? `等级 ${innerWorld.state.world_level} · 法则 ${innerWorld.state.law_exp}/${innerWorld.state.next_law_exp_required}`
+                        : (innerWorld?.state.unlock_hint ?? "化神 / 神躯或第四章后开启")}
+                    </span>
+                  </div>
+                  <div className="inner-world-layout">
+                    <article className="inner-world-summary">
+                      <strong>{innerWorld?.state.unlocked ? "洞天已开" : "暂未开启"}</strong>
+                      <span>
+                        派驻 {innerWorld?.state.active_assignment_count ?? 0}/
+                        {innerWorld?.state.assignment_limit ?? 0} · 可收{" "}
+                        {innerWorld?.state.claimable_assignment_count ?? 0}
+                      </span>
+                      <span>
+                        支援 {innerWorld?.state.support_count_today ?? 0}/
+                        {innerWorld?.state.support_limit_daily ?? 0} · 容量{" "}
+                        {innerWorld?.state.creature_capacity ?? 0}
+                      </span>
+                      <div className="production-actions">
+                        <Button
+                          disabled={busy || !innerWorld?.state.unlocked || !firstUnlockedProvince}
+                          onClick={handleInnerWorldDispatch}
+                        >
+                          派驻
+                        </Button>
+                        <Button
+                          disabled={
+                            busy ||
+                            !innerWorld?.state.unlocked ||
+                            (innerWorld?.state.claimable_assignment_count ?? 0) <= 0
+                          }
+                          onClick={handleInnerWorldClaim}
+                        >
+                          收取
+                        </Button>
+                        <Button
+                          disabled={busy || !innerWorld?.state.unlocked}
+                          onClick={handleInnerWorldUpgradeWorld}
+                        >
+                          升级洞天
+                        </Button>
+                        <Button
+                          disabled={busy || !innerWorld?.state.unlocked || !firstInnerCreature}
+                          onClick={handleInnerWorldUpgradeCreature}
+                        >
+                          培养生灵
+                        </Button>
+                        <Button
+                          disabled={busy || !innerWorld?.state.unlocked || !firstUnlockedProvince}
+                          onClick={handleInnerWorldSupport}
+                        >
+                          九州支援
+                        </Button>
+                      </div>
+                    </article>
+                    <div className="inner-world-lists">
+                      <div>
+                        <strong>生灵</strong>
+                        {innerWorld?.creatures.map((creature) => (
+                          <p key={creature.creature_id}>
+                            {creature.name} · {creatureStatusLabel(creature.status)} · 等级{" "}
+                            {creature.level}
+                          </p>
+                        )) ?? <p>未读取生灵</p>}
+                      </div>
+                      <div>
+                        <strong>派驻队列</strong>
+                        {innerWorld?.assignments.length ? (
+                          innerWorld.assignments.slice(0, 4).map((assignment) => (
+                            <p key={assignment.assignment_id}>
+                              {assignment.creature_name} 至 {assignment.province_name} ·{" "}
+                              {assignment.status === "claimable"
+                                ? "可收取"
+                                : formatRemainingSeconds(assignment.remaining_seconds)}
+                            </p>
+                          ))
+                        ) : (
+                          <p>暂无派驻</p>
+                        )}
+                      </div>
+                      <div>
+                        <strong>最近法则</strong>
+                        {innerWorld?.recent_law_records.length ? (
+                          innerWorld.recent_law_records.slice(0, 3).map((record) => (
+                            <p key={record.law_record_id}>
+                              {record.source_type} · 经验 {record.exp_delta >= 0 ? "+" : ""}
+                              {record.exp_delta}
+                            </p>
+                          ))
+                        ) : (
+                          <p>暂无记录</p>
+                        )}
+                      </div>
+                      <div>
+                        <strong>产出边界</strong>
+                        <p>只产出绑定材料和法则经验，不产出仙玉、九大古宝或限定法宝。</p>
+                      </div>
+                    </div>
+                  </div>
+                </section>
               </section>
             ) : null}
 
@@ -1396,6 +1611,12 @@ async function loadProduction(client: GameClient) {
   };
 }
 
+async function loadInnerWorld(client: GameClient) {
+  const response = await client.innerWorldSummary();
+  ensureOk(response);
+  return response.data;
+}
+
 async function loadMultiplayer(client: GameClient) {
   const [towerResponse, bossResponse, sectResponse, resourceResponse, rankResponse] =
     await Promise.all([
@@ -1486,6 +1707,27 @@ function skillName(skills: SkillLoadoutResponse | null, skillId?: string): strin
   }
 
   return skills.available_skills.find((skill) => skill.skill_id === skillId)?.name ?? skillId;
+}
+
+function creatureStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    idle: "空闲",
+    assigned: "派驻中",
+    training: "培养中",
+  };
+  return labels[status] ?? status;
+}
+
+function formatRemainingSeconds(seconds: number): string {
+  if (seconds <= 0) {
+    return "可收取";
+  }
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes} 分钟`;
+  }
+
+  return `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分钟`;
 }
 
 function isActiveTab(value: string | null): value is ActiveTab {

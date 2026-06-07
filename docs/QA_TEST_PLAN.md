@@ -168,14 +168,14 @@ P1 测试按阶段逐步接入自动化，目标脚本如下：
 | `npm run test:p1-simulation` | 数值模拟配置、30 / 100 / 300 活跃玩家报表、通胀和断供预警 | P1-1 |
 | `npm run test:p1-web-experience` | 探索、战斗、九塔 / Boss、PVP / 宗门、宗门仓库、洞府 / 生产 / 抽卡体验字段 | P1-2 |
 | `npm run test:p1-world` | 九州全域配置、五塔机制、幽州不作为系统州名 | P1-3 |
-| `test:p1-inner-world` | 内天地派驻、收取、升级、生灵、法则、九州支援 | P1-4 |
+| `npm run test:p1-inner-world` | 内天地派驻、收取、升级、生灵、法则、九州支援 | P1-4 |
 | `test:p1-faction` | 成仙 / 成魔 / 散修路线、转道、声望清除、宗门立场冲突 | P1-5 |
 | `test:p1-rank` | 生产榜、纪元榜、内天地榜、阵营榜、称号继承和防滚雪球 | P1-6 |
 | `test:p1-events` | 九州游历、丹器加试、宗门同贺、回归、补偿活动 | P1-7 |
 | `test:p1-merge` | 合服 dry-run 报告、冲突项、补偿建议、回滚建议 | P1-8 |
 | `test:p1` | 串联数值模拟、Web 体验、九州全域、内天地、阵营、排行、活动和合服 dry-run | P1-8 |
 
-P1-1 已落地 `npm run simulate:p1`，用于输出当前数值模拟报表；`npm run test:p1-simulation` 用于专项回归。P1-2 已接入 `npm run test:p1-web-experience`，用于验证核心玩法展示字段不改变原结算结果。P1-3 已接入 `npm run test:p1-world`，用于验证九州全域、五塔机制和新增资源点。
+P1-1 已落地 `npm run simulate:p1`，用于输出当前数值模拟报表；`npm run test:p1-simulation` 用于专项回归。P1-2 已接入 `npm run test:p1-web-experience`，用于验证核心玩法展示字段不改变原结算结果。P1-3 已接入 `npm run test:p1-world`，用于验证九州全域、五塔机制和新增资源点。P1-4 已接入 `npm run test:p1-inner-world`，用于验证内天地异步派驻、绑定产出边界、幂等、升级、支援次数和后台配置风控。
 
 P1 Web 体验验收：
 

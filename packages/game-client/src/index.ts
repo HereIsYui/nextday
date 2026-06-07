@@ -53,6 +53,16 @@ import type {
   GachaPoolListResponse,
   GameOverviewResponse,
   GuestLoginRequest,
+  InnerWorldAssignmentListResponse,
+  InnerWorldClaimRequest,
+  InnerWorldClaimResponse,
+  InnerWorldDispatchRequest,
+  InnerWorldDispatchResponse,
+  InnerWorldSummaryResponse,
+  InnerWorldSupportRequest,
+  InnerWorldSupportResponse,
+  InnerWorldUpgradeRequest,
+  InnerWorldUpgradeResponse,
   JoinSectRequest,
   LoginResponse,
   MockFishpiLoginRequest,
@@ -462,6 +472,58 @@ export class GameClient {
 
   ranks(rankType: RankType): Promise<ApiResponse<RankListResponse>> {
     return this.get<RankListResponse>(`/api/multiplayer/ranks/${rankType}`);
+  }
+
+  innerWorldSummary(): Promise<ApiResponse<InnerWorldSummaryResponse>> {
+    return this.get<InnerWorldSummaryResponse>("/api/inner-world/summary");
+  }
+
+  innerWorldAssignments(): Promise<ApiResponse<InnerWorldAssignmentListResponse>> {
+    return this.get<InnerWorldAssignmentListResponse>("/api/inner-world/assignments");
+  }
+
+  innerWorldDispatch(
+    body: InnerWorldDispatchRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<InnerWorldDispatchResponse>> {
+    return this.post<InnerWorldDispatchResponse, InnerWorldDispatchRequest>(
+      "/api/inner-world/dispatch",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  innerWorldClaim(
+    body: InnerWorldClaimRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<InnerWorldClaimResponse>> {
+    return this.post<InnerWorldClaimResponse, InnerWorldClaimRequest>(
+      "/api/inner-world/claim",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  innerWorldUpgrade(
+    body: InnerWorldUpgradeRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<InnerWorldUpgradeResponse>> {
+    return this.post<InnerWorldUpgradeResponse, InnerWorldUpgradeRequest>(
+      "/api/inner-world/upgrade",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  innerWorldSupport(
+    body: InnerWorldSupportRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<InnerWorldSupportResponse>> {
+    return this.post<InnerWorldSupportResponse, InnerWorldSupportRequest>(
+      "/api/inner-world/support",
+      body,
+      { idempotencyKey },
+    );
   }
 
   commerceOverview(): Promise<ApiResponse<EntitlementOverviewResponse>> {

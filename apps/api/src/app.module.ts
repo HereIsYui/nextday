@@ -6,6 +6,7 @@ import { DatabaseModule } from "./database/database.module";
 import { GameConfigModule } from "./game-config/game-config.module";
 import { GameModule } from "./game/game.module";
 import { HealthController } from "./health/health.controller";
+import { InnerWorldModule } from "./inner-world/inner-world.module";
 import { createBehaviorLogMiddleware } from "./log/behavior-log.middleware";
 import { LogModule } from "./log/log.module";
 import { LogService } from "./log/log.service";
@@ -30,6 +31,7 @@ import { RiskModule } from "./risk/risk.module";
     MultiplayerModule,
     CommerceModule,
     RiskModule,
+    InnerWorldModule,
     PluginModule,
     AdminModule,
   ],

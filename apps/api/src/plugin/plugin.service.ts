@@ -18,6 +18,7 @@ import type {
 } from "@nextday/shared";
 import { CommerceService } from "../commerce/commerce.service";
 import { GameService } from "../game/game.service";
+import { InnerWorldService } from "../inner-world/inner-world.service";
 import { MultiplayerService } from "../multiplayer/multiplayer.service";
 
 @Injectable()
@@ -26,6 +27,7 @@ export class PluginService {
     @Inject(GameService) private readonly gameService: GameService,
     @Inject(MultiplayerService) private readonly multiplayerService: MultiplayerService,
     @Inject(CommerceService) private readonly commerceService: CommerceService,
+    @Inject(InnerWorldService) private readonly innerWorldService: InnerWorldService,
   ) {}
 
   async getStatusCard(accountId: string): Promise<PluginStatusCardResponse> {
@@ -70,15 +72,17 @@ export class PluginService {
   }
 
   async getExpandedPanel(accountId: string): Promise<PluginExpandedPanelResponse> {
-    const [status, overview, towers, boss, sect, commerce, treasures] = await Promise.all([
-      this.getStatusCard(accountId),
-      this.gameService.getOverview(accountId),
-      this.multiplayerService.getTowers(),
-      this.multiplayerService.getWorldBoss(),
-      this.multiplayerService.getMySect(accountId),
-      this.commerceService.getOverview(accountId),
-      this.commerceService.listAncientTreasures(accountId),
-    ]);
+    const [status, overview, towers, boss, sect, commerce, treasures, innerWorld] =
+      await Promise.all([
+        this.getStatusCard(accountId),
+        this.gameService.getOverview(accountId),
+        this.multiplayerService.getTowers(),
+        this.multiplayerService.getWorldBoss(),
+        this.multiplayerService.getMySect(accountId),
+        this.commerceService.getOverview(accountId),
+        this.commerceService.listAncientTreasures(accountId),
+        this.innerWorldService.getSummary(accountId).catch(() => null),
+      ]);
 
     return {
       status,
@@ -92,8 +96,10 @@ export class PluginService {
         monthlyCards: commerce.monthly_cards,
         sect: sect.sect,
         boss: boss.boss,
+        innerWorld: innerWorld?.state ?? null,
       }),
       cave: overview.cave,
+      inner_world: innerWorld?.state ?? null,
       provinces: overview.provinces,
       towers: towers.towers.slice(0, 4),
       recent_battles: overview.recent_battles.slice(0, 3),
@@ -145,6 +151,15 @@ export class PluginService {
         });
       }
     }
+
+    await this.tryClaim(items, "inner_world", "内天地收取", async () => {
+      const result = await this.innerWorldService.claim({
+        accountId: input.accountId,
+        body: {},
+        idempotencyKey: `${input.idempotencyKey}:inner_world`,
+      });
+      return { recordId: result.record_id, message: `法则经验 +${result.law_exp_gained}` };
+    });
 
     return {
       record_id: `plugin_quick_${randomUUID()}`,
@@ -213,6 +228,7 @@ export class PluginService {
       { key: "tasks", label: "今日日课", url: `${baseUrl}?tab=overview` },
       { key: "towers", label: "九塔", url: `${baseUrl}?tab=multiplayer` },
       { key: "commerce", label: "月卡古宝", url: `${baseUrl}?tab=market` },
+      { key: "inner_world", label: "内天地", url: `${baseUrl}?tab=growth#inner-world` },
     ];
   }
 
@@ -225,6 +241,7 @@ export class PluginService {
     monthlyCards: MonthlyCardStateSummary[];
     sect: PluginExpandedPanelResponse["sect"];
     boss: PluginExpandedPanelResponse["boss"];
+    innerWorld: PluginExpandedPanelResponse["inner_world"];
   }): PluginPanelDigest[] {
     const digests: PluginPanelDigest[] = [];
     const latestBattle = input.recentBattles[0];
@@ -256,6 +273,18 @@ export class PluginService {
         summary: `${input.boss.name} 阶段 ${input.boss.phase}，血量 ${input.boss.remaining_hp}/${input.boss.total_hp}`,
         tone: input.boss.remaining_hp < input.boss.total_hp * 0.25 ? "success" : "neutral",
         action_hint: "towers",
+      });
+    }
+
+    if (input.innerWorld) {
+      digests.push({
+        digest_id: "inner_world",
+        title: "内天地",
+        summary: input.innerWorld.unlocked
+          ? `等级 ${input.innerWorld.world_level}，派驻 ${input.innerWorld.active_assignment_count}/${input.innerWorld.assignment_limit}，可收 ${input.innerWorld.claimable_assignment_count}`
+          : input.innerWorld.unlock_hint,
+        tone: input.innerWorld.claimable_assignment_count > 0 ? "success" : "neutral",
+        action_hint: "inner_world",
       });
     }
 

@@ -11,6 +11,19 @@ import {
 } from "../commerce/commerce.constants";
 import { provinceConfigs } from "../game/game.constants";
 import {
+  innerWorldConfigVersion,
+  innerWorldCreatureConfigs,
+  innerWorldCreatureUpgradeCost,
+  innerWorldDailySupportLimit,
+  innerWorldDefaultAssignmentMinutes,
+  innerWorldLevelConfigs,
+  innerWorldProvinceRewards,
+  innerWorldRewardConfigVersion,
+  innerWorldSupportConfigs,
+  innerWorldUnlockChapter,
+  innerWorldUnlockRealm,
+} from "../inner-world/inner-world.constants";
+import {
   bossConfig,
   rankRewardPreview,
   resourcePointConfigs,
@@ -309,6 +322,34 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
     payload: {
       appearances: appearanceConfigs,
       stat_bonus_rule: "展示外观 statBonus 固定为空，不参与战力、贡献和奖励结算",
+    },
+  },
+  inner_world: {
+    config_type: "inner_world",
+    config_version: innerWorldConfigVersion,
+    ruleset_version: "ruleset_p1_inner_world_v1",
+    reward_config_version: innerWorldRewardConfigVersion,
+    payload: {
+      unlock: {
+        realm_required: innerWorldUnlockRealm,
+        chapter_required: innerWorldUnlockChapter,
+        hint: "化神 / 神躯或第四章后开启内天地",
+      },
+      assignment_rule: {
+        default_minutes: innerWorldDefaultAssignmentMinutes,
+        async_claim: true,
+        daily_core_time_boundary: "内天地只提供异步派驻和一键收取，不增加固定在线压力",
+      },
+      levels: innerWorldLevelConfigs,
+      creatures: innerWorldCreatureConfigs,
+      province_rewards: innerWorldProvinceRewards,
+      creature_upgrade_cost: innerWorldCreatureUpgradeCost,
+      support_rule: {
+        daily_limit: innerWorldDailySupportLimit,
+        supports: innerWorldSupportConfigs,
+      },
+      output_boundary:
+        "内天地不产出付费货币、九大古宝本体、限定本命法宝或可交易付费产物，所有材料默认绑定",
     },
   },
   risk: {

@@ -435,6 +435,143 @@ export interface CaveCollectResponse {
   experience?: ExperiencePayload;
 }
 
+export type InnerWorldCreatureStatus = "idle" | "assigned" | "training";
+export type InnerWorldAssignmentStatus = "active" | "claimable" | "claimed";
+export type InnerWorldSupportType = "spirit_vein" | "tower_supply" | "secret_realm";
+
+export interface InnerWorldStateSummary {
+  unlocked: boolean;
+  unlock_hint: string;
+  world_level: number;
+  law_level: number;
+  law_exp: number;
+  next_law_exp_required: number;
+  creature_capacity: number;
+  assignment_limit: number;
+  active_assignment_count: number;
+  claimable_assignment_count: number;
+  support_count_today: number;
+  support_limit_daily: number;
+  config_version: string;
+  reward_config_version: string;
+}
+
+export interface InnerWorldCreatureState {
+  creature_id: string;
+  creature_type: string;
+  name: string;
+  level: number;
+  affinity_province_id: string | null;
+  status: InnerWorldCreatureStatus | string;
+  assignment_bonus_summary: Record<string, unknown>;
+}
+
+export interface InnerWorldAssignmentState {
+  assignment_id: string;
+  creature_id: string;
+  creature_name: string;
+  province_id: string;
+  province_name: string;
+  status: InnerWorldAssignmentStatus | string;
+  started_at: string;
+  ends_at: string;
+  claimed_at: string | null;
+  remaining_seconds: number;
+  rewards: RewardBundle;
+  law_exp_gain: number;
+}
+
+export interface InnerWorldLawRecordState {
+  law_record_id: string;
+  law_type: string;
+  exp_delta: number;
+  source_type: string;
+  source_id: string;
+  before_level: number;
+  after_level: number;
+  before_exp: number;
+  after_exp: number;
+  created_at: string;
+}
+
+export interface InnerWorldSupportRecordState {
+  support_record_id: string;
+  province_id: string;
+  province_name: string;
+  tower_id: string | null;
+  support_type: InnerWorldSupportType | string;
+  cost_summary: RewardBundle;
+  reward_summary: RewardBundle;
+  contribution_summary: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface InnerWorldSummaryResponse {
+  state: InnerWorldStateSummary;
+  creatures: InnerWorldCreatureState[];
+  assignments: InnerWorldAssignmentState[];
+  recent_law_records: InnerWorldLawRecordState[];
+  recent_support_records: InnerWorldSupportRecordState[];
+}
+
+export interface InnerWorldAssignmentListResponse {
+  assignments: InnerWorldAssignmentState[];
+  support_records: InnerWorldSupportRecordState[];
+}
+
+export interface InnerWorldDispatchRequest {
+  creature_id?: string;
+  province_id: string;
+}
+
+export interface InnerWorldDispatchResponse {
+  record_id: string;
+  state: InnerWorldStateSummary;
+  assignment: InnerWorldAssignmentState;
+  creatures: InnerWorldCreatureState[];
+  experience?: ExperiencePayload;
+}
+
+export interface InnerWorldClaimRequest {
+  assignment_id?: string;
+}
+
+export interface InnerWorldClaimResponse {
+  record_id: string;
+  state: InnerWorldStateSummary;
+  assignments: InnerWorldAssignmentState[];
+  rewards: RewardBundle;
+  law_exp_gained: number;
+  bag: BagSummaryResponse;
+  experience?: ExperiencePayload;
+}
+
+export interface InnerWorldUpgradeRequest {
+  target_type: "world" | "creature";
+  creature_id?: string;
+}
+
+export interface InnerWorldUpgradeResponse {
+  record_id: string;
+  state: InnerWorldStateSummary;
+  creature?: InnerWorldCreatureState;
+  cost: RewardBundle;
+  experience?: ExperiencePayload;
+}
+
+export interface InnerWorldSupportRequest {
+  province_id: string;
+  support_type: InnerWorldSupportType | string;
+}
+
+export interface InnerWorldSupportResponse {
+  record_id: string;
+  state: InnerWorldStateSummary;
+  support: InnerWorldSupportRecordState;
+  bag: BagSummaryResponse;
+  experience?: ExperiencePayload;
+}
+
 export type ItemCategory =
   | "material"
   | "pill"
@@ -443,6 +580,7 @@ export type ItemCategory =
   | "tower_material"
   | "sect_material"
   | "battle_material"
+  | "inner_world_material"
   | "treasure_page"
   | "unknown";
 
@@ -1166,6 +1304,7 @@ export interface PluginExpandedPanelResponse {
   tasks: PluginPanelTaskState[];
   digests: PluginPanelDigest[];
   cave: CaveState | null;
+  inner_world: InnerWorldStateSummary | null;
   provinces: ProvinceSummary[];
   towers: TowerStateSummary[];
   recent_battles: BattleSummary[];
@@ -1184,7 +1323,7 @@ export interface PluginQuickClaimRequest {
 }
 
 export interface PluginQuickClaimItem {
-  action: "cultivation" | "cave" | "task";
+  action: "cultivation" | "cave" | "task" | "inner_world";
   label: string;
   record_id: string | null;
   status: "claimed" | "skipped";
@@ -1212,7 +1351,7 @@ export interface PluginSubmitPresetResponse {
 }
 
 export interface PluginNavigationLink {
-  key: "web" | "h5" | "tasks" | "towers" | "commerce";
+  key: "web" | "h5" | "tasks" | "towers" | "commerce" | "inner_world";
   label: string;
   url: string;
 }
@@ -1244,6 +1383,7 @@ export type ConfigType =
   | "vip"
   | "convenience"
   | "appearance"
+  | "inner_world"
   | "risk";
 
 export interface ConfigEnvelope<TPayload = Record<string, unknown>> {

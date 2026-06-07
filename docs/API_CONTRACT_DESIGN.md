@@ -427,6 +427,7 @@ P1 新增接口分组：
 | 内天地 | `/api/inner-world/dispatch` | POST | 发起派驻，需幂等键 |
 | 内天地 | `/api/inner-world/claim` | POST | 收取派驻和绑定产出，需幂等键 |
 | 内天地 | `/api/inner-world/upgrade` | POST | 升级内天地或生灵，需幂等键 |
+| 内天地 | `/api/inner-world/support` | POST | 消耗法则经验发起九州支援，需幂等键 |
 | 阵营路线 | `/api/factions/routes` | GET | 成仙、成魔、散修路线配置和解锁状态 |
 | 阵营路线 | `/api/factions/choose` | POST | 化神后选择路线，需幂等键 |
 | 阵营路线 | `/api/factions/transfer` | POST | 转道任务提交、资源消耗和冷却校验，需幂等键 |

@@ -195,6 +195,11 @@ function renderPanel(
         panel.status.action_state.action_point_cap
       }</dd></div>
       <div><dt>古宝赠抽</dt><dd>${panel.ancient_treasure.available_draws}</dd></div>
+      <div><dt>内天地</dt><dd>${
+        panel.inner_world?.unlocked
+          ? `${panel.inner_world.claimable_assignment_count} 个可收`
+          : "未开启"
+      }</dd></div>
     </dl>
     <section>
       <strong>日课</strong>
@@ -207,6 +212,14 @@ function renderPanel(
       <strong>九塔</strong>
       <p>${escapeHtml(panel.towers[0]?.tower_name ?? "未读取")} · 镇封 ${
         panel.towers[0]?.seal_progress ?? 0
+      }</p>
+    </section>
+    <section>
+      <strong>内天地</strong>
+      <p>${
+        panel.inner_world?.unlocked
+          ? `等级 ${panel.inner_world.world_level} · 派驻 ${panel.inner_world.active_assignment_count}/${panel.inner_world.assignment_limit}`
+          : escapeHtml(panel.inner_world?.unlock_hint ?? "化神 / 神躯或第四章后开启")
       }</p>
     </section>
     <section>

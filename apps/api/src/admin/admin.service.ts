@@ -758,6 +758,9 @@ function validateConfigPayload(
   if (configType === "gacha") {
     validateGachaConfig(payload);
   }
+  if (configType === "inner_world") {
+    validateInnerWorldConfig(payload);
+  }
   if (configType === "convenience" && text.includes('"reward_multiplier":2')) {
     throw new BadRequestException("便利配置不能提高奖励倍率");
   }
@@ -792,6 +795,24 @@ function validateGachaConfig(payload: Record<string, unknown>) {
       : [];
   if (allowedCosts.includes("paid_jade")) {
     throw new BadRequestException("当前九大古宝池不能开放付费仙玉直抽");
+  }
+}
+
+function validateInnerWorldConfig(payload: Record<string, unknown>) {
+  const text = JSON.stringify(payload);
+  const forbiddenFragments = [
+    '"jade_paid"',
+    '"jade_bound"',
+    "ancient_treasure",
+    "gubao",
+    "limited",
+    "paid",
+  ];
+  if (forbiddenFragments.some((fragment) => text.includes(fragment))) {
+    throw new BadRequestException("内天地配置不能产出付费货币、九大古宝、限定法宝或付费产物");
+  }
+  if (text.includes('"tradeable":true')) {
+    throw new BadRequestException("内天地配置不能产出可交易材料");
   }
 }
 

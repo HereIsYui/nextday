@@ -1303,7 +1303,7 @@ export default function HomePage() {
   }
 
   return (
-    <main className="shell app-shell">
+    <main className={activeProfile?.player ? "shell app-shell text-game-shell" : "shell app-shell"}>
       <section className="topbar">
         <div>
           <p className="eyebrow">M7 前端体验闭环</p>
@@ -1425,7 +1425,7 @@ export default function HomePage() {
               </Button>
             </div>
             <div className="today-action-grid">
-              {recommendedActions.map((action) => (
+              {recommendedActions.slice(0, 4).map((action) => (
                 <article className="recommended-action" key={action.id}>
                   <div>
                     <strong>{action.title}</strong>
@@ -1457,7 +1457,7 @@ export default function HomePage() {
                 <span>缺口和入口集中展示</span>
               </div>
               <div className="growth-target-list">
-                {growthTargets.map((target) => (
+                {growthTargets.slice(0, 3).map((target) => (
                   <GrowthTargetCard key={target.id} target={target} />
                 ))}
               </div>
@@ -2550,7 +2550,7 @@ function buildDailyGoals(input: {
     });
   }
 
-  return goals.slice(0, 5);
+  return goals.slice(0, 4);
 }
 
 function buildRecommendedActions(input: {

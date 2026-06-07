@@ -1202,3 +1202,363 @@ h2 {
     padding: 0 6px;
   }
 }
+
+/* 暗室式文字游戏界面：参考 A Dark Room 的窄画布、日志流、资源账本和黑白按钮。 */
+.text-game-shell {
+  background: #ffffff;
+  color: #111111;
+  font-family: "Times New Roman", "Songti SC", SimSun, serif;
+  gap: 16px 22px;
+  grid-template-areas:
+    "top top top"
+    "log nav ledger"
+    "log today ledger"
+    "log goals ledger"
+    "log tabs ledger";
+  grid-template-columns: 190px minmax(0, 680px) 210px;
+  max-width: 1120px;
+  padding-top: 18px;
+}
+
+.text-game-shell button {
+  background: #ffffff !important;
+  border: 1px solid #111111 !important;
+  border-radius: 0 !important;
+  color: #111111 !important;
+  font-family: inherit !important;
+  min-height: 34px;
+  padding: 5px 10px !important;
+}
+
+.text-game-shell button:hover:not(:disabled),
+.text-game-shell button.active {
+  text-decoration: underline;
+}
+
+.text-game-shell button:disabled {
+  border-color: #aaaaaa !important;
+  color: #999999 !important;
+  filter: none;
+}
+
+.text-game-shell span[style*="border-radius"] {
+  background: #ffffff !important;
+  border: 1px solid #111111;
+  border-radius: 0 !important;
+  color: #111111 !important;
+}
+
+.text-game-shell .topbar {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #111111;
+  border-radius: 0;
+  grid-area: top;
+  padding: 0 0 12px;
+}
+
+.text-game-shell .topbar h1 {
+  font-size: 30px;
+  line-height: 1.1;
+  margin-bottom: 8px;
+}
+
+.text-game-shell .eyebrow {
+  color: #444444;
+  margin-bottom: 8px;
+}
+
+.text-game-shell .status-row {
+  color: #333333;
+  gap: 10px;
+}
+
+.text-game-shell .message {
+  color: #333333;
+  font-family: inherit;
+}
+
+.text-game-shell .tab-nav {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #111111;
+  border-radius: 0;
+  gap: 14px;
+  grid-area: nav;
+  padding: 0 0 10px;
+}
+
+.text-game-shell .tab-nav button {
+  border: 0 !important;
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 0 !important;
+}
+
+.text-game-shell .today-hero {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  gap: 14px;
+  grid-area: today;
+  padding: 0;
+}
+
+.text-game-shell .today-hero-copy {
+  border-bottom: 1px solid #dddddd;
+  padding-bottom: 10px;
+}
+
+.text-game-shell .today-hero-copy h2 {
+  font-size: 22px;
+}
+
+.text-game-shell .today-controls {
+  align-items: end;
+  grid-template-columns: minmax(0, 1fr) 110px minmax(0, 1fr) 92px;
+}
+
+.text-game-shell .today-controls select,
+.text-game-shell .create-form input,
+.text-game-shell .create-form select {
+  border-color: #111111;
+  border-radius: 0;
+  font-family: inherit;
+  min-height: 36px;
+}
+
+.text-game-shell .today-action-grid {
+  gap: 0 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.text-game-shell .recommended-action,
+.text-game-shell .goal-card,
+.text-game-shell .growth-target-card {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #eeeeee;
+  border-radius: 0;
+  gap: 8px;
+  min-height: 0;
+  padding: 10px 0;
+}
+
+.text-game-shell .recommended-action {
+  grid-template-columns: minmax(0, 1fr) 112px;
+}
+
+.text-game-shell .goal-card,
+.text-game-shell .growth-target-card {
+  grid-template-columns: minmax(0, 1fr) 100px;
+}
+
+.text-game-shell .recommended-action button,
+.text-game-shell .goal-card button,
+.text-game-shell .growth-target-card button {
+  min-width: 0;
+  width: 100%;
+}
+
+.text-game-shell .today-layout {
+  border-top: 1px solid #111111;
+  gap: 24px;
+  grid-area: goals;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  padding-top: 14px;
+}
+
+.text-game-shell .today-panel,
+.text-game-shell .journal-panel,
+.text-game-shell .panel,
+.text-game-shell .tab-surface {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+}
+
+.text-game-shell .section-title {
+  border-bottom: 1px solid #dddddd;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+}
+
+.text-game-shell .section-title h2 {
+  font-size: 18px;
+}
+
+.text-game-shell .journal-panel {
+  grid-area: log;
+  min-width: 0;
+}
+
+.text-game-shell .journal-layout {
+  display: block;
+}
+
+.text-game-shell .journal-detail {
+  display: none;
+}
+
+.text-game-shell .journal-list {
+  max-height: 680px;
+  overflow: hidden;
+}
+
+.text-game-shell .journal-entry {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  gap: 5px;
+  padding: 0 0 14px;
+}
+
+.text-game-shell .journal-entry-head {
+  align-items: baseline;
+  gap: 8px;
+}
+
+.text-game-shell .journal-deltas span,
+.text-game-shell .reason-tag,
+.text-game-shell .mini-stats span,
+.text-game-shell .battle-stat-grid span {
+  background: transparent;
+  border: 1px solid #dddddd;
+  border-radius: 0;
+  color: #222222;
+}
+
+.text-game-shell .overview-grid {
+  align-self: start;
+  border: 1px solid #111111;
+  gap: 0;
+  grid-area: ledger;
+  grid-template-columns: 1fr;
+  padding: 6px 10px;
+}
+
+.text-game-shell .metric-card {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #eeeeee;
+  border-radius: 0;
+  min-height: 0;
+  padding: 8px 0;
+}
+
+.text-game-shell .metric-card:last-child {
+  border-bottom: 0;
+}
+
+.text-game-shell .metric-card strong {
+  font-size: 18px;
+}
+
+.text-game-shell .tab-surface {
+  grid-area: tabs;
+  min-height: 0;
+}
+
+.text-game-shell .main-grid,
+.text-game-shell .production-grid,
+.text-game-shell .event-grid,
+.text-game-shell .tower-grid,
+.text-game-shell .rank-summary-grid {
+  gap: 14px;
+}
+
+.text-game-shell .province,
+.text-game-shell .task-row,
+.text-game-shell .battle-card,
+.text-game-shell .production-box,
+.text-game-shell .event-hero,
+.text-game-shell .event-boundary,
+.text-game-shell .event-card,
+.text-game-shell .inner-world-summary,
+.text-game-shell .inner-world-lists > div,
+.text-game-shell .faction-state-card,
+.text-game-shell .faction-route-card,
+.text-game-shell .rank-mini-card,
+.text-game-shell .title-claim-row,
+.text-game-shell .tower-card {
+  background: transparent;
+  border: 1px solid #dddddd;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.text-game-shell .empty {
+  background: transparent;
+  border: 1px dashed #999999;
+  border-radius: 0;
+}
+
+.text-game-shell .bottom-nav {
+  border-color: #111111;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+@media (max-width: 1120px) {
+  .text-game-shell {
+    grid-template-areas:
+      "top top"
+      "nav ledger"
+      "today ledger"
+      "goals ledger"
+      "tabs log";
+    grid-template-columns: minmax(0, 1fr) 210px;
+  }
+}
+
+@media (max-width: 760px) {
+  .text-game-shell {
+    gap: 14px;
+    grid-template-areas:
+      "top"
+      "today"
+      "goals"
+      "tabs"
+      "ledger"
+      "log";
+    grid-template-columns: 1fr;
+    padding: 12px 12px calc(84px + env(safe-area-inset-bottom));
+  }
+
+  .text-game-shell .topbar {
+    padding-bottom: 12px;
+  }
+
+  .text-game-shell .tab-nav {
+    display: none;
+  }
+
+  .text-game-shell .today-controls,
+  .text-game-shell .today-action-grid,
+  .text-game-shell .recommended-action,
+  .text-game-shell .goal-card,
+  .text-game-shell .growth-target-card,
+  .text-game-shell .today-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .text-game-shell .today-layout {
+    gap: 12px;
+  }
+
+  .text-game-shell .overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .text-game-shell .metric-card {
+    border-bottom: 0;
+  }
+
+  .text-game-shell .recommended-action button,
+  .text-game-shell .goal-card button,
+  .text-game-shell .growth-target-card button,
+  .text-game-shell .today-controls > button {
+    width: 100%;
+  }
+}

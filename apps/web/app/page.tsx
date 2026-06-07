@@ -47,6 +47,7 @@ type ActiveTab = "overview" | "events" | "growth" | "multiplayer" | "market" | "
 const tokenStorageKey = "nextday_m1_token";
 const deviceStorageKey = "nextday_m1_device_id";
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
+const showDevelopmentActions = process.env.NEXT_PUBLIC_SHOW_DEV_ACTIONS === "true";
 
 const navItems: Array<{ key: ActiveTab; label: string }> = [
   { key: "overview", label: "九州" },
@@ -141,6 +142,7 @@ export default function HomePage() {
   const [exploreCount, setExploreCount] = useState(5);
   const [selectedTowerId, setSelectedTowerId] = useState("");
   const [selectedAlchemyRecipeId, setSelectedAlchemyRecipeId] = useState("");
+  const [selectedForgeRecipeId, setSelectedForgeRecipeId] = useState("");
   const [selectedPillItemInstanceId, setSelectedPillItemInstanceId] = useState("");
   const [currentExplore, setCurrentExplore] = useState<ExploreResponse | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -162,6 +164,9 @@ export default function HomePage() {
   const selectedAlchemyRecipe =
     alchemyRecipes?.recipes.find((recipe) => recipe.recipe_id === selectedAlchemyRecipeId) ??
     alchemyRecipes?.recipes[0];
+  const selectedForgeRecipe =
+    forgeRecipes?.recipes.find((recipe) => recipe.recipe_id === selectedForgeRecipeId) ??
+    forgeRecipes?.recipes[0];
   const selectedPill =
     availablePills.find((item) => item.item_instance_id === selectedPillItemInstanceId) ??
     availablePills[0];
@@ -248,6 +253,7 @@ export default function HomePage() {
     onQuickClaim: handleQuickClaim,
     onTower: handleTowerAction,
   });
+  const visibleRecommendedActions = selectVisibleRecommendedActions(recommendedActions);
   const growthTargets = buildGrowthTargets({
     activity: firstClaimableActivity ?? firstActivity,
     busy,
@@ -340,6 +346,17 @@ export default function HomePage() {
       setSelectedAlchemyRecipeId(recipes[0].recipe_id);
     }
   }, [alchemyRecipes, selectedAlchemyRecipeId]);
+
+  useEffect(() => {
+    const recipes = forgeRecipes?.recipes ?? [];
+    if (recipes.length === 0) {
+      setSelectedForgeRecipeId("");
+      return;
+    }
+    if (!recipes.some((recipe) => recipe.recipe_id === selectedForgeRecipeId)) {
+      setSelectedForgeRecipeId(recipes[0].recipe_id);
+    }
+  }, [forgeRecipes, selectedForgeRecipeId]);
 
   useEffect(() => {
     if (availablePills.length === 0) {
@@ -724,7 +741,7 @@ export default function HomePage() {
           response.data.total_seconds,
         )} 后可领取战报和奖励。`,
         tags: [
-          "异步探索",
+          "州域游历",
           `${response.data.count} 次`,
           `${response.data.seconds_per_explore} 秒/次`,
         ],
@@ -842,7 +859,7 @@ export default function HomePage() {
   }
 
   async function handleCraftForge() {
-    const recipe = forgeRecipes?.recipes[0];
+    const recipe = selectedForgeRecipe;
     if (!recipe) {
       setMessage("暂无可用炼器配方");
       return;
@@ -1307,7 +1324,7 @@ export default function HomePage() {
         experience,
         recommendations: experience.next_recommendations.map((item) => item.label).slice(0, 3),
         summary: experience.summary,
-        tags: experience.reason_tags.map((tag) => tag.label).slice(0, 4),
+        tags: filterJournalTags(experience.reason_tags).slice(0, 4),
         title: experience.title,
         tone: resolveExperienceTone(experience),
       });
@@ -1319,7 +1336,7 @@ export default function HomePage() {
         deltas: [],
         recommendations: [],
         summary: fallback.summary,
-        tags: fallback.tags ?? [],
+        tags: filterJournalTagLabels(fallback.tags ?? []),
         title: fallback.title,
         tone: fallback.tone ?? "neutral",
       });
@@ -1596,7 +1613,7 @@ export default function HomePage() {
               busy={busy}
             />
             <div className="today-action-grid">
-              {recommendedActions.slice(0, 4).map((action) => (
+              {visibleRecommendedActions.map((action) => (
                 <article className="recommended-action" key={action.id}>
                   <div>
                     <strong>{action.title}</strong>
@@ -1909,29 +1926,56 @@ export default function HomePage() {
                       ) : null}
                     </div>
                   </article>
-                  <ActionBox
-                    actions={
-                      <>
-                        {forgeRecipes?.recipes.length ? (
-                          <Button disabled={busy} onClick={handleCraftForge}>
-                            炼器
-                          </Button>
-                        ) : null}
-                        {firstEquipment ? (
-                          <Button disabled={busy} onClick={handleRefineEquipment}>
-                            淬炼
-                          </Button>
-                        ) : null}
-                      </>
-                    }
-                    actionNote={
-                      !forgeRecipes?.recipes.length && !firstEquipment
-                        ? "暂无可炼器配方或可淬炼法宝"
-                        : undefined
-                    }
-                    detail={`已有 ${equipment?.equipments.length ?? 0} 件 · 炼器不产出九大古宝`}
-                    title="法宝炼器"
-                  />
+                  <article className="production-box production-choice">
+                    <strong>法宝炼器</strong>
+                    <span>
+                      {selectedForgeRecipe
+                        ? `${selectedForgeRecipe.name} · ${equipmentRarityLabel(
+                            selectedForgeRecipe.rarity,
+                          )} · 灵石 ${selectedForgeRecipe.spirit_stone_cost}`
+                        : `已有 ${equipment?.equipments.length ?? 0} 件 · 炼器不产出九大古宝`}
+                    </span>
+                    {forgeRecipes?.recipes.length ? (
+                      <label className="choice-field">
+                        <span>选择配方</span>
+                        <select
+                          disabled={busy}
+                          onChange={(event) => setSelectedForgeRecipeId(event.target.value)}
+                          value={selectedForgeRecipe?.recipe_id ?? ""}
+                        >
+                          {forgeRecipes.recipes.map((recipe) => (
+                            <option key={recipe.recipe_id} value={recipe.recipe_id}>
+                              {recipe.name} ·{" "}
+                              {recipe.route === "all"
+                                ? "通用"
+                                : cultivationRouteLabels[recipe.route]}{" "}
+                              · {equipmentRarityLabel(recipe.rarity)} ·{" "}
+                              {recipe.materials
+                                .map((item) => `${item.name}x${item.count}`)
+                                .join("、")}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : (
+                      <span className="action-note">暂无可用炼器配方</span>
+                    )}
+                    <div className="production-actions">
+                      {selectedForgeRecipe ? (
+                        <Button disabled={busy} onClick={handleCraftForge}>
+                          炼制所选配方
+                        </Button>
+                      ) : null}
+                      {firstEquipment ? (
+                        <Button disabled={busy} onClick={handleRefineEquipment}>
+                          淬炼
+                        </Button>
+                      ) : null}
+                    </div>
+                    {!selectedForgeRecipe && !firstEquipment ? (
+                      <span className="action-note">暂无可炼器配方或可淬炼法宝</span>
+                    ) : null}
+                  </article>
                   <ActionBox
                     actions={
                       skills ? (
@@ -2372,29 +2416,46 @@ export default function HomePage() {
                     }`}
                     title="九大古宝"
                   />
-                  <ActionBox
-                    actions={
-                      overview ? (
-                        <>
-                          <Button disabled={busy} onClick={() => handleSyncVip(3)}>
-                            VIP3
-                          </Button>
-                          <Button disabled={busy} onClick={() => handleSyncVip(4)}>
-                            VIP4
-                          </Button>
-                          <Button disabled={busy} onClick={handleBatchPreview}>
-                            便利预览
-                          </Button>
-                          <Button disabled={busy} onClick={handleAutomationQueue}>
-                            托管队列
-                          </Button>
-                        </>
-                      ) : null
-                    }
-                    actionNote={overview ? undefined : "角色状态尚未读取"}
-                    detail={`VIP ${commerce?.vip.vip_level ?? 0} · 批量上限 ${commerce?.convenience.batch_sweep_limit ?? 5} · 奖励倍率 1`}
-                    title="VIP 与便利"
-                  />
+                  {showDevelopmentActions ? (
+                    <ActionBox
+                      actions={
+                        overview ? (
+                          <>
+                            <Button disabled={busy} onClick={() => handleSyncVip(3)}>
+                              模拟 VIP3
+                            </Button>
+                            <Button disabled={busy} onClick={() => handleSyncVip(4)}>
+                              模拟 VIP4
+                            </Button>
+                            <Button disabled={busy} onClick={handleBatchPreview}>
+                              便利预览
+                            </Button>
+                            <Button disabled={busy} onClick={handleAutomationQueue}>
+                              托管队列
+                            </Button>
+                          </>
+                        ) : null
+                      }
+                      actionNote={
+                        overview ? "开发模拟入口，不作为正式玩家操作" : "角色状态尚未读取"
+                      }
+                      detail={`VIP ${commerce?.vip.vip_level ?? 0} · 批量上限 ${
+                        commerce?.convenience.batch_sweep_limit ?? 5
+                      } · 奖励倍率 1`}
+                      title="开发模拟：VIP 与便利"
+                    />
+                  ) : (
+                    <article className="production-box">
+                      <strong>VIP 与便利</strong>
+                      <span>
+                        VIP {commerce?.vip.vip_level ?? 0} · 批量上限{" "}
+                        {commerce?.convenience.batch_sweep_limit ?? 5} · 奖励倍率 1
+                      </span>
+                      <span className="action-note">
+                        便利权益由月卡或 VIP 状态自动生效，不在玩家界面提供模拟同步。
+                      </span>
+                    </article>
+                  )}
                   <ActionBox
                     actions={
                       <>
@@ -2497,7 +2558,7 @@ function ExperiencePanel({ experience }: { experience: ExperiencePayload }) {
           <div className="reason-tags">
             {experience.reason_tags.map((tag) => (
               <span className={`reason-tag tone-${tag.tone ?? "neutral"}`} key={tag.code}>
-                {tag.label}
+                {experienceReasonTagDisplayLabel(tag)}
               </span>
             ))}
           </div>
@@ -2712,6 +2773,144 @@ function BattleReportCard({ battle }: { battle: BattleSummary }) {
       )}
     </article>
   );
+}
+
+const visibleRiskJournalTagCodes = new Set([
+  "delayed_settlement",
+  "decayed",
+  "manual_review",
+  "rate_limited",
+]);
+
+const systemBoundaryJournalTagCodes = new Set([
+  "async_collect",
+  "async_tower",
+  "async_event",
+  "async_assignment",
+  "async_claim",
+  "server_settled",
+  "reward_boundary",
+  "risk_normal",
+  "reward_unchanged",
+  "bound_only",
+  "no_paid_output",
+  "no_ancient_treasure",
+  "permanent_pool",
+  "server_roll",
+  "sect_async",
+  "loss_not_destroy",
+  "warehouse_whitelist",
+  "warehouse_audit",
+]);
+
+const systemBoundaryJournalLabelFragments = [
+  "异步",
+  "风控正常",
+  "不触发审核",
+  "无风险",
+  "奖励未加成",
+  "不加成",
+  "不增收益",
+  "奖励边界",
+  "服务端",
+  "幂等",
+  "掷骰",
+  "绑定产出",
+  "无付费产出",
+  "不产出九大古宝",
+  "常驻机缘",
+  "失败不毁号",
+  "白名单流通",
+  "仓库日志",
+];
+
+const experienceTagLabels: Record<string, string> = {
+  async_assignment: "派驻行动",
+  async_claim: "收取行动",
+  async_collect: "离线收取",
+  async_event: "活动推进",
+  async_tower: "九塔提交",
+  auto_battle: "自动战斗",
+  bound_only: "绑定产出",
+  decayed: "收益衰减",
+  delayed_settlement: "延迟结算",
+  honor_reward: "荣誉奖励",
+  loss_not_destroy: "失败不毁号",
+  manual_review: "人工审核",
+  mirror_boss: "镜像挑战",
+  no_ancient_treasure: "不产出九大古宝",
+  no_paid_output: "无付费产出",
+  permanent_pool: "常驻机缘",
+  rate_limited: "请求限频",
+  reputation_cleared: "声望清除",
+  reward_boundary: "奖励边界",
+  reward_unchanged: "奖励未加成",
+  risk_normal: "不触发审核",
+  route_locked: "路线锁定",
+  sect_async: "宗门行动",
+  sect_conflict_checked: "宗门校验",
+  server_roll: "服务端结算",
+  server_settled: "服务端结算",
+  transfer_cooldown: "转道冷却",
+  warehouse_audit: "仓库日志",
+  warehouse_whitelist: "白名单流通",
+};
+
+function filterJournalTags(tags: ExperiencePayload["reason_tags"]): string[] {
+  return uniqueStrings(
+    tags
+      .filter((tag) => !isSystemBoundaryJournalTag(tag))
+      .map(experienceReasonTagDisplayLabel)
+      .filter(Boolean),
+  );
+}
+
+function filterJournalTagLabels(labels: string[]): string[] {
+  return uniqueStrings(
+    labels
+      .filter((label) => !isSystemBoundaryJournalTag(label))
+      .map(experienceTagLabel)
+      .filter(Boolean),
+  );
+}
+
+function experienceReasonTagDisplayLabel(tag: ExperiencePayload["reason_tags"][number]): string {
+  const codeLabel = experienceTagLabel(tag.code);
+  if (codeLabel !== tag.code) {
+    return codeLabel;
+  }
+  return experienceTagLabel(tag.label || tag.code);
+}
+
+function experienceTagLabel(codeOrLabel: string): string {
+  return experienceTagLabels[codeOrLabel] ?? codeOrLabel;
+}
+
+function isSystemBoundaryJournalTag(
+  tag: ExperiencePayload["reason_tags"][number] | string,
+): boolean {
+  const code = typeof tag === "string" ? "" : tag.code;
+  const rawLabel = typeof tag === "string" ? tag : tag.label;
+  const displayLabel =
+    typeof tag === "string" ? experienceTagLabel(tag) : experienceReasonTagDisplayLabel(tag);
+
+  if (visibleRiskJournalTagCodes.has(code) || visibleRiskJournalTagCodes.has(rawLabel)) {
+    return false;
+  }
+  if (["延迟结算", "收益衰减", "人工审核", "请求限频"].includes(displayLabel)) {
+    return false;
+  }
+  if (systemBoundaryJournalTagCodes.has(code) || systemBoundaryJournalTagCodes.has(rawLabel)) {
+    return true;
+  }
+
+  return [rawLabel, displayLabel].some((value) =>
+    systemBoundaryJournalLabelFragments.some((fragment) => value.includes(fragment)),
+  );
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return values.filter((value, index, array) => array.indexOf(value) === index);
 }
 
 function RankMiniPanel({ rank, title }: { rank: RankListResponse | null; title: string }) {
@@ -3002,6 +3201,11 @@ function buildRecommendedActions(input: {
       title: "生产成长",
     },
   ];
+}
+
+function selectVisibleRecommendedActions(actions: RecommendedAction[]): RecommendedAction[] {
+  const availableActions = actions.filter((action) => !action.actionUnavailableReason);
+  return (availableActions.length ? availableActions : actions).slice(0, 4);
 }
 
 function buildGrowthTargets(input: {
@@ -3364,6 +3568,17 @@ function gachaCostTypeLabel(costType: string): string {
     reserved_paid_jade: "仙玉抽取预留",
   };
   return labels[costType] ?? "未知消耗";
+}
+
+function equipmentRarityLabel(rarity: string): string {
+  const labels: Record<string, string> = {
+    ancient_craft: "古器胚",
+    earth: "地品",
+    heaven: "天品",
+    immortal: "仙品",
+    ordinary: "凡品",
+  };
+  return labels[rarity] ?? rarity;
 }
 
 function queueStatusLabel(status: string): string {

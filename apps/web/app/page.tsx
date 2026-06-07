@@ -49,6 +49,7 @@ type ActiveTab = "overview" | "events" | "growth" | "multiplayer" | "market" | "
 
 const tokenStorageKey = "nextday_m1_token";
 const deviceStorageKey = "nextday_m1_device_id";
+const journalPageSize = 8;
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
 const showDevelopmentActions = process.env.NEXT_PUBLIC_SHOW_DEV_ACTIONS === "true";
 
@@ -141,6 +142,8 @@ export default function HomePage() {
   const [message, setMessage] = useState("尚未登录");
   const [lastExperience, setLastExperience] = useState<ExperiencePayload | null>(null);
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
+  const [journalNextCursor, setJournalNextCursor] = useState<string | null>(null);
+  const [journalLoadingMore, setJournalLoadingMore] = useState(false);
   const [selectedProvinceId, setSelectedProvinceId] = useState("");
   const [exploreCount, setExploreCount] = useState(5);
   const [selectedTowerId, setSelectedTowerId] = useState("");
@@ -407,14 +410,14 @@ export default function HomePage() {
 
     let ignore = false;
     const client = createClient(token);
-    Promise.all([client.journal(8), client.exploreEvents("pending", 10)])
+    Promise.all([client.journal(journalPageSize), client.exploreEvents("pending", 10)])
       .then(([journalResponse, eventsResponse]) => {
         ensureOk(journalResponse);
         ensureOk(eventsResponse);
         if (ignore) {
           return;
         }
-        applyServerJournal(journalResponse.data.entries);
+        applyServerJournal(journalResponse.data.entries, journalResponse.data.next_cursor);
         setPendingExploreEvents(eventsResponse.data.events);
       })
       .catch(() => {
@@ -728,9 +731,30 @@ export default function HomePage() {
       return;
     }
 
-    const response = await createClient(token).journal(8);
+    const loadedCount = Math.min(20, Math.max(journalPageSize, journalEntries.length));
+    const response = await createClient(token).journal(loadedCount);
     ensureOk(response);
-    applyServerJournal(response.data.entries);
+    applyServerJournal(response.data.entries, response.data.next_cursor);
+  }
+
+  async function handleLoadMoreJournal() {
+    if (!token || !journalNextCursor || journalLoadingMore) {
+      return;
+    }
+
+    setJournalLoadingMore(true);
+    try {
+      const response = await createClient(token).journal(journalPageSize, journalNextCursor);
+      ensureOk(response);
+      const olderEntries = response.data.entries.map(serverJournalToEntry);
+      setJournalEntries((current) => mergeJournalEntries(current, olderEntries));
+      setJournalNextCursor(response.data.next_cursor);
+      setMessage(olderEntries.length ? "已载入更早修行记录" : "没有更早修行记录");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "更早日志读取失败");
+    } finally {
+      setJournalLoadingMore(false);
+    }
   }
 
   async function refreshExploreEvents() {
@@ -1412,9 +1436,10 @@ export default function HomePage() {
     }
   }
 
-  function applyServerJournal(entries: JournalEntryState[]) {
+  function applyServerJournal(entries: JournalEntryState[], nextCursor: string | null) {
     const mappedEntries = entries.map(serverJournalToEntry);
     setJournalEntries(mappedEntries);
+    setJournalNextCursor(nextCursor);
     setLastExperience(mappedEntries[0]?.experience ?? null);
   }
 
@@ -1427,7 +1452,7 @@ export default function HomePage() {
           id: `journal_${Date.now()}_${randomId()}`,
         },
         ...current,
-      ].slice(0, 8),
+      ].slice(0, 20),
     );
   }
 
@@ -1734,7 +1759,13 @@ export default function HomePage() {
             </div>
           </section>
 
-          <CultivationJournal entries={journalEntries} experience={lastExperience} />
+          <CultivationJournal
+            entries={journalEntries}
+            experience={lastExperience}
+            hasMore={Boolean(journalNextCursor)}
+            loadingMore={journalLoadingMore}
+            onLoadMore={handleLoadMoreJournal}
+          />
 
           <section className="overview-grid" aria-label="修行总览">
             <MetricCard
@@ -2874,9 +2905,15 @@ function ExploreEventCard({
 function CultivationJournal({
   entries,
   experience,
+  hasMore,
+  loadingMore,
+  onLoadMore,
 }: {
   entries: JournalEntry[];
   experience: ExperiencePayload | null;
+  hasMore: boolean;
+  loadingMore: boolean;
+  onLoadMore: () => void | Promise<void>;
 }) {
   const latestEntry = entries[0];
 
@@ -2922,6 +2959,15 @@ function CultivationJournal({
           ) : (
             <p className="empty">先完成一次探索、洞府收取、炼丹或九塔提交。</p>
           )}
+          {entries.length > 0 && hasMore ? (
+            <div className="journal-more">
+              <Button disabled={loadingMore} onClick={onLoadMore}>
+                {loadingMore ? "读取中" : "查看更早记录"}
+              </Button>
+            </div>
+          ) : entries.length > 0 ? (
+            <p className="journal-end">已显示最近可读取的修行记录。</p>
+          ) : null}
         </div>
         <div className="journal-detail">
           {experience ? (
@@ -3208,6 +3254,20 @@ function serverJournalToEntry(entry: JournalEntryState): JournalEntry {
     title: entry.title,
     tone: entry.experience ? resolveExperienceTone(entry.experience) : "success",
   };
+}
+
+function mergeJournalEntries(current: JournalEntry[], incoming: JournalEntry[]): JournalEntry[] {
+  const seen = new Set<string>();
+  const merged: JournalEntry[] = [];
+  for (const entry of [...current, ...incoming]) {
+    if (seen.has(entry.id)) {
+      continue;
+    }
+    seen.add(entry.id);
+    merged.push(entry);
+  }
+
+  return merged.slice(0, 20);
 }
 
 function resolveExperienceTone(experience: ExperiencePayload): ExperienceTone {

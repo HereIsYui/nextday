@@ -567,6 +567,25 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.journal-more {
+  display: flex;
+  justify-content: center;
+  padding: 2px 0 8px;
+}
+
+.journal-more button {
+  min-height: 40px;
+  width: 100%;
+}
+
+.journal-end {
+  color: #728080;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+  text-align: center;
+}
+
 .journal-deltas {
   display: flex;
   flex-wrap: wrap;
@@ -1598,7 +1617,7 @@ details.event-boundary {
 
 .text-game-shell .journal-list {
   max-height: calc(100dvh - 64px);
-  overflow: hidden;
+  overflow: auto;
 }
 
 .text-game-shell .journal-entry {
@@ -1758,6 +1777,11 @@ details.event-boundary {
 
   .text-game-shell .overview-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .text-game-shell .journal-list {
+    max-height: none;
+    overflow: visible;
   }
 
   .text-game-shell .metric-card {

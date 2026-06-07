@@ -151,6 +151,60 @@ describe("P1.7 持久修行日志与探索事件链", () => {
     expect(journal.body.data.entries[0].title).toBe("收束修为");
     expect(journal.body.data.entries[0].source_type).toBe("领取修为");
   });
+
+  it("修行日志支持 before 游标分页读取更早记录", async () => {
+    const { token, playerId } = await createP17Player(app, prisma);
+    const now = Date.now();
+    await prisma.playerJournalEntry.createMany({
+      data: Array.from({ length: 10 }, (_, index) => ({
+        configVersion: "p1_8_journal_pagination_test",
+        createdAt: new Date(now - index * 1000),
+        deltaSummary: [`修为 +${index}`],
+        eraId: "era_mvp_001",
+        experienceSnapshot: {
+          delta_summary: [],
+          next_recommendations: [],
+          reason_tags: [],
+          summary: `分页日志 ${index}`,
+          timeline: [],
+          title: `分页日志 ${index}`,
+        },
+        journalEntryId: `journal_page_${now}_${index}_${randomSuffix()}`,
+        playerId,
+        recommendations: ["继续修行"],
+        sourceId: `page_${index}`,
+        sourceType: "分页测试",
+        summary: `分页日志 ${index}`,
+        tags: ["分页"],
+        title: `分页日志 ${index}`,
+      })),
+    });
+
+    const firstPage = await request(app.getHttpServer())
+      .get("/api/game/journal?limit=3")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(firstPage.body.data.entries.map((entry: { title: string }) => entry.title)).toEqual([
+      "分页日志 0",
+      "分页日志 1",
+      "分页日志 2",
+    ]);
+    expect(firstPage.body.data.next_cursor).toBeTruthy();
+
+    const secondPage = await request(app.getHttpServer())
+      .get(
+        `/api/game/journal?limit=3&before=${encodeURIComponent(firstPage.body.data.next_cursor)}`,
+      )
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(secondPage.body.data.entries.map((entry: { title: string }) => entry.title)).toEqual([
+      "分页日志 3",
+      "分页日志 4",
+      "分页日志 5",
+    ]);
+  });
 });
 
 async function createClaimedExploreEvent(

@@ -75,6 +75,7 @@ button:disabled {
 .today-hero-copy p,
 .today-controls span,
 .recommended-action span,
+.explore-event-card span,
 .goal-card p,
 .growth-target-card span,
 .journal-entry p,
@@ -370,6 +371,46 @@ h2 {
   color: #5f6f70;
   font-size: 13px;
   line-height: 1.5;
+}
+
+.explore-event-card {
+  background: #fffdf7;
+  border: 1px solid #e5dcc4;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.explore-event-card.idle {
+  align-items: center;
+  background: #fbfcfa;
+  border-color: #dce4df;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.explore-event-card p {
+  margin: 0;
+}
+
+.event-choice-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.event-choice-grid button {
+  align-items: start;
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  min-height: 56px;
+  text-align: left;
+}
+
+.event-choice-grid span {
+  color: #5f6f70;
+  font-size: 13px;
 }
 
 .today-action-grid {
@@ -1462,7 +1503,8 @@ details.event-boundary {
 .text-game-shell .recommended-action,
 .text-game-shell .goal-card,
 .text-game-shell .growth-target-card,
-.text-game-shell .explore-queue-card {
+.text-game-shell .explore-queue-card,
+.text-game-shell .explore-event-card {
   background: transparent;
   border: 0;
   border-bottom: 1px solid #eeeeee;
@@ -1479,6 +1521,14 @@ details.event-boundary {
 .text-game-shell .explore-queue-card {
   grid-template-columns: minmax(0, 1fr) 112px;
   min-height: 0;
+}
+
+.text-game-shell .explore-event-card.idle {
+  grid-template-columns: minmax(0, 1fr) 72px;
+}
+
+.text-game-shell .event-choice-grid button {
+  min-height: 44px;
 }
 
 .text-game-shell .goal-card,
@@ -1695,6 +1745,7 @@ details.event-boundary {
   .text-game-shell .today-action-grid,
   .text-game-shell .recommended-action,
   .text-game-shell .explore-queue-card,
+  .text-game-shell .explore-event-card.idle,
   .text-game-shell .goal-card,
   .text-game-shell .growth-target-card,
   .text-game-shell .today-layout {

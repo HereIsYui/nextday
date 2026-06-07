@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { RewardBundle } from "@nextday/shared";
 import type { Prisma } from "@prisma/client";
 
 export const defaultEraId = "era_mvp_001";
@@ -169,6 +170,124 @@ export const provinceConfigs: ProvinceConfig[] = [
     enemyId: "jiuying",
     enemyName: "九婴残首",
     enemyPower: 820,
+  },
+];
+
+export interface ExploreEventChoiceConfig {
+  choiceId: string;
+  label: string;
+  description: string;
+  rewardPreview: string;
+  rewards: RewardBundle;
+}
+
+export interface ExploreEventConfig {
+  eventType: string;
+  title: string;
+  description: string;
+  choices: ExploreEventChoiceConfig[];
+}
+
+export const exploreEventConfigs: ExploreEventConfig[] = [
+  {
+    eventType: "herb_trace",
+    title: "灵草踪迹",
+    description: "山风吹开薄雾，一串细小灵光沿着石缝向林中延去。",
+    choices: [
+      {
+        choiceId: "gather",
+        label: "顺势采药",
+        description: "沿着灵光采下几株低阶灵草。",
+        rewardPreview: "凝露草 x1",
+        rewards: {
+          cultivation: "0",
+          spirit_stone: "0",
+          items: [{ bind_type: "unbound", count: 1, item_id: "low_herb", name: "凝露草" }],
+        },
+      },
+      {
+        choiceId: "observe",
+        label: "静观灵脉",
+        description: "不动草木，只借灵机温养气海。",
+        rewardPreview: "修为 35",
+        rewards: { cultivation: "35", spirit_stone: "0", items: [] },
+      },
+    ],
+  },
+  {
+    eventType: "ruin_echo",
+    title: "遗迹残响",
+    description: "半截古碑陷在土中，碑面纹路仍有微弱回声。",
+    choices: [
+      {
+        choiceId: "copy",
+        label: "拓印残纹",
+        description: "以符纸拓下残纹，换作日后炼器参照。",
+        rewardPreview: "玄铁砂 x1",
+        rewards: {
+          cultivation: "0",
+          spirit_stone: "0",
+          items: [{ bind_type: "unbound", count: 1, item_id: "raw_iron", name: "玄铁砂" }],
+        },
+      },
+      {
+        choiceId: "meditate",
+        label: "闭目参悟",
+        description: "坐在碑前参悟片刻，心神略有所得。",
+        rewardPreview: "修为 45",
+        rewards: { cultivation: "45", spirit_stone: "0", items: [] },
+      },
+    ],
+  },
+  {
+    eventType: "wandering_caravan",
+    title: "散修商队",
+    description: "几名散修在岔路边整顿行囊，愿以见闻换一点脚程。",
+    choices: [
+      {
+        choiceId: "trade",
+        label: "交换见闻",
+        description: "互换沿途消息，顺手得了些零散灵石。",
+        rewardPreview: "灵石 30",
+        rewards: { cultivation: "0", spirit_stone: "30", items: [] },
+      },
+      {
+        choiceId: "escort",
+        label: "护送一程",
+        description: "护送商队避开兽径，商队回赠炼器粗材。",
+        rewardPreview: "玄铁砂 x1",
+        rewards: {
+          cultivation: "0",
+          spirit_stone: "0",
+          items: [{ bind_type: "unbound", count: 1, item_id: "raw_iron", name: "玄铁砂" }],
+        },
+      },
+    ],
+  },
+  {
+    eventType: "tower_rift",
+    title: "塔裂余波",
+    description: "远处塔影一震，裂隙余波卷起尘沙，又很快归于平静。",
+    choices: [
+      {
+        choiceId: "stabilize",
+        label: "稳住裂隙",
+        description: "以自身灵力稳住余波，虽无大战却有所磨炼。",
+        rewardPreview: "修为 40",
+        rewards: { cultivation: "40", spirit_stone: "0", items: [] },
+      },
+      {
+        choiceId: "collect",
+        label: "拾取碎屑",
+        description: "余波散尽后，地上残留少许可用矿砂。",
+        rewardPreview: "玄铁砂 x1",
+        rewards: {
+          cultivation: "0",
+          spirit_stone: "0",
+          items: [{ bind_type: "unbound", count: 1, item_id: "raw_iron", name: "玄铁砂" }],
+        },
+      },
+    ],
   },
 ];
 

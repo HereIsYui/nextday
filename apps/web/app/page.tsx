@@ -15,6 +15,7 @@ import type {
   EquipmentListResponse,
   ExperiencePayload,
   ExperienceTone,
+  ExploreEventState,
   ExploreResponse,
   FactionRouteConfigState,
   FactionRoutesResponse,
@@ -23,6 +24,7 @@ import type {
   GameOverviewResponse,
   HealthStatus,
   InnerWorldSummaryResponse,
+  JournalEntryState,
   LoginResponse,
   MonthlyCardType,
   PlayerProfileResponse,
@@ -146,6 +148,7 @@ export default function HomePage() {
   const [selectedForgeRecipeId, setSelectedForgeRecipeId] = useState("");
   const [selectedPillItemInstanceId, setSelectedPillItemInstanceId] = useState("");
   const [currentExplore, setCurrentExplore] = useState<ExploreResponse | null>(null);
+  const [pendingExploreEvents, setPendingExploreEvents] = useState<ExploreEventState[]>([]);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
 
@@ -206,6 +209,7 @@ export default function HomePage() {
   const ownedTreasureCount =
     ancientTreasures?.treasures.filter((treasure) => treasure.owned).length ?? 0;
   const firstAppearance = appearances?.appearances[0];
+  const firstPendingExploreEvent = pendingExploreEvents[0];
   const firstInnerCreature = innerWorld?.creatures.find((creature) => creature.status === "idle");
   const firstUnlockedProvince =
     selectedProvince ?? overview?.provinces.find((province) => province.unlocked);
@@ -388,6 +392,34 @@ export default function HomePage() {
       .catch(() => {
         if (!ignore) {
           setMessage("探索队列读取失败");
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [token, activePlayerId]);
+
+  useEffect(() => {
+    if (!token || !activePlayerId) {
+      return;
+    }
+
+    let ignore = false;
+    const client = createClient(token);
+    Promise.all([client.journal(8), client.exploreEvents("pending", 10)])
+      .then(([journalResponse, eventsResponse]) => {
+        ensureOk(journalResponse);
+        ensureOk(eventsResponse);
+        if (ignore) {
+          return;
+        }
+        applyServerJournal(journalResponse.data.entries);
+        setPendingExploreEvents(eventsResponse.data.events);
+      })
+      .catch(() => {
+        if (!ignore) {
+          setMessage("修行日志读取失败");
         }
       });
 
@@ -614,6 +646,8 @@ export default function HomePage() {
     await refreshActivities();
     await refreshCommerce();
     await refreshExplore();
+    await refreshJournal();
+    await refreshExploreEvents();
     setMessage(successMessage);
   }
 
@@ -687,6 +721,26 @@ export default function HomePage() {
     const response = await createClient(token).currentExplore();
     ensureOk(response);
     setCurrentExplore(response.data.current);
+  }
+
+  async function refreshJournal() {
+    if (!token) {
+      return;
+    }
+
+    const response = await createClient(token).journal(8);
+    ensureOk(response);
+    applyServerJournal(response.data.entries);
+  }
+
+  async function refreshExploreEvents() {
+    if (!token) {
+      return;
+    }
+
+    const response = await createClient(token).exploreEvents("pending", 10);
+    ensureOk(response);
+    setPendingExploreEvents(response.data.events);
   }
 
   async function handleClaimCultivation() {
@@ -772,6 +826,18 @@ export default function HomePage() {
       await refreshOverview(
         `完成 ${response.data.battles.length} 次${response.data.province_name}探索`,
       );
+    });
+  }
+
+  async function handleResolveExploreEvent(event: ExploreEventState, choiceId: string) {
+    await runAction("处理奇遇", async () => {
+      const response = await client.resolveExploreEvent(
+        { choice_id: choiceId, event_id: event.event_id },
+        createIdempotencyKey(`web_explore_event_${event.event_id}_${choiceId}`),
+      );
+      ensureOk(response);
+      rememberExperience(response.data.experience);
+      await refreshOverview(`${response.data.event.title}已处理`);
     });
   }
 
@@ -1346,6 +1412,12 @@ export default function HomePage() {
     }
   }
 
+  function applyServerJournal(entries: JournalEntryState[]) {
+    const mappedEntries = entries.map(serverJournalToEntry);
+    setJournalEntries(mappedEntries);
+    setLastExperience(mappedEntries[0]?.experience ?? null);
+  }
+
   function appendJournal(entry: Omit<JournalEntry, "createdAt" | "id">) {
     setJournalEntries((current) =>
       [
@@ -1612,6 +1684,11 @@ export default function HomePage() {
               onClaim={handleClaimExplore}
               remainingSeconds={exploreRemainingSeconds}
               busy={busy}
+            />
+            <ExploreEventCard
+              busy={busy}
+              event={firstPendingExploreEvent}
+              onResolve={handleResolveExploreEvent}
             />
             <div className="today-action-grid">
               {visibleRecommendedActions.map((action) => (
@@ -2744,6 +2821,56 @@ function ExploreQueueCard({
   );
 }
 
+function ExploreEventCard({
+  busy,
+  event,
+  onResolve,
+}: {
+  busy: boolean;
+  event: ExploreEventState | undefined;
+  onResolve: (event: ExploreEventState, choiceId: string) => void | Promise<void>;
+}) {
+  if (!event) {
+    return (
+      <article className="explore-event-card idle">
+        <div>
+          <strong>探索奇遇</strong>
+          <span>完成探索后可能留下可处理的途中见闻。</span>
+        </div>
+        <StatusBadge tone="neutral">暂无</StatusBadge>
+      </article>
+    );
+  }
+
+  return (
+    <article className="explore-event-card">
+      <div className="province-head">
+        <div>
+          <strong>{event.title}</strong>
+          <span>
+            {event.province_name} · {exploreEventStatusLabel(event.status)}
+          </span>
+        </div>
+        <StatusBadge tone="success">可处理</StatusBadge>
+      </div>
+      <p>{event.description}</p>
+      <div className="event-choice-grid">
+        {event.choices.map((choice) => (
+          <button
+            disabled={busy}
+            key={choice.choice_id}
+            onClick={() => onResolve(event, choice.choice_id)}
+            type="button"
+          >
+            <strong>{choice.label}</strong>
+            <span>{choice.reward_preview}</span>
+          </button>
+        ))}
+      </div>
+    </article>
+  );
+}
+
 function CultivationJournal({
   entries,
   experience,
@@ -3067,6 +3194,20 @@ function formatDeltaValue(item: ExperiencePayload["delta_summary"][number]): str
 
 function formatDeltaSummary(item: ExperiencePayload["delta_summary"][number]): string {
   return `${item.label} ${formatDeltaValue(item)}`;
+}
+
+function serverJournalToEntry(entry: JournalEntryState): JournalEntry {
+  return {
+    createdAt: entry.created_at,
+    deltas: entry.delta_summary,
+    experience: entry.experience,
+    id: entry.journal_entry_id,
+    recommendations: entry.recommendations,
+    summary: entry.summary,
+    tags: entry.tags,
+    title: entry.title,
+    tone: entry.experience ? resolveExperienceTone(entry.experience) : "success",
+  };
 }
 
 function resolveExperienceTone(experience: ExperiencePayload): ExperienceTone {
@@ -3821,6 +3962,15 @@ function exploreStatusLabel(status: ExploreResponse["status"]): string {
     completed: "可领取",
     expired: "已过期",
     pending: "探索中",
+  };
+  return labels[status];
+}
+
+function exploreEventStatusLabel(status: ExploreEventState["status"]): string {
+  const labels: Record<ExploreEventState["status"], string> = {
+    expired: "已过期",
+    pending: "待处理",
+    resolved: "已处理",
   };
   return labels[status];
 }

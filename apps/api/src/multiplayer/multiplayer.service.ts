@@ -38,6 +38,7 @@ import { toAppearanceState } from "../commerce/commerce.mappers";
 import { PrismaService } from "../database/prisma.service";
 import { defaultEraId, maxOfflineCultivationHours } from "../game/game.constants";
 import { toActionState } from "../game/game.mappers";
+import { writeJournalFromResponse } from "../journal/journal.utils";
 import {
   buildBossExperience,
   buildPvpExperience,
@@ -1796,6 +1797,12 @@ export class MultiplayerService {
           statusCode: 200,
           expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         },
+      });
+      await writeJournalFromResponse(tx, {
+        accountId: input.accountId,
+        endpoint: input.endpoint,
+        response,
+        idempotencyKey: input.idempotencyKey,
       });
 
       return response;

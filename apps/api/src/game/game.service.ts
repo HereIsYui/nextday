@@ -11,11 +11,16 @@ import type {
   CultivationStatus,
   ExploreClaimRequest,
   ExploreCurrentResponse,
+  ExploreEventListResponse,
+  ExploreEventState,
   ExploreRequest,
   ExploreResponse,
   GameOverviewResponse,
+  JournalListResponse,
   PlayerProfileResponse,
   ProvinceSummary,
+  ResolveExploreEventRequest,
+  ResolveExploreEventResponse,
   RewardBundle,
   TaskClaimResponse,
   TaskState,
@@ -23,6 +28,7 @@ import type {
 } from "@nextday/shared";
 import type {
   ExploreActionRecord,
+  ExploreEventRecord,
   Player,
   PlayerActionState,
   PlayerCaveState,
@@ -32,13 +38,17 @@ import type {
   Prisma,
 } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
+import { buildJournalExperience, writeJournalFromResponse } from "../journal/journal.utils";
 import { buildCaveCollectExperience, buildExploreExperience } from "../platform/experience";
 import { hashRequestBody } from "../platform/utils/hash";
 import { toPlayerProfileResponse } from "../player/player.mapper";
 import { getDefaultSkillLoadout, getSkillName } from "../production/production.constants";
 import {
+  type ExploreEventChoiceConfig,
+  type ExploreEventConfig,
   createInitialTaskRows,
   defaultEraId,
+  exploreEventConfigs,
   getTaskDefinitions,
   maxExploreBatch,
   maxOfflineCultivationHours,
@@ -98,6 +108,64 @@ export class GameService {
     return { provinces: await this.getProvinceSummaries(player.playerId) };
   }
 
+  async getJournal(
+    accountId: string,
+    input: { limit?: string; before?: string },
+  ): Promise<JournalListResponse> {
+    const player = await this.requirePlayer(accountId);
+    const limit = normalizeListLimit(input.limit, 8, 20);
+    const before = normalizeBeforeCursor(input.before);
+    const entries = await this.prisma.playerJournalEntry.findMany({
+      where: {
+        playerId: player.playerId,
+        ...(before ? { createdAt: { lt: before } } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      take: limit + 1,
+    });
+    const visibleEntries = entries.slice(0, limit);
+
+    return {
+      entries: visibleEntries.map((entry) => ({
+        journal_entry_id: entry.journalEntryId,
+        source_type: entry.sourceType,
+        source_id: entry.sourceId,
+        title: entry.title,
+        summary: entry.summary,
+        delta_summary: stringArrayFromJson(entry.deltaSummary),
+        tags: stringArrayFromJson(entry.tags),
+        recommendations: stringArrayFromJson(entry.recommendations),
+        experience:
+          entry.experienceSnapshot && typeof entry.experienceSnapshot === "object"
+            ? (entry.experienceSnapshot as unknown as JournalListResponse["entries"][number]["experience"])
+            : undefined,
+        config_version: entry.configVersion,
+        created_at: entry.createdAt.toISOString(),
+      })),
+      next_cursor:
+        entries.length > limit ? (visibleEntries.at(-1)?.createdAt.toISOString() ?? null) : null,
+    };
+  }
+
+  async getExploreEvents(
+    accountId: string,
+    input: { status?: string; limit?: string },
+  ): Promise<ExploreEventListResponse> {
+    const player = await this.requirePlayer(accountId);
+    const status = normalizeExploreEventStatusFilter(input.status);
+    const limit = normalizeListLimit(input.limit, 10, 20);
+    const events = await this.prisma.exploreEventRecord.findMany({
+      where: {
+        playerId: player.playerId,
+        ...(status ? { status } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+    });
+
+    return { events: events.map(toExploreEventState) };
+  }
+
   async claimCultivation(input: {
     accountId: string;
     idempotencyKey: string;
@@ -146,6 +214,36 @@ export class GameService {
           after_level: leveled.afterLevel,
           status,
           completed_task_ids: completedTaskIds,
+          experience: buildJournalExperience({
+            title: "收束修为",
+            summary:
+              leveled.afterLevel > beforeLevel
+                ? `静坐收益入体，修为 +${gainedCultivation.toString()}，层级提升至第 ${leveled.afterLevel} 层。`
+                : `静坐收益入体，修为 +${gainedCultivation.toString()}。`,
+            deltas: [
+              {
+                label: "修为",
+                delta: `+${gainedCultivation.toString()}`,
+                tone: "success",
+              },
+              {
+                label: "层级",
+                before: beforeLevel,
+                after: leveled.afterLevel,
+                tone: leveled.afterLevel > beforeLevel ? "success" : "neutral",
+              },
+            ],
+            recommendations: [
+              {
+                label: status.can_breakthrough ? "准备突破" : "继续探索",
+                reason: status.can_breakthrough
+                  ? "当前境界已经圆满，可以尝试突破。"
+                  : "继续探索、服丹或照看洞府，补足下一层修为。",
+                priority: status.can_breakthrough ? "high" : "medium",
+              },
+            ],
+            tags: [{ code: "cultivation_gain", label: "修为成长", tone: "success" }],
+          }),
         };
 
         await this.writeAudit(tx, {
@@ -208,11 +306,32 @@ export class GameService {
           },
         });
         const profile = await this.getProfileByPlayerId(loaded.playerId, tx);
+        const afterRealm = loaded.currentRealm + 1;
         const response: BreakthroughResponse = {
           record_id: `breakthrough_${randomUUID()}`,
           success: true,
           message: "突破成功",
           profile,
+          experience: buildJournalExperience({
+            title: "境界突破",
+            summary: `灵机贯通，境界提升至第 ${afterRealm} 境。`,
+            deltas: [
+              {
+                label: "境界",
+                before: loaded.currentRealm,
+                after: afterRealm,
+                tone: "success",
+              },
+            ],
+            recommendations: [
+              {
+                label: "稳固境界",
+                reason: "先领取任务奖励，再继续探索新的成长材料。",
+                priority: "high",
+              },
+            ],
+            tags: [{ code: "breakthrough_success", label: "境界突破", tone: "success" }],
+          }),
         };
 
         await this.writeAudit(tx, {
@@ -424,7 +543,12 @@ export class GameService {
             actionStateSnapshot: actionState as unknown as Prisma.InputJsonValue,
           },
         });
-        const response = toExploreResponse(updatedRecord, actionState);
+        const event = await this.createExploreEvent(tx, {
+          playerId: loaded.playerId,
+          province,
+          record: updatedRecord,
+        });
+        const response = toExploreResponse(updatedRecord, actionState, event);
 
         await this.writeAudit(tx, {
           accountId: input.accountId,
@@ -432,6 +556,74 @@ export class GameService {
           action: "explore_claim",
           targetType: "explore_action",
           targetId: record.recordId,
+          afterSnapshot: response as unknown as Prisma.InputJsonValue,
+          idempotencyKey: input.idempotencyKey,
+        });
+
+        return response;
+      },
+    });
+  }
+
+  async resolveExploreEvent(input: {
+    accountId: string;
+    body: ResolveExploreEventRequest;
+    idempotencyKey: string;
+  }): Promise<ResolveExploreEventResponse> {
+    const player = await this.requirePlayer(input.accountId);
+    const body = normalizeResolveExploreEventRequest(input.body);
+
+    return this.withIdempotency({
+      accountId: input.accountId,
+      endpoint: "POST /api/game/explore/events/resolve",
+      idempotencyKey: input.idempotencyKey,
+      requestBody: body,
+      handler: async (tx) => {
+        const event = await tx.exploreEventRecord.findFirst({
+          where: { eventId: body.event_id, playerId: player.playerId },
+        });
+        if (!event) {
+          throw new BadRequestException("探索奇遇不存在");
+        }
+        if (event.status !== "pending") {
+          throw new BadRequestException("探索奇遇已处理");
+        }
+
+        const choices = exploreEventChoiceConfigsFromJson(event.choices);
+        const choice = choices.find((item) => item.choiceId === body.choice_id);
+        if (!choice) {
+          throw new BadRequestException("探索奇遇选择不存在");
+        }
+
+        await this.applyReward(tx, player.playerId, choice.rewards, {
+          sourceType: "explore_event",
+          sourceId: event.eventId,
+          idempotencyKey: input.idempotencyKey,
+        });
+        const experience = buildExploreEventExperience(event, choice);
+        const updatedEvent = await tx.exploreEventRecord.update({
+          where: { eventId: event.eventId },
+          data: {
+            status: "resolved",
+            selectedChoiceId: choice.choiceId,
+            rewardSnapshot: choice.rewards as unknown as Prisma.InputJsonValue,
+            experienceSnapshot: experience as unknown as Prisma.InputJsonValue,
+            resolvedIdempotency: input.idempotencyKey,
+            resolvedAt: new Date(),
+          },
+        });
+        const response: ResolveExploreEventResponse = {
+          event: toExploreEventState(updatedEvent),
+          rewards: choice.rewards,
+          experience,
+        };
+
+        await this.writeAudit(tx, {
+          accountId: input.accountId,
+          playerId: player.playerId,
+          action: "explore_event_resolve",
+          targetType: "explore_event",
+          targetId: event.eventId,
           afterSnapshot: response as unknown as Prisma.InputJsonValue,
           idempotencyKey: input.idempotencyKey,
         });
@@ -990,6 +1182,42 @@ export class GameService {
     }
   }
 
+  private async createExploreEvent(
+    tx: Tx,
+    input: {
+      playerId: string;
+      province: ProvinceSummary;
+      record: ExploreActionRecord;
+    },
+  ): Promise<ExploreEventRecord> {
+    const existing = await tx.exploreEventRecord.findUnique({
+      where: { exploreRecordId: input.record.recordId },
+    });
+    if (existing) {
+      return existing;
+    }
+
+    const config = pickExploreEventConfig(input.record.recordId);
+    return tx.exploreEventRecord.create({
+      data: {
+        eventId: `explore_event_${randomUUID()}`,
+        playerId: input.playerId,
+        eraId: defaultEraId,
+        exploreRecordId: input.record.recordId,
+        provinceId: input.province.province_id,
+        provinceName: input.province.name,
+        eventType: config.eventType,
+        title: config.title,
+        description: `${input.province.name}途中，${config.description}`,
+        choices: config.choices as unknown as Prisma.InputJsonValue,
+        status: "pending",
+        configVersion: "p1_7_explore_event_v1",
+        rulesetVersion: "ruleset_p1_7_v1",
+        rewardConfigVersion: "reward_p1_7_v1",
+      },
+    });
+  }
+
   private async writeAudit(
     tx: Tx,
     input: {
@@ -1053,6 +1281,12 @@ export class GameService {
           statusCode: 200,
           expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         },
+      });
+      await writeJournalFromResponse(tx, {
+        accountId: input.accountId,
+        endpoint: input.endpoint,
+        response,
+        idempotencyKey: input.idempotencyKey,
       });
 
       return response;
@@ -1140,7 +1374,54 @@ function normalizeExploreClaimRequest(body: ExploreClaimRequest): ExploreClaimRe
   return recordId ? { record_id: recordId } : {};
 }
 
-function toExploreResponse(record: ExploreActionRecord, actionState: ActionState): ExploreResponse {
+function normalizeResolveExploreEventRequest(
+  body: ResolveExploreEventRequest,
+): Required<ResolveExploreEventRequest> {
+  const eventId = body?.event_id?.trim();
+  const choiceId = body?.choice_id?.trim();
+  if (!eventId) {
+    throw new BadRequestException("请选择探索奇遇");
+  }
+  if (!choiceId) {
+    throw new BadRequestException("请选择处理方式");
+  }
+
+  return { event_id: eventId, choice_id: choiceId };
+}
+
+function normalizeListLimit(input: string | undefined, fallback: number, max: number): number {
+  const limit = Math.floor(Number(input ?? fallback));
+  if (!Number.isFinite(limit) || limit < 1) {
+    return fallback;
+  }
+
+  return Math.min(limit, max);
+}
+
+function normalizeBeforeCursor(input: string | undefined): Date | undefined {
+  if (!input) {
+    return undefined;
+  }
+  const date = new Date(input);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function normalizeExploreEventStatusFilter(input: string | undefined): string | undefined {
+  if (!input) {
+    return undefined;
+  }
+  if (input === "pending" || input === "resolved" || input === "expired") {
+    return input;
+  }
+
+  throw new BadRequestException("探索奇遇状态无效");
+}
+
+function toExploreResponse(
+  record: ExploreActionRecord,
+  actionState: ActionState,
+  event?: ExploreEventRecord | null,
+): ExploreResponse {
   const rewards =
     record.rewardSnapshot && typeof record.rewardSnapshot === "object"
       ? (record.rewardSnapshot as unknown as RewardBundle)
@@ -1173,7 +1454,128 @@ function toExploreResponse(record: ExploreActionRecord, actionState: ActionState
     rewards,
     completed_task_ids: completedTaskIds,
     experience,
+    event: event ? toExploreEventState(event) : null,
   };
+}
+
+function toExploreEventState(record: ExploreEventRecord): ExploreEventState {
+  const choices = exploreEventChoiceConfigsFromJson(record.choices);
+  const rewards =
+    record.rewardSnapshot && typeof record.rewardSnapshot === "object"
+      ? (record.rewardSnapshot as unknown as RewardBundle)
+      : ({ cultivation: "0", spirit_stone: "0", items: [] } satisfies RewardBundle);
+  const experience =
+    record.experienceSnapshot && typeof record.experienceSnapshot === "object"
+      ? (record.experienceSnapshot as unknown as ExploreEventState["experience"])
+      : undefined;
+
+  return {
+    event_id: record.eventId,
+    explore_record_id: record.exploreRecordId,
+    province_id: record.provinceId,
+    province_name: record.provinceName,
+    event_type: record.eventType,
+    title: record.title,
+    description: record.description,
+    status: normalizeExploreEventStatus(record.status),
+    choices: choices.map((choice) => ({
+      choice_id: choice.choiceId,
+      description: choice.description,
+      label: choice.label,
+      reward_preview: choice.rewardPreview,
+    })),
+    selected_choice_id: record.selectedChoiceId,
+    rewards,
+    experience,
+    created_at: record.createdAt.toISOString(),
+    resolved_at: record.resolvedAt?.toISOString() ?? null,
+  };
+}
+
+function normalizeExploreEventStatus(status: string): ExploreEventState["status"] {
+  if (status === "pending" || status === "resolved" || status === "expired") {
+    return status;
+  }
+
+  return "pending";
+}
+
+function exploreEventChoiceConfigsFromJson(value: Prisma.JsonValue): ExploreEventChoiceConfig[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return (value as unknown[]).filter(isExploreEventChoiceConfig);
+}
+
+function isExploreEventChoiceConfig(value: unknown): value is ExploreEventChoiceConfig {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const item = value as Partial<ExploreEventChoiceConfig>;
+  return (
+    typeof item.choiceId === "string" &&
+    typeof item.label === "string" &&
+    typeof item.description === "string" &&
+    typeof item.rewardPreview === "string" &&
+    typeof item.rewards === "object" &&
+    item.rewards !== null
+  );
+}
+
+function pickExploreEventConfig(seed: string): ExploreEventConfig {
+  const sum = Array.from(seed).reduce((value, char) => value + char.charCodeAt(0), 0);
+  return exploreEventConfigs[sum % exploreEventConfigs.length] ?? exploreEventConfigs[0];
+}
+
+function buildExploreEventExperience(
+  event: ExploreEventRecord,
+  choice: ExploreEventChoiceConfig,
+): ResolveExploreEventResponse["experience"] {
+  return buildJournalExperience({
+    title: `${event.title}处理完成`,
+    summary: `${choice.label}：${choice.description}`,
+    deltas: [rewardDeltaForEvent(choice.rewards)].filter(
+      Boolean,
+    ) as ResolveExploreEventResponse["experience"]["delta_summary"],
+    tags: [{ code: "event_choice", label: "奇遇选择", tone: "success" }],
+    recommendations: [
+      {
+        action_hint: "explore",
+        label: "继续游历",
+        priority: "medium",
+        reason: "探索奇遇已处理，可继续安排下一次州域探索。",
+      },
+    ],
+  });
+}
+
+function rewardDeltaForEvent(rewards: RewardBundle) {
+  const parts: string[] = [];
+  if (rewards.cultivation && BigInt(rewards.cultivation) > 0n) {
+    parts.push(`修为 ${rewards.cultivation}`);
+  }
+  if (rewards.spirit_stone && BigInt(rewards.spirit_stone) > 0n) {
+    parts.push(`灵石 ${rewards.spirit_stone}`);
+  }
+  for (const item of rewards.items ?? []) {
+    if (item.count > 0) {
+      parts.push(`${item.name} x${item.count}`);
+    }
+  }
+
+  return parts.length
+    ? {
+        delta: parts.join("，"),
+        label: "奇遇奖励",
+      }
+    : null;
+}
+
+function stringArrayFromJson(value: Prisma.JsonValue): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
 }
 
 function normalizeExploreStatus(status: string): ExploreResponse["status"] {

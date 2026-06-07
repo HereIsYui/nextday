@@ -178,6 +178,25 @@ export interface ExperiencePayload {
   reason_tags: ExperienceReasonTag[];
 }
 
+export interface JournalEntryState {
+  journal_entry_id: string;
+  source_type: string;
+  source_id: string | null;
+  title: string;
+  summary: string;
+  delta_summary: string[];
+  tags: string[];
+  recommendations: string[];
+  experience?: ExperiencePayload;
+  config_version: string;
+  created_at: string;
+}
+
+export interface JournalListResponse {
+  entries: JournalEntryState[];
+  next_cursor: string | null;
+}
+
 export const ErrorCode = {
   ok: 0,
   authRequired: 10000,
@@ -301,6 +320,7 @@ export interface CultivationClaimResponse {
   after_level: number;
   status: CultivationStatus;
   completed_task_ids: string[];
+  experience?: ExperiencePayload;
 }
 
 export interface BreakthroughResponse {
@@ -308,6 +328,7 @@ export interface BreakthroughResponse {
   success: boolean;
   message: string;
   profile: PlayerProfileResponse;
+  experience?: ExperiencePayload;
 }
 
 export interface ActionState {
@@ -381,6 +402,32 @@ export interface ExploreRequest {
 
 export type ExploreActionStatus = "pending" | "completed" | "claimed" | "expired";
 
+export type ExploreEventStatus = "pending" | "resolved" | "expired";
+
+export interface ExploreEventChoice {
+  choice_id: string;
+  label: string;
+  description: string;
+  reward_preview: string;
+}
+
+export interface ExploreEventState {
+  event_id: string;
+  explore_record_id: string;
+  province_id: string;
+  province_name: string;
+  event_type: string;
+  title: string;
+  description: string;
+  status: ExploreEventStatus;
+  choices: ExploreEventChoice[];
+  selected_choice_id: string | null;
+  rewards: RewardBundle;
+  experience?: ExperiencePayload;
+  created_at: string;
+  resolved_at: string | null;
+}
+
 export interface ExploreResponse {
   record_id: string;
   province_id: string;
@@ -398,6 +445,7 @@ export interface ExploreResponse {
   rewards: RewardBundle;
   completed_task_ids: string[];
   experience?: ExperiencePayload;
+  event?: ExploreEventState | null;
 }
 
 export interface ExploreCurrentResponse {
@@ -406,6 +454,21 @@ export interface ExploreCurrentResponse {
 
 export interface ExploreClaimRequest {
   record_id?: string;
+}
+
+export interface ExploreEventListResponse {
+  events: ExploreEventState[];
+}
+
+export interface ResolveExploreEventRequest {
+  event_id: string;
+  choice_id: string;
+}
+
+export interface ResolveExploreEventResponse {
+  event: ExploreEventState;
+  rewards: RewardBundle;
+  experience: ExperiencePayload;
 }
 
 export interface TaskState {

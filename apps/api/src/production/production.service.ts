@@ -28,6 +28,7 @@ import type { EquipmentAffix, EquipmentInstance, Player, PlayerItem, Prisma } fr
 import { PrismaService } from "../database/prisma.service";
 import { defaultEraId } from "../game/game.constants";
 import { normalizeRewardBundle } from "../game/game.mappers";
+import { writeJournalFromResponse } from "../journal/journal.utils";
 import { buildAlchemyExperience, buildEquipmentExperience } from "../platform/experience";
 import { hashRequestBody } from "../platform/utils/hash";
 import { toPlayerProfileResponse } from "../player/player.mapper";
@@ -1054,6 +1055,12 @@ export class ProductionService {
           statusCode: 200,
           expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         },
+      });
+      await writeJournalFromResponse(tx, {
+        accountId: input.accountId,
+        endpoint: input.endpoint,
+        response,
+        idempotencyKey: input.idempotencyKey,
       });
 
       return response;

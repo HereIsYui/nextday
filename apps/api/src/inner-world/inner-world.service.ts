@@ -27,6 +27,7 @@ import type {
 } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
 import { defaultEraId, provinceConfigs } from "../game/game.constants";
+import { writeJournalFromResponse } from "../journal/journal.utils";
 import { towerConfigs } from "../multiplayer/multiplayer.constants";
 import { hashRequestBody } from "../platform/utils/hash";
 import { toBagItemState } from "../production/production.mappers";
@@ -703,6 +704,12 @@ export class InnerWorldService {
           statusCode: 200,
           expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         },
+      });
+      await writeJournalFromResponse(tx, {
+        accountId: input.accountId,
+        endpoint: input.endpoint,
+        response,
+        idempotencyKey: input.idempotencyKey,
       });
 
       return response;

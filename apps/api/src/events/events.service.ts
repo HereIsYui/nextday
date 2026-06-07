@@ -15,6 +15,7 @@ import type { EventInstance, EventRecord, Player, Prisma } from "@prisma/client"
 import { PrismaService } from "../database/prisma.service";
 import { defaultEraId, provinceConfigs } from "../game/game.constants";
 import { toActionState } from "../game/game.mappers";
+import { writeJournalFromResponse } from "../journal/journal.utils";
 import { hashRequestBody } from "../platform/utils/hash";
 import {
   type EventTemplateConfig,
@@ -435,6 +436,12 @@ export class EventsService {
           statusCode: 200,
           expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         },
+      });
+      await writeJournalFromResponse(tx, {
+        accountId: input.accountId,
+        endpoint: input.endpoint,
+        response,
+        idempotencyKey: input.idempotencyKey,
       });
 
       return response;

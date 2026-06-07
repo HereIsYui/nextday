@@ -67,6 +67,8 @@ model Player {
   eventRewardRecords        EventRewardRecord[]
   battleLogs                BattleLog[]
   exploreActionRecords      ExploreActionRecord[]
+  exploreEventRecords       ExploreEventRecord[]
+  journalEntries            PlayerJournalEntry[]
   caveRecords               CaveCollectRecord[]
   alchemyRecords            AlchemyRecord[]
   pillUseRecords            PillUseRecord[]
@@ -266,7 +268,8 @@ model ExploreActionRecord {
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
-  player Player @relation(fields: [playerId], references: [playerId])
+  player      Player              @relation(fields: [playerId], references: [playerId])
+  eventRecord ExploreEventRecord?
 
   @@index([playerId])
   @@index([eraId, provinceId])
@@ -274,6 +277,64 @@ model ExploreActionRecord {
   @@index([completesAt])
   @@index([createdAt])
   @@map("explore_action_record")
+}
+
+model ExploreEventRecord {
+  eventId             String    @id @map("event_id")
+  playerId            String    @map("player_id")
+  eraId               String    @default("era_mvp_001") @map("era_id")
+  exploreRecordId     String    @unique @map("explore_record_id")
+  provinceId          String    @map("province_id")
+  provinceName        String    @map("province_name")
+  eventType           String    @map("event_type")
+  title               String
+  description         String
+  choices             Json
+  status              String    @default("pending")
+  selectedChoiceId    String?   @map("selected_choice_id")
+  rewardSnapshot      Json?     @map("reward_snapshot")
+  experienceSnapshot  Json?     @map("experience_snapshot")
+  resolvedIdempotency String?   @unique @map("resolved_idempotency_key")
+  configVersion       String    @default("p1_7_explore_event_v1") @map("config_version")
+  rulesetVersion      String    @default("ruleset_p1_7_v1") @map("ruleset_version")
+  rewardConfigVersion String    @default("reward_p1_7_v1") @map("reward_config_version")
+  resolvedAt          DateTime? @map("resolved_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  player        Player              @relation(fields: [playerId], references: [playerId])
+  exploreRecord ExploreActionRecord @relation(fields: [exploreRecordId], references: [recordId])
+
+  @@index([playerId])
+  @@index([eraId, provinceId])
+  @@index([status])
+  @@index([eventType])
+  @@index([createdAt])
+  @@map("explore_event_record")
+}
+
+model PlayerJournalEntry {
+  journalEntryId    String   @id @map("journal_entry_id")
+  playerId          String   @map("player_id")
+  eraId             String   @default("era_mvp_001") @map("era_id")
+  sourceType        String   @map("source_type")
+  sourceId          String?  @map("source_id")
+  title             String
+  summary           String
+  deltaSummary      Json     @map("delta_summary")
+  tags              Json
+  recommendations   Json
+  experienceSnapshot Json?   @map("experience_snapshot")
+  configVersion     String   @default("p1_7_journal_v1") @map("config_version")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@index([playerId])
+  @@index([eraId])
+  @@index([sourceType, sourceId])
+  @@index([createdAt])
+  @@map("player_journal_entry")
 }
 
 model PlayerTaskState {

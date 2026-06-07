@@ -57,6 +57,7 @@ import type {
   ExecuteMergeReservedResponse,
   ExploreClaimRequest,
   ExploreCurrentResponse,
+  ExploreEventListResponse,
   ExploreRequest,
   ExploreResponse,
   FactionReputationResponse,
@@ -80,6 +81,7 @@ import type {
   InnerWorldUpgradeRequest,
   InnerWorldUpgradeResponse,
   JoinSectRequest,
+  JournalListResponse,
   LoginResponse,
   MergeDryRunReportResponse,
   MockFishpiLoginRequest,
@@ -102,6 +104,8 @@ import type {
   PvpBattleResponse,
   RankListResponse,
   RankType,
+  ResolveExploreEventRequest,
+  ResolveExploreEventResponse,
   ResolveRiskRecordRequest,
   ResolveRiskRecordResponse,
   ResourcePointListResponse,
@@ -217,6 +221,14 @@ export class GameClient {
     return this.get<{ provinces: ProvinceSummary[] }>("/api/game/provinces");
   }
 
+  journal(limit = 8, before?: string): Promise<ApiResponse<JournalListResponse>> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (before) {
+      params.set("before", before);
+    }
+    return this.get<JournalListResponse>(`/api/game/journal?${params.toString()}`);
+  }
+
   claimCultivation(idempotencyKey: string): Promise<ApiResponse<CultivationClaimResponse>> {
     return this.post<CultivationClaimResponse>(
       "/api/game/cultivation/claim",
@@ -247,6 +259,17 @@ export class GameClient {
     return this.get<ExploreCurrentResponse>("/api/game/explore/current");
   }
 
+  exploreEvents(
+    status: "pending" | "resolved" | "expired" | undefined = undefined,
+    limit = 10,
+  ): Promise<ApiResponse<ExploreEventListResponse>> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (status) {
+      params.set("status", status);
+    }
+    return this.get<ExploreEventListResponse>(`/api/game/explore/events?${params.toString()}`);
+  }
+
   claimExplore(
     body: ExploreClaimRequest,
     idempotencyKey: string,
@@ -254,6 +277,17 @@ export class GameClient {
     return this.post<ExploreResponse, ExploreClaimRequest>("/api/game/explore/claim", body, {
       idempotencyKey,
     });
+  }
+
+  resolveExploreEvent(
+    body: ResolveExploreEventRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<ResolveExploreEventResponse>> {
+    return this.post<ResolveExploreEventResponse, ResolveExploreEventRequest>(
+      "/api/game/explore/events/resolve",
+      body,
+      { idempotencyKey },
+    );
   }
 
   tasks(): Promise<ApiResponse<TaskSummaryResponse>> {

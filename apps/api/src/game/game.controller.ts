@@ -1,13 +1,17 @@
-import { Body, Controller, Get, Inject, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Post, Query, Req, UseGuards } from "@nestjs/common";
 import type {
   BreakthroughResponse,
   CaveCollectResponse,
   CultivationClaimResponse,
   ExploreClaimRequest,
   ExploreCurrentResponse,
+  ExploreEventListResponse,
   ExploreRequest,
   ExploreResponse,
   GameOverviewResponse,
+  JournalListResponse,
+  ResolveExploreEventRequest,
+  ResolveExploreEventResponse,
   TaskClaimRequest,
   TaskClaimResponse,
   TaskSummaryResponse,
@@ -29,6 +33,15 @@ export class GameController {
   @Get("provinces")
   provinces(@Req() request: Request) {
     return this.gameService.getProvinces(requireAccountId(request));
+  }
+
+  @Get("journal")
+  journal(
+    @Query("limit") limit: string | undefined,
+    @Query("before") before: string | undefined,
+    @Req() request: Request,
+  ): Promise<JournalListResponse> {
+    return this.gameService.getJournal(requireAccountId(request), { before, limit });
   }
 
   @Post("cultivation/claim")
@@ -67,6 +80,27 @@ export class GameController {
     @Req() request: Request,
   ): Promise<ExploreResponse> {
     return this.gameService.claimExplore({
+      accountId: requireAccountId(request),
+      body,
+      idempotencyKey: requireIdempotencyKey(request),
+    });
+  }
+
+  @Get("explore/events")
+  exploreEvents(
+    @Query("status") status: string | undefined,
+    @Query("limit") limit: string | undefined,
+    @Req() request: Request,
+  ): Promise<ExploreEventListResponse> {
+    return this.gameService.getExploreEvents(requireAccountId(request), { limit, status });
+  }
+
+  @Post("explore/events/resolve")
+  resolveExploreEvent(
+    @Body() body: ResolveExploreEventRequest,
+    @Req() request: Request,
+  ): Promise<ResolveExploreEventResponse> {
+    return this.gameService.resolveExploreEvent({
       accountId: requireAccountId(request),
       body,
       idempotencyKey: requireIdempotencyKey(request),

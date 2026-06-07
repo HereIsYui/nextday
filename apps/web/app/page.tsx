@@ -10,9 +10,11 @@ import type {
   ApiResponse,
   AppearanceListResponse,
   BagSummaryResponse,
+  BattleSummary,
   EntitlementOverviewResponse,
   EquipmentListResponse,
   ExperiencePayload,
+  ExperienceTone,
   FactionRouteConfigState,
   FactionRoutesResponse,
   ForgeRecipeListResponse,
@@ -22,6 +24,7 @@ import type {
   InnerWorldSummaryResponse,
   LoginResponse,
   PlayerProfileResponse,
+  ProvinceSummary,
   RankListResponse,
   RankType,
   ResourcePointListResponse,
@@ -30,6 +33,7 @@ import type {
   TaskState,
   TitleCollectionResponse,
   TowerListResponse,
+  TowerStateSummary,
   WorldBossResponse,
 } from "@nextday/shared";
 import { Button, StatusBadge } from "@nextday/ui";
@@ -44,13 +48,54 @@ const deviceStorageKey = "nextday_m1_device_id";
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
 
 const navItems: Array<{ key: ActiveTab; label: string }> = [
-  { key: "overview", label: "总览" },
+  { key: "overview", label: "九州" },
   { key: "events", label: "活动" },
   { key: "growth", label: "成长" },
   { key: "multiplayer", label: "多人" },
   { key: "market", label: "市肆" },
   { key: "battle", label: "战报" },
 ];
+
+interface DailyGoal {
+  id: string;
+  title: string;
+  detail: string;
+  status: string;
+  tone: ExperienceTone;
+  actionLabel: string;
+  disabled?: boolean;
+  onAction: () => void | Promise<void>;
+}
+
+interface RecommendedAction {
+  id: string;
+  title: string;
+  detail: string;
+  buttonLabel: string;
+  disabled?: boolean;
+  onAction: () => void | Promise<void>;
+}
+
+interface JournalEntry {
+  id: string;
+  title: string;
+  summary: string;
+  createdAt: string;
+  tone: ExperienceTone;
+  tags: string[];
+  deltas: string[];
+  recommendations: string[];
+  experience?: ExperiencePayload;
+}
+
+interface GrowthTarget {
+  id: string;
+  title: string;
+  detail: string;
+  actionLabel: string;
+  disabled?: boolean;
+  onAction: () => void | Promise<void>;
+}
 
 export default function HomePage() {
   const [healthText, setHealthText] = useState<HealthText>("检测中");
@@ -87,15 +132,25 @@ export default function HomePage() {
   const [route, setRoute] = useState<RouteValue>("qi");
   const [message, setMessage] = useState("尚未登录");
   const [lastExperience, setLastExperience] = useState<ExperiencePayload | null>(null);
+  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
+  const [selectedProvinceId, setSelectedProvinceId] = useState("");
+  const [exploreCount, setExploreCount] = useState(5);
+  const [selectedTowerId, setSelectedTowerId] = useState("");
   const [busy, setBusy] = useState(false);
 
   const client = useMemo(() => createClient(token ?? undefined), [token]);
   const activeProfile = overview?.profile ?? profile;
   const activePlayerId = overview?.profile.player?.player_id ?? null;
   const completedTasks = overview?.tasks.filter((task) => task.status === "completed") ?? [];
+  const unlockedProvinces = overview?.provinces.filter((province) => province.unlocked) ?? [];
+  const selectedProvince =
+    unlockedProvinces.find((province) => province.province_id === selectedProvinceId) ??
+    unlockedProvinces[0];
   const firstPill = bag?.items.find((item) => item.category === "pill" && !item.locked);
   const firstEquipment = equipment?.equipments[0];
   const firstTower = towers?.towers[0];
+  const selectedTower =
+    towers?.towers.find((tower) => tower.tower_id === selectedTowerId) ?? firstTower;
   const firstResourcePoint = resourcePoints?.resource_points[0];
   const pvpTarget = personalRank?.entries.find((entry) => entry.target_id !== activePlayerId);
   const firstWarehouseDepositItem = bag?.items.find(
@@ -114,9 +169,75 @@ export default function HomePage() {
     ancientTreasures?.treasures.filter((treasure) => treasure.owned).length ?? 0;
   const firstAppearance = appearances?.appearances[0];
   const firstInnerCreature = innerWorld?.creatures.find((creature) => creature.status === "idle");
-  const firstUnlockedProvince = overview?.provinces.find((province) => province.unlocked);
+  const firstUnlockedProvince =
+    selectedProvince ?? overview?.provinces.find((province) => province.unlocked);
   const availableFactionRoutes =
     faction?.routes.filter((item) => item.route_id !== "undecided") ?? [];
+  const dailyGoals = buildDailyGoals({
+    activity: firstClaimableActivity ?? firstActivity,
+    busy,
+    canBreakthrough: overview?.cultivation?.can_breakthrough ?? false,
+    claimableCultivation: overview?.cultivation?.claimable_cultivation ?? "0",
+    claimableTasks: completedTasks,
+    firstAncientGrant,
+    firstTower: selectedTower,
+    overview,
+    onActivity: firstClaimableActivity
+      ? () => handleClaimActivity(firstClaimableActivity)
+      : firstActivity
+        ? () => handleSubmitActivity(firstActivity)
+        : () => setActiveTab("events"),
+    onBreakthrough: handleBreakthrough,
+    onCave: handleCollectCave,
+    onClaimCultivation: handleClaimCultivation,
+    onExplore: () => handleExplore(exploreCount),
+    onMonthlyGrant: firstAncientGrant ? handleDrawAncientTreasure : () => setActiveTab("market"),
+    onTasks: () => setActiveTab("overview"),
+    onTower: handleTowerAction,
+  });
+  const recommendedActions = buildRecommendedActions({
+    activity: firstClaimableActivity ?? firstActivity,
+    busy,
+    canCraftAlchemy: Boolean(alchemyRecipes?.recipes.length),
+    canCraftForge: Boolean(forgeRecipes?.recipes.length),
+    canExplore: Boolean(overview && selectedProvince),
+    canTower: Boolean(selectedTower),
+    caveMinutes: overview?.cave?.claimable_minutes ?? 0,
+    exploreCount,
+    province: selectedProvince,
+    tower: selectedTower,
+    onActivity: firstClaimableActivity
+      ? () => handleClaimActivity(firstClaimableActivity)
+      : firstActivity
+        ? () => handleSubmitActivity(firstActivity)
+        : () => setActiveTab("events"),
+    onAlchemy: handleCraftAlchemy,
+    onCave: handleCollectCave,
+    onExplore: () => handleExplore(exploreCount),
+    onForge: handleCraftForge,
+    onQuickClaim: handleQuickClaim,
+    onTower: handleTowerAction,
+  });
+  const growthTargets = buildGrowthTargets({
+    activity: firstClaimableActivity ?? firstActivity,
+    busy,
+    firstEquipment,
+    firstPill,
+    firstTower: selectedTower,
+    innerWorld,
+    overview,
+    onActivity: firstClaimableActivity
+      ? () => handleClaimActivity(firstClaimableActivity)
+      : firstActivity
+        ? () => handleSubmitActivity(firstActivity)
+        : () => setActiveTab("events"),
+    onBreakthrough: handleBreakthrough,
+    onExplore: () => handleExplore(exploreCount),
+    onForge: handleCraftForge,
+    onInnerWorld: () => setActiveTab("growth"),
+    onPill: firstPill ? handleUsePill : handleCraftAlchemy,
+    onTower: handleTowerAction,
+  });
 
   useEffect(() => {
     let ignore = false;
@@ -155,6 +276,25 @@ export default function HomePage() {
       setActiveTab(tab);
     }
   }, []);
+
+  useEffect(() => {
+    if (unlockedProvinces.length === 0) {
+      return;
+    }
+    if (!unlockedProvinces.some((province) => province.province_id === selectedProvinceId)) {
+      setSelectedProvinceId(unlockedProvinces[0].province_id);
+    }
+  }, [selectedProvinceId, unlockedProvinces]);
+
+  useEffect(() => {
+    const towerList = towers?.towers ?? [];
+    if (towerList.length === 0) {
+      return;
+    }
+    if (!towerList.some((tower) => tower.tower_id === selectedTowerId)) {
+      setSelectedTowerId(towerList[0].tower_id);
+    }
+  }, [selectedTowerId, towers]);
 
   useEffect(() => {
     if (!token) {
@@ -437,6 +577,12 @@ export default function HomePage() {
     await runAction("领取修为", async () => {
       const response = await client.claimCultivation(createIdempotencyKey("web_cultivation"));
       ensureOk(response);
+      rememberExperience(undefined, {
+        summary: `修为增加 ${response.data.gained_cultivation}，当前层级 ${response.data.status.current_level} 层。`,
+        tags: response.data.completed_task_ids.length ? ["任务推进"] : ["离线收益"],
+        title: "领取修为",
+        tone: "success",
+      });
       await refreshOverview(`领取 ${response.data.gained_cultivation} 修为`);
     });
   }
@@ -445,19 +591,31 @@ export default function HomePage() {
     await runAction("突破", async () => {
       const response = await client.breakthrough(createIdempotencyKey("web_breakthrough"));
       ensureOk(response);
+      rememberExperience(undefined, {
+        summary: response.data.message,
+        tags: [response.data.success ? "突破成功" : "突破失败"],
+        title: "尝试突破",
+        tone: response.data.success ? "success" : "warning",
+      });
       await refreshOverview(response.data.message);
     });
   }
 
   async function handleExplore(count: number) {
+    const province = selectedProvince ?? firstUnlockedProvince;
+    if (!province) {
+      setMessage("暂无可探索州域");
+      return;
+    }
+
     await runAction("探索", async () => {
       const response = await client.explore(
-        { province_id: "ji", count },
+        { province_id: province.province_id, count },
         createIdempotencyKey(`web_explore_${count}`),
       );
       ensureOk(response);
       rememberExperience(response.data.experience);
-      await refreshOverview(`完成 ${response.data.battles.length} 次冀州探索`);
+      await refreshOverview(`完成 ${response.data.battles.length} 次${province.name}探索`);
     });
   }
 
@@ -477,6 +635,12 @@ export default function HomePage() {
         createIdempotencyKey(`web_task_${task.task_id}`),
       );
       ensureOk(response);
+      rememberExperience(undefined, {
+        summary: `${response.data.task.title} 已领取，奖励由服务端结算并写入记录。`,
+        tags: [taskTypeLabel(task.task_type), "奖励领取"],
+        title: "领取任务奖励",
+        tone: "success",
+      });
       await refreshOverview(`领取任务：${response.data.task.title}`);
     });
   }
@@ -489,6 +653,12 @@ export default function HomePage() {
       );
       ensureOk(response);
       const claimedCount = response.data.items.filter((item) => item.status === "claimed").length;
+      rememberExperience(undefined, {
+        summary: response.data.items.map((item) => `${item.label}：${item.message}`).join("；"),
+        tags: ["一键领取", `${claimedCount} 项成功`],
+        title: "今日收益收束",
+        tone: claimedCount > 0 ? "success" : "neutral",
+      });
       await refreshOverview(`一键领取完成 ${claimedCount} 项`);
     });
   }
@@ -523,6 +693,14 @@ export default function HomePage() {
         createIdempotencyKey("web_pill"),
       );
       ensureOk(response);
+      rememberExperience(undefined, {
+        summary: `服用 ${response.data.pill_item_id}，本次效果 ${response.data.effect_value}，有效倍率 ${Math.round(
+          response.data.effective_rate * 100,
+        )}%。`,
+        tags: ["丹药", "修为成长"],
+        title: "服用丹药",
+        tone: "success",
+      });
       await refreshOverview(`服丹获得 ${response.data.effect_value} 修为`);
     });
   }
@@ -587,6 +765,12 @@ export default function HomePage() {
       );
       ensureOk(response);
       setSkills(response.data);
+      rememberExperience(undefined, {
+        summary: "主动技能、本命法宝技能和自动释放优先级已保存，下一次探索会进入战报。",
+        tags: ["技能预设", "自动战斗"],
+        title: "调整战斗策略",
+        tone: "success",
+      });
       setMessage("技能预设已保存，下一次探索会写入战报");
     });
   }
@@ -666,14 +850,15 @@ export default function HomePage() {
   }
 
   async function handleTowerAction() {
-    if (!firstTower) {
+    const tower = selectedTower ?? firstTower;
+    if (!tower) {
       setMessage("九塔状态尚未读取");
       return;
     }
 
     await runAction("九塔提交", async () => {
       const response = await client.towerAction(
-        { tower_id: firstTower.tower_id, action_type: "seal", count: 1 },
+        { tower_id: tower.tower_id, action_type: "seal", count: 1 },
         createIdempotencyKey("web_tower"),
       );
       ensureOk(response);
@@ -711,6 +896,12 @@ export default function HomePage() {
         createIdempotencyKey("web_sect_create"),
       );
       ensureOk(response);
+      rememberExperience(undefined, {
+        summary: `${response.data.sect.name} 已立宗，后续可做宗门任务、建设和仓库流转。`,
+        tags: ["宗门", "异步建设"],
+        title: "创建宗门",
+        tone: "success",
+      });
       await refreshOverview(`创建宗门：${response.data.sect.name}`);
     });
   }
@@ -831,6 +1022,12 @@ export default function HomePage() {
       );
       ensureOk(response);
       setTitles(response.data.collection);
+      rememberExperience(undefined, {
+        summary: `${response.data.appearance.name} 已加入展示收藏，排行奖励只提供荣誉和外观展示。`,
+        tags: ["排行称号", "展示外观"],
+        title: "领取排行称号",
+        tone: "success",
+      });
       await refreshOverview(`领取称号：${response.data.appearance.name}`);
     });
   }
@@ -872,6 +1069,12 @@ export default function HomePage() {
         createIdempotencyKey(`web_monthly_${cardType}`),
       );
       ensureOk(response);
+      rememberExperience(undefined, {
+        summary: `${response.data.monthly_card.card_type} 已生效，月卡只提供便利、赠抽和付费资产记录，不提高战斗倍率。`,
+        tags: ["月卡", "权益"],
+        title: "月卡生效",
+        tone: "success",
+      });
       await refreshOverview(`${response.data.monthly_card.card_type} 已生效`);
     });
   }
@@ -883,6 +1086,16 @@ export default function HomePage() {
         createIdempotencyKey(`web_monthly_claim_${cardType}`),
       );
       ensureOk(response);
+      rememberExperience(undefined, {
+        summary: response.data.claimed
+          ? `领取仙玉 ${response.data.rewards.jade_paid ?? "0"}，绑定仙玉 ${
+              response.data.rewards.jade_bound ?? "0"
+            }。`
+          : "今日月卡权益已经领取，九大古宝赠抽不会跨日累计。",
+        tags: ["月卡日课", response.data.claimed ? "已领取" : "已完成"],
+        title: "领取月卡日权益",
+        tone: response.data.claimed ? "success" : "neutral",
+      });
       await refreshOverview(
         response.data.claimed
           ? `领取仙玉 ${response.data.rewards.jade_paid ?? "0"} / 绑定仙玉 ${response.data.rewards.jade_bound ?? "0"}`
@@ -924,10 +1137,52 @@ export default function HomePage() {
     });
   }
 
-  function rememberExperience(experience?: ExperiencePayload) {
+  function rememberExperience(
+    experience?: ExperiencePayload,
+    fallback?: {
+      summary: string;
+      tags?: string[];
+      title: string;
+      tone?: ExperienceTone;
+    },
+  ) {
     if (experience) {
       setLastExperience(experience);
+      appendJournal({
+        deltas: experience.delta_summary.map(formatDeltaSummary).slice(0, 4),
+        experience,
+        recommendations: experience.next_recommendations.map((item) => item.label).slice(0, 3),
+        summary: experience.summary,
+        tags: experience.reason_tags.map((tag) => tag.label).slice(0, 4),
+        title: experience.title,
+        tone: resolveExperienceTone(experience),
+      });
+      return;
     }
+
+    if (fallback) {
+      appendJournal({
+        deltas: [],
+        recommendations: [],
+        summary: fallback.summary,
+        tags: fallback.tags ?? [],
+        title: fallback.title,
+        tone: fallback.tone ?? "neutral",
+      });
+    }
+  }
+
+  function appendJournal(entry: Omit<JournalEntry, "createdAt" | "id">) {
+    setJournalEntries((current) =>
+      [
+        {
+          ...entry,
+          createdAt: new Date().toISOString(),
+          id: `journal_${Date.now()}_${randomId()}`,
+        },
+        ...current,
+      ].slice(0, 8),
+    );
   }
 
   async function handleSyncVip(vipLevel: 3 | 4) {
@@ -937,6 +1192,12 @@ export default function HomePage() {
         createIdempotencyKey(`web_vip${vipLevel}`),
       );
       ensureOk(response);
+      rememberExperience(undefined, {
+        summary: `VIP${vipLevel} 便利已同步，只影响批量、策略和提醒，不提高奖励倍率。`,
+        tags: ["VIP", "便利"],
+        title: "同步便利权益",
+        tone: "success",
+      });
       await refreshOverview(`VIP${vipLevel} 便利已同步`);
     });
   }
@@ -948,6 +1209,12 @@ export default function HomePage() {
         createIdempotencyKey("web_batch_preview"),
       );
       ensureOk(response);
+      rememberExperience(undefined, {
+        summary: `${response.data.effective_tier} 批量上限 ${response.data.limit}，本次可执行 ${response.data.accepted_count} 次。`,
+        tags: ["便利预览", "不增收益"],
+        title: "检查批量上限",
+        tone: response.data.accepted_count < response.data.requested_count ? "warning" : "success",
+      });
       setMessage(
         `${response.data.effective_tier} 批量上限 ${response.data.limit}，本次可执行 ${response.data.accepted_count}`,
       );
@@ -968,6 +1235,12 @@ export default function HomePage() {
         createIdempotencyKey("web_auto_queue"),
       );
       ensureOk(response);
+      rememberExperience(undefined, {
+        summary: `托管队列接收 ${response.data.queue.accepted_actions.length} 个行动，服务端按权益档位限制队列。`,
+        tags: ["托管队列", response.data.queue.status],
+        title: "创建今日托管",
+        tone: "success",
+      });
       setMessage(`托管队列已创建：${response.data.queue.accepted_actions.length} 个行动`);
     });
   }
@@ -981,6 +1254,12 @@ export default function HomePage() {
       );
       ensureOk(response);
       await refreshCommerce();
+      rememberExperience(undefined, {
+        summary: `${response.data.appearance.name} 已加入展示收藏，外观不提供战力或贡献倍率。`,
+        tags: ["展示外观", "收藏"],
+        title: "领取展示外观",
+        tone: "success",
+      });
       setMessage(`领取外观：${response.data.appearance.name}`);
     });
   }
@@ -1001,6 +1280,12 @@ export default function HomePage() {
       );
       ensureOk(response);
       await refreshCommerce();
+      rememberExperience(undefined, {
+        summary: `${response.data.appearance.name} 已装备到展示位，只影响名片、战报和社交展示。`,
+        tags: ["展示外观", "已装备"],
+        title: "装备展示外观",
+        tone: "success",
+      });
       setMessage(`已装备外观：${response.data.appearance.name}`);
     });
   }
@@ -1085,6 +1370,102 @@ export default function HomePage() {
         </section>
       ) : (
         <>
+          <section className="today-hero" aria-label="今日修行">
+            <div className="today-hero-copy">
+              <p className="eyebrow">今日修行</p>
+              <h2>先收收益，再定路线</h2>
+              <p>
+                {completedTasks.length} 个任务可领 · 行动令{" "}
+                {overview?.action_state?.action_points ?? 0} 枚 ·{" "}
+                {firstClaimableActivity
+                  ? `${firstClaimableActivity.name} 可领奖`
+                  : "活动可异步推进"}
+              </p>
+            </div>
+            <div className="today-controls" aria-label="今日行动选择">
+              <label>
+                <span>探索州域</span>
+                <select
+                  onChange={(event) => setSelectedProvinceId(event.target.value)}
+                  value={selectedProvince?.province_id ?? ""}
+                >
+                  {unlockedProvinces.map((province) => (
+                    <option key={province.province_id} value={province.province_id}>
+                      {province.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>探索次数</span>
+                <select
+                  onChange={(event) => setExploreCount(Number(event.target.value))}
+                  value={exploreCount}
+                >
+                  <option value={1}>1 次</option>
+                  <option value={3}>3 次</option>
+                  <option value={5}>5 次</option>
+                </select>
+              </label>
+              <label>
+                <span>九塔目标</span>
+                <select
+                  onChange={(event) => setSelectedTowerId(event.target.value)}
+                  value={selectedTower?.tower_id ?? ""}
+                >
+                  {towers?.towers.map((tower) => (
+                    <option key={tower.tower_id} value={tower.tower_id}>
+                      {tower.tower_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Button disabled={busy || !activeProfile?.player} onClick={() => refreshOverview()}>
+                刷新状态
+              </Button>
+            </div>
+            <div className="today-action-grid">
+              {recommendedActions.map((action) => (
+                <article className="recommended-action" key={action.id}>
+                  <div>
+                    <strong>{action.title}</strong>
+                    <span>{action.detail}</span>
+                  </div>
+                  <Button disabled={action.disabled} onClick={action.onAction}>
+                    {action.buttonLabel}
+                  </Button>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="today-layout" aria-label="今日目标与成长追踪">
+            <div className="today-panel">
+              <div className="section-title">
+                <h2>今日目标</h2>
+                <span>按收益优先级排列</span>
+              </div>
+              <div className="goal-list">
+                {dailyGoals.map((goal) => (
+                  <DailyGoalCard goal={goal} key={goal.id} />
+                ))}
+              </div>
+            </div>
+            <div className="today-panel">
+              <div className="section-title">
+                <h2>下一步成长</h2>
+                <span>缺口和入口集中展示</span>
+              </div>
+              <div className="growth-target-list">
+                {growthTargets.map((target) => (
+                  <GrowthTargetCard key={target.id} target={target} />
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <CultivationJournal entries={journalEntries} experience={lastExperience} />
+
           <section className="overview-grid" aria-label="修行总览">
             <MetricCard
               label="境界"
@@ -1116,32 +1497,6 @@ export default function HomePage() {
               detail={`仙玉 ${activeProfile.wallet?.jade_paid ?? "0"} / ${activeProfile.wallet?.jade_bound ?? "0"}`}
             />
           </section>
-
-          <section className="daily-strip" aria-label="今日核心操作">
-            <div>
-              <strong>今日核心</strong>
-              <span>{completedTasks.length} 个任务可领 · 30 分钟内完成基础收益</span>
-            </div>
-            <div className="quick-actions">
-              <Button disabled={busy || !overview} onClick={handleQuickClaim}>
-                一键领取
-              </Button>
-              <Button disabled={busy || !overview} onClick={() => handleExplore(5)}>
-                批量探索
-              </Button>
-              <Button
-                disabled={busy || !overview?.cultivation?.can_breakthrough}
-                onClick={handleBreakthrough}
-              >
-                突破
-              </Button>
-              <Button disabled={busy || !activeProfile?.player} onClick={() => refreshOverview()}>
-                刷新
-              </Button>
-            </div>
-          </section>
-
-          {lastExperience ? <ExperiencePanel experience={lastExperience} /> : null}
 
           <nav className="tab-nav" aria-label="功能分区">
             {navItems.map((item) => (
@@ -1459,11 +1814,11 @@ export default function HomePage() {
                 <div className="production-grid">
                   <ActionBox
                     actions={
-                      <Button disabled={busy || !firstTower} onClick={handleTowerAction}>
+                      <Button disabled={busy || !selectedTower} onClick={handleTowerAction}>
                         镇封提交
                       </Button>
                     }
-                    detail={`${firstTower?.tower_name ?? "未读取"} · 完整度 ${firstTower?.integrity ?? 0} · 镇封 ${firstTower?.seal_progress ?? 0}`}
+                    detail={`${selectedTower?.tower_name ?? "未读取"} · 完整度 ${selectedTower?.integrity ?? 0} · 镇封 ${selectedTower?.seal_progress ?? 0}`}
                     title="九塔"
                   />
                   <ActionBox
@@ -1788,16 +2143,7 @@ export default function HomePage() {
                 <div className="battle-list">
                   {overview?.recent_battles.length ? (
                     overview.recent_battles.map((battle) => (
-                      <article className="battle-row" key={battle.battle_id}>
-                        <strong>
-                          {battle.enemy_name} · {battle.result === "win" ? "胜" : "败"}
-                        </strong>
-                        <span>
-                          {battle.rounds} 回合 · 造成 {battle.damage_done} · 承受{" "}
-                          {battle.damage_taken}
-                        </span>
-                        <span>奖励灵石 {battle.rewards.spirit_stone ?? "0"}</span>
-                      </article>
+                      <BattleReportCard battle={battle} key={battle.battle_id} />
                     ))
                   ) : (
                     <p className="empty">尚无战报，先探索冀州试试。</p>
@@ -1879,6 +2225,140 @@ function ExperiencePanel({ experience }: { experience: ExperiencePayload }) {
   );
 }
 
+function DailyGoalCard({ goal }: { goal: DailyGoal }) {
+  return (
+    <article className={`goal-card tone-${goal.tone}`}>
+      <div>
+        <div className="province-head">
+          <strong>{goal.title}</strong>
+          <StatusBadge tone={toBadgeTone(goal.tone)}>{goal.status}</StatusBadge>
+        </div>
+        <p>{goal.detail}</p>
+      </div>
+      <Button disabled={goal.disabled} onClick={goal.onAction}>
+        {goal.actionLabel}
+      </Button>
+    </article>
+  );
+}
+
+function GrowthTargetCard({ target }: { target: GrowthTarget }) {
+  return (
+    <article className="growth-target-card">
+      <div>
+        <strong>{target.title}</strong>
+        <span>{target.detail}</span>
+      </div>
+      <Button disabled={target.disabled} onClick={target.onAction}>
+        {target.actionLabel}
+      </Button>
+    </article>
+  );
+}
+
+function CultivationJournal({
+  entries,
+  experience,
+}: {
+  entries: JournalEntry[];
+  experience: ExperiencePayload | null;
+}) {
+  const latestEntry = entries[0];
+
+  return (
+    <section className="journal-panel" aria-label="修行日志">
+      <div className="section-title">
+        <div>
+          <h2>修行日志</h2>
+          <span>{latestEntry ? latestEntry.title : "行动完成后会记录在这里"}</span>
+        </div>
+        <StatusBadge tone={experience ? "success" : "neutral"}>
+          {experience ? "有过程回放" : "等待行动"}
+        </StatusBadge>
+      </div>
+      <div className="journal-layout">
+        <div className="journal-list">
+          {entries.length ? (
+            entries.map((entry) => (
+              <article className={`journal-entry tone-${entry.tone}`} key={entry.id}>
+                <div className="journal-entry-head">
+                  <strong>{entry.title}</strong>
+                  <span>{formatJournalTime(entry.createdAt)}</span>
+                </div>
+                <p>{entry.summary}</p>
+                {entry.deltas.length ? (
+                  <div className="journal-deltas">
+                    {entry.deltas.map((delta) => (
+                      <span key={delta}>{delta}</span>
+                    ))}
+                  </div>
+                ) : null}
+                {entry.tags.length ? (
+                  <div className="reason-tags">
+                    {entry.tags.map((tag) => (
+                      <span className={`reason-tag tone-${entry.tone}`} key={tag}>
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </article>
+            ))
+          ) : (
+            <p className="empty">先完成一次探索、洞府收取、炼丹或九塔提交。</p>
+          )}
+        </div>
+        <div className="journal-detail">
+          {experience ? (
+            <ExperiencePanel experience={experience} />
+          ) : (
+            <div className="journal-empty-detail">
+              <strong>当前行动详情</strong>
+              <span>这里会展示服务端返回的时间线、收益变化和下一步建议。</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function BattleReportCard({ battle }: { battle: BattleSummary }) {
+  const latestLogs = battle.log.slice(-3);
+
+  return (
+    <article className="battle-card">
+      <div className="battle-card-head">
+        <div>
+          <strong>{battle.enemy_name}</strong>
+          <span>
+            {battle.battle_type} · {battle.rounds} 回合
+          </span>
+        </div>
+        <StatusBadge tone={battle.result === "win" ? "success" : "warning"}>
+          {battle.result === "win" ? "胜利" : "失利"}
+        </StatusBadge>
+      </div>
+      <div className="battle-stat-grid">
+        <span>造成 {battle.damage_done}</span>
+        <span>承伤 {battle.damage_taken}</span>
+        <span>灵石 {battle.rewards.spirit_stone ?? "0"}</span>
+      </div>
+      {latestLogs.length ? (
+        <ol className="battle-log-list">
+          {latestLogs.map((log) => (
+            <li key={`${battle.battle_id}-${log.round}-${log.skill}`}>
+              第 {log.round} 回合，{log.actor} 施展 {log.skill}，造成 {log.damage} 伤害。
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p>本场战斗按自动策略完成，暂无详细回合日志。</p>
+      )}
+    </article>
+  );
+}
+
 function RankMiniPanel({ rank, title }: { rank: RankListResponse | null; title: string }) {
   const topEntries = rank?.entries.slice(0, 3) ?? [];
 
@@ -1918,6 +2398,330 @@ function formatDeltaValue(item: ExperiencePayload["delta_summary"][number]): str
     .map((value) => String(value));
 
   return values.length > 0 ? values.join(" → ") : "-";
+}
+
+function formatDeltaSummary(item: ExperiencePayload["delta_summary"][number]): string {
+  return `${item.label} ${formatDeltaValue(item)}`;
+}
+
+function resolveExperienceTone(experience: ExperiencePayload): ExperienceTone {
+  if (experience.reason_tags.some((tag) => tag.tone === "danger")) {
+    return "danger";
+  }
+  if (experience.reason_tags.some((tag) => tag.tone === "warning")) {
+    return "warning";
+  }
+  if (
+    experience.reason_tags.some((tag) => tag.tone === "success") ||
+    experience.timeline.some((entry) => entry.tone === "success")
+  ) {
+    return "success";
+  }
+
+  return "neutral";
+}
+
+function toBadgeTone(tone: ExperienceTone): "neutral" | "success" | "warning" {
+  return tone === "success" ? "success" : tone === "neutral" ? "neutral" : "warning";
+}
+
+function buildDailyGoals(input: {
+  activity: ActivitySummaryState | undefined;
+  busy: boolean;
+  canBreakthrough: boolean;
+  claimableCultivation: string;
+  claimableTasks: TaskState[];
+  firstAncientGrant: EntitlementOverviewResponse["available_monthly_grants"][number] | undefined;
+  firstTower: TowerStateSummary | undefined;
+  overview: GameOverviewResponse | null;
+  onActivity: () => void | Promise<void>;
+  onBreakthrough: () => void | Promise<void>;
+  onCave: () => void | Promise<void>;
+  onClaimCultivation: () => void | Promise<void>;
+  onExplore: () => void | Promise<void>;
+  onMonthlyGrant: () => void | Promise<void>;
+  onTasks: () => void | Promise<void>;
+  onTower: () => void | Promise<void>;
+}): DailyGoal[] {
+  const actionPoints = input.overview?.action_state?.action_points ?? 0;
+  const caveMinutes = input.overview?.cave?.claimable_minutes ?? 0;
+  const goals: DailyGoal[] = [
+    {
+      actionLabel: input.claimableTasks.length ? "查看任务" : "去探索",
+      detail: input.claimableTasks.length
+        ? `${input.claimableTasks
+            .map((task) => task.title)
+            .slice(0, 2)
+            .join("、")} 等待领取。`
+        : "完成探索、洞府和九塔会继续推进今日任务。",
+      disabled: input.busy || !input.overview,
+      id: "tasks",
+      onAction: input.claimableTasks.length ? input.onTasks : input.onExplore,
+      status: input.claimableTasks.length ? `${input.claimableTasks.length} 个可领` : "推进中",
+      title: "任务奖励",
+      tone: input.claimableTasks.length ? "success" : "neutral",
+    },
+    {
+      actionLabel: hasPositiveString(input.claimableCultivation) ? "领取修为" : "稍后领取",
+      detail: `当前可领取修为 ${input.claimableCultivation}，离线收益不会因为错过时间点丢失。`,
+      disabled: input.busy || !hasPositiveString(input.claimableCultivation),
+      id: "cultivation",
+      onAction: input.onClaimCultivation,
+      status: hasPositiveString(input.claimableCultivation) ? "可领取" : "积累中",
+      title: "修为收束",
+      tone: hasPositiveString(input.claimableCultivation) ? "success" : "neutral",
+    },
+    {
+      actionLabel: "批量探索",
+      detail:
+        actionPoints > 0
+          ? `行动令剩余 ${actionPoints}，探索会产生战报、掉落和任务进度。`
+          : "行动令不足时可先领取收益、处理洞府或查看活动。",
+      disabled: input.busy || !input.overview || actionPoints <= 0,
+      id: "explore",
+      onAction: input.onExplore,
+      status: actionPoints > 0 ? "可行动" : "令不足",
+      title: "州域探索",
+      tone: actionPoints > 0 ? "success" : "warning",
+    },
+    {
+      actionLabel: input.canBreakthrough ? "尝试突破" : "去探索",
+      detail: input.canBreakthrough
+        ? "当前修为满足突破条件，可以推进境界。"
+        : "继续探索、服丹和领取修为来补足下一层需求。",
+      disabled: input.busy || !input.overview,
+      id: "breakthrough",
+      onAction: input.canBreakthrough ? input.onBreakthrough : input.onExplore,
+      status: input.canBreakthrough ? "可突破" : "未满足",
+      title: "境界突破",
+      tone: input.canBreakthrough ? "success" : "neutral",
+    },
+    {
+      actionLabel: "镇封提交",
+      detail: input.firstTower
+        ? `${input.firstTower.tower_name} 完整度 ${input.firstTower.integrity}，镇封 ${input.firstTower.seal_progress}。`
+        : "九塔状态读取后可随时提交镇封行动。",
+      disabled: input.busy || !input.firstTower,
+      id: "tower",
+      onAction: input.onTower,
+      status: input.firstTower ? "可提交" : "未读取",
+      title: "九塔贡献",
+      tone: input.firstTower ? "success" : "neutral",
+    },
+    {
+      actionLabel: input.activity?.claimable ? "领取活动" : "推进活动",
+      detail: input.activity
+        ? `${input.activity.name} 进度 ${input.activity.progress}/${input.activity.target_progress}。`
+        : "活动中心全部支持异步参与。",
+      disabled: input.busy || !input.activity,
+      id: "activity",
+      onAction: input.onActivity,
+      status: input.activity?.claimable ? "可领取" : input.activity ? "进行中" : "未读取",
+      title: "活动奖励",
+      tone: input.activity?.claimable ? "success" : input.activity ? "neutral" : "warning",
+    },
+  ];
+
+  if (input.firstAncientGrant) {
+    goals.splice(3, 0, {
+      actionLabel: "赠抽古宝",
+      detail: `月卡赠抽剩余 ${
+        input.firstAncientGrant.draw_count - input.firstAncientGrant.used_count
+      } 次，当日有效。`,
+      disabled: input.busy,
+      id: "ancient_grant",
+      onAction: input.onMonthlyGrant,
+      status: "可抽取",
+      title: "九大古宝",
+      tone: "success",
+    });
+  }
+
+  if (caveMinutes > 0) {
+    goals.splice(2, 0, {
+      actionLabel: "一键领取",
+      detail: `洞府已有 ${caveMinutes} 分钟产出，可和任务收益一起收束。`,
+      disabled: input.busy || !input.overview,
+      id: "cave",
+      onAction: input.onCave,
+      status: "可收取",
+      title: "洞府收益",
+      tone: "success",
+    });
+  }
+
+  return goals.slice(0, 5);
+}
+
+function buildRecommendedActions(input: {
+  activity: ActivitySummaryState | undefined;
+  busy: boolean;
+  canCraftAlchemy: boolean;
+  canCraftForge: boolean;
+  canExplore: boolean;
+  canTower: boolean;
+  caveMinutes: number;
+  exploreCount: number;
+  province: ProvinceSummary | undefined;
+  tower: TowerStateSummary | undefined;
+  onActivity: () => void | Promise<void>;
+  onAlchemy: () => void | Promise<void>;
+  onCave: () => void | Promise<void>;
+  onExplore: () => void | Promise<void>;
+  onForge: () => void | Promise<void>;
+  onQuickClaim: () => void | Promise<void>;
+  onTower: () => void | Promise<void>;
+}): RecommendedAction[] {
+  return [
+    {
+      buttonLabel: "一键领取",
+      detail:
+        input.caveMinutes > 0
+          ? `洞府 ${input.caveMinutes} 分钟产出待收。`
+          : "检查修为、洞府和已完成任务。",
+      disabled: input.busy,
+      id: "quick_claim",
+      onAction: input.onQuickClaim,
+      title: "收束收益",
+    },
+    {
+      buttonLabel: `探索 ${input.exploreCount} 次`,
+      detail: input.province
+        ? `${input.province.name} · ${input.province.recommended_action}`
+        : "选择已开放州域后开始探索。",
+      disabled: input.busy || !input.canExplore,
+      id: "explore",
+      onAction: input.onExplore,
+      title: "推进游历",
+    },
+    {
+      buttonLabel: "洞府收取",
+      detail: input.caveMinutes > 0 ? "收取洞府产出，补充灵石。" : "暂无高额产出，也可手动检查。",
+      disabled: input.busy,
+      id: "cave",
+      onAction: input.onCave,
+      title: "照看洞府",
+    },
+    {
+      buttonLabel: "镇封一次",
+      detail: input.tower
+        ? `${input.tower.tower_name} · 魔染 ${input.tower.corruption}`
+        : "读取九塔后提交贡献。",
+      disabled: input.busy || !input.canTower,
+      id: "tower",
+      onAction: input.onTower,
+      title: "九塔留痕",
+    },
+    {
+      buttonLabel: input.activity?.claimable ? "领取" : "推进",
+      detail: input.activity ? input.activity.name : "活动读取后显示可执行目标。",
+      disabled: input.busy || !input.activity,
+      id: "activity",
+      onAction: input.onActivity,
+      title: "活动日课",
+    },
+    {
+      buttonLabel: input.canCraftAlchemy ? "炼丹" : "炼器",
+      detail: input.canCraftAlchemy ? "尝试炼制丹药，补充修为成长。" : "炼器生成或淬炼法宝词条。",
+      disabled: input.busy || (!input.canCraftAlchemy && !input.canCraftForge),
+      id: "craft",
+      onAction: input.canCraftAlchemy ? input.onAlchemy : input.onForge,
+      title: "生产成长",
+    },
+  ];
+}
+
+function buildGrowthTargets(input: {
+  activity: ActivitySummaryState | undefined;
+  busy: boolean;
+  firstEquipment: EquipmentListResponse["equipments"][number] | undefined;
+  firstPill: BagSummaryResponse["items"][number] | undefined;
+  firstTower: TowerStateSummary | undefined;
+  innerWorld: InnerWorldSummaryResponse | null;
+  overview: GameOverviewResponse | null;
+  onActivity: () => void | Promise<void>;
+  onBreakthrough: () => void | Promise<void>;
+  onExplore: () => void | Promise<void>;
+  onForge: () => void | Promise<void>;
+  onInnerWorld: () => void | Promise<void>;
+  onPill: () => void | Promise<void>;
+  onTower: () => void | Promise<void>;
+}): GrowthTarget[] {
+  const canBreakthrough = input.overview?.cultivation?.can_breakthrough === true;
+
+  return [
+    {
+      actionLabel: canBreakthrough ? "突破" : "去探索",
+      detail: input.overview?.cultivation
+        ? `当前 ${input.overview.cultivation.cultivation_value}/${input.overview.cultivation.current_level_required}`
+        : "创建角色后显示修为缺口。",
+      disabled: input.busy || !input.overview,
+      id: "breakthrough",
+      onAction: canBreakthrough ? input.onBreakthrough : input.onExplore,
+      title: "下一境界",
+    },
+    {
+      actionLabel: input.firstPill ? "服丹" : "炼丹",
+      detail: input.firstPill
+        ? `${input.firstPill.name} 可服用。`
+        : "暂无可服丹药，先炼制基础丹药。",
+      disabled: input.busy || !input.overview,
+      id: "pill",
+      onAction: input.onPill,
+      title: "丹药成长",
+    },
+    {
+      actionLabel: "炼器",
+      detail: input.firstEquipment
+        ? `${input.firstEquipment.name} 可继续淬炼或铭刻。`
+        : "先炼制第一件普通法宝。",
+      disabled: input.busy || !input.overview,
+      id: "equipment",
+      onAction: input.onForge,
+      title: "法宝目标",
+    },
+    {
+      actionLabel: "镇封",
+      detail: input.firstTower
+        ? `${input.firstTower.tower_name} 当前完整度 ${input.firstTower.integrity}。`
+        : "九塔读取后显示贡献入口。",
+      disabled: input.busy || !input.firstTower,
+      id: "tower",
+      onAction: input.onTower,
+      title: "九塔贡献",
+    },
+    {
+      actionLabel: input.activity?.claimable ? "领奖" : "推进",
+      detail: input.activity
+        ? `${input.activity.name} ${input.activity.progress}/${input.activity.target_progress}`
+        : "活动中心读取后显示奖励进度。",
+      disabled: input.busy || !input.activity,
+      id: "activity",
+      onAction: input.onActivity,
+      title: "活动奖励",
+    },
+    {
+      actionLabel: input.innerWorld?.state.unlocked ? "查看洞天" : "查看条件",
+      detail: input.innerWorld?.state.unlocked
+        ? `内天地 ${input.innerWorld.state.world_level} 级，派驻 ${input.innerWorld.state.active_assignment_count}/${input.innerWorld.state.assignment_limit}。`
+        : (input.innerWorld?.state.unlock_hint ?? "内天地后续章节开启。"),
+      disabled: input.busy || !input.overview,
+      id: "inner_world",
+      onAction: input.onInnerWorld,
+      title: "内天地",
+    },
+  ];
+}
+
+function hasPositiveString(value: string): boolean {
+  return Number(value) > 0;
+}
+
+function formatJournalTime(value: string): string {
+  return new Date(value).toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function createClient(authToken?: string): GameClient {

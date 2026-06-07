@@ -18,6 +18,7 @@ body {
 
 button {
   touch-action: manipulation;
+  white-space: normal;
 }
 
 button:focus-visible,
@@ -70,7 +71,18 @@ button:disabled {
 .experience-step p,
 .recommendation-list span,
 .delta-item span,
-.province span {
+.province span,
+.today-hero-copy p,
+.today-controls span,
+.recommended-action span,
+.goal-card p,
+.growth-target-card span,
+.journal-entry p,
+.journal-entry span,
+.journal-empty-detail span,
+.battle-card span,
+.battle-card p,
+.battle-log-list {
   color: #5f6f70;
   font-size: 13px;
   line-height: 1.5;
@@ -241,6 +253,243 @@ h2 {
 .daily-strip span {
   color: #5f6f70;
   font-size: 13px;
+}
+
+.today-hero,
+.today-panel,
+.journal-panel {
+  background: #ffffff;
+  border: 1px solid #dce4df;
+  border-radius: 8px;
+}
+
+.today-hero {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.today-hero-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.today-hero-copy h2 {
+  margin-bottom: 0;
+}
+
+.today-hero-copy p {
+  margin: 0;
+}
+
+.today-controls {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(160px, 1fr) minmax(120px, 150px) minmax(160px, 1fr) auto;
+}
+
+.today-controls label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.today-controls select {
+  background: #ffffff;
+  border: 1px solid #cdd8d4;
+  border-radius: 8px;
+  color: #172425;
+  font: inherit;
+  min-height: 44px;
+  padding: 0 12px;
+  width: 100%;
+}
+
+.today-action-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.recommended-action,
+.goal-card,
+.growth-target-card {
+  background: #fbfcfa;
+  border: 1px solid #dce4df;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  min-height: 112px;
+  padding: 12px;
+}
+
+.recommended-action {
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.recommended-action > div,
+.goal-card > div,
+.growth-target-card > div,
+.battle-card-head > div,
+.journal-entry-head > div {
+  min-width: 0;
+}
+
+.recommended-action button,
+.goal-card button,
+.growth-target-card button {
+  min-height: 44px;
+  min-width: 96px;
+}
+
+.recommended-action strong,
+.goal-card strong,
+.growth-target-card strong,
+.journal-entry strong,
+.journal-empty-detail strong,
+.battle-card strong {
+  color: #10292b;
+  overflow-wrap: anywhere;
+}
+
+.recommended-action div,
+.growth-target-card div {
+  display: grid;
+  gap: 4px;
+}
+
+.today-layout {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1.08fr) minmax(320px, 0.92fr);
+}
+
+.today-panel {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.goal-list,
+.growth-target-list {
+  display: grid;
+  gap: 10px;
+}
+
+.goal-card {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.goal-card p {
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.goal-card.tone-success {
+  border-color: #bfdac9;
+}
+
+.goal-card.tone-warning,
+.goal-card.tone-danger {
+  border-color: #ecd9b2;
+}
+
+.growth-target-card {
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 86px;
+}
+
+.journal-panel {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.journal-panel > .section-title {
+  margin-bottom: 0;
+}
+
+.journal-layout {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(280px, 0.86fr) minmax(0, 1.14fr);
+}
+
+.journal-list {
+  display: grid;
+  gap: 10px;
+  max-height: 560px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.journal-entry {
+  background: #fbfcfa;
+  border: 1px solid #dce4df;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.journal-entry.tone-success {
+  border-color: #bfdac9;
+}
+
+.journal-entry.tone-warning,
+.journal-entry.tone-danger {
+  border-color: #ecd9b2;
+}
+
+.journal-entry-head {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.journal-entry-head span {
+  flex: 0 0 auto;
+}
+
+.journal-entry p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.journal-deltas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.journal-deltas span {
+  background: #edf1ef;
+  border-radius: 999px;
+  color: #42585a;
+  padding: 5px 8px;
+}
+
+.journal-detail {
+  min-width: 0;
+}
+
+.journal-detail .experience-panel {
+  border: 0;
+  padding: 0;
+}
+
+.journal-empty-detail {
+  background: #fbfcfa;
+  border: 1px dashed #cbd7d2;
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  min-height: 160px;
+  padding: 14px;
 }
 
 .experience-panel {
@@ -490,6 +739,47 @@ h2 {
 
 .battle-row {
   grid-template-columns: minmax(140px, 0.8fr) minmax(180px, 1fr) auto;
+}
+
+.battle-card {
+  background: #fbfcfa;
+  border: 1px solid #dce4df;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.battle-card-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.battle-card-head > div {
+  display: grid;
+  gap: 4px;
+}
+
+.battle-stat-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.battle-stat-grid span {
+  background: #edf1ef;
+  border-radius: 8px;
+  color: #203233;
+  padding: 8px 10px;
+}
+
+.battle-log-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
 }
 
 .task-row div {
@@ -759,11 +1049,30 @@ h2 {
 
   .main-grid,
   .experience-layout,
+  .today-layout,
+  .journal-layout,
   .battle-row,
   .inner-world-layout,
   .faction-layout,
   .rank-summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .today-controls,
+  .today-action-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .today-controls > button {
+    min-height: 44px;
+  }
+
+  .journal-list {
+    max-height: 360px;
+  }
+
+  .battle-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -772,9 +1081,19 @@ h2 {
     padding: 12px 12px calc(84px + env(safe-area-inset-bottom));
   }
 
+  h1 {
+    font-size: 26px;
+  }
+
+  h2 {
+    font-size: 18px;
+  }
+
   .topbar,
   .section-title,
-  .daily-strip {
+  .daily-strip,
+  .event-hero,
+  .battle-card-head {
     align-items: flex-start;
     flex-direction: column;
   }
@@ -791,9 +1110,60 @@ h2 {
   .create-form,
   .delta-grid,
   .overview-grid,
+  .today-controls,
+  .today-action-grid,
+  .recommended-action,
+  .goal-card,
+  .growth-target-card,
+  .battle-stat-grid,
   .inner-world-lists,
   .faction-route-list {
     grid-template-columns: 1fr;
+  }
+
+  .today-hero,
+  .today-panel,
+  .journal-panel,
+  .panel,
+  .onboarding-panel,
+  .tab-surface {
+    padding: 14px;
+  }
+
+  .today-controls {
+    align-items: stretch;
+  }
+
+  .today-controls > button,
+  .recommended-action button,
+  .goal-card button,
+  .growth-target-card button,
+  .event-hero button {
+    justify-content: center;
+    min-height: 44px;
+    width: 100%;
+  }
+
+  .recommended-action,
+  .goal-card,
+  .growth-target-card {
+    min-height: 0;
+  }
+
+  .journal-list {
+    max-height: none;
+    padding-right: 0;
+  }
+
+  .journal-entry-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .experience-step {
+    grid-template-columns: 28px minmax(0, 1fr);
+    padding: 10px;
   }
 
   .quick-actions,

@@ -82,10 +82,9 @@ export class MultiplayerService {
     await this.ensureTowerStates();
     const towers = await this.prisma.towerState.findMany({
       where: { eraId: defaultEraId },
-      orderBy: { provinceId: "asc" },
     });
 
-    return { towers: towers.map(toTowerStateSummary) };
+    return { towers: sortTowersByConfig(towers).map(toTowerStateSummary) };
   }
 
   async submitTowerAction(input: {
@@ -736,10 +735,9 @@ export class MultiplayerService {
     await this.ensureResourcePoints();
     const points = await this.prisma.resourcePointState.findMany({
       where: { eraId: defaultEraId },
-      orderBy: { provinceId: "asc" },
     });
 
-    return { resource_points: points.map(toResourcePointSummary) };
+    return { resource_points: sortByProvinceConfig(points).map(toResourcePointSummary) };
   }
 
   async attackPlayer(input: {
@@ -1537,6 +1535,24 @@ function createSimpleBattleLog(input: {
 
 function addScore(map: Map<string, bigint>, key: string, score: bigint) {
   map.set(key, (map.get(key) ?? 0n) + score);
+}
+
+function sortTowersByConfig<T extends { towerId: string }>(items: T[]): T[] {
+  const order = new Map(towerConfigs.map((config, index) => [config.towerId, index]));
+  return [...items].sort((left, right) => {
+    const leftIndex = order.get(left.towerId) ?? Number.MAX_SAFE_INTEGER;
+    const rightIndex = order.get(right.towerId) ?? Number.MAX_SAFE_INTEGER;
+    return leftIndex - rightIndex;
+  });
+}
+
+function sortByProvinceConfig<T extends { provinceId: string }>(items: T[]): T[] {
+  const order = new Map(towerConfigs.map((config, index) => [config.provinceId, index]));
+  return [...items].sort((left, right) => {
+    const leftIndex = order.get(left.provinceId) ?? Number.MAX_SAFE_INTEGER;
+    const rightIndex = order.get(right.provinceId) ?? Number.MAX_SAFE_INTEGER;
+    return leftIndex - rightIndex;
+  });
 }
 
 function rollRange(seed: string, min: number, max: number): number {

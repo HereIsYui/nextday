@@ -18,12 +18,19 @@ import type {
   WorldBossState,
 } from "@prisma/client";
 import { getItemMeta } from "../production/production.constants";
+import { towerConfigs } from "./multiplayer.constants";
 
 export function toTowerStateSummary(tower: TowerState): TowerStateSummary {
+  const config = towerConfigs.find((item) => item.towerId === tower.towerId);
+
   return {
     tower_id: tower.towerId,
     province_id: tower.provinceId,
     tower_name: tower.towerName,
+    mechanism: config?.mechanism ?? "异步镇封",
+    boss_name: config?.bossName ?? "封印塔灵",
+    material_name: config?.materialName ?? "镇封材料",
+    state_effect: config?.stateEffect ?? "影响本州资源和全服局势",
     integrity: tower.integrity,
     seal_progress: tower.sealProgress,
     break_progress: tower.breakProgress,

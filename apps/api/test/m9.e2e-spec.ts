@@ -91,7 +91,7 @@ describe("M9 MVP 总体验收与小纪元演练", () => {
       .get("/api/game/overview")
       .set("Authorization", `Bearer ${leader.token}`)
       .expect(200);
-    expect(overview.body.data.provinces).toHaveLength(4);
+    expect(overview.body.data.provinces).toHaveLength(9);
     expect(
       overview.body.data.tasks.some(
         (task: { task_id: string }) => task.task_id === "daily_explore",

@@ -920,7 +920,7 @@ export default function HomePage() {
                 <section className="panel" aria-label="九州地图">
                   <div className="section-title">
                     <h2>九州地图</h2>
-                    <span>首版开放四州</span>
+                    <span>九州全域 · 按章节解锁</span>
                   </div>
                   <div className="province-grid">
                     {overview?.provinces.map((province) => (
@@ -934,8 +934,12 @@ export default function HomePage() {
                             {province.unlocked ? "已开放" : `章节 ${province.chapter_required}`}
                           </StatusBadge>
                         </div>
-                        <span>{province.tower_name}</span>
-                        <span>{province.recommended_action}</span>
+                        <span>{province.theme}</span>
+                        <span>
+                          {province.tower_name} · {province.recommended_action}
+                        </span>
+                        <p className="province-detail">{province.resources.join(" / ")}</p>
+                        <p className="province-detail">{province.long_term_goal}</p>
                         <div className="mini-stats">
                           <span>探索 {province.exploration_count}</span>
                           <span>魔染 {province.corruption}</span>
@@ -1090,6 +1094,27 @@ export default function HomePage() {
                     detail={`资源点 ${firstResourcePoint?.name ?? "未读取"} · 个人榜 ${personalRank?.entries.length ?? 0} 人`}
                     title="PVP 与排行"
                   />
+                </div>
+                <div className="tower-grid" aria-label="九塔全域状态">
+                  {towers?.towers.map((tower) => (
+                    <article className="tower-card" key={tower.tower_id}>
+                      <div className="province-head">
+                        <strong>{tower.tower_name}</strong>
+                        <StatusBadge tone={tower.corruption > 60 ? "warning" : "neutral"}>
+                          阶段 {tower.phase}
+                        </StatusBadge>
+                      </div>
+                      <span>
+                        {tower.boss_name} · {tower.material_name}
+                      </span>
+                      <p>{tower.mechanism}</p>
+                      <div className="mini-stats">
+                        <span>完整 {tower.integrity}</span>
+                        <span>镇封 {tower.seal_progress}</span>
+                        <span>魔染 {tower.corruption}</span>
+                      </div>
+                    </article>
+                  ))}
                 </div>
               </section>
             ) : null}

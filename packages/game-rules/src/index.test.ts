@@ -1,9 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { entitlementTierLabels, mvpProvinceLabels, riskStatusLabels } from "./index";
+import { entitlementTierLabels, provinceLabels, riskStatusLabels } from "./index";
 
 describe("game-rules 展示规则", () => {
-  it("包含 MVP 四州", () => {
-    expect(Object.values(mvpProvinceLabels)).toEqual(["冀州", "兖州", "青州", "徐州"]);
+  it("包含 P1 九州", () => {
+    expect(Object.values(provinceLabels)).toEqual([
+      "冀州",
+      "兖州",
+      "青州",
+      "徐州",
+      "扬州",
+      "荆州",
+      "豫州",
+      "梁州",
+      "雍州",
+    ]);
   });
 
   it("包含大月卡与风控状态展示", () => {

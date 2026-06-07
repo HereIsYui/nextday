@@ -39,7 +39,18 @@ describe("M4 多人异步玩法", () => {
       .get("/api/multiplayer/towers")
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
-    expect(towers.body.data.towers).toHaveLength(4);
+    expect(towers.body.data.towers).toHaveLength(9);
+    expect(towers.body.data.towers.map((item: { tower_name: string }) => item.tower_name)).toEqual([
+      "玄铁塔",
+      "礼法塔",
+      "潮生塔",
+      "戈阳塔",
+      "琉光塔",
+      "万木塔",
+      "天衡塔",
+      "镇岳塔",
+      "太初塔",
+    ]);
     const tower = towers.body.data.towers[0];
 
     const beforeAction = await prisma.playerActionState.findUniqueOrThrow({ where: { playerId } });

@@ -9,6 +9,7 @@ import {
   permanentPoolRewards,
   vipBoundJadeRewards,
 } from "../commerce/commerce.constants";
+import { provinceConfigs } from "../game/game.constants";
 import {
   bossConfig,
   rankRewardPreview,
@@ -72,16 +73,20 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
   },
   world: {
     config_type: "world",
-    config_version: "world_m2_v1",
+    config_version: "world_p1_v1",
     ruleset_version: "ruleset_m2_v1",
     reward_config_version: "reward_m2_v1",
     payload: {
-      provinces: [
-        { province_id: "ji", name: "冀州", tower_name: "玄铁塔", chapter_required: 1 },
-        { province_id: "yan", name: "兖州", tower_name: "礼法塔", chapter_required: 2 },
-        { province_id: "qing", name: "青州", tower_name: "潮生塔", chapter_required: 3 },
-        { province_id: "xu", name: "徐州", tower_name: "戈阳塔", chapter_required: 3 },
-      ],
+      provinces: provinceConfigs.map((province) => ({
+        province_id: province.provinceId,
+        name: province.name,
+        theme: province.theme,
+        tower_name: province.towerName,
+        chapter_required: province.chapterRequired,
+        resources: province.resources,
+        low_level_entry: province.lowLevelEntry,
+        long_term_goal: province.longTermGoal,
+      })),
     },
   },
   task: {
@@ -102,18 +107,18 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
   },
   battle: {
     config_type: "battle",
-    config_version: "battle_m2_v1",
+    config_version: "battle_p1_v1",
     ruleset_version: "ruleset_m2_v1",
     reward_config_version: "reward_m2_v1",
     payload: {
       mode: "auto_explore",
       max_rounds: 3,
-      enemies: [
-        { enemy_id: "gudiao", name: "蛊雕", province_id: "ji" },
-        { enemy_id: "zheng", name: "狰", province_id: "yan" },
-        { enemy_id: "xuangui", name: "旋龟", province_id: "qing" },
-        { enemy_id: "kui", name: "夔", province_id: "xu" },
-      ],
+      enemies: provinceConfigs.map((province) => ({
+        enemy_id: province.enemyId,
+        name: province.enemyName,
+        province_id: province.provinceId,
+        power: province.enemyPower,
+      })),
     },
   },
   cave: {
@@ -185,7 +190,7 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
   },
   tower: {
     config_type: "tower",
-    config_version: "tower_m4_v1",
+    config_version: "tower_p1_v1",
     ruleset_version: "ruleset_m4_v1",
     reward_config_version: "reward_m4_v1",
     payload: {

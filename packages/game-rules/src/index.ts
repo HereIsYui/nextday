@@ -42,9 +42,16 @@ export const currencyLabels = {
   era_point: "纪元积分",
 } as const;
 
-export const mvpProvinceLabels = {
+export const provinceLabels = {
   ji: "冀州",
   yan: "兖州",
   qing: "青州",
   xu: "徐州",
+  yang: "扬州",
+  jing: "荆州",
+  yu: "豫州",
+  liang: "梁州",
+  yong: "雍州",
 } as const;
+
+export const mvpProvinceLabels = provinceLabels;

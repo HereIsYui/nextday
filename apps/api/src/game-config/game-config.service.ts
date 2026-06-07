@@ -21,7 +21,7 @@ export class GameConfigService {
       orderBy: { publishedAt: "desc" },
     });
 
-    if (activeConfig) {
+    if (activeConfig && !isLegacyBuiltinConfig(configType, activeConfig.configVersion)) {
       return {
         config_type: activeConfig.configType,
         config_version: activeConfig.configVersion,
@@ -31,6 +31,11 @@ export class GameConfigService {
         payload: activeConfig.payload as ConfigEnvelope["payload"],
       };
     }
+
+    await this.prisma.configVersion.updateMany({
+      where: { configType, active: true },
+      data: { active: false },
+    });
 
     await this.prisma.configVersion.upsert({
       where: {
@@ -56,4 +61,14 @@ export class GameConfigService {
 
     return defaultEnvelope;
   }
+}
+
+const legacyBuiltinConfigVersions: Record<string, string[]> = {
+  battle: ["battle_m2_v1"],
+  tower: ["tower_m4_v1"],
+  world: ["world_m2_v1"],
+};
+
+function isLegacyBuiltinConfig(configType: string, configVersion: string): boolean {
+  return legacyBuiltinConfigVersions[configType]?.includes(configVersion) ?? false;
 }

@@ -7,13 +7,94 @@ export interface TowerConfig {
   towerId: string;
   provinceId: string;
   towerName: string;
+  mechanism: string;
+  bossName: string;
+  materialName: string;
+  stateEffect: string;
 }
 
 export const towerConfigs: TowerConfig[] = [
-  { towerId: "tower_xuantie", provinceId: "ji", towerName: "玄铁塔" },
-  { towerId: "tower_lifa", provinceId: "yan", towerName: "礼法塔" },
-  { towerId: "tower_chaosheng", provinceId: "qing", towerName: "潮生塔" },
-  { towerId: "tower_geyang", provinceId: "xu", towerName: "戈阳塔" },
+  {
+    towerId: "tower_xuantie",
+    provinceId: "ji",
+    towerName: "玄铁塔",
+    mechanism: "教学型镇封，裂隙压力低",
+    bossName: "玄铁塔灵",
+    materialName: "玄铁残片",
+    stateEffect: "决定新手州魔潮强度和基础灵脉收益",
+  },
+  {
+    towerId: "tower_lifa",
+    provinceId: "yan",
+    towerName: "礼法塔",
+    mechanism: "宗门协作贡献加权",
+    bossName: "礼法司命",
+    materialName: "礼器残片",
+    stateEffect: "影响宗门任务、仓库额度和宗门建设效率",
+  },
+  {
+    towerId: "tower_chaosheng",
+    provinceId: "qing",
+    towerName: "潮生塔",
+    mechanism: "潮汐周期改变丹药材料产出",
+    bossName: "潮生龙影",
+    materialName: "丹火材料",
+    stateEffect: "影响丹火材料、海妖事件和水脉收益",
+  },
+  {
+    towerId: "tower_geyang",
+    provinceId: "xu",
+    towerName: "戈阳塔",
+    mechanism: "PVP 驻守和战备贡献加权",
+    bossName: "戈阳战魂",
+    materialName: "战备符",
+    stateEffect: "影响资源点争夺、战备材料和阵营战线",
+  },
+  {
+    towerId: "tower_liuguang",
+    provinceId: "yang",
+    towerName: "琉光塔",
+    mechanism: "商路稳定度与交易税联动",
+    bossName: "琉光商灵",
+    materialName: "商票",
+    stateEffect: "影响交易行税率、商票产出和灵田收益",
+  },
+  {
+    towerId: "tower_wanmu",
+    provinceId: "jing",
+    towerName: "万木塔",
+    mechanism: "秘境层数与灵植生长联动",
+    bossName: "万木妖母",
+    materialName: "内天地种子",
+    stateEffect: "影响灵草、妖藤和内天地种子产出",
+  },
+  {
+    towerId: "tower_tianheng",
+    provinceId: "yu",
+    towerName: "天衡塔",
+    mechanism: "阵营差距越大，弱势补偿越强",
+    bossName: "天衡执印",
+    materialName: "阵眼核心",
+    stateEffect: "影响阵营平衡、九州中枢和主线分支",
+  },
+  {
+    towerId: "tower_zhenyue",
+    provinceId: "liang",
+    towerName: "镇岳塔",
+    mechanism: "承伤、炼体、地脉修复加权",
+    bossName: "镇岳山君",
+    materialName: "地脉石",
+    stateEffect: "影响矿材、炼体材料和防御法宝产出",
+  },
+  {
+    towerId: "tower_taichu",
+    provinceId: "yong",
+    towerName: "太初塔",
+    mechanism: "终局封印材料与魔王前置联动",
+    bossName: "太初魔影",
+    materialName: "太初石",
+    stateEffect: "影响最终魔王形态、终局材料和圣遗事件",
+  },
 ];
 
 export interface TowerActionConfig {
@@ -110,6 +191,11 @@ export const resourcePointConfigs = [
   { resourcePointId: "resource_yan_array", provinceId: "yan", name: "兖州礼阵台" },
   { resourcePointId: "resource_qing_tide", provinceId: "qing", name: "青州潮汐渡" },
   { resourcePointId: "resource_xu_front", provinceId: "xu", name: "徐州戈阳关" },
+  { resourcePointId: "resource_yang_trade", provinceId: "yang", name: "扬州琉光商路" },
+  { resourcePointId: "resource_jing_grove", provinceId: "jing", name: "荆州万木药泽" },
+  { resourcePointId: "resource_yu_eye", provinceId: "yu", name: "豫州天衡阵眼" },
+  { resourcePointId: "resource_liang_vein", provinceId: "liang", name: "梁州镇岳地脉" },
+  { resourcePointId: "resource_yong_relic", provinceId: "yong", name: "雍州太初遗迹" },
 ];
 
 export const pvpActionPointCost = 2;

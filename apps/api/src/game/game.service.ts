@@ -590,7 +590,7 @@ export class GameService {
       where: { playerId },
     });
 
-    return states.map((state) => {
+    return sortProvincesByConfig(states).map((state) => {
       const progress = progressList.find((item) => item.provinceId === state.provinceId);
       if (!progress) {
         throw new Error("玩家州进度缺失");
@@ -1060,4 +1060,13 @@ function normalizeStringArray(value: Prisma.JsonValue | undefined): string[] | n
 
   const items = value.filter((item): item is string => typeof item === "string");
   return items.length ? items : null;
+}
+
+function sortProvincesByConfig<T extends { provinceId: string }>(items: T[]): T[] {
+  const order = new Map(provinceConfigs.map((province, index) => [province.provinceId, index]));
+  return [...items].sort((left, right) => {
+    const leftIndex = order.get(left.provinceId) ?? Number.MAX_SAFE_INTEGER;
+    const rightIndex = order.get(right.provinceId) ?? Number.MAX_SAFE_INTEGER;
+    return leftIndex - rightIndex;
+  });
 }

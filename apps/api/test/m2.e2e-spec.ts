@@ -44,12 +44,18 @@ describe("M2 核心循环", () => {
     expect(response.body.data.action_state.action_points).toBeGreaterThanOrEqual(60);
     expect(response.body.data.cultivation.claimable_cultivation).toMatch(/^\d+$/);
     expect(response.body.data.cave.claimable_minutes).toBeGreaterThanOrEqual(0);
-    expect(response.body.data.provinces).toHaveLength(4);
+    expect(response.body.data.provinces).toHaveLength(9);
     expect(response.body.data.provinces[0]).toMatchObject({
       province_id: "ji",
       name: "冀州",
       tower_name: "玄铁塔",
       unlocked: true,
+    });
+    expect(response.body.data.provinces[8]).toMatchObject({
+      province_id: "yong",
+      name: "雍州",
+      tower_name: "太初塔",
+      unlocked: false,
     });
     expect(
       response.body.data.tasks.some(

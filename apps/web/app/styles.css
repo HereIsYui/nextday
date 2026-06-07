@@ -76,6 +76,14 @@ button:disabled {
   line-height: 1.5;
 }
 
+.tower-card span,
+.tower-card p,
+.province-detail {
+  color: #5f6f70;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .eyebrow,
 h1,
 h2,
@@ -429,7 +437,7 @@ h2 {
   border-radius: 8px;
   display: grid;
   gap: 8px;
-  min-height: 132px;
+  min-height: 176px;
   padding: 14px;
 }
 
@@ -447,6 +455,10 @@ h2 {
 .province strong {
   color: #10292b;
   font-size: 18px;
+}
+
+.province-detail {
+  margin: 0;
 }
 
 .mini-stats {
@@ -509,6 +521,31 @@ h2 {
 .production-box strong {
   color: #10292b;
   font-size: 17px;
+}
+
+.tower-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-top: 12px;
+}
+
+.tower-card {
+  background: #fbfcfa;
+  border: 1px solid #dce4df;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  min-height: 154px;
+  padding: 14px;
+}
+
+.tower-card strong {
+  color: #10292b;
+}
+
+.tower-card p {
+  margin: 0;
 }
 
 .production-actions {

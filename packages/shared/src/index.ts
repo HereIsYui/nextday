@@ -320,10 +320,15 @@ export interface ActionState {
 export interface ProvinceSummary {
   province_id: string;
   name: string;
+  theme: string;
   tower_name: string;
   chapter_required: number;
   unlocked: boolean;
   recommended_action: string;
+  resources: string[];
+  low_level_entry: string;
+  long_term_goal: string;
+  tower_effect: string;
   tower_integrity: number;
   rift_pressure: number;
   corruption: number;
@@ -656,6 +661,10 @@ export interface TowerStateSummary {
   tower_id: string;
   province_id: string;
   tower_name: string;
+  mechanism: string;
+  boss_name: string;
+  material_name: string;
+  state_effect: string;
   integrity: number;
   seal_progress: number;
   break_progress: number;

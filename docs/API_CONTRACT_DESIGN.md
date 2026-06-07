@@ -445,7 +445,8 @@ P1 新增接口分组：
 | 活动 | `/api/events/progress` | POST | 提交活动进度或活动行动，需幂等键 |
 | 活动 | `/api/events/claim` | POST | 领取活动奖励，需幂等键 |
 | 合服 dry-run | `/api/admin/merge/dry-run` | POST | 后台生成合服影响报告，不改真实数据 |
-| 合服 dry-run | `/api/admin/merge/dry-run/{report_id}` | GET | 查询 dry-run 冲突、补偿、风险和回滚建议 |
+| 合服 dry-run | `/api/admin/merge/dry-run?report_id=...` | GET | 查询 dry-run 冲突、补偿、风险和回滚建议 |
+| 合服执行预留 | `/api/admin/merge/execute` | POST | 写入执行预留审计，返回 `reserved_only`，不执行真实合服 |
 
 P1 接口规则：
 
@@ -455,6 +456,7 @@ P1 接口规则：
 - 活动必须支持异步参与，基础参与奖励可补偿，排行冲刺奖励不补发。
 - 排行、称号、活动和合服相关接口必须返回配置版本、奖励版本和规则版本。
 - 合服 dry-run 接口只能生成报告、冲突项和建议，不允许修改真实玩家、宗门、排行、订单、保底和纪元数据。
+- 合服执行预留接口必须始终返回 `allowed=false` 和 `execution_status=reserved_only`，真实合服需要单独发布、人工确认和独立审计。
 - WebSocket / SSE 后续即使接入，也只推送提醒和状态变化，P1 核心结算仍以 HTTP 结果为准。
 
 ## 十四、验收场景

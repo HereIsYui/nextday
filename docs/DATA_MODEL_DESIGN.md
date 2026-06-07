@@ -62,7 +62,7 @@
 | mail_record | 邮件记录 |
 | announcement_record | 公告记录 |
 | merge_dry_run_report | P1 合服演练报告 |
-| merge_conflict_item | P1 合服冲突项 |
+| merge_conflict_item | P1 合服冲突项，当前 P1-8 先聚合在 `merge_dry_run_report` 的 JSON 摘要中，真实多服执行前再拆独立表 |
 
 所有可回放、可补偿、可结算的记录必须保存配置版本。版本字段用于处理长线运营中的数值调整、战报复现、补单、补偿和回滚。
 
@@ -1042,18 +1042,25 @@ P1 v2 先补 Web 玩法体验厚度，再扩中后期内容。Web 体验字段�
 | report_id | 合服演练报告 ID |
 | source_server_ids | 来源服务器列表 |
 | target_server_id | 目标服务器 ID |
-| era_id | 演练关联纪元 |
-| status | 生成中 / 已完成 / 已废弃 |
+| status | generated / archived |
 | summary | 影响摘要 |
-| compensation_plan_summary | 补偿建议摘要 |
-| rollback_plan_summary | 回滚建议摘要 |
+| conflict_summary | 跨服重名和通用冲突摘要 |
+| asset_inheritance_summary | 付费仙玉、月卡、保底和订单检查摘要 |
+| rank_freeze_summary | 排行冻结检查摘要 |
+| sect_conflict_summary | 宗门同名和成员上限冲突摘要 |
+| compensation_suggestion | 补偿建议摘要 |
+| rollback_suggestion | 回滚建议摘要 |
 | risk_summary | 风险摘要 |
-| operator_id | 发起 GM |
-| merge_config_version | 合服配置版本 |
+| generated_by | 发起 GM |
+| execute_status | reserved_only |
+| config_version | 合服配置版本 |
+| ruleset_version | 合服规则版本 |
+| idempotency_key | 后台生成报告幂等键 |
 | created_at | 创建时间 |
-| generated_at | 生成时间 |
 
 `merge_conflict_item`
+
+当前 P1-8 先不建独立表，冲突项以 `conflict_summary`、`sect_conflict_summary`、`rank_freeze_summary` 等 JSON 字段进入报告。真实多服数据接入、真实合服执行开放前，再按以下字段拆表：
 
 | 字段 | 说明 |
 | --- | --- |

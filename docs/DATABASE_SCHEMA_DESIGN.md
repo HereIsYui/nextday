@@ -771,6 +771,39 @@
 - `idx_delayed_status_time(status, created_at)`。
 - `idx_delayed_source(source_type, source_id)`。
 
+`merge_dry_run_report`
+
+P1 合服演练只生成影响报告，不修改真实业务数据。冲突明细在 P1-8 先以 JSON 摘要进入报告，真实多服合服执行开放前再拆独立冲突表。
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| report_id | varchar | PK | 合服演练报告 |
+| source_server_ids | jsonb | not null | 来源服务器列表 |
+| target_server_id | varchar | index | 目标服务器 |
+| status | varchar | index | generated / archived |
+| summary | jsonb | not null | 影响摘要和数据不变更声明 |
+| conflict_summary | jsonb | not null | 角色名、宗门名等通用冲突摘要 |
+| asset_inheritance_summary | jsonb | not null | 付费资产、月卡、保底和订单检查 |
+| rank_freeze_summary | jsonb | not null | 排行冻结和快照检查 |
+| sect_conflict_summary | jsonb | not null | 宗门同名、成员上限和处理建议 |
+| compensation_suggestion | jsonb | not null | 补偿建议和奖励边界 |
+| risk_summary | jsonb | not null | 风险等级、待审核收益和风控记录 |
+| rollback_suggestion | jsonb | not null | dry-run 和真实合服回滚建议 |
+| config_version | varchar |  | 合服配置版本 |
+| ruleset_version | varchar |  | 合服规则版本 |
+| generated_by | varchar |  | 发起 GM |
+| execute_status | varchar | index | reserved_only |
+| idempotency_key | varchar | unique nullable | 生成报告幂等键 |
+| created_at | datetime | index | 创建时间 |
+
+索引：
+
+- `uk_merge_dry_run_idempotency(idempotency_key)`。
+- `idx_merge_dry_run_target(target_server_id)`。
+- `idx_merge_dry_run_status(status)`。
+- `idx_merge_dry_run_execute_status(execute_status)`。
+- `idx_merge_dry_run_created_at(created_at)`。
+
 ## 十二、幂等与事务边界
 
 必须具备幂等键的操作：
@@ -784,6 +817,7 @@
 - 订单创建和补单。
 - 月卡购买。
 - GM 补偿。
+- 合服 dry-run 报告生成和执行预留审计。
 
 事务边界建议：
 
@@ -795,6 +829,7 @@
 - 订单到账、货币增加、订单状态变更应在同一事务。
 - 高风险收益进入延迟结算时，原始行动记录、风控记录和延迟结算记录应在同一事务或同一可靠队列链路内完成。
 - 排行结算可先生成快照，再异步发放奖励。
+- 合服 dry-run 只能读取业务表并写入 `merge_dry_run_report`、`gm_operation_log` 和幂等记录，不得修改玩家、宗门、排行、订单、保底、活动和纪元状态。
 
 ## 十三、验收场景
 
@@ -806,3 +841,4 @@
 - 炼丹、炼器、九大古宝日课、交易行和抽卡保底都有字段级表结构、主键、唯一键和核心索引。
 - 九大古宝池不能写入付费仙玉成功抽卡记录，预留入口不改变 `gacha_pity_state`。
 - 行为风控和延迟结算有字段级表结构，可追溯脚本点击风险、权益越权、收益暂缓和人工审核结果。
+- 合服 dry-run 有字段级报告表，执行预留只写审计日志，不执行真实合服。

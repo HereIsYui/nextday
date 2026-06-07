@@ -1671,6 +1671,7 @@ export type ConfigType =
   | "era_rank"
   | "event"
   | "activity_template"
+  | "merge_dry_run"
   | "risk";
 
 export interface ConfigEnvelope<TPayload = Record<string, unknown>> {
@@ -1842,6 +1843,58 @@ export interface RollbackAdminConfigRequest {
 
 export interface RollbackAdminConfigResponse {
   config: AdminConfigVersionState;
+  operation: AdminGmOperationState;
+}
+
+export interface CreateMergeDryRunRequest {
+  source_server_ids: string[];
+  target_server_id: string;
+  include_inactive?: boolean;
+  operator?: string;
+  reason?: string;
+}
+
+export interface MergeDryRunReportState {
+  report_id: string;
+  source_server_ids: string[];
+  target_server_id: string;
+  status: string;
+  summary: Record<string, unknown>;
+  conflict_summary: Record<string, unknown>;
+  asset_inheritance_summary: Record<string, unknown>;
+  rank_freeze_summary: Record<string, unknown>;
+  sect_conflict_summary: Record<string, unknown>;
+  compensation_suggestion: Record<string, unknown>;
+  risk_summary: Record<string, unknown>;
+  rollback_suggestion: Record<string, unknown>;
+  config_version: string;
+  ruleset_version: string;
+  generated_by: string;
+  execute_status: string;
+  created_at: string;
+}
+
+export interface CreateMergeDryRunResponse {
+  report: MergeDryRunReportState;
+  operation: AdminGmOperationState;
+}
+
+export interface MergeDryRunReportResponse {
+  report: MergeDryRunReportState;
+}
+
+export interface ExecuteMergeReservedRequest {
+  report_id: string;
+  confirm_text?: string;
+  operator?: string;
+  reason?: string;
+}
+
+export interface ExecuteMergeReservedResponse {
+  allowed: false;
+  execution_status: "reserved_only";
+  message: string;
+  report: MergeDryRunReportState;
   operation: AdminGmOperationState;
 }
 

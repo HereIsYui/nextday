@@ -40,6 +40,8 @@ import type {
   CreateAnnouncementResponse,
   CreateAutomationQueueRequest,
   CreateAutomationQueueResponse,
+  CreateMergeDryRunRequest,
+  CreateMergeDryRunResponse,
   CreatePlayerRequest,
   CreatePlayerResponse,
   CreateSectRequest,
@@ -51,6 +53,8 @@ import type {
   EquipmentOperationRecordListResponse,
   EquipmentOperationResponse,
   EquipmentTargetRequest,
+  ExecuteMergeReservedRequest,
+  ExecuteMergeReservedResponse,
   ExploreRequest,
   ExploreResponse,
   FactionReputationResponse,
@@ -75,6 +79,7 @@ import type {
   InnerWorldUpgradeResponse,
   JoinSectRequest,
   LoginResponse,
+  MergeDryRunReportResponse,
   MockFishpiLoginRequest,
   PillUseRequest,
   PillUseResponse,
@@ -946,6 +951,52 @@ export class GameClient {
   ): Promise<ApiResponse<ResolveRiskRecordResponse>> {
     return this.post<ResolveRiskRecordResponse, ResolveRiskRecordRequest>(
       "/api/admin/risk/resolve",
+      body,
+      {
+        idempotencyKey: input.idempotencyKey,
+        headers: {
+          "X-Admin-Token": input.adminToken,
+        },
+      },
+    );
+  }
+
+  createMergeDryRun(
+    body: CreateMergeDryRunRequest,
+    input: { adminToken: string; idempotencyKey: string },
+  ): Promise<ApiResponse<CreateMergeDryRunResponse>> {
+    return this.post<CreateMergeDryRunResponse, CreateMergeDryRunRequest>(
+      "/api/admin/merge/dry-run",
+      body,
+      {
+        idempotencyKey: input.idempotencyKey,
+        headers: {
+          "X-Admin-Token": input.adminToken,
+        },
+      },
+    );
+  }
+
+  getMergeDryRunReport(input: {
+    reportId: string;
+    adminToken: string;
+  }): Promise<ApiResponse<MergeDryRunReportResponse>> {
+    return this.get<MergeDryRunReportResponse>(
+      `/api/admin/merge/dry-run?report_id=${encodeURIComponent(input.reportId)}`,
+      {
+        headers: {
+          "X-Admin-Token": input.adminToken,
+        },
+      },
+    );
+  }
+
+  reserveMergeExecution(
+    body: ExecuteMergeReservedRequest,
+    input: { adminToken: string; idempotencyKey: string },
+  ): Promise<ApiResponse<ExecuteMergeReservedResponse>> {
+    return this.post<ExecuteMergeReservedResponse, ExecuteMergeReservedRequest>(
+      "/api/admin/merge/execute",
       body,
       {
         idempotencyKey: input.idempotencyKey,

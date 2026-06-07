@@ -172,10 +172,10 @@ P1 测试按阶段逐步接入自动化，目标脚本如下：
 | `npm run test:p1-faction` | 成仙 / 成魔 / 散修路线、转道、声望清除、宗门立场冲突 | P1-5 |
 | `npm run test:p1-rank` | 生产榜、纪元榜、内天地榜、阵营榜、称号继承和防滚雪球 | P1-6 |
 | `npm run test:p1-events` | 九州游历、丹器加试、宗门同贺、回归、补偿活动 | P1-7 |
-| `test:p1-merge` | 合服 dry-run 报告、冲突项、补偿建议、回滚建议 | P1-8 |
-| `test:p1` | 串联数值模拟、Web 体验、九州全域、内天地、阵营、排行、活动和合服 dry-run | P1-8 |
+| `npm run test:p1-merge` | 合服 dry-run 报告、冲突项、补偿建议、回滚建议和执行预留 | P1-8 |
+| `npm run test:p1` | 串联数值模拟、Web 体验、九州全域、内天地、阵营、排行、活动和合服 dry-run | P1-8 |
 
-P1-1 已落地 `npm run simulate:p1`，用于输出当前数值模拟报表；`npm run test:p1-simulation` 用于专项回归。P1-2 已接入 `npm run test:p1-web-experience`，用于验证核心玩法展示字段不改变原结算结果。P1-3 已接入 `npm run test:p1-world`，用于验证九州全域、五塔机制和新增资源点。P1-4 已接入 `npm run test:p1-inner-world`，用于验证内天地异步派驻、绑定产出边界、幂等、升级、支援次数和后台配置风控。P1-5 已接入 `npm run test:p1-faction`，用于验证成仙 / 成魔 / 散修路线、转道冷却、声望清除、宗门立场冲突和后台配置边界。P1-6 已接入 `npm run test:p1-rank`，用于验证完整排行、称号继承、祝福限幅、延迟结算排除和排行风控提示。P1-7 已接入 `npm run test:p1-events`，用于验证活动模板、异步进度、幂等奖励、后台配置校验、Web 活动中心和插件活动摘要。
+P1-1 已落地 `npm run simulate:p1`，用于输出当前数值模拟报表；`npm run test:p1-simulation` 用于专项回归。P1-2 已接入 `npm run test:p1-web-experience`，用于验证核心玩法展示字段不改变原结算结果。P1-3 已接入 `npm run test:p1-world`，用于验证九州全域、五塔机制和新增资源点。P1-4 已接入 `npm run test:p1-inner-world`，用于验证内天地异步派驻、绑定产出边界、幂等、升级、支援次数和后台配置风控。P1-5 已接入 `npm run test:p1-faction`，用于验证成仙 / 成魔 / 散修路线、转道冷却、声望清除、宗门立场冲突和后台配置边界。P1-6 已接入 `npm run test:p1-rank`，用于验证完整排行、称号继承、祝福限幅、延迟结算排除和排行风控提示。P1-7 已接入 `npm run test:p1-events`，用于验证活动模板、异步进度、幂等奖励、后台配置校验、Web 活动中心和插件活动摘要。P1-8 已接入 `npm run test:p1-merge`，用于验证合服配置只开放 dry-run、报告生成和查询、报告幂等、不修改真实业务表、执行预留返回 `reserved_only` 和 GM 审计留痕。
 
 P1 Web 体验验收：
 
@@ -223,6 +223,7 @@ P1 阵营、排行、活动和合服测试：
 | 活动异步参与 | 节日、回归、补偿活动不要求固定时间在线 |
 | 活动奖励边界 | 不突破付费强度和全服胜负边界 |
 | 合服 dry-run | 生成影响报告、冲突项、补偿和回滚建议，不修改真实数据 |
+| 合服执行预留 | 返回 `allowed=false` 和 `reserved_only`，只写 GM 审计，不执行真实合服 |
 
 每个 P1 阶段完成后必须通过：
 

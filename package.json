@@ -40,6 +40,8 @@
     "test:p1-faction": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run build:packages && DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run test:p1-faction -w @nextday/api",
     "test:p1-rank": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run build:packages && DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run test:p1-rank -w @nextday/api",
     "test:p1-events": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run build:packages && DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run test:p1-events -w @nextday/api",
+    "test:p1-merge": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run build:packages && DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run test:p1-merge -w @nextday/api",
+    "test:p1": "npm run test:p1-simulation && npm run test:p1-web-experience && npm run test:p1-world && npm run test:p1-inner-world && npm run test:p1-faction && npm run test:p1-rank && npm run test:p1-events && npm run test:p1-merge",
     "lint": "biome check .",
     "typecheck": "npm run build:packages && npm run typecheck --workspaces --if-present",
     "format:check": "biome ci ."

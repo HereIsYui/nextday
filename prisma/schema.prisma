@@ -1396,6 +1396,33 @@ model GmOperationLog {
   @@map("gm_operation_log")
 }
 
+model MergeDryRunReport {
+  reportId                String   @id @map("report_id")
+  sourceServerIds         Json     @map("source_server_ids")
+  targetServerId          String   @map("target_server_id")
+  status                  String   @default("generated")
+  summary                 Json
+  conflictSummary         Json     @map("conflict_summary")
+  assetInheritanceSummary Json     @map("asset_inheritance_summary")
+  rankFreezeSummary       Json     @map("rank_freeze_summary")
+  sectConflictSummary     Json     @map("sect_conflict_summary")
+  compensationSuggestion  Json     @map("compensation_suggestion")
+  riskSummary             Json     @map("risk_summary")
+  rollbackSuggestion      Json     @map("rollback_suggestion")
+  configVersion           String   @map("config_version")
+  rulesetVersion          String   @map("ruleset_version")
+  generatedBy             String   @map("generated_by")
+  executeStatus           String   @default("reserved_only") @map("execute_status")
+  idempotencyKey          String?  @unique @map("idempotency_key")
+  createdAt               DateTime @default(now()) @map("created_at")
+
+  @@index([targetServerId])
+  @@index([status])
+  @@index([executeStatus])
+  @@index([createdAt])
+  @@map("merge_dry_run_report")
+}
+
 model AuditLog {
   auditLogId     String   @id @map("audit_log_id")
   accountId      String?  @map("account_id")

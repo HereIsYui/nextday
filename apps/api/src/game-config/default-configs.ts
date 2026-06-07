@@ -346,6 +346,25 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
       })),
     },
   },
+  merge_dry_run: {
+    config_type: "merge_dry_run",
+    config_version: "merge_dry_run_p1_v1",
+    ruleset_version: "ruleset_p1_merge_v1",
+    reward_config_version: "reward_p1_merge_v1",
+    payload: {
+      mode: "dry_run_only",
+      merge_conditions: [
+        "目标服同纪元",
+        "排行先冻结",
+        "订单和保底先校验",
+        "宗门同名冲突生成改名建议",
+      ],
+      rank_freeze_rule: "dry-run 只读取 rank_snapshot / rank_entry，不锁定真实排行。",
+      inheritance_rule:
+        "付费仙玉、月卡剩余天数、抽卡保底、展示外观只生成检查报告，不在 dry-run 中迁移。",
+      execution_rule: "真实合服执行入口预留但默认不可用，必须人工确认并单独发布。",
+    },
+  },
   gacha: {
     config_type: "gacha",
     config_version: "gacha_m5_v1",

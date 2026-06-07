@@ -17,6 +17,11 @@ import type {
   AnnouncementListResponse,
   CreateAnnouncementRequest,
   CreateAnnouncementResponse,
+  CreateMergeDryRunRequest,
+  CreateMergeDryRunResponse,
+  ExecuteMergeReservedRequest,
+  ExecuteMergeReservedResponse,
+  MergeDryRunReportResponse,
   PublishAdminConfigRequest,
   PublishAdminConfigResponse,
   ResolveRiskRecordRequest,
@@ -121,6 +126,39 @@ export class AdminController {
   ): Promise<ResolveRiskRecordResponse> {
     assertAdminToken(request);
     return this.adminService.resolveRiskRecord({
+      body,
+      idempotencyKey: requireIdempotencyKey(request),
+    });
+  }
+
+  @Post("merge/dry-run")
+  createMergeDryRun(
+    @Body() body: CreateMergeDryRunRequest,
+    @Req() request: Request,
+  ): Promise<CreateMergeDryRunResponse> {
+    assertAdminToken(request);
+    return this.adminService.createMergeDryRun({
+      body,
+      idempotencyKey: requireIdempotencyKey(request),
+    });
+  }
+
+  @Get("merge/dry-run")
+  mergeDryRunReport(
+    @Query("report_id") reportId: string | undefined,
+    @Req() request: Request,
+  ): Promise<MergeDryRunReportResponse> {
+    assertAdminToken(request);
+    return this.adminService.getMergeDryRunReport(requireQuery(reportId, "报告 ID"));
+  }
+
+  @Post("merge/execute")
+  reserveMergeExecution(
+    @Body() body: ExecuteMergeReservedRequest,
+    @Req() request: Request,
+  ): Promise<ExecuteMergeReservedResponse> {
+    assertAdminToken(request);
+    return this.adminService.reserveMergeExecution({
       body,
       idempotencyKey: requireIdempotencyKey(request),
     });

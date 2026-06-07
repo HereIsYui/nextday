@@ -13,6 +13,7 @@ import type {
   AnnouncementListResponse,
   ConfigType,
   HealthStatus,
+  MergeDryRunReportResponse,
 } from "@nextday/shared";
 import { Button, StatusBadge } from "@nextday/ui";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
@@ -25,7 +26,8 @@ export default function AdminHomePage() {
   const [adminToken, setAdminToken] = useState(defaultAdminToken);
   const [logType, setLogType] = useState<AdminLogType>("behavior");
   const [configType, setConfigType] = useState<ConfigType>("gacha");
-  const [configPayload, setConfigPayload] = useState(defaultConfigPayload);
+  const [configPayload, setConfigPayload] = useState(getDefaultConfigPayload("gacha"));
+  const [mergeReportId, setMergeReportId] = useState("");
   const [digest, setDigest] = useState<AdminPlayerDigestResponse | null>(null);
   const [logs, setLogs] = useState<AdminPlayerLogsResponse | null>(null);
   const [mails, setMails] = useState<AdminMailListResponse | null>(null);
@@ -33,6 +35,7 @@ export default function AdminHomePage() {
   const [configs, setConfigs] = useState<AdminConfigVersionListResponse | null>(null);
   const [operations, setOperations] = useState<AdminGmOperationListResponse | null>(null);
   const [delayed, setDelayed] = useState<AdminDelayedSettlementListResponse | null>(null);
+  const [mergeReport, setMergeReport] = useState<MergeDryRunReportResponse | null>(null);
   const [message, setMessage] = useState("等待操作");
   const [busy, setBusy] = useState(false);
 
@@ -191,6 +194,11 @@ export default function AdminHomePage() {
     });
   }
 
+  function handleConfigTypeChange(nextConfigType: ConfigType) {
+    setConfigType(nextConfigType);
+    setConfigPayload(getDefaultConfigPayload(nextConfigType));
+  }
+
   async function handleRollbackConfig() {
     const target = configs?.configs.find((config) => !config.active) ?? configs?.configs[0];
     if (!target) {
@@ -265,6 +273,66 @@ export default function AdminHomePage() {
       );
       ensureOk(response);
       setMessage(`延迟结算已处理：${response.data.record.status}`);
+      await handleLoadOps();
+    });
+  }
+
+  async function handleCreateMergeDryRun() {
+    await runAdminAction("生成合服演练报告", async () => {
+      const response = await client.createMergeDryRun(
+        {
+          source_server_ids: ["mvp_alpha", "mvp_beta"],
+          target_server_id: "mvp_merged",
+          include_inactive: false,
+          operator: "admin_dev",
+          reason: "P1 合服 dry-run 后台验收",
+        },
+        { adminToken, idempotencyKey: createIdempotencyKey("admin_merge_dry_run") },
+      );
+      ensureOk(response);
+      setMergeReport(response.data);
+      setMergeReportId(response.data.report.report_id);
+      setMessage(`合服演练报告已生成：${response.data.report.report_id}`);
+      await handleLoadOps();
+    });
+  }
+
+  async function handleQueryMergeDryRun() {
+    const reportId = mergeReportId.trim();
+    if (!reportId) {
+      setMessage("请输入合服演练报告 ID");
+      return;
+    }
+
+    await runAdminAction("查询合服演练报告", async () => {
+      const response = await client.getMergeDryRunReport({ reportId, adminToken });
+      ensureOk(response);
+      setMergeReport(response.data);
+      setMessage(`已读取合服演练报告：${response.data.report.report_id}`);
+    });
+  }
+
+  async function handleReserveMergeExecution() {
+    const reportId = mergeReport?.report.report_id ?? mergeReportId.trim();
+    if (!reportId) {
+      setMessage("请先生成或输入合服演练报告 ID");
+      return;
+    }
+
+    await runAdminAction("写入合服执行预留审计", async () => {
+      const response = await client.reserveMergeExecution(
+        {
+          report_id: reportId,
+          confirm_text: "DRY_RUN_ONLY",
+          operator: "admin_dev",
+          reason: "P1 只验证执行入口预留，不执行真实合服",
+        },
+        { adminToken, idempotencyKey: createIdempotencyKey("admin_merge_execute_reserved") },
+      );
+      ensureOk(response);
+      setMergeReport({ report: response.data.report });
+      setMergeReportId(response.data.report.report_id);
+      setMessage(response.data.message);
       await handleLoadOps();
     });
   }
@@ -416,13 +484,15 @@ export default function AdminHomePage() {
           <label className="stack-label">
             <span>配置类型</span>
             <select
-              onChange={(event) => setConfigType(event.target.value as ConfigType)}
+              onChange={(event) => handleConfigTypeChange(event.target.value as ConfigType)}
               value={configType}
             >
               <option value="gacha">抽卡</option>
               <option value="convenience">便利</option>
               <option value="risk">风控</option>
               <option value="reward">奖励</option>
+              <option value="activity_template">活动模板</option>
+              <option value="merge_dry_run">合服演练</option>
             </select>
           </label>
           <label className="stack-label">
@@ -480,6 +550,62 @@ export default function AdminHomePage() {
             ]}
           />
         </article>
+
+        <article className="ops-panel">
+          <div className="panel-title">
+            <h2>合服演练</h2>
+            <span>只生成 dry-run 报告，真实执行未开放</span>
+          </div>
+          <label className="stack-label">
+            <span>报告 ID</span>
+            <input
+              onChange={(event) => setMergeReportId(event.target.value)}
+              placeholder="merge_dry_xxx"
+              value={mergeReportId}
+            />
+          </label>
+          <div className="button-row">
+            <Button disabled={busy} onClick={handleCreateMergeDryRun}>
+              生成报告
+            </Button>
+            <Button disabled={busy} onClick={handleQueryMergeDryRun}>
+              查询报告
+            </Button>
+            <Button disabled={busy || !mergeReportId.trim()} onClick={handleReserveMergeExecution}>
+              执行预留
+            </Button>
+          </div>
+          <SummaryList
+            rows={[
+              ["状态", mergeReport?.report.status ?? "未生成"],
+              ["执行", mergeReport?.report.execute_status ?? "reserved_only"],
+              ["风险", String(mergeReport?.report.risk_summary.risk_level ?? "未评估")],
+              ["玩家", String(mergeReport?.report.summary.player_count ?? 0)],
+              [
+                "宗门冲突",
+                String(
+                  Array.isArray(mergeReport?.report.sect_conflict_summary.duplicate_sect_names)
+                    ? mergeReport.report.sect_conflict_summary.duplicate_sect_names.length
+                    : 0,
+                ),
+              ],
+            ]}
+          />
+          <pre className="compact-output">
+            {mergeReport
+              ? JSON.stringify(
+                  {
+                    report_id: mergeReport.report.report_id,
+                    asset: mergeReport.report.asset_inheritance_summary,
+                    rank: mergeReport.report.rank_freeze_summary,
+                    rollback: mergeReport.report.rollback_suggestion,
+                  },
+                  null,
+                  2,
+                )
+              : "暂无合服演练报告"}
+          </pre>
+        </article>
       </section>
     </main>
   );
@@ -518,26 +644,72 @@ function createIdempotencyKey(prefix: string): string {
   return `${prefix}_${Date.now()}_${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2, 10)}`;
 }
 
-const defaultConfigPayload = JSON.stringify(
-  {
-    pools: {
-      ancient_treasure: {
-        allowedCostTypes: ["monthly_grant", "ancient_page"],
-        paid_jade_entry: "reserved_unopened",
-        results: [
-          { treasure_id: "taiyi_danding", name: "太乙丹鼎" },
-          { treasure_id: "qiankun_lianxing_lu", name: "乾坤炼星炉" },
-          { treasure_id: "xuandu_juling_pan", name: "玄都聚灵盘" },
-          { treasure_id: "qingdi_changsheng_juan", name: "青帝长生卷" },
-          { treasure_id: "shanhe_sheji_tu", name: "山河社稷图" },
-          { treasure_id: "haotian_zhenmo_zhong", name: "昊天镇魔钟" },
-          { treasure_id: "jiuyuan_shihun_fan", name: "九渊噬魂幡" },
-          { treasure_id: "zhenyue_xuanhuang_yin", name: "镇岳玄黄印" },
-          { treasure_id: "tianji_xingpan", name: "天机星盘" },
+function getDefaultConfigPayload(configType: ConfigType): string {
+  if (configType === "merge_dry_run") {
+    return JSON.stringify(
+      {
+        mode: "dry_run_only",
+        execution_enabled: false,
+        merge_conditions: ["目标服同纪元", "排行先冻结", "订单和保底先校验"],
+        execution_rule: "真实合服执行入口预留但默认不可用。",
+      },
+      null,
+      2,
+    );
+  }
+
+  if (configType === "activity_template") {
+    return JSON.stringify(
+      {
+        templates: [
+          {
+            template_id: "event_admin_preview",
+            activity_type: "festival",
+            async_enabled: true,
+            reward_preview: { spirit_stone: "100", items: [] },
+          },
         ],
       },
+      null,
+      2,
+    );
+  }
+
+  if (configType === "convenience") {
+    return JSON.stringify(
+      {
+        tiers: {
+          free: { batch_limit: 5, strategy_slots: 1 },
+          vip3: { batch_limit: 10, strategy_slots: 3 },
+          large_monthly: { batch_limit: 20, strategy_slots: 5 },
+        },
+      },
+      null,
+      2,
+    );
+  }
+
+  return JSON.stringify(
+    {
+      pools: {
+        ancient_treasure: {
+          allowedCostTypes: ["monthly_grant", "ancient_page"],
+          paid_jade_entry: "reserved_unopened",
+          results: [
+            { treasure_id: "taiyi_danding", name: "太乙丹鼎" },
+            { treasure_id: "qiankun_lianxing_lu", name: "乾坤炼星炉" },
+            { treasure_id: "xuandu_juling_pan", name: "玄都聚灵盘" },
+            { treasure_id: "qingdi_changsheng_juan", name: "青帝长生卷" },
+            { treasure_id: "shanhe_sheji_tu", name: "山河社稷图" },
+            { treasure_id: "haotian_zhenmo_zhong", name: "昊天镇魔钟" },
+            { treasure_id: "jiuyuan_shihun_fan", name: "九渊噬魂幡" },
+            { treasure_id: "zhenyue_xuanhuang_yin", name: "镇岳玄黄印" },
+            { treasure_id: "tianji_xingpan", name: "天机星盘" },
+          ],
+        },
+      },
     },
-  },
-  null,
-  2,
-);
+    null,
+    2,
+  );
+}

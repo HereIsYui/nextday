@@ -68,6 +68,9 @@ P1 核心原则：
 - P1-4 已接入 `npm run test:p1-inner-world`，内天地配置、API、Web 和插件摘要已落地。
 - P1-5 已接入 `npm run test:p1-faction`，仙魔 / 散修路线、转道冷却、声望清除、宗门立场冲突和展示边界已落地。
 - P1-6 已接入 `npm run test:p1-rank`，生产榜、纪元榜、内天地榜、阵营榜、排行快照、称号继承、祝福限幅和排行防刷已落地。
+- P1-7 已接入 `npm run test:p1-events`，九州游历、丹器加试、宗门同贺、回归扶持、补偿活动、活动领奖、配置校验、Web 活动中心和插件活动摘要已落地。
+- P1-8 已接入 `npm run test:p1-merge`，合服 dry-run 报告、幂等、配置执行禁用、查询报告和执行预留审计已落地。
+- P1 总体验收已接入 `npm run test:p1`，串联数值模拟、Web 体验、九州全域、内天地、阵营、排行、活动和合服 dry-run。
 
 ## 四、Web 体验增量字段
 
@@ -98,6 +101,8 @@ P1 新增接口分组：
 | 阵营路线 | `GET/POST /api/factions/*` | 路线选择、转道任务、声望、宗门立场冲突校验 |
 | 活动 | `GET/POST /api/events/*` | 活动列表、进度、奖励领取、活动公告 |
 | 合服 dry-run | `POST /api/admin/merge/dry-run` | 生成合服影响报告，不改真实数据 |
+| 合服 dry-run | `GET /api/admin/merge/dry-run?report_id=...` | 查询 dry-run 冲突、补偿、风险和回滚建议 |
+| 合服执行预留 | `POST /api/admin/merge/execute` | 写入执行预留审计，返回 `reserved_only`，不执行真实合服 |
 
 P1 新增配置类型：
 
@@ -111,10 +116,6 @@ P1 新增配置类型：
 - `merge_dry_run_config`
 
 所有 P1 状态变更接口继续使用 `Idempotency-Key`，并返回记录 ID、配置版本、奖励版本和风控状态。
-
-当前落地状态补充：
-
-- P1-7 已接入 `npm run test:p1-events`，九州游历、丹器加试、宗门同贺、回归扶持、补偿活动、活动领奖、配置校验、Web 活动中心和插件活动摘要已落地。
 
 ## 六、文档补充要求
 

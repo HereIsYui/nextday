@@ -8,7 +8,7 @@
     "dev": "DATABASE_URL=${DATABASE_URL:-postgresql://nextday:nextday@localhost:5432/nextday_game} tsx watch src/main.ts",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --fileParallelism=false",
     "test:m1": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/m1.e2e-spec.ts",
     "test:m2": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/m2.e2e-spec.ts",
     "test:m3": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/m3.e2e-spec.ts",
@@ -23,7 +23,8 @@
     "test:p1-inner-world": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p1-inner-world.e2e-spec.ts",
     "test:p1-faction": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p1-faction.e2e-spec.ts",
     "test:p1-rank": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p1-rank.e2e-spec.ts",
-    "test:p1-events": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p1-events.e2e-spec.ts"
+    "test:p1-events": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p1-events.e2e-spec.ts",
+    "test:p1-merge": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p1-merge.e2e-spec.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",

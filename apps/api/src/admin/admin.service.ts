@@ -16,6 +16,12 @@ import type {
   AnnouncementState,
   CreateAnnouncementRequest,
   CreateAnnouncementResponse,
+  CreateMergeDryRunRequest,
+  CreateMergeDryRunResponse,
+  ExecuteMergeReservedRequest,
+  ExecuteMergeReservedResponse,
+  MergeDryRunReportResponse,
+  MergeDryRunReportState,
   PublishAdminConfigRequest,
   PublishAdminConfigResponse,
   ResolveRiskRecordRequest,
@@ -31,6 +37,7 @@ import type {
   ConfigVersion,
   GachaRecord,
   GmOperationLog,
+  MergeDryRunReport,
   PlayerMail,
   Prisma,
   PurchaseOrder,
@@ -46,6 +53,8 @@ import { toBehaviorRiskRecordState } from "../risk/risk.mappers";
 import { RiskService } from "../risk/risk.service";
 
 type Tx = Prisma.TransactionClient;
+const mergeDryRunConfigVersion = "merge_dry_run_p1_v1";
+const mergeDryRunRulesetVersion = "ruleset_p1_merge_v1";
 
 @Injectable()
 export class AdminService {
@@ -442,6 +451,109 @@ export class AdminService {
     });
   }
 
+  async createMergeDryRun(input: {
+    body: CreateMergeDryRunRequest;
+    idempotencyKey: string;
+  }): Promise<CreateMergeDryRunResponse> {
+    const body = normalizeMergeDryRunRequest(input.body);
+
+    return this.withAdminIdempotency({
+      endpoint: "POST /api/admin/merge/dry-run",
+      idempotencyKey: input.idempotencyKey,
+      requestBody: body,
+      handler: async (tx) => {
+        const reportData = await this.buildMergeDryRunData(tx, body);
+        const report = await tx.mergeDryRunReport.create({
+          data: {
+            reportId: `merge_dry_${randomUUID()}`,
+            sourceServerIds: body.source_server_ids as unknown as Prisma.InputJsonValue,
+            targetServerId: body.target_server_id,
+            status: "generated",
+            summary: reportData.summary,
+            conflictSummary: reportData.conflictSummary,
+            assetInheritanceSummary: reportData.assetInheritanceSummary,
+            rankFreezeSummary: reportData.rankFreezeSummary,
+            sectConflictSummary: reportData.sectConflictSummary,
+            compensationSuggestion: reportData.compensationSuggestion,
+            riskSummary: reportData.riskSummary,
+            rollbackSuggestion: reportData.rollbackSuggestion,
+            configVersion: mergeDryRunConfigVersion,
+            rulesetVersion: mergeDryRunRulesetVersion,
+            generatedBy: body.operator,
+            executeStatus: "reserved_only",
+            idempotencyKey: input.idempotencyKey,
+          },
+        });
+        const operation = await this.writeOperation(tx, {
+          operator: body.operator,
+          action: "merge_dry_run",
+          targetType: "merge_dry_run_report",
+          targetId: report.reportId,
+          afterSnapshot: toJson(toMergeDryRunReportState(report)),
+          reason: body.reason,
+          idempotencyKey: `${input.idempotencyKey}:operation`,
+        });
+
+        return {
+          report: toMergeDryRunReportState(report),
+          operation: toOperationState(operation),
+        };
+      },
+    });
+  }
+
+  async getMergeDryRunReport(reportId: string): Promise<MergeDryRunReportResponse> {
+    const report = await this.prisma.mergeDryRunReport.findUnique({ where: { reportId } });
+    if (!report) {
+      throw new BadRequestException("合服 dry-run 报告不存在");
+    }
+
+    return { report: toMergeDryRunReportState(report) };
+  }
+
+  async reserveMergeExecution(input: {
+    body: ExecuteMergeReservedRequest;
+    idempotencyKey: string;
+  }): Promise<ExecuteMergeReservedResponse> {
+    const body = normalizeExecuteMergeRequest(input.body);
+
+    return this.withAdminIdempotency({
+      endpoint: "POST /api/admin/merge/execute",
+      idempotencyKey: input.idempotencyKey,
+      requestBody: body,
+      handler: async (tx) => {
+        const report = await tx.mergeDryRunReport.findUnique({
+          where: { reportId: body.report_id },
+        });
+        if (!report) {
+          throw new BadRequestException("合服 dry-run 报告不存在");
+        }
+        const operation = await this.writeOperation(tx, {
+          operator: body.operator,
+          action: "merge_execute_reserved",
+          targetType: "merge_dry_run_report",
+          targetId: report.reportId,
+          beforeSnapshot: toJson(toMergeDryRunReportState(report)),
+          afterSnapshot: toJson({
+            allowed: false,
+            execution_status: "reserved_only",
+            message: "真实合服执行未开放，必须人工确认并单独发布。",
+          }),
+          reason: body.reason,
+          idempotencyKey: input.idempotencyKey,
+        });
+
+        return {
+          allowed: false,
+          execution_status: "reserved_only",
+          message: "真实合服执行未开放，必须人工确认并单独发布。",
+          report: toMergeDryRunReportState(report),
+          operation: toOperationState(operation),
+        };
+      },
+    });
+  }
+
   async listOperations(): Promise<AdminGmOperationListResponse> {
     const operations = await this.prisma.gmOperationLog.findMany({
       orderBy: { createdAt: "desc" },
@@ -516,6 +628,98 @@ export class AdminService {
 
       return response;
     });
+  }
+
+  private async buildMergeDryRunData(tx: Tx, body: Required<CreateMergeDryRunRequest>) {
+    const [
+      playerCount,
+      sects,
+      activeMonthlyCount,
+      paidWalletCount,
+      pityCount,
+      rankSnapshotCount,
+      rankEntryCount,
+      openRiskCount,
+      delayedSettlementCount,
+      orderCount,
+      eventRecordCount,
+    ] = await Promise.all([
+      tx.player.count({ where: body.include_inactive ? undefined : { status: "normal" } }),
+      tx.sect.findMany({ include: { members: true } }),
+      tx.monthlyCardState.count({ where: { activeUntil: { gt: new Date() } } }),
+      tx.playerWallet.count({ where: { OR: [{ jadePaid: { gt: 0 } }, { jadeBound: { gt: 0 } }] } }),
+      tx.gachaPityState.count(),
+      tx.rankSnapshot.count(),
+      tx.rankEntry.count(),
+      tx.behaviorRiskRecord.count({ where: { resolutionStatus: "open" } }),
+      tx.delayedSettlementRecord.count({ where: { status: "delayed" } }),
+      tx.purchaseOrder.count(),
+      tx.eventRecord.count(),
+    ]);
+    const duplicateSectNames = findDuplicates(sects.map((sect) => sect.name));
+    const sectsOverLimit = sects.filter((sect) => sect.members.length > sect.memberLimit);
+    const conflictCount = duplicateSectNames.length + sectsOverLimit.length;
+    const riskLevel =
+      openRiskCount + delayedSettlementCount > 0 || conflictCount > 0 ? "manual_review" : "low";
+
+    return {
+      summary: toJson({
+        mode: "dry_run_only",
+        player_count: playerCount,
+        sect_count: sects.length,
+        source_server_ids: body.source_server_ids,
+        target_server_id: body.target_server_id,
+        include_inactive: body.include_inactive,
+        data_mutation: false,
+      }),
+      conflictSummary: toJson({
+        duplicate_player_names: [],
+        duplicate_sect_names: duplicateSectNames,
+        note: "当前 MVP 单服内玩家和宗门名称唯一；跨服重名需在真实多服数据接入后重新 dry-run。",
+      }),
+      assetInheritanceSummary: toJson({
+        paid_wallet_count: paidWalletCount,
+        active_monthly_card_count: activeMonthlyCount,
+        gacha_pity_state_count: pityCount,
+        purchase_order_count: orderCount,
+        rule: "dry-run 只检查付费资产、月卡剩余天数和保底记录，不迁移、不折算、不扣减。",
+      }),
+      rankFreezeSummary: toJson({
+        rank_snapshot_count: rankSnapshotCount,
+        rank_entry_count: rankEntryCount,
+        freeze_required: rankSnapshotCount > 0,
+        rule: "真实合服前需冻结排行快照；dry-run 不锁榜、不发奖、不补发排行冲刺奖励。",
+      }),
+      sectConflictSummary: toJson({
+        sect_count: sects.length,
+        duplicate_sect_names: duplicateSectNames,
+        over_member_limit: sectsOverLimit.map((sect) => ({
+          sect_id: sect.sectId,
+          name: sect.name,
+          member_count: sect.members.length,
+          member_limit: sect.memberLimit,
+        })),
+        rule: "宗门同名生成改名建议；成员超限需保留原成员但冻结新加入，等待人工处理。",
+      }),
+      compensationSuggestion: toJson({
+        affected_player_count: playerCount,
+        event_record_count: eventRecordCount,
+        mail_template: "合服演练完成后仅建议基础补偿，排行冲刺奖励不补发。",
+        reward_boundary: "不得包含付费仙玉、九大古宝本体、限定法宝、唯一战力或倍率奖励。",
+      }),
+      riskSummary: toJson({
+        risk_level: riskLevel,
+        open_risk_count: openRiskCount,
+        delayed_settlement_count: delayedSettlementCount,
+        manual_review_required: riskLevel === "manual_review",
+      }),
+      rollbackSuggestion: toJson({
+        dry_run_rollback: "dry-run 不修改真实数据，无需回滚业务表。",
+        real_merge_rollback:
+          "真实合服必须在执行前生成数据库备份、订单快照、保底快照、排行冻结快照和宗门冲突清单。",
+        execution_entry: "POST /api/admin/merge/execute 当前仅写入预留审计，不执行真实合服。",
+      }),
+    };
   }
 }
 
@@ -730,6 +934,48 @@ function normalizeResolveRiskRequest(
   };
 }
 
+function normalizeMergeDryRunRequest(
+  body: CreateMergeDryRunRequest,
+): Required<CreateMergeDryRunRequest> {
+  const sourceServerIds = Array.isArray(body?.source_server_ids)
+    ? body.source_server_ids.map((item) => item.trim()).filter(Boolean)
+    : [];
+  const targetServerId = body?.target_server_id?.trim();
+  if (sourceServerIds.length < 1) {
+    throw new BadRequestException("合服 dry-run 至少需要 1 个来源服务器");
+  }
+  if (!targetServerId) {
+    throw new BadRequestException("合服 dry-run 必须指定目标服务器");
+  }
+  if (sourceServerIds.includes(targetServerId)) {
+    throw new BadRequestException("目标服务器不能同时作为来源服务器");
+  }
+
+  return {
+    source_server_ids: sourceServerIds,
+    target_server_id: targetServerId,
+    include_inactive: body.include_inactive ?? false,
+    operator: body.operator?.trim() || "admin_dev",
+    reason: body.reason?.trim() ?? "",
+  };
+}
+
+function normalizeExecuteMergeRequest(
+  body: ExecuteMergeReservedRequest,
+): Required<ExecuteMergeReservedRequest> {
+  const reportId = body?.report_id?.trim();
+  if (!reportId) {
+    throw new BadRequestException("请选择合服 dry-run 报告");
+  }
+
+  return {
+    report_id: reportId,
+    confirm_text: body.confirm_text?.trim() ?? "",
+    operator: body.operator?.trim() || "admin_dev",
+    reason: body.reason?.trim() ?? "",
+  };
+}
+
 function validateMailRewards(rewards: RewardBundle) {
   if (BigInt(rewards.jade_paid ?? "0") > 0n) {
     throw new BadRequestException("补偿邮件不能发放付费仙玉");
@@ -769,6 +1015,9 @@ function validateConfigPayload(
   }
   if (configType === "event" || configType === "activity_template") {
     validateActivityConfig(payload);
+  }
+  if (configType === "merge_dry_run") {
+    validateMergeDryRunConfig(payload);
   }
   if (configType === "convenience" && text.includes('"reward_multiplier":2')) {
     throw new BadRequestException("便利配置不能提高奖励倍率");
@@ -929,6 +1178,16 @@ function validateActivityConfig(payload: Record<string, unknown>) {
   }
 }
 
+function validateMergeDryRunConfig(payload: Record<string, unknown>) {
+  const text = JSON.stringify(payload);
+  if (text.includes('"mode":"execute"') || text.includes('"execution_enabled":true')) {
+    throw new BadRequestException("P1 合服配置只能开放 dry-run，不能开放真实执行");
+  }
+  if (!text.includes("dry_run")) {
+    throw new BadRequestException("合服配置必须明确 dry-run 模式");
+  }
+}
+
 function normalizeRewardBundle(value: unknown): RewardBundle {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {};
@@ -947,4 +1206,43 @@ function normalizeRecord(value: unknown): Record<string, unknown> | null {
 
 function toJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
+
+function toMergeDryRunReportState(report: MergeDryRunReport): MergeDryRunReportState {
+  return {
+    report_id: report.reportId,
+    source_server_ids: normalizeStringArray(report.sourceServerIds),
+    target_server_id: report.targetServerId,
+    status: report.status,
+    summary: report.summary as Record<string, unknown>,
+    conflict_summary: report.conflictSummary as Record<string, unknown>,
+    asset_inheritance_summary: report.assetInheritanceSummary as Record<string, unknown>,
+    rank_freeze_summary: report.rankFreezeSummary as Record<string, unknown>,
+    sect_conflict_summary: report.sectConflictSummary as Record<string, unknown>,
+    compensation_suggestion: report.compensationSuggestion as Record<string, unknown>,
+    risk_summary: report.riskSummary as Record<string, unknown>,
+    rollback_suggestion: report.rollbackSuggestion as Record<string, unknown>,
+    config_version: report.configVersion,
+    ruleset_version: report.rulesetVersion,
+    generated_by: report.generatedBy,
+    execute_status: report.executeStatus,
+    created_at: report.createdAt.toISOString(),
+  };
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function findDuplicates(values: string[]): string[] {
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+
+  return Array.from(counts.entries())
+    .filter(([, count]) => count > 1)
+    .map(([value]) => value);
 }

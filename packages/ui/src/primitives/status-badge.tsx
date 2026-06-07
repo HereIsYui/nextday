@@ -14,13 +14,18 @@ const toneStyles = {
 export function StatusBadge({ children, tone = "neutral" }: StatusBadgeProps) {
   return (
     <span
+      className="nextday-status-badge"
       style={{
         ...toneStyles[tone],
+        alignItems: "center",
         borderRadius: 999,
         display: "inline-flex",
         fontSize: 12,
+        justifyContent: "center",
         lineHeight: "20px",
+        minHeight: 20,
         padding: "0 8px",
+        whiteSpace: "nowrap",
       }}
     >
       {children}

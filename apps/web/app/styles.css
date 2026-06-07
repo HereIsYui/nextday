@@ -545,6 +545,8 @@ h2 {
 .recommended-action button,
 .goal-card button,
 .growth-target-card button {
+  align-self: center;
+  justify-self: end;
   min-height: 44px;
   min-width: 96px;
 }
@@ -1440,12 +1442,25 @@ details.event-boundary {
     flex-direction: column;
   }
 
+  .mainline-guide-head {
+    order: 1;
+  }
+
+  .mainline-progress-bar {
+    order: 2;
+  }
+
+  .mainline-action-row {
+    order: 3;
+  }
+
   .mainline-progress-summary {
     justify-items: start;
   }
 
   .mainline-step-list {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    order: 4;
   }
 
   .recommended-action,
@@ -1516,9 +1531,9 @@ details.event-boundary {
   gap: 16px 22px;
   grid-template-areas:
     "log top ledger"
+    "log today ledger"
     "log nav ledger"
     "log tabs ledger"
-    "log today ledger"
     "log goals ledger";
   grid-template-columns: 190px minmax(0, 680px) 210px;
   max-width: 1120px;
@@ -1526,13 +1541,18 @@ details.event-boundary {
 }
 
 .text-game-shell button {
+  align-items: center;
   background: #ffffff !important;
   border: 1px solid #111111 !important;
   border-radius: 0 !important;
   color: #111111 !important;
+  display: inline-flex;
   font-family: inherit !important;
+  justify-content: center;
+  line-height: 1.2;
   min-height: 34px;
   padding: 5px 10px !important;
+  white-space: nowrap;
 }
 
 .text-game-shell button:hover:not(:disabled),
@@ -1546,11 +1566,18 @@ details.event-boundary {
   filter: none;
 }
 
-.text-game-shell span[style*="border-radius"] {
+.text-game-shell .nextday-status-badge {
+  align-items: center;
   background: #ffffff !important;
   border: 1px solid #111111;
   border-radius: 0 !important;
   color: #111111 !important;
+  display: inline-flex;
+  justify-content: center;
+  justify-self: start;
+  line-height: 20px;
+  min-height: 20px;
+  white-space: nowrap;
 }
 
 .text-game-shell .topbar {
@@ -1634,6 +1661,7 @@ details.event-boundary {
 }
 
 .text-game-shell .mainline-step {
+  align-items: start;
   border-color: #dddddd;
 }
 
@@ -1676,6 +1704,16 @@ details.event-boundary {
   padding: 10px 0;
 }
 
+.text-game-shell .mainline-action-row .nextday-button,
+.text-game-shell .recommended-action .nextday-button,
+.text-game-shell .goal-card .nextday-button,
+.text-game-shell .growth-target-card .nextday-button,
+.text-game-shell .explore-queue-card .nextday-button {
+  align-self: center;
+  justify-self: end;
+  min-height: 34px;
+}
+
 .text-game-shell .recommended-action {
   grid-template-columns: minmax(0, 1fr) 112px;
 }
@@ -1712,6 +1750,9 @@ details.event-boundary {
   border-left: 1px solid #dddddd;
   border-radius: 0;
   color: #555555;
+  display: inline-flex;
+  justify-self: start;
+  line-height: 1.35;
   min-height: 0;
   padding: 0 0 0 10px;
 }
@@ -1872,9 +1913,9 @@ details.event-boundary {
   .text-game-shell {
     grid-template-areas:
       "log top"
+      "log today"
       "log nav"
       "log tabs"
-      "log today"
       "log goals"
       "ledger ledger";
     grid-template-columns: 190px minmax(0, 1fr);
@@ -1886,8 +1927,8 @@ details.event-boundary {
     gap: 14px;
     grid-template-areas:
       "top"
-      "tabs"
       "today"
+      "tabs"
       "goals"
       "ledger"
       "log";

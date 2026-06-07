@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import type {
   BattleSummary,
+  FactionStateSummary,
   MonthlyCardStateSummary,
   PluginExpandedPanelResponse,
   PluginNavigationLink,
@@ -17,6 +18,7 @@ import type {
   TaskState,
 } from "@nextday/shared";
 import { CommerceService } from "../commerce/commerce.service";
+import { FactionsService } from "../factions/factions.service";
 import { GameService } from "../game/game.service";
 import { InnerWorldService } from "../inner-world/inner-world.service";
 import { MultiplayerService } from "../multiplayer/multiplayer.service";
@@ -28,6 +30,7 @@ export class PluginService {
     @Inject(MultiplayerService) private readonly multiplayerService: MultiplayerService,
     @Inject(CommerceService) private readonly commerceService: CommerceService,
     @Inject(InnerWorldService) private readonly innerWorldService: InnerWorldService,
+    @Inject(FactionsService) private readonly factionsService: FactionsService,
   ) {}
 
   async getStatusCard(accountId: string): Promise<PluginStatusCardResponse> {
@@ -72,7 +75,7 @@ export class PluginService {
   }
 
   async getExpandedPanel(accountId: string): Promise<PluginExpandedPanelResponse> {
-    const [status, overview, towers, boss, sect, commerce, treasures, innerWorld] =
+    const [status, overview, towers, boss, sect, commerce, treasures, innerWorld, faction] =
       await Promise.all([
         this.getStatusCard(accountId),
         this.gameService.getOverview(accountId),
@@ -82,6 +85,7 @@ export class PluginService {
         this.commerceService.getOverview(accountId),
         this.commerceService.listAncientTreasures(accountId),
         this.innerWorldService.getSummary(accountId).catch(() => null),
+        this.factionsService.getReputation(accountId).catch(() => null),
       ]);
 
     return {
@@ -97,9 +101,11 @@ export class PluginService {
         sect: sect.sect,
         boss: boss.boss,
         innerWorld: innerWorld?.state ?? null,
+        faction: faction?.state ?? null,
       }),
       cave: overview.cave,
       inner_world: innerWorld?.state ?? null,
+      faction: faction?.state ?? null,
       provinces: overview.provinces,
       towers: towers.towers.slice(0, 4),
       recent_battles: overview.recent_battles.slice(0, 3),
@@ -242,6 +248,7 @@ export class PluginService {
     sect: PluginExpandedPanelResponse["sect"];
     boss: PluginExpandedPanelResponse["boss"];
     innerWorld: PluginExpandedPanelResponse["inner_world"];
+    faction: FactionStateSummary | null;
   }): PluginPanelDigest[] {
     const digests: PluginPanelDigest[] = [];
     const latestBattle = input.recentBattles[0];
@@ -285,6 +292,20 @@ export class PluginService {
           : input.innerWorld.unlock_hint,
         tone: input.innerWorld.claimable_assignment_count > 0 ? "success" : "neutral",
         action_hint: "inner_world",
+      });
+    }
+
+    if (input.faction) {
+      digests.push({
+        digest_id: "faction_route",
+        title: "阵营路线",
+        summary: input.faction.unlocked
+          ? `${input.faction.route_name} · 仙 ${input.faction.reputation.immortal} / 魔 ${input.faction.reputation.demon} / 散 ${input.faction.reputation.wanderer}${
+              input.faction.sect_conflict ? " · 宗门冲突" : ""
+            }`
+          : input.faction.unlock_hint,
+        tone: input.faction.sect_conflict ? "warning" : "neutral",
+        action_hint: "faction",
       });
     }
 

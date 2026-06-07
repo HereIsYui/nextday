@@ -553,7 +553,11 @@ h2 {
 }
 
 .inner-world-summary span,
-.inner-world-lists p {
+.inner-world-lists p,
+.faction-state-card span,
+.faction-state-card p,
+.faction-route-card span,
+.faction-route-card p {
   color: #5f6f70;
   font-size: 13px;
   line-height: 1.5;
@@ -565,6 +569,50 @@ h2 {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.faction-panel {
+  border-top: 1px solid #dce4df;
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding-top: 18px;
+}
+
+.faction-layout {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(240px, 0.85fr) minmax(0, 1.15fr);
+}
+
+.faction-state-card,
+.faction-route-card {
+  background: #fbfcfa;
+  border: 1px solid #dce4df;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+}
+
+.faction-state-card strong,
+.faction-route-card strong {
+  color: #10292b;
+}
+
+.faction-route-list {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.faction-route-card {
+  min-height: 188px;
+}
+
+.faction-route-card > div:first-child {
+  display: grid;
+  gap: 2px;
 }
 
 .tower-grid {
@@ -616,7 +664,8 @@ h2 {
   .main-grid,
   .experience-layout,
   .battle-row,
-  .inner-world-layout {
+  .inner-world-layout,
+  .faction-layout {
     grid-template-columns: 1fr;
   }
 }
@@ -645,7 +694,8 @@ h2 {
   .create-form,
   .delta-grid,
   .overview-grid,
-  .inner-world-lists {
+  .inner-world-lists,
+  .faction-route-list {
     grid-template-columns: 1fr;
   }
 

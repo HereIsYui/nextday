@@ -761,6 +761,9 @@ function validateConfigPayload(
   if (configType === "inner_world") {
     validateInnerWorldConfig(payload);
   }
+  if (configType === "faction_route") {
+    validateFactionRouteConfig(payload);
+  }
   if (configType === "convenience" && text.includes('"reward_multiplier":2')) {
     throw new BadRequestException("便利配置不能提高奖励倍率");
   }
@@ -813,6 +816,47 @@ function validateInnerWorldConfig(payload: Record<string, unknown>) {
   }
   if (text.includes('"tradeable":true')) {
     throw new BadRequestException("内天地配置不能产出可交易材料");
+  }
+}
+
+function validateFactionRouteConfig(payload: Record<string, unknown>) {
+  const text = JSON.stringify(payload);
+  const forbiddenFragments = [
+    '"jade_paid"',
+    '"paid_jade"',
+    "ancient_treasure",
+    "gubao",
+    "limited",
+    "unique_power",
+    "reward_multiplier",
+    "contribution_multiplier",
+    "damage_multiplier",
+    "必胜",
+    "无敌",
+    "碾压",
+    "唯一战力",
+  ];
+  if (forbiddenFragments.some((fragment) => text.includes(fragment))) {
+    throw new BadRequestException("阵营路线配置不能包含付费直给、限定产物、唯一战力或倍率奖励");
+  }
+
+  if (!Array.isArray(payload.routes)) {
+    throw new BadRequestException("阵营路线配置必须提供 routes 数组");
+  }
+
+  const routeIds = new Set<string>();
+  for (const route of payload.routes) {
+    if (!route || typeof route !== "object" || Array.isArray(route)) {
+      throw new BadRequestException("阵营路线项必须是对象");
+    }
+    const routeId = (route as Record<string, unknown>).route_id;
+    if (!["immortal", "demon", "wanderer"].includes(String(routeId))) {
+      throw new BadRequestException("阵营路线只能包含成仙、成魔和散修");
+    }
+    routeIds.add(String(routeId));
+  }
+  if (routeIds.size !== 3) {
+    throw new BadRequestException("阵营路线必须列满成仙、成魔和散修三条路线");
   }
 }
 

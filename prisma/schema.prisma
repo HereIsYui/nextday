@@ -54,6 +54,8 @@ model Player {
   innerWorldAssignments     InnerWorldAssignment[]
   innerWorldLawRecords      InnerWorldLawRecord[]
   innerWorldSupportRecords  InnerWorldSupportRecord[]
+  factionState              PlayerFactionState?
+  factionTransferRecords    FactionTransferRecord[]
   items                     PlayerItem[]
   walletLogs                WalletLog[]
   auditLogs                 AuditLog[]
@@ -290,18 +292,18 @@ model CaveCollectRecord {
 }
 
 model InnerWorldState {
-  playerId           String   @id @map("player_id")
-  eraId              String   @default("era_mvp_001") @map("era_id")
-  worldLevel         Int      @default(1) @map("world_level")
-  lawLevel           Int      @default(1) @map("law_level")
-  lawExp             Int      @default(0) @map("law_exp")
-  creatureCapacity   Int      @default(3) @map("creature_capacity")
-  assignmentLimit    Int      @default(1) @map("assignment_limit")
-  supportCountToday  Int      @default(0) @map("support_count_today")
-  supportResetKey    String   @default("1970-01-01") @map("support_reset_key")
-  configVersion      String   @map("config_version")
-  rewardConfigVersion String  @map("reward_config_version")
-  updatedAt          DateTime @updatedAt @map("updated_at")
+  playerId            String   @id @map("player_id")
+  eraId               String   @default("era_mvp_001") @map("era_id")
+  worldLevel          Int      @default(1) @map("world_level")
+  lawLevel            Int      @default(1) @map("law_level")
+  lawExp              Int      @default(0) @map("law_exp")
+  creatureCapacity    Int      @default(3) @map("creature_capacity")
+  assignmentLimit     Int      @default(1) @map("assignment_limit")
+  supportCountToday   Int      @default(0) @map("support_count_today")
+  supportResetKey     String   @default("1970-01-01") @map("support_reset_key")
+  configVersion       String   @map("config_version")
+  rewardConfigVersion String   @map("reward_config_version")
+  updatedAt           DateTime @updatedAt @map("updated_at")
 
   player Player @relation(fields: [playerId], references: [playerId])
 
@@ -335,20 +337,20 @@ model InnerWorldCreature {
 }
 
 model InnerWorldAssignment {
-  assignmentId       String    @id @map("assignment_id")
-  playerId           String    @map("player_id")
-  eraId              String    @default("era_mvp_001") @map("era_id")
-  creatureId         String    @map("creature_id")
-  provinceId         String    @map("province_id")
-  status             String    @default("active")
-  startedAt          DateTime  @default(now()) @map("started_at")
-  endsAt             DateTime  @map("ends_at")
-  claimedAt          DateTime? @map("claimed_at")
-  rewardSnapshot     Json      @map("reward_snapshot")
-  lawExpGain         Int       @default(0) @map("law_exp_gain")
-  configVersion      String    @map("config_version")
-  rewardConfigVersion String   @map("reward_config_version")
-  idempotencyKey     String?   @unique @map("idempotency_key")
+  assignmentId        String    @id @map("assignment_id")
+  playerId            String    @map("player_id")
+  eraId               String    @default("era_mvp_001") @map("era_id")
+  creatureId          String    @map("creature_id")
+  provinceId          String    @map("province_id")
+  status              String    @default("active")
+  startedAt           DateTime  @default(now()) @map("started_at")
+  endsAt              DateTime  @map("ends_at")
+  claimedAt           DateTime? @map("claimed_at")
+  rewardSnapshot      Json      @map("reward_snapshot")
+  lawExpGain          Int       @default(0) @map("law_exp_gain")
+  configVersion       String    @map("config_version")
+  rewardConfigVersion String    @map("reward_config_version")
+  idempotencyKey      String?   @unique @map("idempotency_key")
 
   player   Player             @relation(fields: [playerId], references: [playerId])
   creature InnerWorldCreature @relation(fields: [creatureId], references: [creatureId])
@@ -387,19 +389,19 @@ model InnerWorldLawRecord {
 }
 
 model InnerWorldSupportRecord {
-  supportRecordId      String   @id @map("support_record_id")
-  playerId             String   @map("player_id")
-  eraId                String   @default("era_mvp_001") @map("era_id")
-  provinceId           String   @map("province_id")
-  towerId              String?  @map("tower_id")
-  supportType          String   @map("support_type")
-  costSummary          Json     @map("cost_summary")
-  rewardSummary        Json     @map("reward_summary")
-  contributionSummary  Json     @map("contribution_summary")
-  idempotencyKey       String?  @unique @map("idempotency_key")
-  configVersion        String   @map("config_version")
-  rewardConfigVersion  String   @map("reward_config_version")
-  createdAt            DateTime @default(now()) @map("created_at")
+  supportRecordId     String   @id @map("support_record_id")
+  playerId            String   @map("player_id")
+  eraId               String   @default("era_mvp_001") @map("era_id")
+  provinceId          String   @map("province_id")
+  towerId             String?  @map("tower_id")
+  supportType         String   @map("support_type")
+  costSummary         Json     @map("cost_summary")
+  rewardSummary       Json     @map("reward_summary")
+  contributionSummary Json     @map("contribution_summary")
+  idempotencyKey      String?  @unique @map("idempotency_key")
+  configVersion       String   @map("config_version")
+  rewardConfigVersion String   @map("reward_config_version")
+  createdAt           DateTime @default(now()) @map("created_at")
 
   player Player @relation(fields: [playerId], references: [playerId])
 
@@ -409,6 +411,63 @@ model InnerWorldSupportRecord {
   @@index([supportType])
   @@index([createdAt])
   @@map("inner_world_support_record")
+}
+
+model PlayerFactionState {
+  playerId              String    @id @map("player_id")
+  eraId                 String    @default("era_mvp_001") @map("era_id")
+  route                 String    @default("undecided")
+  reputationImmortal    Int       @default(0) @map("reputation_immortal")
+  reputationDemon       Int       @default(0) @map("reputation_demon")
+  reputationWanderer    Int       @default(0) @map("reputation_wanderer")
+  routeChosenAt         DateTime? @map("route_chosen_at")
+  transferCooldownUntil DateTime? @map("transfer_cooldown_until")
+  transferCount         Int       @default(0) @map("transfer_count")
+  titleId               String?   @map("title_id")
+  chronicleTitle        String?   @map("chronicle_title")
+  endingSummary         String?   @map("ending_summary")
+  displayAppearanceId   String?   @map("display_appearance_id")
+  configVersion         String    @map("config_version")
+  rewardConfigVersion   String    @map("reward_config_version")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  player  Player                  @relation(fields: [playerId], references: [playerId])
+  records FactionTransferRecord[]
+
+  @@index([eraId])
+  @@index([route])
+  @@index([transferCooldownUntil])
+  @@map("player_faction_state")
+}
+
+model FactionTransferRecord {
+  transferRecordId       String   @id @map("transfer_record_id")
+  playerId               String   @map("player_id")
+  eraId                  String   @default("era_mvp_001") @map("era_id")
+  fromRoute              String   @map("from_route")
+  toRoute                String   @map("to_route")
+  taskId                 String   @map("task_id")
+  costSummary            Json     @map("cost_summary")
+  reputationClearSummary Json     @map("reputation_clear_summary")
+  sectConflict           Boolean  @default(false) @map("sect_conflict")
+  previousSectAlignment  String?  @map("previous_sect_alignment")
+  titleId                String?  @map("title_id")
+  displayAppearanceId    String?  @map("display_appearance_id")
+  configVersion          String   @map("config_version")
+  rewardConfigVersion    String   @map("reward_config_version")
+  idempotencyKey         String?  @unique @map("idempotency_key")
+  createdAt              DateTime @default(now()) @map("created_at")
+
+  player       Player             @relation(fields: [playerId], references: [playerId], map: "faction_transfer_record_player_fkey")
+  factionState PlayerFactionState @relation(fields: [playerId], references: [playerId], map: "faction_transfer_record_state_fkey")
+
+  @@index([playerId])
+  @@index([eraId])
+  @@index([fromRoute])
+  @@index([toRoute])
+  @@index([createdAt])
+  @@map("faction_transfer_record")
 }
 
 model AlchemyRecord {
@@ -1081,32 +1140,32 @@ model PlayerAppearance {
 }
 
 model BehaviorRiskRecord {
-  riskRecordId       String   @id @map("risk_record_id")
-  accountId          String?  @map("account_id")
-  playerId           String?  @map("player_id")
-  eraId              String   @default("era_mvp_001") @map("era_id")
-  riskDomain         String   @map("risk_domain")
-  actionType         String   @map("action_type")
-  targetType         String?  @map("target_type")
-  targetId           String?  @map("target_id")
-  sourceRecordId     String?  @map("source_record_id")
-  riskStatus         String   @map("risk_status")
-  riskLevel          String   @map("risk_level")
-  riskScore          Int      @map("risk_score")
-  ruleCodes          Json     @map("rule_codes")
-  decisionAction     String   @map("decision_action")
-  settlementStatus   String   @default("settled") @map("settlement_status")
-  requestId          String?  @map("request_id")
-  idempotencyKey     String?  @map("idempotency_key")
-  ipHash             String?  @map("ip_hash")
-  userAgentHash      String?  @map("user_agent_hash")
+  riskRecordId       String    @id @map("risk_record_id")
+  accountId          String?   @map("account_id")
+  playerId           String?   @map("player_id")
+  eraId              String    @default("era_mvp_001") @map("era_id")
+  riskDomain         String    @map("risk_domain")
+  actionType         String    @map("action_type")
+  targetType         String?   @map("target_type")
+  targetId           String?   @map("target_id")
+  sourceRecordId     String?   @map("source_record_id")
+  riskStatus         String    @map("risk_status")
+  riskLevel          String    @map("risk_level")
+  riskScore          Int       @map("risk_score")
+  ruleCodes          Json      @map("rule_codes")
+  decisionAction     String    @map("decision_action")
+  settlementStatus   String    @default("settled") @map("settlement_status")
+  requestId          String?   @map("request_id")
+  idempotencyKey     String?   @map("idempotency_key")
+  ipHash             String?   @map("ip_hash")
+  userAgentHash      String?   @map("user_agent_hash")
   metadata           Json?
-  riskRulesetVersion String   @map("risk_ruleset_version")
-  resolutionStatus   String   @default("open") @map("resolution_status")
-  resolutionReason   String?  @map("resolution_reason")
-  resolvedBy         String?  @map("resolved_by")
+  riskRulesetVersion String    @map("risk_ruleset_version")
+  resolutionStatus   String    @default("open") @map("resolution_status")
+  resolutionReason   String?   @map("resolution_reason")
+  resolvedBy         String?   @map("resolved_by")
   resolvedAt         DateTime? @map("resolved_at")
-  createdAt          DateTime @default(now()) @map("created_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
 
   account            Account?                  @relation(fields: [accountId], references: [accountId])
   player             Player?                   @relation(fields: [playerId], references: [playerId])

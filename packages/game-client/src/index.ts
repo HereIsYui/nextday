@@ -21,6 +21,8 @@ import type {
   BagSummaryResponse,
   BreakthroughResponse,
   CaveCollectResponse,
+  ChooseFactionRouteRequest,
+  ChooseFactionRouteResponse,
   ClaimAppearanceRequest,
   ClaimMonthlyDailyRequest,
   ClaimMonthlyDailyResponse,
@@ -45,6 +47,8 @@ import type {
   EquipmentTargetRequest,
   ExploreRequest,
   ExploreResponse,
+  FactionReputationResponse,
+  FactionRoutesResponse,
   ForgeCraftRequest,
   ForgeRecipeListResponse,
   GachaDrawRequest,
@@ -116,6 +120,8 @@ import type {
   TowerActionRequest,
   TowerActionResponse,
   TowerListResponse,
+  TransferFactionRouteRequest,
+  TransferFactionRouteResponse,
   WorldBossChallengeRequest,
   WorldBossChallengeResponse,
   WorldBossResponse,
@@ -521,6 +527,36 @@ export class GameClient {
   ): Promise<ApiResponse<InnerWorldSupportResponse>> {
     return this.post<InnerWorldSupportResponse, InnerWorldSupportRequest>(
       "/api/inner-world/support",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  factionRoutes(): Promise<ApiResponse<FactionRoutesResponse>> {
+    return this.get<FactionRoutesResponse>("/api/factions/routes");
+  }
+
+  factionReputation(): Promise<ApiResponse<FactionReputationResponse>> {
+    return this.get<FactionReputationResponse>("/api/factions/reputation");
+  }
+
+  chooseFactionRoute(
+    body: ChooseFactionRouteRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<ChooseFactionRouteResponse>> {
+    return this.post<ChooseFactionRouteResponse, ChooseFactionRouteRequest>(
+      "/api/factions/choose",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  transferFactionRoute(
+    body: TransferFactionRouteRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<TransferFactionRouteResponse>> {
+    return this.post<TransferFactionRouteResponse, TransferFactionRouteRequest>(
+      "/api/factions/transfer",
       body,
       { idempotencyKey },
     );

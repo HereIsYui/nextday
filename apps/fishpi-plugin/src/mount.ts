@@ -200,6 +200,9 @@ function renderPanel(
           ? `${panel.inner_world.claimable_assignment_count} 个可收`
           : "未开启"
       }</dd></div>
+      <div><dt>阵营</dt><dd>${
+        panel.faction?.unlocked ? escapeHtml(panel.faction.route_name) : "未开启"
+      }</dd></div>
     </dl>
     <section>
       <strong>日课</strong>
@@ -220,6 +223,16 @@ function renderPanel(
         panel.inner_world?.unlocked
           ? `等级 ${panel.inner_world.world_level} · 派驻 ${panel.inner_world.active_assignment_count}/${panel.inner_world.assignment_limit}`
           : escapeHtml(panel.inner_world?.unlock_hint ?? "化神 / 神躯或第四章后开启")
+      }</p>
+    </section>
+    <section>
+      <strong>阵营</strong>
+      <p>${
+        panel.faction
+          ? `${escapeHtml(panel.faction.route_name)} · ${
+              panel.faction.sect_conflict ? "宗门立场冲突" : "立场正常"
+            } · 转道${panel.faction.transfer_available ? "可用" : "冷却"}`
+          : "未读取阵营"
       }</p>
     </section>
     <section>

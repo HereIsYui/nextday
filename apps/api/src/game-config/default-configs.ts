@@ -9,6 +9,17 @@ import {
   permanentPoolRewards,
   vipBoundJadeRewards,
 } from "../commerce/commerce.constants";
+import {
+  factionConfigVersion,
+  factionRewardConfigVersion,
+  factionRouteConfigs,
+  factionTransferBaseCost,
+  factionTransferCooldownDays,
+  factionTransferReputationClearRate,
+  factionUnlockChapter,
+  factionUnlockRealm,
+} from "../factions/factions.constants";
+import { toFactionRouteConfigState } from "../factions/factions.mappers";
 import { provinceConfigs } from "../game/game.constants";
 import {
   innerWorldConfigVersion,
@@ -350,6 +361,30 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
       },
       output_boundary:
         "内天地不产出付费货币、九大古宝本体、限定本命法宝或可交易付费产物，所有材料默认绑定",
+    },
+  },
+  faction_route: {
+    config_type: "faction_route",
+    config_version: factionConfigVersion,
+    ruleset_version: "ruleset_p1_faction_v1",
+    reward_config_version: factionRewardConfigVersion,
+    payload: {
+      unlock: {
+        realm_required: factionUnlockRealm,
+        chapter_required: factionUnlockChapter,
+        hint: "化神 / 神躯或第五章后开启仙魔分流",
+      },
+      routes: factionRouteConfigs.map((config) => toFactionRouteConfigState({ config })),
+      transfer_rule: {
+        cooldown_days: factionTransferCooldownDays,
+        base_cost: factionTransferBaseCost,
+        reputation_clear_rate: factionTransferReputationClearRate,
+        task_required: true,
+      },
+      sect_alignment_rule:
+        "成仙对应仙盟宗门，成魔对应魔宗宗门，散修对应中立宗门；冲突时不能参与该宗门阵营集结",
+      reward_boundary:
+        "阵营奖励以称号、展示外观、纪元史册、绑定资源为主，不发唯一战力道具，不提高全服贡献倍率",
     },
   },
   risk: {

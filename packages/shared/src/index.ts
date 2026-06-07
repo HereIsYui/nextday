@@ -572,6 +572,106 @@ export interface InnerWorldSupportResponse {
   experience?: ExperiencePayload;
 }
 
+export type FactionRouteId = "undecided" | "immortal" | "demon" | "wanderer";
+
+export interface FactionRouteConfigState {
+  route_id: FactionRouteId | string;
+  name: string;
+  stance_label: string;
+  theme: string;
+  core_goal: string;
+  task_chain: string[];
+  weekly_focus: string[];
+  reputation_rule: string;
+  title_id: string;
+  title_name: string;
+  chronicle_title: string;
+  ending_summary: string;
+  display_appearance_id: string;
+  reward_boundary: string;
+}
+
+export interface FactionStateSummary {
+  route: FactionRouteId | string;
+  route_name: string;
+  unlocked: boolean;
+  unlock_hint: string;
+  reputation: {
+    immortal: number;
+    demon: number;
+    wanderer: number;
+  };
+  route_chosen_at: string | null;
+  transfer_cooldown_until: string | null;
+  transfer_available: boolean;
+  transfer_count: number;
+  title_id: string | null;
+  title_name: string | null;
+  chronicle_title: string | null;
+  ending_summary: string | null;
+  display_appearance_id: string | null;
+  sect_alignment: SectAlignment | string | null;
+  sect_conflict: boolean;
+  sect_conflict_hint: string | null;
+  config_version: string;
+  reward_config_version: string;
+}
+
+export interface FactionTransferRecordState {
+  transfer_record_id: string;
+  from_route: FactionRouteId | string;
+  to_route: FactionRouteId | string;
+  task_id: string;
+  cost_summary: RewardBundle;
+  reputation_clear_summary: Record<string, unknown>;
+  sect_conflict: boolean;
+  previous_sect_alignment: SectAlignment | string | null;
+  title_id: string | null;
+  display_appearance_id: string | null;
+  created_at: string;
+}
+
+export interface FactionRoutesResponse {
+  state: FactionStateSummary;
+  routes: FactionRouteConfigState[];
+  transfer_rule: {
+    cooldown_days: number;
+    base_cost: RewardBundle;
+    reputation_clear_rate: number;
+  };
+  recent_records: FactionTransferRecordState[];
+}
+
+export interface ChooseFactionRouteRequest {
+  route_id: FactionRouteId | string;
+}
+
+export interface ChooseFactionRouteResponse {
+  record_id: string;
+  state: FactionStateSummary;
+  selected_route: FactionRouteConfigState;
+  experience?: ExperiencePayload;
+}
+
+export interface TransferFactionRouteRequest {
+  route_id: FactionRouteId | string;
+  task_id: string;
+}
+
+export interface TransferFactionRouteResponse {
+  record_id: string;
+  state: FactionStateSummary;
+  transfer_record: FactionTransferRecordState;
+  wallet: PlayerWalletState;
+  experience?: ExperiencePayload;
+}
+
+export interface FactionReputationResponse {
+  state: FactionStateSummary;
+  routes: FactionRouteConfigState[];
+  recent_records: FactionTransferRecordState[];
+}
+
 export type ItemCategory =
   | "material"
   | "pill"
@@ -1305,6 +1405,7 @@ export interface PluginExpandedPanelResponse {
   digests: PluginPanelDigest[];
   cave: CaveState | null;
   inner_world: InnerWorldStateSummary | null;
+  faction: FactionStateSummary | null;
   provinces: ProvinceSummary[];
   towers: TowerStateSummary[];
   recent_battles: BattleSummary[];
@@ -1384,6 +1485,7 @@ export type ConfigType =
   | "convenience"
   | "appearance"
   | "inner_world"
+  | "faction_route"
   | "risk";
 
 export interface ConfigEnvelope<TPayload = Record<string, unknown>> {

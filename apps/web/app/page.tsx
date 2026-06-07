@@ -11,6 +11,8 @@ import type {
   EntitlementOverviewResponse,
   EquipmentListResponse,
   ExperiencePayload,
+  FactionRouteConfigState,
+  FactionRoutesResponse,
   ForgeRecipeListResponse,
   GachaPoolListResponse,
   GameOverviewResponse,
@@ -58,6 +60,7 @@ export default function HomePage() {
   const [forgeRecipes, setForgeRecipes] = useState<ForgeRecipeListResponse | null>(null);
   const [skills, setSkills] = useState<SkillLoadoutResponse | null>(null);
   const [innerWorld, setInnerWorld] = useState<InnerWorldSummaryResponse | null>(null);
+  const [faction, setFaction] = useState<FactionRoutesResponse | null>(null);
   const [towers, setTowers] = useState<TowerListResponse | null>(null);
   const [boss, setBoss] = useState<WorldBossResponse | null>(null);
   const [sect, setSect] = useState<SectDetailResponse | null>(null);
@@ -99,6 +102,8 @@ export default function HomePage() {
   const firstAppearance = appearances?.appearances[0];
   const firstInnerCreature = innerWorld?.creatures.find((creature) => creature.status === "idle");
   const firstUnlockedProvince = overview?.provinces.find((province) => province.unlocked);
+  const availableFactionRoutes =
+    faction?.routes.filter((item) => item.route_id !== "undecided") ?? [];
 
   useEffect(() => {
     let ignore = false;
@@ -259,6 +264,7 @@ export default function HomePage() {
         setSect(state.sect);
         setResourcePoints(state.resourcePoints);
         setPersonalRank(state.personalRank);
+        setFaction(state.faction);
       })
       .catch(() => {
         if (!ignore) {
@@ -356,6 +362,7 @@ export default function HomePage() {
     setSect(state.sect);
     setResourcePoints(state.resourcePoints);
     setPersonalRank(state.personalRank);
+    setFaction(state.faction);
   }
 
   async function refreshCommerce() {
@@ -730,6 +737,33 @@ export default function HomePage() {
       await refreshOverview(
         `PVP ${response.data.result === "win" ? "胜" : "负"} +${response.data.score_delta}`,
       );
+    });
+  }
+
+  async function handleChooseFactionRoute(routeConfig: FactionRouteConfigState) {
+    await runAction(`选择${routeConfig.name}`, async () => {
+      const response = await client.chooseFactionRoute(
+        { route_id: routeConfig.route_id },
+        createIdempotencyKey(`web_faction_choose_${routeConfig.route_id}`),
+      );
+      ensureOk(response);
+      rememberExperience(response.data.experience);
+      await refreshOverview(`已选择${response.data.state.route_name}`);
+    });
+  }
+
+  async function handleTransferFactionRoute(routeConfig: FactionRouteConfigState) {
+    await runAction(`转道${routeConfig.name}`, async () => {
+      const response = await client.transferFactionRoute(
+        {
+          route_id: routeConfig.route_id,
+          task_id: factionTransferTaskId(routeConfig.route_id),
+        },
+        createIdempotencyKey(`web_faction_transfer_${routeConfig.route_id}`),
+      );
+      ensureOk(response);
+      rememberExperience(response.data.experience);
+      await refreshOverview(`已转道${response.data.state.route_name}`);
     });
   }
 
@@ -1310,6 +1344,89 @@ export default function HomePage() {
                     title="PVP 与排行"
                   />
                 </div>
+                <section className="faction-panel" aria-label="仙魔散修路线">
+                  <div className="section-title">
+                    <h2>仙魔散修</h2>
+                    <span>{faction?.state.unlock_hint ?? "化神 / 神躯或第五章后开启"}</span>
+                  </div>
+                  <div className="faction-layout">
+                    <article className="faction-state-card">
+                      <div className="province-head">
+                        <strong>{faction?.state.route_name ?? "未定"}</strong>
+                        <StatusBadge
+                          tone={
+                            faction?.state.sect_conflict
+                              ? "warning"
+                              : faction?.state.unlocked
+                                ? "success"
+                                : "neutral"
+                          }
+                        >
+                          {faction?.state.sect_conflict
+                            ? "宗门冲突"
+                            : faction?.state.unlocked
+                              ? "已开启"
+                              : "未开启"}
+                        </StatusBadge>
+                      </div>
+                      <span>
+                        仙盟 {faction?.state.reputation.immortal ?? 0} · 魔宗{" "}
+                        {faction?.state.reputation.demon ?? 0} · 散修{" "}
+                        {faction?.state.reputation.wanderer ?? 0}
+                      </span>
+                      <span>
+                        称号 {faction?.state.title_name ?? "未定"} · 史册{" "}
+                        {faction?.state.chronicle_title ?? "未定"}
+                      </span>
+                      <p>
+                        {faction?.state.sect_conflict_hint ??
+                          faction?.state.ending_summary ??
+                          "路线奖励以荣誉、展示外观和纪元记录为主。"}
+                      </p>
+                      <div className="mini-stats">
+                        <span>转道 {faction?.state.transfer_available ? "可用" : "冷却/未定"}</span>
+                        <span>次数 {faction?.state.transfer_count ?? 0}</span>
+                      </div>
+                    </article>
+                    <div className="faction-route-list">
+                      {availableFactionRoutes.map((routeConfig) => {
+                        const currentRoute = faction?.state.route;
+                        const canChoose =
+                          faction?.state.unlocked === true && currentRoute === "undecided";
+                        const canTransfer =
+                          faction?.state.unlocked === true &&
+                          currentRoute !== "undecided" &&
+                          currentRoute !== routeConfig.route_id &&
+                          faction.state.transfer_available;
+
+                        return (
+                          <article className="faction-route-card" key={routeConfig.route_id}>
+                            <div>
+                              <strong>{routeConfig.name}</strong>
+                              <span>{routeConfig.stance_label}</span>
+                            </div>
+                            <p>{routeConfig.core_goal}</p>
+                            <span>{routeConfig.weekly_focus.join(" / ")}</span>
+                            <div className="production-actions">
+                              <Button
+                                disabled={busy || !canChoose}
+                                onClick={() => handleChooseFactionRoute(routeConfig)}
+                              >
+                                选择
+                              </Button>
+                              <Button
+                                disabled={busy || !canTransfer}
+                                onClick={() => handleTransferFactionRoute(routeConfig)}
+                              >
+                                转道
+                              </Button>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </section>
                 <div className="tower-grid" aria-label="九塔全域状态">
                   {towers?.towers.map((tower) => (
                     <article className="tower-card" key={tower.tower_id}>
@@ -1618,20 +1735,28 @@ async function loadInnerWorld(client: GameClient) {
 }
 
 async function loadMultiplayer(client: GameClient) {
-  const [towerResponse, bossResponse, sectResponse, resourceResponse, rankResponse] =
-    await Promise.all([
-      client.towers(),
-      client.worldBoss(),
-      client.mySect(),
-      client.resourcePoints(),
-      client.ranks("personal"),
-    ]);
+  const [
+    towerResponse,
+    bossResponse,
+    sectResponse,
+    resourceResponse,
+    rankResponse,
+    factionResponse,
+  ] = await Promise.all([
+    client.towers(),
+    client.worldBoss(),
+    client.mySect(),
+    client.resourcePoints(),
+    client.ranks("personal"),
+    client.factionRoutes(),
+  ]);
 
   ensureOk(towerResponse);
   ensureOk(bossResponse);
   ensureOk(sectResponse);
   ensureOk(resourceResponse);
   ensureOk(rankResponse);
+  ensureOk(factionResponse);
 
   return {
     towers: towerResponse.data,
@@ -1639,6 +1764,7 @@ async function loadMultiplayer(client: GameClient) {
     sect: sectResponse.data,
     resourcePoints: resourceResponse.data,
     personalRank: rankResponse.data,
+    faction: factionResponse.data,
   };
 }
 
@@ -1716,6 +1842,16 @@ function creatureStatusLabel(status: string): string {
     training: "培养中",
   };
   return labels[status] ?? status;
+}
+
+function factionTransferTaskId(routeId: string): string {
+  const taskIds: Record<string, string> = {
+    immortal: "transfer_immortal_oath",
+    demon: "transfer_demon_oath",
+    wanderer: "transfer_wanderer_oath",
+  };
+
+  return taskIds[routeId] ?? "transfer_wanderer_oath";
 }
 
 function formatRemainingSeconds(seconds: number): string {

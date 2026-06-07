@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import type {
+  BattleSummary,
+  MonthlyCardStateSummary,
   PluginExpandedPanelResponse,
   PluginNavigationLink,
   PluginNavigationLinksResponse,
+  PluginPanelDigest,
   PluginPresetId,
   PluginQuickClaimItem,
   PluginQuickClaimRequest,
@@ -80,6 +83,16 @@ export class PluginService {
     return {
       status,
       tasks: overview.tasks.slice(0, 6).map(toPanelTask),
+      digests: this.buildPanelDigests({
+        recentBattles: overview.recent_battles,
+        towers: towers.towers,
+        ancientOwnedCount: treasures.treasures.filter((treasure) => treasure.owned).length,
+        ancientTotalCount: treasures.treasures.length,
+        ancientAvailableDraws: status.monthly_grant_count,
+        monthlyCards: commerce.monthly_cards,
+        sect: sect.sect,
+        boss: boss.boss,
+      }),
       cave: overview.cave,
       provinces: overview.provinces,
       towers: towers.towers.slice(0, 4),
@@ -201,6 +214,86 @@ export class PluginService {
       { key: "towers", label: "九塔", url: `${baseUrl}?tab=multiplayer` },
       { key: "commerce", label: "月卡古宝", url: `${baseUrl}?tab=market` },
     ];
+  }
+
+  private buildPanelDigests(input: {
+    recentBattles: BattleSummary[];
+    towers: PluginExpandedPanelResponse["towers"];
+    ancientOwnedCount: number;
+    ancientTotalCount: number;
+    ancientAvailableDraws: number;
+    monthlyCards: MonthlyCardStateSummary[];
+    sect: PluginExpandedPanelResponse["sect"];
+    boss: PluginExpandedPanelResponse["boss"];
+  }): PluginPanelDigest[] {
+    const digests: PluginPanelDigest[] = [];
+    const latestBattle = input.recentBattles[0];
+    if (latestBattle) {
+      digests.push({
+        digest_id: "recent_battle",
+        title: "最近战报",
+        summary: `${latestBattle.enemy_name} · ${latestBattle.result === "win" ? "胜" : "败"} · ${latestBattle.rounds} 回合`,
+        tone: latestBattle.result === "win" ? "success" : "warning",
+        action_hint: "battle",
+      });
+    }
+
+    const firstTower = input.towers[0];
+    if (firstTower) {
+      digests.push({
+        digest_id: "tower_snapshot",
+        title: "九塔摘要",
+        summary: `${firstTower.tower_name} 完整度 ${firstTower.integrity}，镇封 ${firstTower.seal_progress}`,
+        tone: firstTower.corruption > 60 ? "warning" : "neutral",
+        action_hint: "towers",
+      });
+    }
+
+    if (input.boss) {
+      digests.push({
+        digest_id: "boss_snapshot",
+        title: "Boss 阶段",
+        summary: `${input.boss.name} 阶段 ${input.boss.phase}，血量 ${input.boss.remaining_hp}/${input.boss.total_hp}`,
+        tone: input.boss.remaining_hp < input.boss.total_hp * 0.25 ? "success" : "neutral",
+        action_hint: "towers",
+      });
+    }
+
+    digests.push({
+      digest_id: "ancient_treasure",
+      title: "古宝提醒",
+      summary:
+        input.ancientAvailableDraws > 0
+          ? `可用 ${input.ancientAvailableDraws} 次月卡赠抽，已收集 ${input.ancientOwnedCount}/${input.ancientTotalCount}`
+          : `已收集 ${input.ancientOwnedCount}/${input.ancientTotalCount}，暂无当日赠抽`,
+      tone: input.ancientAvailableDraws > 0 ? "success" : "neutral",
+      action_hint: "commerce",
+    });
+
+    if (input.sect) {
+      digests.push({
+        digest_id: "sect_snapshot",
+        title: "宗门摘要",
+        summary: `${input.sect.name} 周贡献 ${input.sect.my_contribution_weekly}，等级 ${input.sect.level}`,
+        tone: "neutral",
+        action_hint: "towers",
+      });
+    }
+
+    const activeMonthlyCards = input.monthlyCards.filter((card) => card.active);
+    if (activeMonthlyCards.length > 0) {
+      digests.push({
+        digest_id: "monthly_card",
+        title: "月卡状态",
+        summary: `${activeMonthlyCards.length} 张月卡生效，剩余天数 ${activeMonthlyCards
+          .map((card) => card.remaining_days)
+          .join("/")}`,
+        tone: "success",
+        action_hint: "commerce",
+      });
+    }
+
+    return digests.slice(0, 5);
   }
 
   private async tryClaim(

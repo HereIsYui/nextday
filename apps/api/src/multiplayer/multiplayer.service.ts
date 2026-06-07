@@ -35,6 +35,7 @@ import {
   buildBossExperience,
   buildPvpExperience,
   buildSectTaskExperience,
+  buildSectWarehouseExperience,
   buildTowerExperience,
 } from "../platform/experience";
 import { hashRequestBody } from "../platform/utils/hash";
@@ -647,6 +648,15 @@ export class MultiplayerService {
           sect: detail.sect,
           warehouse: detail.warehouse,
           bag: await this.getBagByPlayerId(tx, player.playerId),
+          experience: buildSectWarehouseExperience({
+            operationType: "deposit",
+            sectName: detail.sect.name,
+            itemName: getItemMeta(item.itemId).name,
+            count: body.count,
+            beforeCount: (warehouse.count - BigInt(body.count)).toString(),
+            afterCount: warehouse.count.toString(),
+            warehouse: detail.warehouse,
+          }),
         };
       },
     });
@@ -708,6 +718,15 @@ export class MultiplayerService {
           sect: detail.sect,
           warehouse: detail.warehouse,
           bag: await this.getBagByPlayerId(tx, player.playerId),
+          experience: buildSectWarehouseExperience({
+            operationType: "withdraw",
+            sectName: detail.sect.name,
+            itemName: getItemMeta(body.item_id).name,
+            count: body.count,
+            beforeCount: warehouse.count.toString(),
+            afterCount: afterCount.toString(),
+            warehouse: detail.warehouse,
+          }),
         };
       },
     });

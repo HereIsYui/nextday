@@ -133,6 +133,36 @@ describe("P1 Web 玩法过程反馈", () => {
     expect(sectTask.body.data.contribution).toBeGreaterThan(0);
     expectExperience(sectTask.body.data.experience);
 
+    const warehouseItemId = await createItem(
+      prisma,
+      attacker.playerId,
+      "raw_iron",
+      2,
+      "unbound",
+      "p1_test_seed",
+    );
+    const deposited = await request(app.getHttpServer())
+      .post("/api/multiplayer/sects/warehouse/deposit")
+      .set("Authorization", `Bearer ${attacker.token}`)
+      .set("Idempotency-Key", `idem_p1_warehouse_deposit_${Date.now()}_${randomSuffix()}`)
+      .send({ item_instance_id: warehouseItemId, count: 1 })
+      .expect(201);
+    expectExperience(deposited.body.data.experience);
+    expect(
+      deposited.body.data.experience.reason_tags.map((tag: { code: string }) => tag.code),
+    ).toContain("warehouse_whitelist");
+
+    const withdrawn = await request(app.getHttpServer())
+      .post("/api/multiplayer/sects/warehouse/withdraw")
+      .set("Authorization", `Bearer ${attacker.token}`)
+      .set("Idempotency-Key", `idem_p1_warehouse_withdraw_${Date.now()}_${randomSuffix()}`)
+      .send({ item_id: "raw_iron", count: 1 })
+      .expect(201);
+    expectExperience(withdrawn.body.data.experience);
+    expect(
+      withdrawn.body.data.experience.reason_tags.map((tag: { code: string }) => tag.code),
+    ).toContain("warehouse_audit");
+
     const resources = await request(app.getHttpServer())
       .get("/api/multiplayer/resource-points")
       .set("Authorization", `Bearer ${attacker.token}`)
@@ -293,6 +323,29 @@ async function grantWallet(
       jadeBound: input.jadeBound ? { increment: BigInt(input.jadeBound) } : undefined,
     },
   });
+}
+
+async function createItem(
+  prisma: PrismaClient,
+  playerId: string,
+  itemId: string,
+  count: number,
+  bindType: string,
+  sourceType: string,
+): Promise<string> {
+  const itemInstanceId = `item_p1_${Date.now()}_${randomSuffix()}`;
+  await prisma.playerItem.create({
+    data: {
+      itemInstanceId,
+      playerId,
+      itemId,
+      count,
+      bindType,
+      sourceType,
+    },
+  });
+
+  return itemInstanceId;
 }
 
 function randomSuffix(): string {

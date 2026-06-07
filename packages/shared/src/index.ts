@@ -799,6 +799,7 @@ export interface SectWarehouseResponse {
   sect: SectSummary;
   warehouse: SectWarehouseItemState[];
   bag?: BagSummaryResponse;
+  experience?: ExperiencePayload;
 }
 
 export interface ResourcePointSummary {
@@ -1143,9 +1144,18 @@ export interface PluginPanelTaskState {
   progress_text: string;
 }
 
+export interface PluginPanelDigest {
+  digest_id: string;
+  title: string;
+  summary: string;
+  tone: ExperienceTone;
+  action_hint?: string;
+}
+
 export interface PluginExpandedPanelResponse {
   status: PluginStatusCardResponse;
   tasks: PluginPanelTaskState[];
+  digests: PluginPanelDigest[];
   cave: CaveState | null;
   provinces: ProvinceSummary[];
   towers: TowerStateSummary[];

@@ -82,6 +82,15 @@ export default function HomePage() {
   const firstTower = towers?.towers[0];
   const firstResourcePoint = resourcePoints?.resource_points[0];
   const pvpTarget = personalRank?.entries.find((entry) => entry.target_id !== activePlayerId);
+  const firstWarehouseDepositItem = bag?.items.find(
+    (item) =>
+      item.tradeable &&
+      !item.locked &&
+      !item.expired &&
+      item.bind_type === "unbound" &&
+      (item.item_id === "raw_iron" || item.item_id === "low_herb"),
+  );
+  const firstWarehouseItem = sect?.warehouse[0];
   const firstAncientGrant = commerce?.available_monthly_grants[0];
   const ownedTreasureCount =
     ancientTreasures?.treasures.filter((treasure) => treasure.owned).length ?? 0;
@@ -549,6 +558,48 @@ export default function HomePage() {
     });
   }
 
+  async function handleSectWarehouseDeposit() {
+    if (!sect?.sect) {
+      setMessage("请先创建或加入宗门");
+      return;
+    }
+    if (!firstWarehouseDepositItem) {
+      setMessage("暂无可入库的未绑定白名单材料");
+      return;
+    }
+
+    await runAction("宗门入库", async () => {
+      const response = await client.depositSectWarehouse(
+        { item_instance_id: firstWarehouseDepositItem.item_instance_id, count: 1 },
+        createIdempotencyKey("web_sect_deposit"),
+      );
+      ensureOk(response);
+      rememberExperience(response.data.experience);
+      await refreshOverview(`入库 ${firstWarehouseDepositItem.name} x1`);
+    });
+  }
+
+  async function handleSectWarehouseWithdraw() {
+    if (!sect?.sect) {
+      setMessage("请先创建或加入宗门");
+      return;
+    }
+    if (!firstWarehouseItem) {
+      setMessage("宗门仓库暂无可取用材料");
+      return;
+    }
+
+    await runAction("宗门取用", async () => {
+      const response = await client.withdrawSectWarehouse(
+        { item_id: firstWarehouseItem.item_id, count: 1 },
+        createIdempotencyKey("web_sect_withdraw"),
+      );
+      ensureOk(response);
+      rememberExperience(response.data.experience);
+      await refreshOverview(`取用 ${firstWarehouseItem.name} x1`);
+    });
+  }
+
   async function handlePvpAttack() {
     if (!pvpTarget) {
       setMessage("暂无可用 PVP 目标，可先让其他玩家产生排行记录");
@@ -1007,11 +1058,25 @@ export default function HomePage() {
                         <Button disabled={busy || !sect?.sect} onClick={handleSectTask}>
                           宗门任务
                         </Button>
+                        <Button
+                          disabled={busy || !sect?.sect || !firstWarehouseDepositItem}
+                          onClick={handleSectWarehouseDeposit}
+                        >
+                          入库材料
+                        </Button>
+                        <Button
+                          disabled={busy || !sect?.sect || !firstWarehouseItem}
+                          onClick={handleSectWarehouseWithdraw}
+                        >
+                          取用材料
+                        </Button>
                       </>
                     }
                     detail={
                       sect?.sect
-                        ? `${sect.sect.name} · 周贡献 ${sect.sect.my_contribution_weekly}`
+                        ? `${sect.sect.name} · 周贡献 ${sect.sect.my_contribution_weekly} · 仓库 ${
+                            sect.warehouse.length
+                          } 类`
                         : "未入宗门"
                     }
                     title="宗门"

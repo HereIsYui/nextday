@@ -11,6 +11,7 @@ import type {
   ResourcePointSummary,
   RewardBundle,
   RiskStatus,
+  SectWarehouseItemState,
   SettlementStatus,
   TowerActionType,
   TowerStateSummary,
@@ -487,6 +488,77 @@ export function buildSectTaskExperience(input: {
         label: "异步宗门行动",
         description: "宗门建设按行动和贡献记录推进，不要求成员同时在线。",
         tone: "neutral",
+      },
+    ],
+  };
+}
+
+export function buildSectWarehouseExperience(input: {
+  operationType: "deposit" | "withdraw";
+  sectName: string;
+  itemName: string;
+  count: number;
+  beforeCount: string;
+  afterCount: string;
+  warehouse: SectWarehouseItemState[];
+}): ExperiencePayload {
+  const operationLabel = input.operationType === "deposit" ? "入库" : "取用";
+  const flowText =
+    input.operationType === "deposit"
+      ? `${input.itemName} x${input.count} 从个人背包转入宗门仓库。`
+      : `${input.itemName} x${input.count} 从宗门仓库转入个人背包。`;
+
+  return {
+    title: "宗门仓库流转回放",
+    summary: `${input.sectName} 仓库${operationLabel}：${input.itemName} x${input.count}。`,
+    timeline: [
+      {
+        step: 1,
+        title: "白名单与绑定状态校验",
+        description:
+          input.operationType === "deposit"
+            ? "仅允许未绑定、未锁定、非付费来源的白名单材料入库。"
+            : "按宗门仓库库存与职位权限边界执行取用。",
+        tone: "neutral",
+      },
+      {
+        step: 2,
+        title: `仓库${operationLabel}`,
+        description: flowText,
+        tone: "success",
+      },
+      {
+        step: 3,
+        title: "流转后库存",
+        description: `${input.itemName} 库存 ${input.beforeCount} → ${input.afterCount}，当前仓库共 ${input.warehouse.length} 类物品。`,
+        tone: "neutral",
+      },
+    ],
+    delta_summary: [
+      { label: "操作", after: operationLabel, tone: "neutral" },
+      { label: "物品", after: `${input.itemName} x${input.count}`, tone: "success" },
+      { label: "库存", before: input.beforeCount, after: input.afterCount, tone: "neutral" },
+    ],
+    next_recommendations: [
+      {
+        label: "查看宗门仓库",
+        reason: "仓库流转有审计日志，适合确认材料是否进入白名单循环。",
+        action_hint: "multiplayer",
+        priority: "medium",
+      },
+    ],
+    reason_tags: [
+      {
+        code: "warehouse_whitelist",
+        label: "白名单流通",
+        description: "仓库只流通非绑定普通材料，付费、限定和高阶终局材料不能进入仓库。",
+        tone: "neutral",
+      },
+      {
+        code: "warehouse_audit",
+        label: "仓库日志",
+        description: "入库、取用都会记录玩家、物品、数量、前后库存和幂等键。",
+        tone: "success",
       },
     ],
   };

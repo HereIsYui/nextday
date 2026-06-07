@@ -1159,6 +1159,131 @@ export interface ClaimRankTitleResponse {
   rank_entry: RankEntryState;
 }
 
+export type ActivityEventType =
+  | "jiuzhou_travel"
+  | "craft_trial"
+  | "sect_celebration"
+  | "return_support"
+  | "compensation";
+
+export type ActivityRewardState =
+  | "unsettled"
+  | "claimable"
+  | "claimed"
+  | "compensated"
+  | "rolled_back";
+
+export interface ActivityTemplateState {
+  event_id: string;
+  event_type: ActivityEventType | string;
+  name: string;
+  description: string;
+  action_label: string;
+  async_enabled: boolean;
+  target_progress: number;
+  action_point_cost: number;
+  contribution_per_action: number;
+  rank_score_per_action: number;
+  reward_preview: RewardBundle;
+  reward_boundary: string;
+  announcement_template: {
+    title: string;
+    content: string;
+  };
+}
+
+export interface ActivityRecordState {
+  event_record_id: string;
+  event_instance_id: string;
+  event_id: string;
+  player_id: string;
+  period_key: string;
+  province_id: string | null;
+  sect_id: string | null;
+  progress: number;
+  target_progress: number;
+  contribution: string;
+  rank_score: string;
+  reward_state: ActivityRewardState | string;
+  event_config_version: string;
+  reward_config_version: string;
+  ruleset_version: string;
+  created_at: string;
+  settled_at: string | null;
+}
+
+export interface ActivitySummaryState {
+  event_instance_id: string;
+  event_id: string;
+  event_type: ActivityEventType | string;
+  name: string;
+  description: string;
+  status: "preview" | "active" | "settling" | "ended" | "rolled_back" | string;
+  async_enabled: boolean;
+  starts_at: string;
+  ends_at: string;
+  settlement_at: string;
+  progress: number;
+  target_progress: number;
+  reward_state: ActivityRewardState | string;
+  claimable: boolean;
+  action_label: string;
+  reward_preview: RewardBundle;
+  reward_boundary: string;
+}
+
+export interface ActivityListResponse {
+  events: ActivitySummaryState[];
+  claimable_count: number;
+  async_rule: string;
+  reward_boundary: string;
+}
+
+export interface ActivityDetailResponse {
+  event: ActivitySummaryState;
+  template: ActivityTemplateState;
+  record: ActivityRecordState | null;
+  announcement_template: {
+    title: string;
+    content: string;
+  };
+  progress_actions: Array<{
+    action_type: string;
+    label: string;
+    count_limit: number;
+    action_point_cost: number;
+  }>;
+}
+
+export interface SubmitActivityProgressRequest {
+  event_id: string;
+  count?: number;
+  province_id?: string;
+}
+
+export interface SubmitActivityProgressResponse {
+  record_id: string;
+  event: ActivitySummaryState;
+  record: ActivityRecordState;
+  action_state: ActionState | null;
+  contribution_gained: number;
+  rank_score_gained: number;
+  reward_state: ActivityRewardState | string;
+  experience?: ExperiencePayload;
+}
+
+export interface ClaimActivityRewardRequest {
+  event_id: string;
+}
+
+export interface ClaimActivityRewardResponse {
+  reward_record_id: string;
+  event: ActivitySummaryState;
+  record: ActivityRecordState;
+  rewards: RewardBundle;
+  experience?: ExperiencePayload;
+}
+
 export type MonthlyCardType = "small_monthly" | "large_monthly";
 export type GachaPoolType = "permanent" | "ancient_treasure";
 export type GachaCostType =
@@ -1462,6 +1587,7 @@ export interface PluginExpandedPanelResponse {
   inner_world: InnerWorldStateSummary | null;
   faction: FactionStateSummary | null;
   titles: TitleCollectionResponse | null;
+  activities: ActivitySummaryState[];
   provinces: ProvinceSummary[];
   towers: TowerStateSummary[];
   recent_battles: BattleSummary[];
@@ -1508,7 +1634,7 @@ export interface PluginSubmitPresetResponse {
 }
 
 export interface PluginNavigationLink {
-  key: "web" | "h5" | "tasks" | "towers" | "commerce" | "inner_world";
+  key: "web" | "h5" | "tasks" | "towers" | "commerce" | "inner_world" | "events";
   label: string;
   url: string;
 }
@@ -1543,6 +1669,8 @@ export type ConfigType =
   | "inner_world"
   | "faction_route"
   | "era_rank"
+  | "event"
+  | "activity_template"
   | "risk";
 
 export interface ConfigEnvelope<TPayload = Record<string, unknown>> {

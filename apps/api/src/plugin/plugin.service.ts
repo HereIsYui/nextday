@@ -18,6 +18,7 @@ import type {
   TaskState,
 } from "@nextday/shared";
 import { CommerceService } from "../commerce/commerce.service";
+import { EventsService } from "../events/events.service";
 import { FactionsService } from "../factions/factions.service";
 import { GameService } from "../game/game.service";
 import { InnerWorldService } from "../inner-world/inner-world.service";
@@ -31,12 +32,14 @@ export class PluginService {
     @Inject(CommerceService) private readonly commerceService: CommerceService,
     @Inject(InnerWorldService) private readonly innerWorldService: InnerWorldService,
     @Inject(FactionsService) private readonly factionsService: FactionsService,
+    @Inject(EventsService) private readonly eventsService: EventsService,
   ) {}
 
   async getStatusCard(accountId: string): Promise<PluginStatusCardResponse> {
-    const [overview, commerce] = await Promise.all([
+    const [overview, commerce, activities] = await Promise.all([
       this.gameService.getOverview(accountId),
       this.commerceService.getOverview(accountId),
+      this.eventsService.list(accountId).catch(() => null),
     ]);
 
     const player = overview.profile.player;
@@ -55,6 +58,7 @@ export class PluginService {
       (overview.cave?.claimable_minutes ?? 0) > 0 ? "洞府可收" : null,
       completedTaskCount > 0 ? `${completedTaskCount} 个任务可领` : null,
       monthlyGrantCount > 0 ? `${monthlyGrantCount} 次古宝赠抽` : null,
+      (activities?.claimable_count ?? 0) > 0 ? `${activities?.claimable_count} 个活动可领` : null,
     ].filter((item): item is string => Boolean(item));
 
     return {
@@ -75,19 +79,31 @@ export class PluginService {
   }
 
   async getExpandedPanel(accountId: string): Promise<PluginExpandedPanelResponse> {
-    const [status, overview, towers, boss, sect, commerce, treasures, innerWorld, faction, titles] =
-      await Promise.all([
-        this.getStatusCard(accountId),
-        this.gameService.getOverview(accountId),
-        this.multiplayerService.getTowers(),
-        this.multiplayerService.getWorldBoss(),
-        this.multiplayerService.getMySect(accountId),
-        this.commerceService.getOverview(accountId),
-        this.commerceService.listAncientTreasures(accountId),
-        this.innerWorldService.getSummary(accountId).catch(() => null),
-        this.factionsService.getReputation(accountId).catch(() => null),
-        this.multiplayerService.getTitleCollection(accountId).catch(() => null),
-      ]);
+    const [
+      status,
+      overview,
+      towers,
+      boss,
+      sect,
+      commerce,
+      treasures,
+      innerWorld,
+      faction,
+      titles,
+      activities,
+    ] = await Promise.all([
+      this.getStatusCard(accountId),
+      this.gameService.getOverview(accountId),
+      this.multiplayerService.getTowers(),
+      this.multiplayerService.getWorldBoss(),
+      this.multiplayerService.getMySect(accountId),
+      this.commerceService.getOverview(accountId),
+      this.commerceService.listAncientTreasures(accountId),
+      this.innerWorldService.getSummary(accountId).catch(() => null),
+      this.factionsService.getReputation(accountId).catch(() => null),
+      this.multiplayerService.getTitleCollection(accountId).catch(() => null),
+      this.eventsService.list(accountId).catch(() => null),
+    ]);
 
     return {
       status,
@@ -104,11 +120,13 @@ export class PluginService {
         innerWorld: innerWorld?.state ?? null,
         faction: faction?.state ?? null,
         titles,
+        activities: activities?.events ?? [],
       }),
       cave: overview.cave,
       inner_world: innerWorld?.state ?? null,
       faction: faction?.state ?? null,
       titles,
+      activities: activities?.events.slice(0, 3) ?? [],
       provinces: overview.provinces,
       towers: towers.towers.slice(0, 4),
       recent_battles: overview.recent_battles.slice(0, 3),
@@ -238,6 +256,7 @@ export class PluginService {
       { key: "towers", label: "九塔", url: `${baseUrl}?tab=multiplayer` },
       { key: "commerce", label: "月卡古宝", url: `${baseUrl}?tab=market` },
       { key: "inner_world", label: "内天地", url: `${baseUrl}?tab=growth#inner-world` },
+      { key: "events", label: "活动中心", url: `${baseUrl}?tab=events` },
     ];
   }
 
@@ -253,6 +272,7 @@ export class PluginService {
     innerWorld: PluginExpandedPanelResponse["inner_world"];
     faction: FactionStateSummary | null;
     titles: PluginExpandedPanelResponse["titles"];
+    activities: PluginExpandedPanelResponse["activities"];
   }): PluginPanelDigest[] {
     const digests: PluginPanelDigest[] = [];
     const latestBattle = input.recentBattles[0];
@@ -297,6 +317,20 @@ export class PluginService {
       tone: input.ancientAvailableDraws > 0 ? "success" : "neutral",
       action_hint: "commerce",
     });
+
+    const claimableActivity = input.activities.find((activity) => activity.claimable);
+    const firstActivity = claimableActivity ?? input.activities[0];
+    if (firstActivity) {
+      digests.push({
+        digest_id: "activity_center",
+        title: "活动中心",
+        summary: firstActivity.claimable
+          ? `${firstActivity.name} 可领取，进度 ${firstActivity.progress}/${firstActivity.target_progress}`
+          : `${firstActivity.name} 进度 ${firstActivity.progress}/${firstActivity.target_progress}`,
+        tone: firstActivity.claimable ? "success" : "neutral",
+        action_hint: "events",
+      });
+    }
 
     if (input.innerWorld) {
       digests.push({

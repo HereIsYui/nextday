@@ -63,6 +63,8 @@ model Player {
   loginLogs                 LoginLog[]
   provinces                 PlayerProvinceProgress[]
   tasks                     PlayerTaskState[]
+  eventRecords              EventRecord[]
+  eventRewardRecords        EventRewardRecord[]
   battleLogs                BattleLog[]
   caveRecords               CaveCollectRecord[]
   alchemyRecords            AlchemyRecord[]
@@ -258,6 +260,100 @@ model PlayerTaskState {
   @@index([playerId])
   @@index([taskType, status])
   @@map("player_task_state")
+}
+
+model EventInstance {
+  eventInstanceId     String   @id @map("event_instance_id")
+  eventId             String   @map("event_id")
+  eraId               String   @default("era_mvp_001") @map("era_id")
+  serverId            String   @default("default") @map("server_id")
+  eventType           String   @map("event_type")
+  status              String   @default("active")
+  asyncEnabled        Boolean  @default(true) @map("async_enabled")
+  startsAt            DateTime @map("starts_at")
+  endsAt              DateTime @map("ends_at")
+  settlementAt        DateTime @map("settlement_at")
+  eventConfigVersion  String   @map("event_config_version")
+  rewardConfigVersion String   @map("reward_config_version")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  records EventRecord[]
+  rewards EventRewardRecord[]
+
+  @@unique([eraId, eventId])
+  @@index([eventId])
+  @@index([eraId])
+  @@index([eventType])
+  @@index([status])
+  @@index([startsAt])
+  @@index([endsAt])
+  @@map("event_instance")
+}
+
+model EventRecord {
+  eventRecordId       String    @id @map("event_record_id")
+  eventInstanceId     String    @map("event_instance_id")
+  eventId             String    @map("event_id")
+  playerId            String    @map("player_id")
+  eraId               String    @default("era_mvp_001") @map("era_id")
+  periodKey           String    @map("period_key")
+  provinceId          String?   @map("province_id")
+  sectId              String?   @map("sect_id")
+  progress            Int       @default(0)
+  targetProgress      Int       @map("target_progress")
+  contribution        BigInt    @default(0)
+  rankScore           BigInt    @default(0) @map("rank_score")
+  rewardState         String    @default("unsettled") @map("reward_state")
+  eventConfigVersion  String    @map("event_config_version")
+  rewardConfigVersion String    @map("reward_config_version")
+  rulesetVersion      String    @map("ruleset_version")
+  idempotencyKey      String?   @unique @map("idempotency_key")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  lastActionAt        DateTime? @map("last_action_at")
+  settledAt           DateTime? @map("settled_at")
+
+  eventInstance EventInstance      @relation(fields: [eventInstanceId], references: [eventInstanceId])
+  player        Player             @relation(fields: [playerId], references: [playerId])
+  rewards       EventRewardRecord[]
+
+  @@unique([eventInstanceId, playerId, periodKey])
+  @@index([eventId])
+  @@index([playerId])
+  @@index([eraId])
+  @@index([periodKey])
+  @@index([rewardState])
+  @@index([createdAt])
+  @@map("event_record")
+}
+
+model EventRewardRecord {
+  rewardRecordId      String    @id @map("reward_record_id")
+  eventInstanceId     String    @map("event_instance_id")
+  eventRecordId       String    @map("event_record_id")
+  playerId            String    @map("player_id")
+  eraId               String    @default("era_mvp_001") @map("era_id")
+  rewardType          String    @map("reward_type")
+  rewardSummary       Json      @map("reward_summary")
+  status              String    @default("pending")
+  claimIdempotencyKey String?   @unique @map("claim_idempotency_key")
+  rewardConfigVersion String    @map("reward_config_version")
+  riskRulesetVersion  String    @map("risk_ruleset_version")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  claimedAt           DateTime? @map("claimed_at")
+
+  eventInstance EventInstance @relation(fields: [eventInstanceId], references: [eventInstanceId])
+  eventRecord   EventRecord   @relation(fields: [eventRecordId], references: [eventRecordId])
+  player        Player        @relation(fields: [playerId], references: [playerId])
+
+  @@index([eventInstanceId])
+  @@index([eventRecordId])
+  @@index([playerId])
+  @@index([eraId])
+  @@index([rewardType])
+  @@index([status])
+  @@index([createdAt])
+  @@map("event_reward_record")
 }
 
 model PlayerCaveState {

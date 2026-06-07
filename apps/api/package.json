@@ -22,7 +22,8 @@
     "test:p1-world": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p1-world.e2e-spec.ts",
     "test:p1-inner-world": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p1-inner-world.e2e-spec.ts",
     "test:p1-faction": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p1-faction.e2e-spec.ts",
-    "test:p1-rank": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p1-rank.e2e-spec.ts"
+    "test:p1-rank": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p1-rank.e2e-spec.ts",
+    "test:p1-events": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p1-events.e2e-spec.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",

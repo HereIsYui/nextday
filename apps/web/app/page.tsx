@@ -3,6 +3,8 @@
 import { GameClient } from "@nextday/game-client";
 import { cultivationRouteLabels } from "@nextday/game-rules";
 import type {
+  ActivityListResponse,
+  ActivitySummaryState,
   AlchemyRecipeListResponse,
   AncientTreasureListResponse,
   ApiResponse,
@@ -35,7 +37,7 @@ import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "re
 
 type HealthText = "检测中" | "正常" | "不可用";
 type RouteValue = "qi" | "body";
-type ActiveTab = "overview" | "growth" | "multiplayer" | "market" | "battle";
+type ActiveTab = "overview" | "events" | "growth" | "multiplayer" | "market" | "battle";
 
 const tokenStorageKey = "nextday_m1_token";
 const deviceStorageKey = "nextday_m1_device_id";
@@ -43,6 +45,7 @@ const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:300
 
 const navItems: Array<{ key: ActiveTab; label: string }> = [
   { key: "overview", label: "总览" },
+  { key: "events", label: "活动" },
   { key: "growth", label: "成长" },
   { key: "multiplayer", label: "多人" },
   { key: "market", label: "市肆" },
@@ -73,6 +76,7 @@ export default function HomePage() {
   const [innerWorldRank, setInnerWorldRank] = useState<RankListResponse | null>(null);
   const [factionRank, setFactionRank] = useState<RankListResponse | null>(null);
   const [titles, setTitles] = useState<TitleCollectionResponse | null>(null);
+  const [activities, setActivities] = useState<ActivityListResponse | null>(null);
   const [commerce, setCommerce] = useState<EntitlementOverviewResponse | null>(null);
   const [gachaPools, setGachaPools] = useState<GachaPoolListResponse | null>(null);
   const [ancientTreasures, setAncientTreasures] = useState<AncientTreasureListResponse | null>(
@@ -104,6 +108,8 @@ export default function HomePage() {
   );
   const firstWarehouseItem = sect?.warehouse[0];
   const firstAncientGrant = commerce?.available_monthly_grants[0];
+  const firstActivity = activities?.events[0];
+  const firstClaimableActivity = activities?.events.find((activity) => activity.claimable);
   const ownedTreasureCount =
     ancientTreasures?.treasures.filter((treasure) => treasure.owned).length ?? 0;
   const firstAppearance = appearances?.appearances[0];
@@ -197,6 +203,29 @@ export default function HomePage() {
       .catch(() => {
         if (!ignore) {
           setMessage("生产成长状态读取失败");
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [token, activePlayerId]);
+
+  useEffect(() => {
+    if (!token || !activePlayerId) {
+      return;
+    }
+
+    let ignore = false;
+    loadActivities(createClient(token))
+      .then((state) => {
+        if (!ignore) {
+          setActivities(state);
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setMessage("活动中心读取失败");
         }
       });
 
@@ -337,6 +366,7 @@ export default function HomePage() {
     await refreshProduction();
     await refreshInnerWorld();
     await refreshMultiplayer();
+    await refreshActivities();
     await refreshCommerce();
     setMessage(successMessage);
   }
@@ -380,6 +410,15 @@ export default function HomePage() {
     setFactionRank(state.factionRank);
     setTitles(state.titles);
     setFaction(state.faction);
+  }
+
+  async function refreshActivities() {
+    if (!token) {
+      return;
+    }
+
+    const state = await loadActivities(createClient(token));
+    setActivities(state);
   }
 
   async function refreshCommerce() {
@@ -796,6 +835,36 @@ export default function HomePage() {
     });
   }
 
+  async function handleSubmitActivity(activity: ActivitySummaryState) {
+    await runAction(activity.action_label, async () => {
+      const response = await client.submitActivityProgress(
+        {
+          event_id: activity.event_id,
+          count: 1,
+          province_id: firstUnlockedProvince?.province_id ?? "ji",
+        },
+        createIdempotencyKey(`web_event_progress_${activity.event_id}`),
+      );
+      ensureOk(response);
+      rememberExperience(response.data.experience);
+      await refreshOverview(
+        `${activity.name} 进度 ${response.data.record.progress}/${response.data.record.target_progress}`,
+      );
+    });
+  }
+
+  async function handleClaimActivity(activity: ActivitySummaryState) {
+    await runAction("领取活动奖励", async () => {
+      const response = await client.claimActivityReward(
+        { event_id: activity.event_id },
+        createIdempotencyKey(`web_event_claim_${activity.event_id}`),
+      );
+      ensureOk(response);
+      rememberExperience(response.data.experience);
+      await refreshOverview(`领取活动奖励：${activity.name}`);
+    });
+  }
+
   async function handlePurchaseMonthly(cardType: "small_monthly" | "large_monthly") {
     await runAction(cardType === "small_monthly" ? "购买小月卡" : "购买大月卡", async () => {
       const response = await client.purchaseMonthlyCard(
@@ -1152,6 +1221,81 @@ export default function HomePage() {
                   </div>
                 </section>
               </div>
+            ) : null}
+
+            {activeTab === "events" ? (
+              <section className="panel" aria-label="活动中心">
+                <div className="section-title">
+                  <h2>活动</h2>
+                  <span>
+                    {activities?.claimable_count ?? 0} 个可领取 ·{" "}
+                    {activities?.async_rule ?? "活动支持随时参与"}
+                  </span>
+                </div>
+                <div className="event-hero">
+                  <div>
+                    <strong>
+                      {firstClaimableActivity?.name ?? firstActivity?.name ?? "活动中心"}
+                    </strong>
+                    <span>
+                      {firstClaimableActivity
+                        ? "已有奖励可领取"
+                        : "活动全部异步参与，不要求固定时间在线"}
+                    </span>
+                  </div>
+                  <StatusBadge tone={firstClaimableActivity ? "success" : "neutral"}>
+                    {firstClaimableActivity ? "可领取" : "进行中"}
+                  </StatusBadge>
+                </div>
+                <div className="event-grid">
+                  {activities?.events.map((activity) => (
+                    <article className="event-card" key={activity.event_instance_id}>
+                      <div className="province-head">
+                        <strong>{activity.name}</strong>
+                        <StatusBadge tone={activity.claimable ? "success" : "neutral"}>
+                          {activity.claimable ? "可领取" : activity.status}
+                        </StatusBadge>
+                      </div>
+                      <p>{activity.description}</p>
+                      <div className="event-progress">
+                        <span>
+                          进度 {activity.progress}/{activity.target_progress}
+                        </span>
+                        <span>奖励 {activity.reward_state}</span>
+                      </div>
+                      <div className="mini-stats">
+                        <span>{activity.async_enabled ? "异步" : "定时"}</span>
+                        <span>结算 {formatShortDate(activity.settlement_at)}</span>
+                      </div>
+                      <div className="production-actions">
+                        <Button
+                          disabled={
+                            busy ||
+                            activity.claimable ||
+                            activity.progress >= activity.target_progress
+                          }
+                          onClick={() => handleSubmitActivity(activity)}
+                        >
+                          {activity.action_label}
+                        </Button>
+                        <Button
+                          disabled={busy || !activity.claimable}
+                          onClick={() => handleClaimActivity(activity)}
+                        >
+                          领取
+                        </Button>
+                      </div>
+                    </article>
+                  )) ?? <p>活动中心尚未读取</p>}
+                </div>
+                <div className="event-boundary">
+                  <strong>奖励边界</strong>
+                  <span>
+                    {activities?.reward_boundary ??
+                      "活动奖励不发付费仙玉、唯一战力道具、九大古宝本体、限定法宝或倍率奖励。"}
+                  </span>
+                </div>
+              </section>
             ) : null}
 
             {activeTab === "growth" ? (
@@ -1891,6 +2035,12 @@ async function loadMultiplayer(client: GameClient) {
   };
 }
 
+async function loadActivities(client: GameClient) {
+  const response = await client.activityList();
+  ensureOk(response);
+  return response.data;
+}
+
 async function loadCommerce(client: GameClient) {
   const [overviewResponse, poolResponse, treasureResponse, appearanceResponse] = await Promise.all([
     client.commerceOverview(),
@@ -1989,9 +2139,19 @@ function formatRemainingSeconds(seconds: number): string {
   return `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分钟`;
 }
 
+function formatShortDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "待定";
+  }
+
+  return `${date.getMonth() + 1}/${date.getDate()}`;
+}
+
 function isActiveTab(value: string | null): value is ActiveTab {
   return (
     value === "overview" ||
+    value === "events" ||
     value === "growth" ||
     value === "multiplayer" ||
     value === "market" ||

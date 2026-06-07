@@ -284,8 +284,10 @@ HTTP 是当前唯一默认交互通道。WebSocket / SSE 即使后续接入，�
 | `/api/quest/weekly` | GET | 周常任务 |
 | `/api/quest/chapter` | GET | 章节任务 |
 | `/api/quest/claim` | POST | 领取任务奖励 |
-| `/api/event/list` | GET | 活动列表 |
-| `/api/event/detail/{event_id}` | GET | 活动详情 |
+| `/api/events/list` | GET | 活动列表、异步参与状态和可领取红点 |
+| `/api/events/{event_id}` | GET | 活动详情、任务进度、公告模板和奖励边界 |
+| `/api/events/progress` | POST | 提交活动进度，需幂等键 |
+| `/api/events/claim` | POST | 领取活动奖励，需幂等键 |
 | `/api/multiplayer/ranks/{rank_type}` | GET | 排行明细，支持个人、宗门、PVP 周榜、九塔周榜、生产榜、纪元榜、内天地榜、阵营榜 |
 | `/api/multiplayer/titles` | GET | 当前玩家排行称号收藏、继承展示和纪元祝福限幅 |
 | `/api/multiplayer/titles/claim-rank` | POST | 领取满足名次门槛的排行称号，需幂等键 |

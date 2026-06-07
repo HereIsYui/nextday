@@ -3,6 +3,7 @@ import { AdminModule } from "./admin/admin.module";
 import { AuthModule } from "./auth/auth.module";
 import { CommerceModule } from "./commerce/commerce.module";
 import { DatabaseModule } from "./database/database.module";
+import { EventsModule } from "./events/events.module";
 import { FactionsModule } from "./factions/factions.module";
 import { GameConfigModule } from "./game-config/game-config.module";
 import { GameModule } from "./game/game.module";
@@ -34,6 +35,7 @@ import { RiskModule } from "./risk/risk.module";
     RiskModule,
     InnerWorldModule,
     FactionsModule,
+    EventsModule,
     PluginModule,
     AdminModule,
   ],

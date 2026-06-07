@@ -523,6 +523,64 @@ h2 {
   font-size: 17px;
 }
 
+.event-hero,
+.event-boundary {
+  align-items: center;
+  background: #fbfcfa;
+  border: 1px solid #dce4df;
+  border-radius: 8px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 14px;
+}
+
+.event-hero > div,
+.event-boundary {
+  display: grid;
+  gap: 4px;
+}
+
+.event-hero strong,
+.event-boundary strong,
+.event-card strong {
+  color: #10292b;
+}
+
+.event-hero span,
+.event-boundary span,
+.event-card p,
+.event-progress span {
+  color: #5f6f70;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.event-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+
+.event-card {
+  background: #fbfcfa;
+  border: 1px solid #dce4df;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  min-height: 210px;
+  padding: 14px;
+}
+
+.event-progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+}
+
 .inner-world-panel {
   border-top: 1px solid #dce4df;
   display: grid;

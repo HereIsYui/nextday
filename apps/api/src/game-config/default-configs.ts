@@ -10,6 +10,14 @@ import {
   vipBoundJadeRewards,
 } from "../commerce/commerce.constants";
 import {
+  eventAsyncRule,
+  eventConfigVersion,
+  eventRewardBoundary,
+  eventRewardConfigVersion,
+  eventRulesetVersion,
+  eventTemplateConfigs,
+} from "../events/events.constants";
+import {
   factionConfigVersion,
   factionRewardConfigVersion,
   factionRouteConfigs,
@@ -295,6 +303,47 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
       },
       anti_brush_rule: rankAntiBrushRule,
       reward_boundary: rankRewardBoundary,
+    },
+  },
+  event: {
+    config_type: "event",
+    config_version: eventConfigVersion,
+    ruleset_version: eventRulesetVersion,
+    reward_config_version: eventRewardConfigVersion,
+    payload: {
+      async_rule: eventAsyncRule,
+      reward_boundary: eventRewardBoundary,
+      events: eventTemplateConfigs.map((event) => ({
+        event_id: event.eventId,
+        event_type: event.eventType,
+        name: event.name,
+        target_progress: event.targetProgress,
+        action_point_cost: event.actionPointCost,
+        contribution_per_action: event.contributionPerAction,
+        rank_score_per_action: event.rankScorePerAction,
+        reward_preview: event.reward,
+      })),
+    },
+  },
+  activity_template: {
+    config_type: "activity_template",
+    config_version: eventConfigVersion,
+    ruleset_version: eventRulesetVersion,
+    reward_config_version: eventRewardConfigVersion,
+    payload: {
+      templates: eventTemplateConfigs.map((event) => ({
+        template_id: event.eventId,
+        activity_type: event.eventType,
+        name: event.name,
+        async_enabled: true,
+        schedule_rule: "活动期内全天可提交行动",
+        settlement_rule: "基础进度奖励可补偿，排行冲刺奖励不补发",
+        reward_boundary: eventRewardBoundary,
+        announcement_template: {
+          title: event.announcementTitle,
+          content: event.announcementContent,
+        },
+      })),
     },
   },
   gacha: {

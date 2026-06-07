@@ -767,6 +767,9 @@ function validateConfigPayload(
   if (configType === "rank" || configType === "era_rank") {
     validateRankConfig(payload);
   }
+  if (configType === "event" || configType === "activity_template") {
+    validateActivityConfig(payload);
+  }
   if (configType === "convenience" && text.includes('"reward_multiplier":2')) {
     throw new BadRequestException("便利配置不能提高奖励倍率");
   }
@@ -889,6 +892,40 @@ function validateRankConfig(payload: Record<string, unknown>) {
   }
   if (text.includes('"cap_percent":') && !text.includes('"cap_percent":1')) {
     throw new BadRequestException("纪元祝福上限不能超过 1%");
+  }
+}
+
+function validateActivityConfig(payload: Record<string, unknown>) {
+  const text = JSON.stringify(payload);
+  const forbiddenFragments = [
+    '"jade_paid"',
+    '"paid_jade"',
+    "ancient_treasure",
+    "gubao",
+    "limited",
+    "unique_power",
+    "reward_multiplier",
+    "contribution_multiplier",
+    "damage_multiplier",
+    "必胜",
+    "无敌",
+    "碾压",
+    "唯一战力",
+  ];
+  if (forbiddenFragments.some((fragment) => text.includes(fragment))) {
+    throw new BadRequestException("活动配置不能包含付费直给、限定产物、唯一战力或倍率奖励");
+  }
+
+  const events = Array.isArray(payload.events)
+    ? payload.events
+    : Array.isArray(payload.templates)
+      ? payload.templates
+      : [];
+  if (events.length === 0) {
+    throw new BadRequestException("活动配置必须提供 events 或 templates 数组");
+  }
+  if (text.includes('"async_enabled":false')) {
+    throw new BadRequestException("P1 活动必须支持异步参与");
   }
 }
 

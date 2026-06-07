@@ -204,6 +204,7 @@ function renderPanel(
         panel.faction?.unlocked ? escapeHtml(panel.faction.route_name) : "未开启"
       }</dd></div>
       <div><dt>称号</dt><dd>${panel.titles?.era_blessing.owned_inherited_count ?? 0} 个</dd></div>
+      <div><dt>活动</dt><dd>${panel.activities.filter((activity) => activity.claimable).length} 个可领</dd></div>
     </dl>
     <section>
       <strong>日课</strong>
@@ -246,6 +247,14 @@ function renderPanel(
         panel.titles
           ? `继承 ${panel.titles.era_blessing.owned_inherited_count} · 祝福 ${panel.titles.era_blessing.effective_percent}%/${panel.titles.era_blessing.blessing_cap_percent}%`
           : "未读取称号"
+      }</p>
+    </section>
+    <section>
+      <strong>活动</strong>
+      <p>${
+        panel.activities[0]
+          ? `${escapeHtml(panel.activities[0].name)} · ${panel.activities[0].progress}/${panel.activities[0].target_progress}`
+          : "暂无活动"
       }</p>
     </section>
     <section>

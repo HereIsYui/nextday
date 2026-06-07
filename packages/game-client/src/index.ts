@@ -1,4 +1,6 @@
 import type {
+  ActivityDetailResponse,
+  ActivityListResponse,
   AdminConfigVersionListResponse,
   AdminDelayedSettlementListResponse,
   AdminGmOperationListResponse,
@@ -23,6 +25,8 @@ import type {
   CaveCollectResponse,
   ChooseFactionRouteRequest,
   ChooseFactionRouteResponse,
+  ClaimActivityRewardRequest,
+  ClaimActivityRewardResponse,
   ClaimAppearanceRequest,
   ClaimMonthlyDailyRequest,
   ClaimMonthlyDailyResponse,
@@ -114,6 +118,8 @@ import type {
   SetItemLockRequest,
   SetItemLockResponse,
   SkillLoadoutResponse,
+  SubmitActivityProgressRequest,
+  SubmitActivityProgressResponse,
   SyncVipRequest,
   SyncVipResponse,
   TaskClaimRequest,
@@ -575,6 +581,36 @@ export class GameClient {
   ): Promise<ApiResponse<TransferFactionRouteResponse>> {
     return this.post<TransferFactionRouteResponse, TransferFactionRouteRequest>(
       "/api/factions/transfer",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  activityList(): Promise<ApiResponse<ActivityListResponse>> {
+    return this.get<ActivityListResponse>("/api/events/list");
+  }
+
+  activityDetail(eventId: string): Promise<ApiResponse<ActivityDetailResponse>> {
+    return this.get<ActivityDetailResponse>(`/api/events/${eventId}`);
+  }
+
+  submitActivityProgress(
+    body: SubmitActivityProgressRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<SubmitActivityProgressResponse>> {
+    return this.post<SubmitActivityProgressResponse, SubmitActivityProgressRequest>(
+      "/api/events/progress",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  claimActivityReward(
+    body: ClaimActivityRewardRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<ClaimActivityRewardResponse>> {
+    return this.post<ClaimActivityRewardResponse, ClaimActivityRewardRequest>(
+      "/api/events/claim",
       body,
       { idempotencyKey },
     );

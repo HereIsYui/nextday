@@ -41,10 +41,20 @@ describe("P1 Web 玩法过程反馈", () => {
       .set("Idempotency-Key", `idem_p1_explore_${Date.now()}_${randomSuffix()}`)
       .send({ province_id: "ji", count: 2 })
       .expect(201);
-    expect(explored.body.data.battles).toHaveLength(2);
-    expectExperience(explored.body.data.experience);
+    await prisma.exploreActionRecord.update({
+      where: { recordId: explored.body.data.record_id },
+      data: { completesAt: new Date(Date.now() - 1000) },
+    });
+    const claimed = await request(app.getHttpServer())
+      .post("/api/game/explore/claim")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_p1_explore_claim_${Date.now()}_${randomSuffix()}`)
+      .send({ record_id: explored.body.data.record_id })
+      .expect(201);
+    expect(claimed.body.data.battles).toHaveLength(2);
+    expectExperience(claimed.body.data.experience);
     expect(
-      explored.body.data.experience.reason_tags.map((tag: { code: string }) => tag.code),
+      claimed.body.data.experience.reason_tags.map((tag: { code: string }) => tag.code),
     ).toContain("auto_battle");
 
     const cave = await request(app.getHttpServer())

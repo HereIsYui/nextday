@@ -141,7 +141,18 @@ describe("M9 MVP 总体验收与小纪元演练", () => {
       .send({ province_id: "ji", count: 3 })
       .expect(201);
     expect(repeatedExplore.body.data.record_id).toBe(explored.body.data.record_id);
-    expect(explored.body.data.completed_task_ids).toContain("daily_explore");
+    expect(explored.body.data.status).toBe("pending");
+    await prisma.exploreActionRecord.update({
+      where: { recordId: explored.body.data.record_id },
+      data: { completesAt: new Date(Date.now() - 1000) },
+    });
+    const claimedExplore = await request(app.getHttpServer())
+      .post("/api/game/explore/claim")
+      .set("Authorization", `Bearer ${leader.token}`)
+      .set("Idempotency-Key", `idem_m9_explore_claim_${randomSuffix()}`)
+      .send({ record_id: explored.body.data.record_id })
+      .expect(201);
+    expect(claimedExplore.body.data.completed_task_ids).toContain("daily_explore");
 
     await request(app.getHttpServer())
       .post("/api/game/tasks/claim")

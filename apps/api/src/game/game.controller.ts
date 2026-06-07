@@ -3,6 +3,8 @@ import type {
   BreakthroughResponse,
   CaveCollectResponse,
   CultivationClaimResponse,
+  ExploreClaimRequest,
+  ExploreCurrentResponse,
   ExploreRequest,
   ExploreResponse,
   GameOverviewResponse,
@@ -48,6 +50,23 @@ export class GameController {
   @Post("explore")
   explore(@Body() body: ExploreRequest, @Req() request: Request): Promise<ExploreResponse> {
     return this.gameService.explore({
+      accountId: requireAccountId(request),
+      body,
+      idempotencyKey: requireIdempotencyKey(request),
+    });
+  }
+
+  @Get("explore/current")
+  currentExplore(@Req() request: Request): Promise<ExploreCurrentResponse> {
+    return this.gameService.getCurrentExplore(requireAccountId(request));
+  }
+
+  @Post("explore/claim")
+  claimExplore(
+    @Body() body: ExploreClaimRequest,
+    @Req() request: Request,
+  ): Promise<ExploreResponse> {
+    return this.gameService.claimExplore({
       accountId: requireAccountId(request),
       body,
       idempotencyKey: requireIdempotencyKey(request),

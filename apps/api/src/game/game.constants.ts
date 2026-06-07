@@ -6,6 +6,18 @@ export const maxOfflineCultivationHours = 8;
 export const maxCaveCollectMinutes = 8 * 60;
 export const maxExploreBatch = 5;
 
+export const provinceExploreSeconds: Record<string, number> = {
+  ji: 20,
+  yan: 30,
+  qing: 30,
+  xu: 30,
+  yang: 45,
+  jing: 45,
+  yu: 45,
+  liang: 60,
+  yong: 60,
+};
+
 export interface ProvinceConfig {
   provinceId: string;
   name: string;

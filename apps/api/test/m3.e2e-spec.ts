@@ -232,8 +232,18 @@ describe("M3 生产成长循环", () => {
       .set("Idempotency-Key", `idem_m3_skill_explore_${Date.now()}_${randomSuffix()}`)
       .send({ province_id: "ji", count: 1 })
       .expect(201);
+    await prisma.exploreActionRecord.update({
+      where: { recordId: explored.body.data.record_id },
+      data: { completesAt: new Date(Date.now() - 1000) },
+    });
+    const claimed = await request(app.getHttpServer())
+      .post("/api/game/explore/claim")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_m3_skill_claim_${Date.now()}_${randomSuffix()}`)
+      .send({ record_id: explored.body.data.record_id })
+      .expect(201);
 
-    const skillNames = explored.body.data.battles[0].log.map(
+    const skillNames = claimed.body.data.battles[0].log.map(
       (round: { skill: string }) => round.skill,
     );
     expect(skillNames).toContain("小周天剑气");

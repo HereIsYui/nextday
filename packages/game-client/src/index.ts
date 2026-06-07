@@ -55,6 +55,8 @@ import type {
   EquipmentTargetRequest,
   ExecuteMergeReservedRequest,
   ExecuteMergeReservedResponse,
+  ExploreClaimRequest,
+  ExploreCurrentResponse,
   ExploreRequest,
   ExploreResponse,
   FactionReputationResponse,
@@ -237,6 +239,19 @@ export class GameClient {
 
   explore(body: ExploreRequest, idempotencyKey: string): Promise<ApiResponse<ExploreResponse>> {
     return this.post<ExploreResponse, ExploreRequest>("/api/game/explore", body, {
+      idempotencyKey,
+    });
+  }
+
+  currentExplore(): Promise<ApiResponse<ExploreCurrentResponse>> {
+    return this.get<ExploreCurrentResponse>("/api/game/explore/current");
+  }
+
+  claimExplore(
+    body: ExploreClaimRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<ExploreResponse>> {
+    return this.post<ExploreResponse, ExploreClaimRequest>("/api/game/explore/claim", body, {
       idempotencyKey,
     });
   }

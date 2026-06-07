@@ -306,6 +306,38 @@ h2 {
   width: 100%;
 }
 
+.explore-queue-card {
+  align-items: center;
+  background: #fbfcfa;
+  border: 1px solid #dce4df;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 76px;
+  padding: 12px;
+}
+
+.explore-queue-card.ready {
+  border-color: #bfdac9;
+}
+
+.explore-queue-card div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.explore-queue-card strong {
+  color: #10292b;
+}
+
+.explore-queue-card span {
+  color: #5f6f70;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .today-action-grid {
   display: grid;
   gap: 10px;
@@ -813,6 +845,27 @@ h2 {
   font-size: 17px;
 }
 
+.production-choice {
+  gap: 10px;
+}
+
+.choice-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.choice-field select {
+  background: #ffffff;
+  border: 1px solid #cdd8d4;
+  border-radius: 8px;
+  color: #172425;
+  font: inherit;
+  min-height: 44px;
+  padding: 0 12px;
+  width: 100%;
+}
+
 .event-hero,
 .event-boundary {
   align-items: center;
@@ -1212,9 +1265,9 @@ h2 {
   grid-template-areas:
     "top top top"
     "log nav ledger"
+    "log tabs ledger"
     "log today ledger"
-    "log goals ledger"
-    "log tabs ledger";
+    "log goals ledger";
   grid-template-columns: 190px minmax(0, 680px) 210px;
   max-width: 1120px;
   padding-top: 18px;
@@ -1319,6 +1372,7 @@ h2 {
 }
 
 .text-game-shell .today-controls select,
+.text-game-shell .choice-field select,
 .text-game-shell .create-form input,
 .text-game-shell .create-form select {
   border-color: #111111;
@@ -1334,7 +1388,8 @@ h2 {
 
 .text-game-shell .recommended-action,
 .text-game-shell .goal-card,
-.text-game-shell .growth-target-card {
+.text-game-shell .growth-target-card,
+.text-game-shell .explore-queue-card {
   background: transparent;
   border: 0;
   border-bottom: 1px solid #eeeeee;
@@ -1346,6 +1401,11 @@ h2 {
 
 .text-game-shell .recommended-action {
   grid-template-columns: minmax(0, 1fr) 112px;
+}
+
+.text-game-shell .explore-queue-card {
+  grid-template-columns: minmax(0, 1fr) 112px;
+  min-height: 0;
 }
 
 .text-game-shell .goal-card,
@@ -1472,6 +1532,7 @@ h2 {
 .text-game-shell .task-row,
 .text-game-shell .battle-card,
 .text-game-shell .production-box,
+.text-game-shell .choice-field select,
 .text-game-shell .event-hero,
 .text-game-shell .event-boundary,
 .text-game-shell .event-card,
@@ -1505,9 +1566,10 @@ h2 {
     grid-template-areas:
       "top top"
       "nav ledger"
+      "tabs ledger"
       "today ledger"
       "goals ledger"
-      "tabs log";
+      "log log";
     grid-template-columns: minmax(0, 1fr) 210px;
   }
 }
@@ -1517,9 +1579,9 @@ h2 {
     gap: 14px;
     grid-template-areas:
       "top"
+      "tabs"
       "today"
       "goals"
-      "tabs"
       "ledger"
       "log";
     grid-template-columns: 1fr;
@@ -1537,6 +1599,7 @@ h2 {
   .text-game-shell .today-controls,
   .text-game-shell .today-action-grid,
   .text-game-shell .recommended-action,
+  .text-game-shell .explore-queue-card,
   .text-game-shell .goal-card,
   .text-game-shell .growth-target-card,
   .text-game-shell .today-layout {

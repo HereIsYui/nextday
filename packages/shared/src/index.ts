@@ -379,13 +379,33 @@ export interface ExploreRequest {
   count?: number;
 }
 
+export type ExploreActionStatus = "pending" | "completed" | "claimed" | "expired";
+
 export interface ExploreResponse {
   record_id: string;
+  province_id: string;
+  province_name: string;
+  count: number;
+  status: ExploreActionStatus;
+  seconds_per_explore: number;
+  total_seconds: number;
+  started_at: string;
+  completes_at: string;
+  claimed_at: string | null;
+  can_claim: boolean;
   action_state: ActionState;
   battles: BattleSummary[];
   rewards: RewardBundle;
   completed_task_ids: string[];
   experience?: ExperiencePayload;
+}
+
+export interface ExploreCurrentResponse {
+  current: ExploreResponse | null;
+}
+
+export interface ExploreClaimRequest {
+  record_id?: string;
 }
 
 export interface TaskState {

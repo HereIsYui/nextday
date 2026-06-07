@@ -84,7 +84,7 @@ describe("M2 核心循环", () => {
     expect(first.body.data.completed_task_ids).toContain("novice_claim_cultivation");
   });
 
-  it("普通探索扣除行动令、生成战报、推进任务并写入奖励", async () => {
+  it("普通探索先生成异步队列，完成后领取战报、任务和奖励", async () => {
     const { token, playerId } = await createM2Player(app, "探索");
     const before = await request(app.getHttpServer())
       .get("/api/game/overview")
@@ -100,11 +100,27 @@ describe("M2 核心循环", () => {
       .expect(201);
 
     expect(response.body.data.action_state.action_points).toBe(beforeActionPoints - 3);
-    expect(response.body.data.battles).toHaveLength(3);
-    expect(response.body.data.battles[0].enemy_name).toBe("蛊雕");
-    expect(response.body.data.battles[0].log.length).toBeGreaterThan(0);
-    expect(response.body.data.completed_task_ids).toContain("novice_explore_ji");
-    expect(response.body.data.completed_task_ids).toContain("daily_explore");
+    expect(response.body.data.status).toBe("pending");
+    expect(response.body.data.seconds_per_explore).toBe(20);
+    expect(response.body.data.battles).toHaveLength(0);
+
+    await prisma.exploreActionRecord.update({
+      where: { recordId: response.body.data.record_id },
+      data: { completesAt: new Date(Date.now() - 1000) },
+    });
+    const claimed = await request(app.getHttpServer())
+      .post("/api/game/explore/claim")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_m2_explore_claim_${Date.now()}`)
+      .send({ record_id: response.body.data.record_id })
+      .expect(201);
+
+    expect(claimed.body.data.status).toBe("claimed");
+    expect(claimed.body.data.battles).toHaveLength(3);
+    expect(claimed.body.data.battles[0].enemy_name).toBe("蛊雕");
+    expect(claimed.body.data.battles[0].log.length).toBeGreaterThan(0);
+    expect(claimed.body.data.completed_task_ids).toContain("novice_explore_ji");
+    expect(claimed.body.data.completed_task_ids).toContain("daily_explore");
 
     const battleCount = await prisma.battleLog.count({
       where: { playerId, battleType: "explore" },
@@ -137,9 +153,44 @@ describe("M2 核心循环", () => {
     expect(first.body.data.action_state.action_points).toBe(
       repeated.body.data.action_state.action_points,
     );
-    expect(
-      first.body.data.battles.map((battle: { battle_id: string }) => battle.battle_id),
-    ).toEqual(repeated.body.data.battles.map((battle: { battle_id: string }) => battle.battle_id));
+    expect(first.body.data.battles).toHaveLength(0);
+    expect(repeated.body.data.status).toBe("pending");
+  });
+
+  it("探索未完成不能领取，完成后同一玩家不能再保留第二个待领取队列", async () => {
+    const { token } = await createM2Player(app, "异步");
+    const started = await request(app.getHttpServer())
+      .post("/api/game/explore")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_m2_async_explore_${Date.now()}`)
+      .send({ province_id: "ji", count: 1 })
+      .expect(201);
+
+    const earlyClaim = await request(app.getHttpServer())
+      .post("/api/game/explore/claim")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_m2_async_claim_early_${Date.now()}`)
+      .send({ record_id: started.body.data.record_id })
+      .expect(400);
+    expect(earlyClaim.body.message).toContain("探索尚未完成");
+
+    await prisma.exploreActionRecord.update({
+      where: { recordId: started.body.data.record_id },
+      data: { completesAt: new Date(Date.now() - 1000) },
+    });
+    const current = await request(app.getHttpServer())
+      .get("/api/game/explore/current")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(current.body.data.current.status).toBe("completed");
+
+    const secondStart = await request(app.getHttpServer())
+      .post("/api/game/explore")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_m2_async_second_${Date.now()}`)
+      .send({ province_id: "ji", count: 1 })
+      .expect(400);
+    expect(secondStart.body.message).toContain("已有探索完成待领取");
   });
 
   it("行动令不足时拒绝探索", async () => {

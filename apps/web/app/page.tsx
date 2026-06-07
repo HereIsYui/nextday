@@ -15,6 +15,7 @@ import type {
   EquipmentListResponse,
   ExperiencePayload,
   ExperienceTone,
+  ExploreResponse,
   FactionRouteConfigState,
   FactionRoutesResponse,
   ForgeRecipeListResponse,
@@ -136,6 +137,10 @@ export default function HomePage() {
   const [selectedProvinceId, setSelectedProvinceId] = useState("");
   const [exploreCount, setExploreCount] = useState(5);
   const [selectedTowerId, setSelectedTowerId] = useState("");
+  const [selectedAlchemyRecipeId, setSelectedAlchemyRecipeId] = useState("");
+  const [selectedPillItemInstanceId, setSelectedPillItemInstanceId] = useState("");
+  const [currentExplore, setCurrentExplore] = useState<ExploreResponse | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
 
   const client = useMemo(() => createClient(token ?? undefined), [token]);
@@ -146,11 +151,33 @@ export default function HomePage() {
   const selectedProvince =
     unlockedProvinces.find((province) => province.province_id === selectedProvinceId) ??
     unlockedProvinces[0];
-  const firstPill = bag?.items.find((item) => item.category === "pill" && !item.locked);
+  const availablePills = useMemo(
+    () =>
+      bag?.items.filter((item) => item.category === "pill" && !item.locked && !item.expired) ?? [],
+    [bag],
+  );
+  const selectedAlchemyRecipe =
+    alchemyRecipes?.recipes.find((recipe) => recipe.recipe_id === selectedAlchemyRecipeId) ??
+    alchemyRecipes?.recipes[0];
+  const selectedPill =
+    availablePills.find((item) => item.item_instance_id === selectedPillItemInstanceId) ??
+    availablePills[0];
   const firstEquipment = equipment?.equipments[0];
   const firstTower = towers?.towers[0];
+  const towerBySelectedProvince = selectedProvince
+    ? towers?.towers.find((tower) => tower.province_id === selectedProvince.province_id)
+    : undefined;
   const selectedTower =
-    towers?.towers.find((tower) => tower.tower_id === selectedTowerId) ?? firstTower;
+    towers?.towers.find((tower) => tower.tower_id === selectedTowerId) ??
+    towerBySelectedProvince ??
+    firstTower;
+  const activeExplore =
+    currentExplore && currentExplore.status !== "claimed" ? currentExplore : null;
+  const exploreRemainingSeconds = activeExplore
+    ? Math.max(0, Math.ceil((new Date(activeExplore.completes_at).getTime() - nowMs) / 1000))
+    : 0;
+  const canClaimExplore =
+    Boolean(activeExplore) && (activeExplore?.can_claim === true || exploreRemainingSeconds <= 0);
   const firstResourcePoint = resourcePoints?.resource_points[0];
   const pvpTarget = personalRank?.entries.find((entry) => entry.target_id !== activePlayerId);
   const firstWarehouseDepositItem = bag?.items.find(
@@ -200,7 +227,7 @@ export default function HomePage() {
     busy,
     canCraftAlchemy: Boolean(alchemyRecipes?.recipes.length),
     canCraftForge: Boolean(forgeRecipes?.recipes.length),
-    canExplore: Boolean(overview && selectedProvince),
+    canExplore: Boolean(overview && selectedProvince && !activeExplore),
     canTower: Boolean(selectedTower),
     caveMinutes: overview?.cave?.claimable_minutes ?? 0,
     exploreCount,
@@ -222,7 +249,7 @@ export default function HomePage() {
     activity: firstClaimableActivity ?? firstActivity,
     busy,
     firstEquipment,
-    firstPill,
+    firstPill: selectedPill,
     firstTower: selectedTower,
     innerWorld,
     overview,
@@ -235,7 +262,7 @@ export default function HomePage() {
     onExplore: () => handleExplore(exploreCount),
     onForge: handleCraftForge,
     onInnerWorld: () => setActiveTab("growth"),
-    onPill: firstPill ? handleUsePill : handleCraftAlchemy,
+    onPill: selectedPill ? handleUsePill : handleCraftAlchemy,
     onTower: handleTowerAction,
   });
 
@@ -291,10 +318,65 @@ export default function HomePage() {
     if (towerList.length === 0) {
       return;
     }
-    if (!towerList.some((tower) => tower.tower_id === selectedTowerId)) {
-      setSelectedTowerId(towerList[0].tower_id);
+    const provinceTower = selectedProvince
+      ? towerList.find((tower) => tower.province_id === selectedProvince.province_id)
+      : undefined;
+    const nextTower = provinceTower ?? towerList[0];
+    if (nextTower && selectedTowerId !== nextTower.tower_id) {
+      setSelectedTowerId(nextTower.tower_id);
     }
-  }, [selectedTowerId, towers]);
+  }, [selectedProvince, selectedTowerId, towers]);
+
+  useEffect(() => {
+    const recipes = alchemyRecipes?.recipes ?? [];
+    if (recipes.length === 0) {
+      setSelectedAlchemyRecipeId("");
+      return;
+    }
+    if (!recipes.some((recipe) => recipe.recipe_id === selectedAlchemyRecipeId)) {
+      setSelectedAlchemyRecipeId(recipes[0].recipe_id);
+    }
+  }, [alchemyRecipes, selectedAlchemyRecipeId]);
+
+  useEffect(() => {
+    if (availablePills.length === 0) {
+      setSelectedPillItemInstanceId("");
+      return;
+    }
+    if (!availablePills.some((item) => item.item_instance_id === selectedPillItemInstanceId)) {
+      setSelectedPillItemInstanceId(availablePills[0].item_instance_id);
+    }
+  }, [availablePills, selectedPillItemInstanceId]);
+
+  useEffect(() => {
+    if (!token || !activePlayerId) {
+      return;
+    }
+
+    let ignore = false;
+    createClient(token)
+      .currentExplore()
+      .then((response) => {
+        ensureOk(response);
+        if (!ignore) {
+          setCurrentExplore(response.data.current);
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setMessage("探索队列读取失败");
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [token, activePlayerId]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (!token) {
@@ -508,6 +590,7 @@ export default function HomePage() {
     await refreshMultiplayer();
     await refreshActivities();
     await refreshCommerce();
+    await refreshExplore();
     setMessage(successMessage);
   }
 
@@ -573,6 +656,16 @@ export default function HomePage() {
     setAppearances(state.appearances);
   }
 
+  async function refreshExplore() {
+    if (!token) {
+      return;
+    }
+
+    const response = await createClient(token).currentExplore();
+    ensureOk(response);
+    setCurrentExplore(response.data.current);
+  }
+
   async function handleClaimCultivation() {
     await runAction("领取修为", async () => {
       const response = await client.claimCultivation(createIdempotencyKey("web_cultivation"));
@@ -607,15 +700,55 @@ export default function HomePage() {
       setMessage("暂无可探索州域");
       return;
     }
+    if (activeExplore) {
+      setMessage(
+        canClaimExplore
+          ? "已有探索完成待领取"
+          : `已有探索进行中，剩余 ${formatRemainingSeconds(exploreRemainingSeconds)}`,
+      );
+      return;
+    }
 
-    await runAction("探索", async () => {
+    await runAction("开始探索", async () => {
       const response = await client.explore(
         { province_id: province.province_id, count },
         createIdempotencyKey(`web_explore_${count}`),
       );
       ensureOk(response);
+      setCurrentExplore(response.data);
+      rememberExperience(undefined, {
+        summary: `${province.name}探索已派出，预计 ${formatRemainingSeconds(
+          response.data.total_seconds,
+        )} 后可领取战报和奖励。`,
+        tags: [
+          "异步探索",
+          `${response.data.count} 次`,
+          `${response.data.seconds_per_explore} 秒/次`,
+        ],
+        title: "开始州域探索",
+        tone: "neutral",
+      });
+      await refreshOverview(`开始 ${response.data.count} 次${province.name}探索`);
+    });
+  }
+
+  async function handleClaimExplore() {
+    if (!activeExplore) {
+      setMessage("暂无可领取探索");
+      return;
+    }
+
+    await runAction("领取探索", async () => {
+      const response = await client.claimExplore(
+        { record_id: activeExplore.record_id },
+        createIdempotencyKey(`web_explore_claim_${activeExplore.record_id}`),
+      );
+      ensureOk(response);
+      setCurrentExplore(response.data);
       rememberExperience(response.data.experience);
-      await refreshOverview(`完成 ${response.data.battles.length} 次${province.name}探索`);
+      await refreshOverview(
+        `完成 ${response.data.battles.length} 次${response.data.province_name}探索`,
+      );
     });
   }
 
@@ -664,7 +797,7 @@ export default function HomePage() {
   }
 
   async function handleCraftAlchemy() {
-    const recipe = alchemyRecipes?.recipes[0];
+    const recipe = selectedAlchemyRecipe;
     if (!recipe) {
       setMessage("暂无可用丹方");
       return;
@@ -682,14 +815,14 @@ export default function HomePage() {
   }
 
   async function handleUsePill() {
-    if (!firstPill) {
+    if (!selectedPill) {
       setMessage("背包中暂无可服用丹药");
       return;
     }
 
     await runAction("服丹", async () => {
       const response = await client.pillUse(
-        { item_instance_id: firstPill.item_instance_id },
+        { item_instance_id: selectedPill.item_instance_id },
         createIdempotencyKey("web_pill"),
       );
       ensureOk(response);
@@ -1137,6 +1270,23 @@ export default function HomePage() {
     });
   }
 
+  function handleSelectProvince(provinceId: string) {
+    setSelectedProvinceId(provinceId);
+    const tower = towers?.towers.find((item) => item.province_id === provinceId);
+    if (tower) {
+      setSelectedTowerId(tower.tower_id);
+    }
+  }
+
+  function handleSelectTower(towerId: string) {
+    setSelectedTowerId(towerId);
+    const tower = towers?.towers.find((item) => item.tower_id === towerId);
+    const province = overview?.provinces.find((item) => item.province_id === tower?.province_id);
+    if (province?.unlocked) {
+      setSelectedProvinceId(province.province_id);
+    }
+  }
+
   function rememberExperience(
     experience?: ExperiencePayload,
     fallback?: {
@@ -1386,12 +1536,12 @@ export default function HomePage() {
               <label>
                 <span>探索州域</span>
                 <select
-                  onChange={(event) => setSelectedProvinceId(event.target.value)}
+                  onChange={(event) => handleSelectProvince(event.target.value)}
                   value={selectedProvince?.province_id ?? ""}
                 >
                   {unlockedProvinces.map((province) => (
                     <option key={province.province_id} value={province.province_id}>
-                      {province.name}
+                      {province.name} · {province.tower_name}
                     </option>
                   ))}
                 </select>
@@ -1410,11 +1560,16 @@ export default function HomePage() {
               <label>
                 <span>九塔目标</span>
                 <select
-                  onChange={(event) => setSelectedTowerId(event.target.value)}
+                  onChange={(event) => handleSelectTower(event.target.value)}
                   value={selectedTower?.tower_id ?? ""}
                 >
                   {towers?.towers.map((tower) => (
-                    <option key={tower.tower_id} value={tower.tower_id}>
+                    <option
+                      disabled={!isProvinceUnlocked(overview?.provinces, tower.province_id)}
+                      key={tower.tower_id}
+                      value={tower.tower_id}
+                    >
+                      {provinceNameById(overview?.provinces, tower.province_id)} ·{" "}
                       {tower.tower_name}
                     </option>
                   ))}
@@ -1424,6 +1579,13 @@ export default function HomePage() {
                 刷新状态
               </Button>
             </div>
+            <ExploreQueueCard
+              canClaim={canClaimExplore}
+              explore={activeExplore ?? currentExplore}
+              onClaim={handleClaimExplore}
+              remainingSeconds={exploreRemainingSeconds}
+              busy={busy}
+            />
             <div className="today-action-grid">
               {recommendedActions.slice(0, 4).map((action) => (
                 <article className="recommended-action" key={action.id}>
@@ -1660,20 +1822,70 @@ export default function HomePage() {
                   <span>炼丹、炼器、背包与技能预设</span>
                 </div>
                 <div className="production-grid">
-                  <ActionBox
-                    actions={
-                      <>
-                        <Button disabled={busy || !overview} onClick={handleCraftAlchemy}>
-                          炼丹
-                        </Button>
-                        <Button disabled={busy || !firstPill} onClick={handleUsePill}>
-                          服丹
-                        </Button>
-                      </>
-                    }
-                    detail={`材料 ${bag?.items.filter((item) => item.category !== "pill").length ?? 0} 类 · 丹药 ${bag?.items.filter((item) => item.category === "pill").length ?? 0} 类`}
-                    title="背包丹药"
-                  />
+                  <article className="production-box production-choice">
+                    <strong>丹方炼制</strong>
+                    <span>
+                      {selectedAlchemyRecipe
+                        ? `${selectedAlchemyRecipe.name} · 成功率 ${formatRate(
+                            selectedAlchemyRecipe.success_rate,
+                          )} · 灵石 ${selectedAlchemyRecipe.spirit_stone_cost}`
+                        : "暂无可用丹方"}
+                    </span>
+                    <label className="choice-field">
+                      <span>选择丹方</span>
+                      <select
+                        disabled={busy || !alchemyRecipes?.recipes.length}
+                        onChange={(event) => setSelectedAlchemyRecipeId(event.target.value)}
+                        value={selectedAlchemyRecipe?.recipe_id ?? ""}
+                      >
+                        {alchemyRecipes?.recipes.map((recipe) => (
+                          <option key={recipe.recipe_id} value={recipe.recipe_id}>
+                            {recipe.name} ·{" "}
+                            {recipe.route === "all" ? "通用" : cultivationRouteLabels[recipe.route]}{" "}
+                            ·{" "}
+                            {recipe.materials
+                              .map((item) => `${item.name}x${item.count}`)
+                              .join("、")}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="production-actions">
+                      <Button
+                        disabled={busy || !selectedAlchemyRecipe}
+                        onClick={handleCraftAlchemy}
+                      >
+                        炼制所选丹方
+                      </Button>
+                    </div>
+                  </article>
+                  <article className="production-box production-choice">
+                    <strong>服用丹药</strong>
+                    <span>
+                      {selectedPill
+                        ? `${selectedPill.name} x${selectedPill.count} · 服用后按同阶递减`
+                        : "背包中暂无可服用丹药"}
+                    </span>
+                    <label className="choice-field">
+                      <span>选择丹药</span>
+                      <select
+                        disabled={busy || availablePills.length === 0}
+                        onChange={(event) => setSelectedPillItemInstanceId(event.target.value)}
+                        value={selectedPill?.item_instance_id ?? ""}
+                      >
+                        {availablePills.map((item) => (
+                          <option key={item.item_instance_id} value={item.item_instance_id}>
+                            {item.name} x{item.count}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="production-actions">
+                      <Button disabled={busy || !selectedPill} onClick={handleUsePill}>
+                        服用所选丹药
+                      </Button>
+                    </div>
+                  </article>
                   <ActionBox
                     actions={
                       <>
@@ -1818,7 +2030,7 @@ export default function HomePage() {
                         镇封提交
                       </Button>
                     }
-                    detail={`${selectedTower?.tower_name ?? "未读取"} · 完整度 ${selectedTower?.integrity ?? 0} · 镇封 ${selectedTower?.seal_progress ?? 0}`}
+                    detail={`${selectedTower ? `${provinceNameById(overview?.provinces, selectedTower.province_id)} · ${selectedTower.tower_name}` : "未读取"} · 完整度 ${selectedTower?.integrity ?? 0} · 镇封 ${selectedTower?.seal_progress ?? 0}`}
                     title="九塔"
                   />
                   <ActionBox
@@ -2004,7 +2216,10 @@ export default function HomePage() {
                   {towers?.towers.map((tower) => (
                     <article className="tower-card" key={tower.tower_id}>
                       <div className="province-head">
-                        <strong>{tower.tower_name}</strong>
+                        <strong>
+                          {provinceNameById(overview?.provinces, tower.province_id)} ·{" "}
+                          {tower.tower_name}
+                        </strong>
                         <StatusBadge tone={tower.corruption > 60 ? "warning" : "neutral"}>
                           阶段 {tower.phase}
                         </StatusBadge>
@@ -2252,6 +2467,61 @@ function GrowthTargetCard({ target }: { target: GrowthTarget }) {
       <Button disabled={target.disabled} onClick={target.onAction}>
         {target.actionLabel}
       </Button>
+    </article>
+  );
+}
+
+function ExploreQueueCard({
+  busy,
+  canClaim,
+  explore,
+  onClaim,
+  remainingSeconds,
+}: {
+  busy: boolean;
+  canClaim: boolean;
+  explore: ExploreResponse | null;
+  onClaim: () => void | Promise<void>;
+  remainingSeconds: number;
+}) {
+  if (!explore) {
+    return (
+      <article className="explore-queue-card idle">
+        <div>
+          <strong>当前探索</strong>
+          <span>选择州域和次数后开始探索，战斗与奖励会在完成后领取。</span>
+        </div>
+        <StatusBadge tone="neutral">空闲</StatusBadge>
+      </article>
+    );
+  }
+
+  const isClaimed = explore.status === "claimed";
+  const isReady = canClaim && !isClaimed;
+
+  return (
+    <article className={`explore-queue-card ${isReady ? "ready" : ""}`}>
+      <div>
+        <strong>
+          {explore.province_name}探索 · {explore.count} 次
+        </strong>
+        <span>
+          {isClaimed
+            ? `最近完成于 ${formatShortDate(explore.claimed_at ?? explore.completes_at)}，已生成 ${
+                explore.battles.length
+              } 场战报。`
+            : `单次 ${explore.seconds_per_explore} 秒，总计 ${formatRemainingSeconds(
+                explore.total_seconds,
+              )}，${isReady ? "现在可领取" : `剩余 ${formatRemainingSeconds(remainingSeconds)}`}。`}
+        </span>
+      </div>
+      {isClaimed ? (
+        <StatusBadge tone="success">已领取</StatusBadge>
+      ) : (
+        <Button disabled={busy || !isReady} onClick={onClaim}>
+          {isReady ? "领取探索" : exploreStatusLabel(explore.status)}
+        </Button>
+      )}
     </article>
   );
 }
@@ -2935,12 +3205,43 @@ function formatRemainingSeconds(seconds: number): string {
   if (seconds <= 0) {
     return "可收取";
   }
+  if (seconds < 60) {
+    return `${seconds} 秒`;
+  }
   const minutes = Math.ceil(seconds / 60);
   if (minutes < 60) {
     return `${minutes} 分钟`;
   }
 
   return `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分钟`;
+}
+
+function formatRate(rate: number): string {
+  return `${Math.round(rate / 100)}%`;
+}
+
+function provinceNameById(
+  provinces: ProvinceSummary[] | undefined,
+  provinceId: string | null | undefined,
+): string {
+  return provinces?.find((province) => province.province_id === provinceId)?.name ?? "未知州";
+}
+
+function isProvinceUnlocked(
+  provinces: ProvinceSummary[] | undefined,
+  provinceId: string | null | undefined,
+): boolean {
+  return provinces?.find((province) => province.province_id === provinceId)?.unlocked === true;
+}
+
+function exploreStatusLabel(status: ExploreResponse["status"]): string {
+  const labels: Record<ExploreResponse["status"], string> = {
+    claimed: "已领取",
+    completed: "可领取",
+    expired: "已过期",
+    pending: "探索中",
+  };
+  return labels[status];
 }
 
 function formatShortDate(value: string): string {

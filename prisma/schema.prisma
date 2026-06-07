@@ -66,6 +66,7 @@ model Player {
   eventRecords              EventRecord[]
   eventRewardRecords        EventRewardRecord[]
   battleLogs                BattleLog[]
+  exploreActionRecords      ExploreActionRecord[]
   caveRecords               CaveCollectRecord[]
   alchemyRecords            AlchemyRecord[]
   pillUseRecords            PillUseRecord[]
@@ -238,6 +239,41 @@ model BattleLog {
   @@index([provinceId])
   @@index([createdAt])
   @@map("battle_log")
+}
+
+model ExploreActionRecord {
+  recordId            String    @id @map("record_id")
+  playerId            String    @map("player_id")
+  eraId               String    @default("era_mvp_001") @map("era_id")
+  provinceId          String    @map("province_id")
+  provinceName        String    @map("province_name")
+  count               Int
+  secondsPerExplore   Int       @map("seconds_per_explore")
+  totalSeconds        Int       @map("total_seconds")
+  status              String    @default("pending")
+  startedAt           DateTime  @default(now()) @map("started_at")
+  completesAt         DateTime  @map("completes_at")
+  claimedAt           DateTime? @map("claimed_at")
+  rewardSnapshot      Json?     @map("reward_snapshot")
+  battleSnapshot      Json?     @map("battle_snapshot")
+  experienceSnapshot  Json?     @map("experience_snapshot")
+  completedTaskIds    Json?     @map("completed_task_ids")
+  actionStateSnapshot Json?     @map("action_state_snapshot")
+  idempotencyKey      String    @unique @map("idempotency_key")
+  configVersion       String    @default("m2_core_loop_v2") @map("config_version")
+  rulesetVersion      String    @default("ruleset_p1_6_v1") @map("ruleset_version")
+  rewardConfigVersion String    @default("reward_p1_6_v1") @map("reward_config_version")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@index([playerId])
+  @@index([eraId, provinceId])
+  @@index([status])
+  @@index([completesAt])
+  @@index([createdAt])
+  @@map("explore_action_record")
 }
 
 model PlayerTaskState {

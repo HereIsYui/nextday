@@ -36,11 +36,21 @@ describe("M8 运营后台闭环", () => {
 
   it("GM 查询能汇总玩家、订单、抽卡、战斗、行动、邮件和风控摘要", async () => {
     const { token, playerId } = await createM8Player(app, "查询", "qi");
-    await request(app.getHttpServer())
+    const explored = await request(app.getHttpServer())
       .post("/api/game/explore")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_m8_explore_${randomSuffix()}`)
       .send({ province_id: "ji", count: 1 })
+      .expect(201);
+    await prisma.exploreActionRecord.update({
+      where: { recordId: explored.body.data.record_id },
+      data: { completesAt: new Date(Date.now() - 1000) },
+    });
+    await request(app.getHttpServer())
+      .post("/api/game/explore/claim")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_m8_explore_claim_${randomSuffix()}`)
+      .send({ record_id: explored.body.data.record_id })
       .expect(201);
     await request(app.getHttpServer())
       .post("/api/game/cave/collect")

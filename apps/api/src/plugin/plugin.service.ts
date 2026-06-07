@@ -75,7 +75,7 @@ export class PluginService {
   }
 
   async getExpandedPanel(accountId: string): Promise<PluginExpandedPanelResponse> {
-    const [status, overview, towers, boss, sect, commerce, treasures, innerWorld, faction] =
+    const [status, overview, towers, boss, sect, commerce, treasures, innerWorld, faction, titles] =
       await Promise.all([
         this.getStatusCard(accountId),
         this.gameService.getOverview(accountId),
@@ -86,6 +86,7 @@ export class PluginService {
         this.commerceService.listAncientTreasures(accountId),
         this.innerWorldService.getSummary(accountId).catch(() => null),
         this.factionsService.getReputation(accountId).catch(() => null),
+        this.multiplayerService.getTitleCollection(accountId).catch(() => null),
       ]);
 
     return {
@@ -102,10 +103,12 @@ export class PluginService {
         boss: boss.boss,
         innerWorld: innerWorld?.state ?? null,
         faction: faction?.state ?? null,
+        titles,
       }),
       cave: overview.cave,
       inner_world: innerWorld?.state ?? null,
       faction: faction?.state ?? null,
+      titles,
       provinces: overview.provinces,
       towers: towers.towers.slice(0, 4),
       recent_battles: overview.recent_battles.slice(0, 3),
@@ -249,6 +252,7 @@ export class PluginService {
     boss: PluginExpandedPanelResponse["boss"];
     innerWorld: PluginExpandedPanelResponse["inner_world"];
     faction: FactionStateSummary | null;
+    titles: PluginExpandedPanelResponse["titles"];
   }): PluginPanelDigest[] {
     const digests: PluginPanelDigest[] = [];
     const latestBattle = input.recentBattles[0];
@@ -283,6 +287,17 @@ export class PluginService {
       });
     }
 
+    digests.push({
+      digest_id: "ancient_treasure",
+      title: "古宝提醒",
+      summary:
+        input.ancientAvailableDraws > 0
+          ? `可用 ${input.ancientAvailableDraws} 次月卡赠抽，已收集 ${input.ancientOwnedCount}/${input.ancientTotalCount}`
+          : `已收集 ${input.ancientOwnedCount}/${input.ancientTotalCount}，暂无当日赠抽`,
+      tone: input.ancientAvailableDraws > 0 ? "success" : "neutral",
+      action_hint: "commerce",
+    });
+
     if (input.innerWorld) {
       digests.push({
         digest_id: "inner_world",
@@ -309,16 +324,15 @@ export class PluginService {
       });
     }
 
-    digests.push({
-      digest_id: "ancient_treasure",
-      title: "古宝提醒",
-      summary:
-        input.ancientAvailableDraws > 0
-          ? `可用 ${input.ancientAvailableDraws} 次月卡赠抽，已收集 ${input.ancientOwnedCount}/${input.ancientTotalCount}`
-          : `已收集 ${input.ancientOwnedCount}/${input.ancientTotalCount}，暂无当日赠抽`,
-      tone: input.ancientAvailableDraws > 0 ? "success" : "neutral",
-      action_hint: "commerce",
-    });
+    if (input.titles) {
+      digests.push({
+        digest_id: "rank_titles",
+        title: "排行称号",
+        summary: `已继承 ${input.titles.era_blessing.owned_inherited_count} 个，祝福 ${input.titles.era_blessing.effective_percent}% / ${input.titles.era_blessing.blessing_cap_percent}%`,
+        tone: input.titles.era_blessing.owned_inherited_count > 0 ? "success" : "neutral",
+        action_hint: "rank",
+      });
+    }
 
     if (input.sect) {
       digests.push({

@@ -764,6 +764,9 @@ function validateConfigPayload(
   if (configType === "faction_route") {
     validateFactionRouteConfig(payload);
   }
+  if (configType === "rank" || configType === "era_rank") {
+    validateRankConfig(payload);
+  }
   if (configType === "convenience" && text.includes('"reward_multiplier":2')) {
     throw new BadRequestException("便利配置不能提高奖励倍率");
   }
@@ -857,6 +860,35 @@ function validateFactionRouteConfig(payload: Record<string, unknown>) {
   }
   if (routeIds.size !== 3) {
     throw new BadRequestException("阵营路线必须列满成仙、成魔和散修三条路线");
+  }
+}
+
+function validateRankConfig(payload: Record<string, unknown>) {
+  const text = JSON.stringify(payload);
+  const forbiddenFragments = [
+    '"jade_paid"',
+    '"paid_jade"',
+    "ancient_treasure",
+    "limited",
+    "unique_power",
+    "reward_multiplier",
+    "contribution_multiplier",
+    "damage_multiplier",
+    "必胜",
+    "无敌",
+    "碾压",
+    "唯一战力",
+  ];
+  if (forbiddenFragments.some((fragment) => text.includes(fragment))) {
+    throw new BadRequestException("排行配置不能包含付费直给、限定产物、唯一战力或倍率奖励");
+  }
+
+  const rankTypes = Array.isArray(payload.rank_types) ? payload.rank_types : [];
+  if (rankTypes.length === 0) {
+    throw new BadRequestException("排行配置必须提供 rank_types");
+  }
+  if (text.includes('"cap_percent":') && !text.includes('"cap_percent":1')) {
+    throw new BadRequestException("纪元祝福上限不能超过 1%");
   }
 }
 

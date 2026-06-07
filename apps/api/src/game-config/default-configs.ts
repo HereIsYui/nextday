@@ -36,9 +36,17 @@ import {
 } from "../inner-world/inner-world.constants";
 import {
   bossConfig,
+  eraBlessingCapPercent,
+  rankAntiBrushRule,
+  rankConfigVersion,
+  rankRewardBoundary,
+  rankRewardConfigVersion,
   rankRewardPreview,
+  rankRulesetVersion,
+  rankTitleRewards,
   resourcePointConfigs,
   sectTaskConfigs,
+  supportedRankTypes,
   towerActionConfigs,
   towerConfigs,
 } from "../multiplayer/multiplayer.constants";
@@ -260,13 +268,33 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
   },
   rank: {
     config_type: "rank",
-    config_version: "rank_m4_v1",
-    ruleset_version: "ruleset_m4_v1",
-    reward_config_version: "reward_m4_v1",
+    config_version: rankConfigVersion,
+    ruleset_version: rankRulesetVersion,
+    reward_config_version: rankRewardConfigVersion,
     payload: {
-      rank_types: ["personal", "sect", "pvp_week", "tower_week"],
+      rank_types: supportedRankTypes,
       reward_preview: rankRewardPreview,
-      reward_boundary: "排行奖励不发唯一战力道具",
+      title_rewards: rankTitleRewards,
+      reward_boundary: rankRewardBoundary,
+      anti_brush_rule: rankAntiBrushRule,
+    },
+  },
+  era_rank: {
+    config_type: "era_rank",
+    config_version: rankConfigVersion,
+    ruleset_version: rankRulesetVersion,
+    reward_config_version: rankRewardConfigVersion,
+    payload: {
+      era_id: "era_mvp_001",
+      rank_types: ["production", "era", "inner_world", "faction"],
+      snapshot_rule: "读取排行榜时生成最新快照，真实赛季结算可复用 rank_snapshot / rank_entry",
+      title_rewards: rankTitleRewards,
+      era_blessing: {
+        cap_percent: eraBlessingCapPercent,
+        rule: "多个跨纪元称号只继承展示，纪元祝福有效值不超过 1%，不叠加滚雪球。",
+      },
+      anti_brush_rule: rankAntiBrushRule,
+      reward_boundary: rankRewardBoundary,
     },
   },
   gacha: {

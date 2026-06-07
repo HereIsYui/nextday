@@ -1087,21 +1087,76 @@ export interface PvpBattleResponse {
   experience?: ExperiencePayload;
 }
 
-export type RankType = "personal" | "sect" | "pvp_week" | "tower_week";
+export type RankType =
+  | "personal"
+  | "sect"
+  | "pvp_week"
+  | "tower_week"
+  | "production"
+  | "era"
+  | "inner_world"
+  | "faction";
+
+export type RankTargetType = "player" | "sect" | "faction";
+
+export interface RankTitleRewardState {
+  title_id: string;
+  name: string;
+  appearance_id: string;
+  rank_type: RankType | string;
+  min_rank: number;
+  inherited: boolean;
+  blessing_percent: number;
+  source_type: string;
+}
 
 export interface RankEntryState {
   rank_no: number;
-  target_type: "player" | "sect";
+  target_type: RankTargetType;
   target_id: string;
   display_name: string;
   score: string;
   reward_preview: RewardBundle;
+  title_reward?: RankTitleRewardState | null;
+  risk_note?: string | null;
 }
 
 export interface RankListResponse {
   rank_type: RankType;
   period_key: string;
+  snapshot_id?: string;
+  generated_at?: string;
+  reward_boundary?: string;
+  anti_brush_summary?: {
+    excluded_delayed_count: number;
+    risk_record_count: number;
+    rule: string;
+  };
+  title_rewards?: RankTitleRewardState[];
   entries: RankEntryState[];
+}
+
+export interface TitleCollectionResponse {
+  titles: AppearanceState[];
+  rank_title_rewards: RankTitleRewardState[];
+  era_blessing: {
+    owned_inherited_count: number;
+    blessing_cap_percent: number;
+    effective_percent: number;
+    rule: string;
+  };
+  reward_boundary: string;
+}
+
+export interface ClaimRankTitleRequest {
+  rank_type: RankType | string;
+}
+
+export interface ClaimRankTitleResponse {
+  record_id: string;
+  appearance: AppearanceState;
+  collection: TitleCollectionResponse;
+  rank_entry: RankEntryState;
 }
 
 export type MonthlyCardType = "small_monthly" | "large_monthly";
@@ -1406,6 +1461,7 @@ export interface PluginExpandedPanelResponse {
   cave: CaveState | null;
   inner_world: InnerWorldStateSummary | null;
   faction: FactionStateSummary | null;
+  titles: TitleCollectionResponse | null;
   provinces: ProvinceSummary[];
   towers: TowerStateSummary[];
   recent_battles: BattleSummary[];
@@ -1486,6 +1542,7 @@ export type ConfigType =
   | "appearance"
   | "inner_world"
   | "faction_route"
+  | "era_rank"
   | "risk";
 
 export interface ConfigEnvelope<TPayload = Record<string, unknown>> {

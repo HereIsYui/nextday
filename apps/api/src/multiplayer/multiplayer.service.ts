@@ -3,11 +3,16 @@ import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import type {
   ActionState,
   BattleRoundLog,
+  ClaimRankTitleRequest,
+  ClaimRankTitleResponse,
   CreateSectRequest,
   JoinSectRequest,
   PvpAttackRequest,
   PvpBattleResponse,
+  RankEntryState,
   RankListResponse,
+  RankTargetType,
+  RankTitleRewardState,
   RankType,
   ResourcePointListResponse,
   RewardBundle,
@@ -19,6 +24,7 @@ import type {
   SectWarehouseResponse,
   SectWarehouseWithdrawRequest,
   SettlementStatus,
+  TitleCollectionResponse,
   TowerActionRequest,
   TowerActionResponse,
   TowerActionType,
@@ -28,6 +34,7 @@ import type {
   WorldBossResponse,
 } from "@nextday/shared";
 import type { Player, PlayerActionState, Prisma, SectMember } from "@prisma/client";
+import { toAppearanceState } from "../commerce/commerce.mappers";
 import { PrismaService } from "../database/prisma.service";
 import { defaultEraId, maxOfflineCultivationHours } from "../game/game.constants";
 import { toActionState } from "../game/game.mappers";
@@ -44,16 +51,24 @@ import { toBagItemState } from "../production/production.mappers";
 import { RiskService } from "../risk/risk.service";
 import {
   bossConfig,
+  eraBlessingCapPercent,
   getCurrentWeekKey,
   maxTowerActionBatch,
   multiplayerConfigVersion,
   multiplayerRewardConfigVersion,
   pvpActionPointCost,
+  rankAntiBrushRule,
+  rankConfigVersion,
+  rankRewardBoundary,
+  rankRewardConfigVersion,
   rankRewardPreview,
+  rankRulesetVersion,
+  rankTitleRewards,
   resourcePointConfigs,
   sectCreateCost,
   sectTaskConfigs,
   sectWarehouseWhitelist,
+  supportedRankTypes,
   towerActionConfigs,
   towerConfigs,
   validSectAlignments,
@@ -70,6 +85,16 @@ import {
 
 type Tx = Prisma.TransactionClient;
 type DbClient = Tx | PrismaService;
+type RankScoreMap = Map<string, bigint>;
+
+interface RankBuildResult {
+  rankType: RankType;
+  periodKey: string;
+  targetType: RankTargetType;
+  scoreMap: RankScoreMap;
+  displayNameMap?: Map<string, string>;
+  excludedDelayedCount: number;
+}
 
 @Injectable()
 export class MultiplayerService {
@@ -929,122 +954,506 @@ export class MultiplayerService {
   }
 
   async getRankList(rankType: RankType): Promise<RankListResponse> {
-    if (!["personal", "sect", "pvp_week", "tower_week"].includes(rankType)) {
+    if (!supportedRankTypes.includes(rankType)) {
       throw new BadRequestException("未知排行榜");
     }
 
-    const periodKey = getCurrentWeekKey();
-    if (rankType === "sect") {
-      return this.getSectRank(periodKey);
-    }
-    if (rankType === "pvp_week") {
-      return this.getPvpRank(periodKey);
-    }
-    if (rankType === "tower_week") {
-      return this.getTowerRank(periodKey);
-    }
+    const build = await this.buildRank(rankType);
+    const entries = await this.toRankEntries(build);
+    const snapshot = await this.persistRankSnapshot(rankType, build.periodKey, entries);
+    const riskRecordCount = entries.filter((entry) => entry.risk_note).length;
 
-    return this.getPersonalRank(periodKey);
+    return {
+      rank_type: rankType,
+      period_key: build.periodKey,
+      snapshot_id: snapshot.rankSnapshotId,
+      generated_at: snapshot.generatedAt.toISOString(),
+      reward_boundary: rankRewardBoundary,
+      anti_brush_summary: {
+        excluded_delayed_count: build.excludedDelayedCount,
+        risk_record_count: riskRecordCount,
+        rule: rankAntiBrushRule,
+      },
+      title_rewards: rankTitleRewards.filter((reward) => reward.rank_type === rankType),
+      entries,
+    };
   }
 
-  private async getPersonalRank(periodKey: string): Promise<RankListResponse> {
-    const scoreMap = new Map<string, bigint>();
-    const [towerRecords, bossRecords, pvpRecords] = await Promise.all([
-      this.prisma.towerActionRecord.findMany({ where: { eraId: defaultEraId } }),
-      this.prisma.worldBossChallengeRecord.findMany({ where: { eraId: defaultEraId } }),
-      this.prisma.pvpBattleRecord.findMany({ where: { eraId: defaultEraId } }),
-    ]);
-    for (const record of towerRecords) {
-      addScore(scoreMap, record.playerId, BigInt(record.contribution));
+  async getTitleCollection(accountId: string): Promise<TitleCollectionResponse> {
+    const player = await this.requirePlayer(accountId);
+    return this.buildTitleCollection(player.playerId);
+  }
+
+  async claimRankTitle(input: {
+    accountId: string;
+    body: ClaimRankTitleRequest;
+    idempotencyKey: string;
+  }): Promise<ClaimRankTitleResponse> {
+    const player = await this.requirePlayer(input.accountId);
+    const rankType = normalizeRankType(input.body?.rank_type);
+    const titleReward = rankTitleRewards.find((reward) => reward.rank_type === rankType);
+    if (!titleReward) {
+      throw new BadRequestException("该榜单暂无可继承纪元称号");
     }
+
+    return this.withIdempotency({
+      accountId: input.accountId,
+      endpoint: "POST /api/multiplayer/titles/claim-rank",
+      idempotencyKey: input.idempotencyKey,
+      requestBody: { rank_type: rankType },
+      handler: async (tx) => {
+        const rank = await this.getRankList(rankType);
+        const entry = await this.findClaimableRankEntry(tx, player.playerId, rank, titleReward);
+        const appearance = await tx.playerAppearance.upsert({
+          where: {
+            playerId_appearanceId: {
+              playerId: player.playerId,
+              appearanceId: titleReward.appearance_id,
+            },
+          },
+          create: {
+            playerAppearanceId: `appearance_${randomUUID()}`,
+            playerId: player.playerId,
+            appearanceId: titleReward.appearance_id,
+            appearanceType: "title_style",
+            sourceType: titleReward.source_type,
+            inherited: titleReward.inherited,
+            equipped: false,
+            configVersion: rankConfigVersion,
+          },
+          update: {
+            inherited: true,
+            sourceType: titleReward.source_type,
+            configVersion: rankConfigVersion,
+          },
+        });
+        await this.writeAudit(tx, {
+          accountId: input.accountId,
+          playerId: player.playerId,
+          action: "claim_rank_title",
+          targetType: "player_appearance",
+          targetId: appearance.playerAppearanceId,
+          afterSnapshot: {
+            rank_type: rankType,
+            rank_no: entry.rank_no,
+            title_id: titleReward.title_id,
+            appearance_id: appearance.appearanceId,
+            blessing_percent: titleReward.blessing_percent,
+            blessing_cap_percent: eraBlessingCapPercent,
+          } as unknown as Prisma.InputJsonValue,
+          idempotencyKey: input.idempotencyKey,
+        });
+
+        return {
+          record_id: `rank_title_${randomUUID()}`,
+          appearance: toAppearanceState(appearance, appearance.appearanceId),
+          collection: await this.buildTitleCollection(player.playerId, tx),
+          rank_entry: entry,
+        };
+      },
+    });
+  }
+
+  private async buildRank(rankType: RankType): Promise<RankBuildResult> {
+    const periodKey = rankType === "era" ? defaultEraId : getCurrentWeekKey();
+    if (rankType === "sect") {
+      return this.buildSectRank(periodKey);
+    }
+    if (rankType === "pvp_week") {
+      return this.buildPvpRank(periodKey);
+    }
+    if (rankType === "tower_week") {
+      return this.buildTowerRank(periodKey);
+    }
+    if (rankType === "production") {
+      return this.buildProductionRank(periodKey);
+    }
+    if (rankType === "inner_world") {
+      return this.buildInnerWorldRank(periodKey);
+    }
+    if (rankType === "faction") {
+      return this.buildFactionRank(periodKey);
+    }
+    if (rankType === "era") {
+      return this.buildEraRank(periodKey);
+    }
+
+    return this.buildPersonalRank(periodKey);
+  }
+
+  private async buildPersonalRank(periodKey: string): Promise<RankBuildResult> {
+    const tower = await this.buildTowerRank(periodKey);
+    const pvp = await this.buildPvpRank(periodKey);
+    const scoreMap = new Map(tower.scoreMap);
+    const bossRecords = await this.prisma.worldBossChallengeRecord.findMany({
+      where: { eraId: defaultEraId },
+    });
     for (const record of bossRecords) {
       addScore(scoreMap, record.playerId, BigInt(record.contribution));
     }
-    for (const record of pvpRecords) {
-      addScore(scoreMap, record.attackerPlayerId, BigInt(record.scoreDelta));
-    }
+    mergeScoreMap(scoreMap, pvp.scoreMap);
 
-    return this.rankPlayers("personal", periodKey, scoreMap);
+    return {
+      rankType: "personal",
+      periodKey,
+      targetType: "player",
+      scoreMap,
+      excludedDelayedCount: tower.excludedDelayedCount + pvp.excludedDelayedCount,
+    };
   }
 
-  private async getTowerRank(periodKey: string): Promise<RankListResponse> {
+  private async buildTowerRank(periodKey: string): Promise<RankBuildResult> {
     const scoreMap = new Map<string, bigint>();
-    const records = await this.prisma.towerActionRecord.findMany({
-      where: { eraId: defaultEraId },
-    });
+    const [records, excludedDelayedCount] = await Promise.all([
+      this.prisma.towerActionRecord.findMany({
+        where: { eraId: defaultEraId, settlementStatus: "settled" },
+      }),
+      this.prisma.towerActionRecord.count({
+        where: { eraId: defaultEraId, settlementStatus: { not: "settled" } },
+      }),
+    ]);
     for (const record of records) {
       addScore(scoreMap, record.playerId, BigInt(record.contribution));
     }
 
-    return this.rankPlayers("tower_week", periodKey, scoreMap);
+    return {
+      rankType: "tower_week",
+      periodKey,
+      targetType: "player",
+      scoreMap,
+      excludedDelayedCount,
+    };
   }
 
-  private async getPvpRank(periodKey: string): Promise<RankListResponse> {
+  private async buildPvpRank(periodKey: string): Promise<RankBuildResult> {
     const scoreMap = new Map<string, bigint>();
-    const records = await this.prisma.pvpBattleRecord.findMany({ where: { eraId: defaultEraId } });
+    const [records, excludedDelayedCount] = await Promise.all([
+      this.prisma.pvpBattleRecord.findMany({
+        where: { eraId: defaultEraId, settlementStatus: "settled" },
+      }),
+      this.prisma.pvpBattleRecord.count({
+        where: { eraId: defaultEraId, settlementStatus: { not: "settled" } },
+      }),
+    ]);
     for (const record of records) {
-      addScore(scoreMap, record.attackerPlayerId, BigInt(record.scoreDelta));
+      if (record.scoreDelta > 0) {
+        addScore(scoreMap, record.attackerPlayerId, BigInt(record.scoreDelta));
+      }
     }
 
-    return this.rankPlayers("pvp_week", periodKey, scoreMap);
+    return {
+      rankType: "pvp_week",
+      periodKey,
+      targetType: "player",
+      scoreMap,
+      excludedDelayedCount,
+    };
   }
 
-  private async getSectRank(periodKey: string): Promise<RankListResponse> {
+  private async buildSectRank(periodKey: string): Promise<RankBuildResult> {
+    const scoreMap = new Map<string, bigint>();
+    const displayNameMap = new Map<string, string>();
     const sects = await this.prisma.sect.findMany({
       include: { members: true },
       orderBy: [{ level: "desc" }, { funds: "desc" }],
       take: 20,
     });
-    const entries = sects
-      .map((sect) => ({
-        sect,
-        score: sect.members.reduce(
-          (sum, member) => sum + BigInt(member.contributionWeekly),
-          sect.funds,
-        ),
-      }))
-      .filter((item) => item.score > 0n)
-      .sort((left, right) => Number(right.score - left.score))
-      .slice(0, 20)
-      .map((item, index) =>
-        toRankEntryState({
-          rankNo: index + 1,
-          targetType: "sect",
-          targetId: item.sect.sectId,
-          displayName: item.sect.name,
-          score: item.score,
-          rewardPreview: rankRewardPreview.sect,
-        }),
+    for (const sect of sects) {
+      const score = sect.members.reduce(
+        (sum, member) => sum + BigInt(member.contributionWeekly),
+        sect.funds,
       );
+      if (score > 0n) {
+        scoreMap.set(sect.sectId, score);
+        displayNameMap.set(sect.sectId, sect.name);
+      }
+    }
 
-    return { rank_type: "sect", period_key: periodKey, entries };
+    return {
+      rankType: "sect",
+      periodKey,
+      targetType: "sect",
+      scoreMap,
+      displayNameMap,
+      excludedDelayedCount: 0,
+    };
   }
 
-  private async rankPlayers(
-    rankType: RankType,
-    periodKey: string,
-    scoreMap: Map<string, bigint>,
-  ): Promise<RankListResponse> {
+  private async buildProductionRank(periodKey: string): Promise<RankBuildResult> {
+    const scoreMap = new Map<string, bigint>();
+    const [alchemyRecords, equipmentRecords] = await Promise.all([
+      this.prisma.alchemyRecord.findMany({ where: { eraId: defaultEraId } }),
+      this.prisma.equipmentOperationRecord.findMany({ where: { eraId: defaultEraId } }),
+    ]);
+    for (const record of alchemyRecords) {
+      if (record.success) {
+        addScore(
+          scoreMap,
+          record.playerId,
+          BigInt(record.count * alchemyQualityScore(record.quality)),
+        );
+      }
+    }
+    for (const record of equipmentRecords) {
+      addScore(scoreMap, record.playerId, BigInt(equipmentOperationScore(record.operationType)));
+    }
+
+    return {
+      rankType: "production",
+      periodKey,
+      targetType: "player",
+      scoreMap,
+      excludedDelayedCount: 0,
+    };
+  }
+
+  private async buildInnerWorldRank(periodKey: string): Promise<RankBuildResult> {
+    const scoreMap = new Map<string, bigint>();
+    const [states, lawRecords] = await Promise.all([
+      this.prisma.innerWorldState.findMany({ where: { eraId: defaultEraId } }),
+      this.prisma.innerWorldLawRecord.findMany({ where: { eraId: defaultEraId } }),
+    ]);
+    for (const state of states) {
+      addScore(
+        scoreMap,
+        state.playerId,
+        BigInt(state.worldLevel * 1000 + state.lawLevel * 500 + state.lawExp),
+      );
+    }
+    for (const record of lawRecords) {
+      addScore(scoreMap, record.playerId, BigInt(Math.max(0, record.expDelta)));
+    }
+
+    return {
+      rankType: "inner_world",
+      periodKey,
+      targetType: "player",
+      scoreMap,
+      excludedDelayedCount: 0,
+    };
+  }
+
+  private async buildFactionRank(periodKey: string): Promise<RankBuildResult> {
+    const scoreMap = new Map<string, bigint>();
+    const displayNameMap = new Map<string, string>([
+      ["immortal", "仙盟"],
+      ["demon", "魔宗"],
+      ["wanderer", "散修盟"],
+    ]);
+    const states = await this.prisma.playerFactionState.findMany({
+      where: { eraId: defaultEraId, route: { not: "undecided" } },
+    });
+    for (const state of states) {
+      addScore(scoreMap, "immortal", BigInt(state.reputationImmortal));
+      addScore(scoreMap, "demon", BigInt(state.reputationDemon));
+      addScore(scoreMap, "wanderer", BigInt(state.reputationWanderer));
+      if (state.route === "immortal") {
+        addScore(scoreMap, "immortal", 50n);
+      } else if (state.route === "demon") {
+        addScore(scoreMap, "demon", 50n);
+      } else {
+        addScore(scoreMap, "wanderer", 50n);
+      }
+    }
+
+    return {
+      rankType: "faction",
+      periodKey,
+      targetType: "faction",
+      scoreMap,
+      displayNameMap,
+      excludedDelayedCount: 0,
+    };
+  }
+
+  private async buildEraRank(periodKey: string): Promise<RankBuildResult> {
+    const [personal, production, innerWorld] = await Promise.all([
+      this.buildPersonalRank(periodKey),
+      this.buildProductionRank(periodKey),
+      this.buildInnerWorldRank(periodKey),
+    ]);
+    const scoreMap = new Map<string, bigint>();
+    mergeScoreMap(scoreMap, personal.scoreMap);
+    mergeScoreMap(scoreMap, production.scoreMap, 2n);
+    mergeScoreMap(scoreMap, innerWorld.scoreMap);
+
+    const factionStates = await this.prisma.playerFactionState.findMany({
+      where: { eraId: defaultEraId },
+    });
+    for (const state of factionStates) {
+      addScore(
+        scoreMap,
+        state.playerId,
+        BigInt(state.reputationImmortal + state.reputationDemon + state.reputationWanderer),
+      );
+    }
+
+    return {
+      rankType: "era",
+      periodKey,
+      targetType: "player",
+      scoreMap,
+      excludedDelayedCount:
+        personal.excludedDelayedCount +
+        production.excludedDelayedCount +
+        innerWorld.excludedDelayedCount,
+    };
+  }
+
+  private async toRankEntries(build: RankBuildResult): Promise<RankEntryState[]> {
     const players = await this.prisma.player.findMany({
-      where: { playerId: { in: Array.from(scoreMap.keys()) } },
+      where:
+        build.targetType === "player"
+          ? { playerId: { in: Array.from(build.scoreMap.keys()) } }
+          : undefined,
     });
     const playerNameMap = new Map(players.map((player) => [player.playerId, player.name]));
-    const entries = Array.from(scoreMap.entries())
+    const riskNoteMap =
+      build.targetType === "player"
+        ? await this.getRankRiskNotes(Array.from(build.scoreMap.keys()))
+        : new Map<string, string>();
+    const titleReward = rankTitleRewards.find((reward) => reward.rank_type === build.rankType);
+
+    return Array.from(build.scoreMap.entries())
       .filter(([, score]) => score > 0n)
       .sort((left, right) => Number(right[1] - left[1]))
       .slice(0, 20)
-      .map(([playerId, score], index) =>
+      .map(([targetId, score], index) =>
         toRankEntryState({
           rankNo: index + 1,
-          targetType: "player",
-          targetId: playerId,
-          displayName: playerNameMap.get(playerId) ?? playerId,
+          targetType: build.targetType,
+          targetId,
+          displayName:
+            build.displayNameMap?.get(targetId) ?? playerNameMap.get(targetId) ?? targetId,
           score,
-          rewardPreview: rankRewardPreview[rankType],
+          rewardPreview: rankRewardPreview[build.rankType],
+          titleReward: titleReward && index + 1 <= titleReward.min_rank ? titleReward : null,
+          riskNote: riskNoteMap.get(targetId) ?? null,
         }),
       );
+  }
 
-    return { rank_type: rankType, period_key: periodKey, entries };
+  private async persistRankSnapshot(
+    rankType: RankType,
+    periodKey: string,
+    entries: RankEntryState[],
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const snapshot = await tx.rankSnapshot.upsert({
+        where: { eraId_rankType_periodKey: { eraId: defaultEraId, rankType, periodKey } },
+        create: {
+          rankSnapshotId: `rank_snapshot_${randomUUID()}`,
+          eraId: defaultEraId,
+          rankType,
+          periodKey,
+          configVersion: rankConfigVersion,
+          rewardConfigVersion: rankRewardConfigVersion,
+        },
+        update: {
+          configVersion: rankConfigVersion,
+          rewardConfigVersion: rankRewardConfigVersion,
+          generatedAt: new Date(),
+        },
+      });
+      await tx.rankEntry.deleteMany({ where: { rankSnapshotId: snapshot.rankSnapshotId } });
+      if (entries.length > 0) {
+        await tx.rankEntry.createMany({
+          data: entries.map((entry) => ({
+            rankEntryId: `rank_entry_${randomUUID()}`,
+            rankSnapshotId: snapshot.rankSnapshotId,
+            targetType: entry.target_type,
+            targetId: entry.target_id,
+            displayName: entry.display_name,
+            score: BigInt(entry.score),
+            rankNo: entry.rank_no,
+            rewardSnapshot: entry.reward_preview as unknown as Prisma.InputJsonValue,
+          })),
+        });
+      }
+
+      return snapshot;
+    });
+  }
+
+  private async getRankRiskNotes(playerIds: string[]): Promise<Map<string, string>> {
+    if (playerIds.length === 0) {
+      return new Map();
+    }
+    const records = await this.prisma.behaviorRiskRecord.findMany({
+      where: {
+        playerId: { in: playerIds },
+        eraId: defaultEraId,
+        resolutionStatus: "open",
+        riskStatus: { in: ["decayed", "delayed_settlement", "manual_review", "rate_limited"] },
+      },
+    });
+    const counts = new Map<string, number>();
+    for (const record of records) {
+      if (record.playerId) {
+        counts.set(record.playerId, (counts.get(record.playerId) ?? 0) + 1);
+      }
+    }
+
+    return new Map(
+      Array.from(counts.entries()).map(([playerId, count]) => [
+        playerId,
+        `近期命中 ${count} 条风控记录，排行奖励需按后台复核结果发放`,
+      ]),
+    );
+  }
+
+  private async buildTitleCollection(
+    playerId: string,
+    tx: DbClient = this.prisma,
+  ): Promise<TitleCollectionResponse> {
+    const owned = await tx.playerAppearance.findMany({
+      where: {
+        playerId,
+        appearanceId: { in: rankTitleRewards.map((reward) => reward.appearance_id) },
+      },
+    });
+    const titles = rankTitleRewards.map((reward) =>
+      toAppearanceState(
+        owned.find((appearance) => appearance.appearanceId === reward.appearance_id) ?? null,
+        reward.appearance_id,
+      ),
+    );
+    const ownedInheritedCount = owned.filter((appearance) => appearance.inherited).length;
+
+    return {
+      titles,
+      rank_title_rewards: rankTitleRewards,
+      era_blessing: {
+        owned_inherited_count: ownedInheritedCount,
+        blessing_cap_percent: eraBlessingCapPercent,
+        effective_percent: Math.min(eraBlessingCapPercent, ownedInheritedCount),
+        rule: "称号可跨纪元继承展示，纪元祝福仅按 1% 上限展示，不叠加滚雪球。",
+      },
+      reward_boundary: rankRewardBoundary,
+    };
+  }
+
+  private async findClaimableRankEntry(
+    tx: Tx,
+    playerId: string,
+    rank: RankListResponse,
+    titleReward: RankTitleRewardState,
+  ): Promise<RankEntryState> {
+    let targetId = playerId;
+    if (rank.rank_type === "faction") {
+      const factionState = await tx.playerFactionState.findUnique({ where: { playerId } });
+      if (!factionState || factionState.route === "undecided") {
+        throw new BadRequestException("请先选择仙魔 / 散修路线");
+      }
+      targetId = factionState.route;
+    }
+
+    const entry = rank.entries.find((item) => item.target_id === targetId);
+    if (!entry || entry.rank_no > titleReward.min_rank) {
+      throw new BadRequestException("当前名次暂未达到该称号领取条件");
+    }
+
+    return entry;
   }
 
   private async ensureTowerStates(tx: DbClient = this.prisma) {
@@ -1459,6 +1868,15 @@ function normalizePvpAttackRequest(body: PvpAttackRequest): PvpAttackRequest {
   };
 }
 
+function normalizeRankType(value: unknown): RankType {
+  const rankType = typeof value === "string" ? value.trim() : "";
+  if (!supportedRankTypes.includes(rankType as RankType)) {
+    throw new BadRequestException("未知排行榜");
+  }
+
+  return rankType as RankType;
+}
+
 function getTowerUpdate(
   actionType: TowerActionType,
   contribution: number,
@@ -1535,6 +1953,35 @@ function createSimpleBattleLog(input: {
 
 function addScore(map: Map<string, bigint>, key: string, score: bigint) {
   map.set(key, (map.get(key) ?? 0n) + score);
+}
+
+function mergeScoreMap(target: Map<string, bigint>, source: Map<string, bigint>, weight = 1n) {
+  for (const [key, score] of source.entries()) {
+    addScore(target, key, score * weight);
+  }
+}
+
+function alchemyQualityScore(quality: string | null): number {
+  const scores: Record<string, number> = {
+    rough: 20,
+    normal: 30,
+    fine: 45,
+    flawless: 70,
+    无瑕: 70,
+  };
+
+  return scores[quality ?? "normal"] ?? 30;
+}
+
+function equipmentOperationScore(operationType: string): number {
+  const scores: Record<string, number> = {
+    forge: 80,
+    refine: 25,
+    inscribe: 40,
+    decompose: 5,
+  };
+
+  return scores[operationType] ?? 20;
 }
 
 function sortTowersByConfig<T extends { towerId: string }>(items: T[]): T[] {

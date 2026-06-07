@@ -1,5 +1,7 @@
 import { Body, Controller, Get, Inject, Param, Post, Req, UseGuards } from "@nestjs/common";
 import type {
+  ClaimRankTitleRequest,
+  ClaimRankTitleResponse,
   CreateSectRequest,
   JoinSectRequest,
   PvpAttackRequest,
@@ -14,6 +16,7 @@ import type {
   SectWarehouseDepositRequest,
   SectWarehouseResponse,
   SectWarehouseWithdrawRequest,
+  TitleCollectionResponse,
   TowerActionRequest,
   TowerActionResponse,
   TowerListResponse,
@@ -150,6 +153,23 @@ export class MultiplayerController {
   @Get("ranks/:rankType")
   ranks(@Param("rankType") rankType: RankType): Promise<RankListResponse> {
     return this.multiplayerService.getRankList(rankType);
+  }
+
+  @Get("titles")
+  titles(@Req() request: Request): Promise<TitleCollectionResponse> {
+    return this.multiplayerService.getTitleCollection(requireAccountId(request));
+  }
+
+  @Post("titles/claim-rank")
+  claimRankTitle(
+    @Body() body: ClaimRankTitleRequest,
+    @Req() request: Request,
+  ): Promise<ClaimRankTitleResponse> {
+    return this.multiplayerService.claimRankTitle({
+      accountId: requireAccountId(request),
+      body,
+      idempotencyKey: requireIdempotencyKey(request),
+    });
   }
 }
 

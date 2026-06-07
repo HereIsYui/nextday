@@ -1,5 +1,6 @@
 import type {
   RankEntryState,
+  RankTargetType,
   ResourcePointSummary,
   SectDetailResponse,
   SectMemberSummary,
@@ -126,11 +127,13 @@ export function toResourcePointSummary(point: ResourcePointState): ResourcePoint
 
 export function toRankEntryState(input: {
   rankNo: number;
-  targetType: "player" | "sect";
+  targetType: RankTargetType;
   targetId: string;
   displayName: string;
   score: bigint | number;
   rewardPreview: RankEntryState["reward_preview"];
+  titleReward?: RankEntryState["title_reward"];
+  riskNote?: string | null;
 }): RankEntryState {
   return {
     rank_no: input.rankNo,
@@ -139,5 +142,7 @@ export function toRankEntryState(input: {
     display_name: input.displayName,
     score: input.score.toString(),
     reward_preview: input.rewardPreview,
+    title_reward: input.titleReward ?? null,
+    risk_note: input.riskNote ?? null,
   };
 }

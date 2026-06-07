@@ -615,6 +615,44 @@ h2 {
   gap: 2px;
 }
 
+.rank-panel {
+  border-top: 1px solid #dce4df;
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding-top: 18px;
+}
+
+.rank-summary-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.rank-mini-card,
+.title-claim-row {
+  background: #fbfcfa;
+  border: 1px solid #dce4df;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+}
+
+.rank-mini-card strong {
+  color: #10292b;
+}
+
+.rank-mini-card p,
+.rank-mini-card span,
+.title-claim-row span {
+  color: #5f6f70;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .tower-grid {
   display: grid;
   gap: 12px;
@@ -665,7 +703,8 @@ h2 {
   .experience-layout,
   .battle-row,
   .inner-world-layout,
-  .faction-layout {
+  .faction-layout,
+  .rank-summary-grid {
     grid-template-columns: 1fr;
   }
 }

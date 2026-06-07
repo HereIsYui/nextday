@@ -67,6 +67,7 @@ P1 核心原则：
 - P1-3 已接入 `npm run test:p1-world`，九州全域和九塔全域可查询。
 - P1-4 已接入 `npm run test:p1-inner-world`，内天地配置、API、Web 和插件摘要已落地。
 - P1-5 已接入 `npm run test:p1-faction`，仙魔 / 散修路线、转道冷却、声望清除、宗门立场冲突和展示边界已落地。
+- P1-6 已接入 `npm run test:p1-rank`，生产榜、纪元榜、内天地榜、阵营榜、排行快照、称号继承、祝福限幅和排行防刷已落地。
 
 ## 四、Web 体验增量字段
 

@@ -26,6 +26,8 @@ import type {
   ClaimAppearanceRequest,
   ClaimMonthlyDailyRequest,
   ClaimMonthlyDailyResponse,
+  ClaimRankTitleRequest,
+  ClaimRankTitleResponse,
   ConfigEnvelope,
   ConfigType,
   ConvenienceBatchPreviewRequest,
@@ -117,6 +119,7 @@ import type {
   TaskClaimRequest,
   TaskClaimResponse,
   TaskSummaryResponse,
+  TitleCollectionResponse,
   TowerActionRequest,
   TowerActionResponse,
   TowerListResponse,
@@ -478,6 +481,21 @@ export class GameClient {
 
   ranks(rankType: RankType): Promise<ApiResponse<RankListResponse>> {
     return this.get<RankListResponse>(`/api/multiplayer/ranks/${rankType}`);
+  }
+
+  titleCollection(): Promise<ApiResponse<TitleCollectionResponse>> {
+    return this.get<TitleCollectionResponse>("/api/multiplayer/titles");
+  }
+
+  claimRankTitle(
+    body: ClaimRankTitleRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<ClaimRankTitleResponse>> {
+    return this.post<ClaimRankTitleResponse, ClaimRankTitleRequest>(
+      "/api/multiplayer/titles/claim-rank",
+      body,
+      { idempotencyKey },
+    );
   }
 
   innerWorldSummary(): Promise<ApiResponse<InnerWorldSummaryResponse>> {

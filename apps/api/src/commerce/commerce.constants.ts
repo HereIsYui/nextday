@@ -247,6 +247,34 @@ export const appearanceConfigs: Array<{
     sourceType: "era",
     statBonus: null,
   },
+  {
+    appearanceId: "title_era_jiuzhou_ming",
+    name: "九州纪名",
+    appearanceType: "title_style",
+    sourceType: "era_rank",
+    statBonus: null,
+  },
+  {
+    appearanceId: "title_production_danqi_shuangjue",
+    name: "丹器双绝",
+    appearanceType: "title_style",
+    sourceType: "era_rank",
+    statBonus: null,
+  },
+  {
+    appearanceId: "title_inner_world_zaohua",
+    name: "造化洞主",
+    appearanceType: "title_style",
+    sourceType: "era_rank",
+    statBonus: null,
+  },
+  {
+    appearanceId: "title_faction_tianheng",
+    name: "天衡执名",
+    appearanceType: "title_style",
+    sourceType: "era_rank",
+    statBonus: null,
+  },
 ];
 
 export function rewardBundleFromJade(input: {

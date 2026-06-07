@@ -21,10 +21,12 @@ import type {
   LoginResponse,
   PlayerProfileResponse,
   RankListResponse,
+  RankType,
   ResourcePointListResponse,
   SectDetailResponse,
   SkillLoadoutResponse,
   TaskState,
+  TitleCollectionResponse,
   TowerListResponse,
   WorldBossResponse,
 } from "@nextday/shared";
@@ -66,6 +68,11 @@ export default function HomePage() {
   const [sect, setSect] = useState<SectDetailResponse | null>(null);
   const [resourcePoints, setResourcePoints] = useState<ResourcePointListResponse | null>(null);
   const [personalRank, setPersonalRank] = useState<RankListResponse | null>(null);
+  const [productionRank, setProductionRank] = useState<RankListResponse | null>(null);
+  const [eraRank, setEraRank] = useState<RankListResponse | null>(null);
+  const [innerWorldRank, setInnerWorldRank] = useState<RankListResponse | null>(null);
+  const [factionRank, setFactionRank] = useState<RankListResponse | null>(null);
+  const [titles, setTitles] = useState<TitleCollectionResponse | null>(null);
   const [commerce, setCommerce] = useState<EntitlementOverviewResponse | null>(null);
   const [gachaPools, setGachaPools] = useState<GachaPoolListResponse | null>(null);
   const [ancientTreasures, setAncientTreasures] = useState<AncientTreasureListResponse | null>(
@@ -264,6 +271,11 @@ export default function HomePage() {
         setSect(state.sect);
         setResourcePoints(state.resourcePoints);
         setPersonalRank(state.personalRank);
+        setProductionRank(state.productionRank);
+        setEraRank(state.eraRank);
+        setInnerWorldRank(state.innerWorldRank);
+        setFactionRank(state.factionRank);
+        setTitles(state.titles);
         setFaction(state.faction);
       })
       .catch(() => {
@@ -362,6 +374,11 @@ export default function HomePage() {
     setSect(state.sect);
     setResourcePoints(state.resourcePoints);
     setPersonalRank(state.personalRank);
+    setProductionRank(state.productionRank);
+    setEraRank(state.eraRank);
+    setInnerWorldRank(state.innerWorldRank);
+    setFactionRank(state.factionRank);
+    setTitles(state.titles);
     setFaction(state.faction);
   }
 
@@ -764,6 +781,18 @@ export default function HomePage() {
       ensureOk(response);
       rememberExperience(response.data.experience);
       await refreshOverview(`已转道${response.data.state.route_name}`);
+    });
+  }
+
+  async function handleClaimRankTitle(rankType: RankType) {
+    await runAction("领取排行称号", async () => {
+      const response = await client.claimRankTitle(
+        { rank_type: rankType },
+        createIdempotencyKey(`web_rank_title_${rankType}`),
+      );
+      ensureOk(response);
+      setTitles(response.data.collection);
+      await refreshOverview(`领取称号：${response.data.appearance.name}`);
     });
   }
 
@@ -1427,6 +1456,51 @@ export default function HomePage() {
                     </div>
                   </div>
                 </section>
+                <section className="rank-panel" aria-label="完整排行与称号">
+                  <div className="section-title">
+                    <h2>排行与称号</h2>
+                    <span>
+                      已继承 {titles?.era_blessing.owned_inherited_count ?? 0} 个 · 祝福{" "}
+                      {titles?.era_blessing.effective_percent ?? 0}%/
+                      {titles?.era_blessing.blessing_cap_percent ?? 1}%
+                    </span>
+                  </div>
+                  <div className="rank-summary-grid">
+                    <RankMiniPanel rank={eraRank} title="纪元榜" />
+                    <RankMiniPanel rank={productionRank} title="生产榜" />
+                    <RankMiniPanel rank={innerWorldRank} title="内天地榜" />
+                    <RankMiniPanel rank={factionRank} title="阵营榜" />
+                  </div>
+                  <div className="title-claim-row">
+                    <span>{titles?.reward_boundary ?? "排行奖励不发唯一战力道具"}</span>
+                    <div className="production-actions">
+                      <Button
+                        disabled={busy || !eraRank?.entries.length}
+                        onClick={() => handleClaimRankTitle("era")}
+                      >
+                        领纪元称号
+                      </Button>
+                      <Button
+                        disabled={busy || !productionRank?.entries.length}
+                        onClick={() => handleClaimRankTitle("production")}
+                      >
+                        领生产称号
+                      </Button>
+                      <Button
+                        disabled={busy || !innerWorldRank?.entries.length}
+                        onClick={() => handleClaimRankTitle("inner_world")}
+                      >
+                        领洞天称号
+                      </Button>
+                      <Button
+                        disabled={busy || !factionRank?.entries.length}
+                        onClick={() => handleClaimRankTitle("faction")}
+                      >
+                        领阵营称号
+                      </Button>
+                    </div>
+                  </div>
+                </section>
                 <div className="tower-grid" aria-label="九塔全域状态">
                   {towers?.towers.map((tower) => (
                     <article className="tower-card" key={tower.tower_id}>
@@ -1661,6 +1735,35 @@ function ExperiencePanel({ experience }: { experience: ExperiencePayload }) {
   );
 }
 
+function RankMiniPanel({ rank, title }: { rank: RankListResponse | null; title: string }) {
+  const topEntries = rank?.entries.slice(0, 3) ?? [];
+
+  return (
+    <article className="rank-mini-card">
+      <div className="province-head">
+        <strong>{title}</strong>
+        <StatusBadge tone={rank?.anti_brush_summary?.risk_record_count ? "warning" : "neutral"}>
+          {rank?.snapshot_id ? "已快照" : "未生成"}
+        </StatusBadge>
+      </div>
+      {topEntries.length ? (
+        topEntries.map((entry) => (
+          <p key={`${rank?.rank_type}-${entry.target_id}`}>
+            {entry.rank_no}. {entry.display_name} · {entry.score}
+            {entry.title_reward ? ` · ${entry.title_reward.name}` : ""}
+          </p>
+        ))
+      ) : (
+        <p>暂无排行数据</p>
+      )}
+      <span>
+        排除延迟 {rank?.anti_brush_summary?.excluded_delayed_count ?? 0} · 风控标记{" "}
+        {rank?.anti_brush_summary?.risk_record_count ?? 0}
+      </span>
+    </article>
+  );
+}
+
 function formatDeltaValue(item: ExperiencePayload["delta_summary"][number]): string {
   if (item.delta !== undefined && item.delta !== null) {
     return String(item.delta);
@@ -1741,6 +1844,11 @@ async function loadMultiplayer(client: GameClient) {
     sectResponse,
     resourceResponse,
     rankResponse,
+    productionRankResponse,
+    eraRankResponse,
+    innerWorldRankResponse,
+    factionRankResponse,
+    titleResponse,
     factionResponse,
   ] = await Promise.all([
     client.towers(),
@@ -1748,6 +1856,11 @@ async function loadMultiplayer(client: GameClient) {
     client.mySect(),
     client.resourcePoints(),
     client.ranks("personal"),
+    client.ranks("production"),
+    client.ranks("era"),
+    client.ranks("inner_world"),
+    client.ranks("faction"),
+    client.titleCollection(),
     client.factionRoutes(),
   ]);
 
@@ -1756,6 +1869,11 @@ async function loadMultiplayer(client: GameClient) {
   ensureOk(sectResponse);
   ensureOk(resourceResponse);
   ensureOk(rankResponse);
+  ensureOk(productionRankResponse);
+  ensureOk(eraRankResponse);
+  ensureOk(innerWorldRankResponse);
+  ensureOk(factionRankResponse);
+  ensureOk(titleResponse);
   ensureOk(factionResponse);
 
   return {
@@ -1764,6 +1882,11 @@ async function loadMultiplayer(client: GameClient) {
     sect: sectResponse.data,
     resourcePoints: resourceResponse.data,
     personalRank: rankResponse.data,
+    productionRank: productionRankResponse.data,
+    eraRank: eraRankResponse.data,
+    innerWorldRank: innerWorldRankResponse.data,
+    factionRank: factionRankResponse.data,
+    titles: titleResponse.data,
     faction: factionResponse.data,
   };
 }

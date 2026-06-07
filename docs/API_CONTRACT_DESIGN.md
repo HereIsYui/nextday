@@ -286,10 +286,13 @@ HTTP 是当前唯一默认交互通道。WebSocket / SSE 即使后续接入，�
 | `/api/quest/claim` | POST | 领取任务奖励 |
 | `/api/event/list` | GET | 活动列表 |
 | `/api/event/detail/{event_id}` | GET | 活动详情 |
-| `/api/rank/list` | GET | 榜单列表 |
-| `/api/rank/{rank_id}` | GET | 排行明细 |
+| `/api/multiplayer/ranks/{rank_type}` | GET | 排行明细，支持个人、宗门、PVP 周榜、九塔周榜、生产榜、纪元榜、内天地榜、阵营榜 |
+| `/api/multiplayer/titles` | GET | 当前玩家排行称号收藏、继承展示和纪元祝福限幅 |
+| `/api/multiplayer/titles/claim-rank` | POST | 领取满足名次门槛的排行称号，需幂等键 |
 
 任务奖励领取必须使用幂等键，重复领取返回同一奖励记录，不重复发放。
+
+排行响应必须返回 `snapshot_id`、`generated_at`、`reward_boundary`、`anti_brush_summary`、`title_rewards` 和配置版本信息。生产榜、纪元榜、内天地榜、阵营榜必须排除延迟结算贡献，并在近期风控玩家条目上展示风险提示。排行称号只作为展示外观和纪元纪念物发放，不提供唯一战力道具、付费货币、贡献倍率或 PVP 伤害倍率。
 
 ## 九、宗门与 PVP
 
@@ -432,6 +435,9 @@ P1 新增接口分组：
 | 阵营路线 | `/api/factions/choose` | POST | 化神后选择路线，需幂等键 |
 | 阵营路线 | `/api/factions/transfer` | POST | 转道任务提交、资源消耗和冷却校验，需幂等键 |
 | 阵营路线 | `/api/factions/reputation` | GET | 阵营声望、宗门立场冲突和清除记录 |
+| 完整排行 | `/api/multiplayer/ranks/{rank_type}` | GET | 查询个人、宗门、PVP、九塔、生产、纪元、内天地和阵营排行，并生成可追溯快照 |
+| 完整排行 | `/api/multiplayer/titles` | GET | 查询排行称号收藏、继承展示数量和纪元祝福有效值 |
+| 完整排行 | `/api/multiplayer/titles/claim-rank` | POST | 领取排行称号展示外观，需幂等键 |
 | 活动 | `/api/events/list` | GET | 活动列表、异步参与状态和可领取红点 |
 | 活动 | `/api/events/{event_id}` | GET | 活动详情、任务进度、排行和奖励边界 |
 | 活动 | `/api/events/progress` | POST | 提交活动进度或活动行动，需幂等键 |

@@ -203,6 +203,7 @@ function renderPanel(
       <div><dt>阵营</dt><dd>${
         panel.faction?.unlocked ? escapeHtml(panel.faction.route_name) : "未开启"
       }</dd></div>
+      <div><dt>称号</dt><dd>${panel.titles?.era_blessing.owned_inherited_count ?? 0} 个</dd></div>
     </dl>
     <section>
       <strong>日课</strong>
@@ -238,6 +239,14 @@ function renderPanel(
     <section>
       <strong>战报</strong>
       <p>${escapeHtml(panel.recent_battles[0]?.enemy_name ?? "暂无战报")}</p>
+    </section>
+    <section>
+      <strong>排行称号</strong>
+      <p>${
+        panel.titles
+          ? `继承 ${panel.titles.era_blessing.owned_inherited_count} · 祝福 ${panel.titles.era_blessing.effective_percent}%/${panel.titles.era_blessing.blessing_cap_percent}%`
+          : "未读取称号"
+      }</p>
     </section>
     <section>
       <strong>宗门</strong>

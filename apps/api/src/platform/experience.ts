@@ -27,7 +27,7 @@ export function buildExploreExperience(input: {
   completedTaskCount: number;
 }): ExperiencePayload {
   const timeline: ExperiencePayload["timeline"] = input.battles
-    .slice(0, 4)
+    .slice(0, 3)
     .map((battle, index) => ({
       step: index + 1,
       title: `${battle.enemy_name} · ${battle.result === "win" ? "胜" : "败"}`,
@@ -41,7 +41,7 @@ export function buildExploreExperience(input: {
   if (input.battles.length > timeline.length) {
     timeline.push({
       step: timeline.length + 1,
-      title: "批量扫荡继续结算",
+      title: "余下战斗",
       description: `其余 ${input.battles.length - timeline.length} 场按同一自动战斗规则结算。`,
       tone: "neutral",
     });
@@ -653,7 +653,7 @@ function formatRewards(rewards: RewardBundle): string {
   if (typeof rewards.action_points === "number" && rewards.action_points > 0) {
     parts.push(`行动令 ${rewards.action_points}`);
   }
-  for (const item of rewards.items ?? []) {
+  for (const item of mergeRewardItems(rewards.items ?? [])) {
     if (item.count > 0) {
       parts.push(`${item.name} x${item.count}`);
     }
@@ -665,12 +665,27 @@ function formatRewards(rewards: RewardBundle): string {
 function formatBattleLog(log: BattleRoundLog[]): string {
   const entries = log
     .slice(0, 3)
-    .map((item) => `${item.actor}施放${item.skill}，伤害 ${item.damage}`);
+    .map((item) => `${item.actor}施放${item.skill}，造成 ${item.damage}`);
   if (log.length > entries.length) {
     entries.push(`余下 ${log.length - entries.length} 条记录可在战报查看`);
   }
 
   return entries.length > 0 ? entries.join("；") : "本场无详细日志";
+}
+
+function mergeRewardItems(items: NonNullable<RewardBundle["items"]>) {
+  const merged = new Map<string, { name: string; count: number }>();
+  for (const item of items) {
+    const key = item.item_id ?? item.name;
+    const current = merged.get(key);
+    if (current) {
+      current.count += item.count;
+      continue;
+    }
+    merged.set(key, { name: item.name, count: item.count });
+  }
+
+  return Array.from(merged.values());
 }
 
 function formatEquipment(equipment: EquipmentState): string {

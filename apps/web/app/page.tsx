@@ -24,6 +24,7 @@ import type {
   HealthStatus,
   InnerWorldSummaryResponse,
   LoginResponse,
+  MonthlyCardType,
   PlayerProfileResponse,
   ProvinceSummary,
   RankListResponse,
@@ -198,6 +199,8 @@ export default function HomePage() {
   );
   const firstWarehouseItem = sect?.warehouse[0];
   const firstAncientGrant = commerce?.available_monthly_grants[0];
+  const smallMonthlyState = monthlyCardClaimState(commerce, "small_monthly");
+  const largeMonthlyState = monthlyCardClaimState(commerce, "large_monthly");
   const firstActivity = activities?.events[0];
   const firstClaimableActivity = activities?.events.find((activity) => activity.claimable);
   const ownedTreasureCount =
@@ -789,7 +792,7 @@ export default function HomePage() {
       );
       ensureOk(response);
       rememberExperience(undefined, {
-        summary: `${response.data.task.title} 已领取，奖励由服务端结算并写入记录。`,
+        summary: `${response.data.task.title} 已领取，奖励已入账，可在记录中查看。`,
         tags: [taskTypeLabel(task.task_type), "奖励领取"],
         title: "领取任务奖励",
         tone: "success",
@@ -1486,7 +1489,7 @@ export default function HomePage() {
               第 {activeProfile.progress?.chapter_id ?? 1} 章
             </p>
           ) : (
-            <p className="subline">九州异步修仙文字游戏</p>
+            <p className="subline">九州文字修仙游戏</p>
           )}
         </div>
         <div className="status-row">
@@ -1553,9 +1556,7 @@ export default function HomePage() {
               <p>
                 {completedTasks.length} 个任务可领 · 行动令{" "}
                 {overview?.action_state?.action_points ?? 0} 枚 ·{" "}
-                {firstClaimableActivity
-                  ? `${firstClaimableActivity.name} 可领奖`
-                  : "活动可异步推进"}
+                {firstClaimableActivity ? `${firstClaimableActivity.name} 可领奖` : "活动可推进"}
               </p>
             </div>
             <div className="today-controls" aria-label="今日行动选择">
@@ -1688,6 +1689,7 @@ export default function HomePage() {
               value={activeProfile.wallet?.spirit_stone ?? "0"}
               detail={`仙玉 ${activeProfile.wallet?.jade_paid ?? "0"} / ${activeProfile.wallet?.jade_bound ?? "0"}`}
             />
+            {lastExperience ? <LedgerExperienceDetails experience={lastExperience} /> : null}
           </section>
 
           <nav className="tab-nav" aria-label="功能分区">
@@ -1774,10 +1776,7 @@ export default function HomePage() {
               <section className="panel" aria-label="活动中心">
                 <div className="section-title">
                   <h2>活动</h2>
-                  <span>
-                    {activities?.claimable_count ?? 0} 个可领取 ·{" "}
-                    {activities?.async_rule ?? "活动支持随时参与"}
-                  </span>
+                  <span>{activities?.claimable_count ?? 0} 个可领取 · 全天可参与</span>
                 </div>
                 <div className="event-hero">
                   <div>
@@ -1787,7 +1786,7 @@ export default function HomePage() {
                     <span>
                       {firstClaimableActivity
                         ? "已有奖励可领取"
-                        : "活动全部异步参与，不要求固定时间在线"}
+                        : "按自己的节奏推进，达成目标后再领取奖励"}
                     </span>
                   </div>
                   <StatusBadge tone={firstClaimableActivity ? "success" : "neutral"}>
@@ -1803,7 +1802,7 @@ export default function HomePage() {
                           {activity.claimable ? "可领取" : activityStatusLabel(activity.status)}
                         </StatusBadge>
                       </div>
-                      <p>{activity.description}</p>
+                      <p>{playerFacingActivityDescription(activity)}</p>
                       <div className="event-progress">
                         <span>
                           进度 {activity.progress}/{activity.target_progress}
@@ -1811,8 +1810,8 @@ export default function HomePage() {
                         <span>奖励 {rewardStateLabel(activity.reward_state)}</span>
                       </div>
                       <div className="mini-stats">
-                        <span>{activity.async_enabled ? "异步" : "定时"}</span>
-                        <span>结算 {formatShortDate(activity.settlement_at)}</span>
+                        <span>{activity.async_enabled ? "全天可参与" : "限时参与"}</span>
+                        <span>{formatShortDate(activity.settlement_at)} 结算</span>
                       </div>
                       <div className="production-actions">
                         {!activity.claimable && activity.progress < activity.target_progress ? (
@@ -1834,13 +1833,10 @@ export default function HomePage() {
                     </article>
                   )) ?? <p>活动中心尚未读取</p>}
                 </div>
-                <div className="event-boundary">
-                  <strong>奖励边界</strong>
-                  <span>
-                    {activities?.reward_boundary ??
-                      "活动奖励不发付费仙玉、唯一战力道具、九大古宝本体、限定法宝或倍率奖励。"}
-                  </span>
-                </div>
+                <details className="event-boundary">
+                  <summary>活动规则</summary>
+                  <span>活动奖励以绑定材料、荣誉和展示外观为主。</span>
+                </details>
               </section>
             ) : null}
 
@@ -2170,7 +2166,7 @@ export default function HomePage() {
                     actions={
                       pvpTarget ? (
                         <Button disabled={busy} onClick={handlePvpAttack}>
-                          异步进攻
+                          发起争夺
                         </Button>
                       ) : null
                     }
@@ -2287,7 +2283,7 @@ export default function HomePage() {
                     <RankMiniPanel rank={factionRank} title="阵营榜" />
                   </div>
                   <div className="title-claim-row">
-                    <span>{titles?.reward_boundary ?? "排行奖励不发唯一战力道具"}</span>
+                    <span>排行称号以荣誉、展示外观和纪元收藏为主。</span>
                     <div className="production-actions">
                       {eraRank?.entries.length ? (
                         <Button disabled={busy} onClick={() => handleClaimRankTitle("era")}>
@@ -2368,23 +2364,31 @@ export default function HomePage() {
                           >
                             大月卡
                           </Button>
-                          <Button
-                            disabled={busy}
-                            onClick={() => handleClaimMonthly("small_monthly")}
-                          >
-                            领小月卡
-                          </Button>
-                          <Button
-                            disabled={busy}
-                            onClick={() => handleClaimMonthly("large_monthly")}
-                          >
-                            领大月卡
-                          </Button>
+                          {smallMonthlyState.canClaim ? (
+                            <Button
+                              disabled={busy}
+                              onClick={() => handleClaimMonthly("small_monthly")}
+                            >
+                              领小月卡
+                            </Button>
+                          ) : null}
+                          {largeMonthlyState.canClaim ? (
+                            <Button
+                              disabled={busy}
+                              onClick={() => handleClaimMonthly("large_monthly")}
+                            >
+                              领大月卡
+                            </Button>
+                          ) : null}
                         </>
                       ) : null
                     }
-                    actionNote={overview ? undefined : "角色状态尚未读取"}
-                    detail={`档位 ${commerceTierLabel(commerce?.effective_tier)} · 古宝赠抽 ${
+                    actionNote={
+                      overview
+                        ? `${smallMonthlyState.label} · ${largeMonthlyState.label}`
+                        : "角色状态尚未读取"
+                    }
+                    detail={`当前 ${commerceTierLabel(commerce?.effective_tier)} · 古宝赠抽 ${
                       commerce?.available_monthly_grants.reduce(
                         (sum, grant) => sum + grant.draw_count - grant.used_count,
                         0,
@@ -2441,7 +2445,7 @@ export default function HomePage() {
                       }
                       detail={`VIP ${commerce?.vip.vip_level ?? 0} · 批量上限 ${
                         commerce?.convenience.batch_sweep_limit ?? 5
-                      } · 奖励倍率 1`}
+                      } · 便利档位 ${commerceTierLabel(commerce?.effective_tier)}`}
                       title="开发模拟：VIP 与便利"
                     />
                   ) : (
@@ -2449,7 +2453,8 @@ export default function HomePage() {
                       <strong>VIP 与便利</strong>
                       <span>
                         VIP {commerce?.vip.vip_level ?? 0} · 批量上限{" "}
-                        {commerce?.convenience.batch_sweep_limit ?? 5} · 奖励倍率 1
+                        {commerce?.convenience.batch_sweep_limit ?? 5} · 便利档位{" "}
+                        {commerceTierLabel(commerce?.effective_tier)}
                       </span>
                       <span className="action-note">
                         便利权益由月卡或 VIP 状态自动生效，不在玩家界面提供模拟同步。
@@ -2524,14 +2529,17 @@ export default function HomePage() {
 }
 
 function ExperiencePanel({ experience }: { experience: ExperiencePayload }) {
+  const playerTags = filterPlayerFacingExperienceTags(experience.reason_tags);
+  const systemTags = filterSystemExperienceTags(experience.reason_tags);
+
   return (
-    <section className="experience-panel" aria-label="最近行动回放">
+    <section className="experience-panel" aria-label="结算详情">
       <div className="section-title">
         <div>
-          <h2>最近行动回放</h2>
+          <h2>结算详情</h2>
           <span>{experience.title}</span>
         </div>
-        <StatusBadge tone="neutral">服务端结算</StatusBadge>
+        <StatusBadge tone="neutral">过程</StatusBadge>
       </div>
       <p className="experience-summary">{experience.summary}</p>
       <div className="experience-layout">
@@ -2555,13 +2563,27 @@ function ExperiencePanel({ experience }: { experience: ExperiencePayload }) {
               </div>
             ))}
           </div>
-          <div className="reason-tags">
-            {experience.reason_tags.map((tag) => (
-              <span className={`reason-tag tone-${tag.tone ?? "neutral"}`} key={tag.code}>
-                {experienceReasonTagDisplayLabel(tag)}
-              </span>
-            ))}
-          </div>
+          {playerTags.length ? (
+            <div className="reason-tags">
+              {playerTags.map((tag) => (
+                <span className={`reason-tag tone-${tag.tone ?? "neutral"}`} key={tag.code}>
+                  {experienceReasonTagDisplayLabel(tag)}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {systemTags.length ? (
+            <details className="experience-rules">
+              <summary>规则说明</summary>
+              <div className="reason-tags">
+                {systemTags.map((tag) => (
+                  <span className="reason-tag tone-neutral" key={tag.code}>
+                    {systemExperienceTagLabel(tag)}
+                  </span>
+                ))}
+              </div>
+            </details>
+          ) : null}
           <div className="recommendation-list">
             {experience.next_recommendations.map((item) => (
               <article key={`${item.label}-${item.action_hint ?? "none"}`}>
@@ -2573,6 +2595,56 @@ function ExperiencePanel({ experience }: { experience: ExperiencePayload }) {
         </aside>
       </div>
     </section>
+  );
+}
+
+function LedgerExperienceDetails({ experience }: { experience: ExperiencePayload }) {
+  const playerTags = filterPlayerFacingExperienceTags(experience.reason_tags);
+  const systemTags = filterSystemExperienceTags(experience.reason_tags);
+  const visibleSteps = experience.timeline.slice(0, 3);
+  const hiddenStepCount = Math.max(0, experience.timeline.length - visibleSteps.length);
+
+  return (
+    <article className="ledger-experience" aria-label="结算详情">
+      <div className="province-head">
+        <strong>结算详情</strong>
+        <StatusBadge tone="neutral">过程</StatusBadge>
+      </div>
+      <span>{experience.title}</span>
+      <p>{experience.summary}</p>
+      {visibleSteps.length ? (
+        <ol className="ledger-timeline">
+          {visibleSteps.map((entry) => (
+            <li key={entry.step}>
+              <strong>{entry.title}</strong>
+              <span>{entry.description}</span>
+            </li>
+          ))}
+          {hiddenStepCount ? <li>其余 {hiddenStepCount} 步已按当前策略结算。</li> : null}
+        </ol>
+      ) : null}
+      {playerTags.length ? (
+        <div className="reason-tags">
+          {playerTags.map((tag) => (
+            <span className={`reason-tag tone-${tag.tone ?? "neutral"}`} key={tag.code}>
+              {experienceReasonTagDisplayLabel(tag)}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {systemTags.length ? (
+        <details className="experience-rules">
+          <summary>规则说明</summary>
+          <div className="reason-tags">
+            {systemTags.map((tag) => (
+              <span className="reason-tag tone-neutral" key={tag.code}>
+                {systemExperienceTagLabel(tag)}
+              </span>
+            ))}
+          </div>
+        </details>
+      ) : null}
+    </article>
   );
 }
 
@@ -2689,7 +2761,7 @@ function CultivationJournal({
           <span>{latestEntry ? latestEntry.title : "行动完成后会记录在这里"}</span>
         </div>
         <StatusBadge tone={experience ? "success" : "neutral"}>
-          {experience ? "有过程回放" : "等待行动"}
+          {latestEntry ? "有新记录" : experience ? "有过程" : "等待行动"}
         </StatusBadge>
       </div>
       <div className="journal-layout">
@@ -2730,7 +2802,7 @@ function CultivationJournal({
           ) : (
             <div className="journal-empty-detail">
               <strong>当前行动详情</strong>
-              <span>这里会展示服务端返回的时间线、收益变化和下一步建议。</span>
+              <span>这里会展示行动过程、收益变化和下一步建议。</span>
             </div>
           )}
         </div>
@@ -2858,10 +2930,7 @@ const experienceTagLabels: Record<string, string> = {
 
 function filterJournalTags(tags: ExperiencePayload["reason_tags"]): string[] {
   return uniqueStrings(
-    tags
-      .filter((tag) => !isSystemBoundaryJournalTag(tag))
-      .map(experienceReasonTagDisplayLabel)
-      .filter(Boolean),
+    filterPlayerFacingExperienceTags(tags).map(experienceReasonTagDisplayLabel).filter(Boolean),
   );
 }
 
@@ -2874,6 +2943,18 @@ function filterJournalTagLabels(labels: string[]): string[] {
   );
 }
 
+function filterPlayerFacingExperienceTags(
+  tags: ExperiencePayload["reason_tags"],
+): ExperiencePayload["reason_tags"] {
+  return tags.filter((tag) => !isSystemBoundaryJournalTag(tag));
+}
+
+function filterSystemExperienceTags(
+  tags: ExperiencePayload["reason_tags"],
+): ExperiencePayload["reason_tags"] {
+  return tags.filter(isSystemBoundaryJournalTag);
+}
+
 function experienceReasonTagDisplayLabel(tag: ExperiencePayload["reason_tags"][number]): string {
   const codeLabel = experienceTagLabel(tag.code);
   if (codeLabel !== tag.code) {
@@ -2884,6 +2965,30 @@ function experienceReasonTagDisplayLabel(tag: ExperiencePayload["reason_tags"][n
 
 function experienceTagLabel(codeOrLabel: string): string {
   return experienceTagLabels[codeOrLabel] ?? codeOrLabel;
+}
+
+function systemExperienceTagLabel(tag: ExperiencePayload["reason_tags"][number]): string {
+  const labels: Record<string, string> = {
+    async_assignment: "派驻规则",
+    async_claim: "收取规则",
+    async_collect: "离线收益规则",
+    async_event: "活动进度规则",
+    async_tower: "九塔提交规则",
+    bound_only: "绑定产出规则",
+    loss_not_destroy: "失败保护规则",
+    no_ancient_treasure: "古宝产出规则",
+    no_paid_output: "产出范围规则",
+    permanent_pool: "常驻池规则",
+    reward_boundary: "奖励范围规则",
+    reward_unchanged: "收益按原规则",
+    risk_normal: "审核规则",
+    sect_async: "宗门行动规则",
+    server_roll: "随机结果规则",
+    server_settled: "行动处理规则",
+    warehouse_audit: "仓库记录规则",
+    warehouse_whitelist: "仓库流通规则",
+  };
+  return labels[tag.code] ?? "规则说明";
 }
 
 function isSystemBoundaryJournalTag(
@@ -2915,31 +3020,37 @@ function uniqueStrings(values: string[]): string[] {
 
 function RankMiniPanel({ rank, title }: { rank: RankListResponse | null; title: string }) {
   const topEntries = rank?.entries.slice(0, 3) ?? [];
+  const hasAdjustedScores =
+    (rank?.anti_brush_summary?.excluded_delayed_count ?? 0) > 0 ||
+    (rank?.anti_brush_summary?.risk_record_count ?? 0) > 0;
 
   return (
     <article className="rank-mini-card">
       <div className="province-head">
         <strong>{title}</strong>
-        <StatusBadge tone={rank?.anti_brush_summary?.risk_record_count ? "warning" : "neutral"}>
-          {rank?.snapshot_id ? "已快照" : "未生成"}
+        <StatusBadge tone={hasAdjustedScores ? "warning" : "neutral"}>
+          {rank?.snapshot_id ? (hasAdjustedScores ? "已整理" : "已结算") : "未生成"}
         </StatusBadge>
       </div>
       {topEntries.length ? (
         topEntries.map((entry) => (
           <p key={`${rank?.rank_type}-${entry.target_id}`}>
-            {entry.rank_no}. {entry.display_name} · {entry.score}
+            {entry.rank_no}. {rankDisplayName(entry)} · {entry.score}
             {entry.title_reward ? ` · ${entry.title_reward.name}` : ""}
           </p>
         ))
       ) : (
         <p>暂无排行数据</p>
       )}
-      <span>
-        排除延迟 {rank?.anti_brush_summary?.excluded_delayed_count ?? 0} · 风控标记{" "}
-        {rank?.anti_brush_summary?.risk_record_count ?? 0}
-      </span>
+      <span>{hasAdjustedScores ? "异常积分已整理" : "榜单积分已确认"}</span>
     </article>
   );
+}
+
+function rankDisplayName(entry: RankListResponse["entries"][number]): string {
+  return /^(风控|压测|称号|榜首|陪跑)/.test(entry.display_name)
+    ? `第 ${entry.rank_no} 名道友`
+    : entry.display_name;
 }
 
 function formatDeltaValue(item: ExperiencePayload["delta_summary"][number]): string {
@@ -3078,7 +3189,7 @@ function buildDailyGoals(input: {
       actionUnavailableReason: input.activity ? undefined : "活动中心尚未读取",
       detail: input.activity
         ? `${input.activity.name} 进度 ${input.activity.progress}/${input.activity.target_progress}。`
-        : "活动中心全部支持异步参与。",
+        : "活动中心会显示可参与目标。",
       disabled: input.busy,
       id: "activity",
       onAction: input.onActivity,
@@ -3501,6 +3612,28 @@ function activityStatusLabel(status: string): string {
   return labels[status] ?? "未知状态";
 }
 
+function playerFacingActivityDescription(activity: ActivitySummaryState): string {
+  const replacements: Record<string, string> = {
+    "当前 MVP 以异步扶持样板开放。": "完成归山目标后领取扶持奖励。",
+    "当前 MVP 以随时扶持样板开放。": "完成归山目标后领取扶持奖励。",
+    "用于维护、Bug 或结算异常后的基础补偿样板，可由运营公告配合发放。":
+      "维护补偿会随公告与邮件发放。",
+  };
+  const exact = replacements[activity.description];
+  if (exact) {
+    return exact;
+  }
+  if (activity.description.includes("MVP") || activity.description.includes("样板")) {
+    return activity.name.includes("归山")
+      ? "完成归山目标后领取扶持奖励。"
+      : activity.description
+          .replaceAll("当前 MVP 以", "")
+          .replaceAll("样板", "活动")
+          .replaceAll("异步", "随时");
+  }
+  return activity.description.replaceAll("异步", "随时");
+}
+
 function rewardStateLabel(state: string): string {
   const labels: Record<string, string> = {
     claimable: "可领取",
@@ -3549,6 +3682,27 @@ function commerceTierLabel(tier?: string): string {
     vip4: "VIP4",
   };
   return tier ? (labels[tier] ?? "未知档位") : "免费";
+}
+
+function monthlyCardClaimState(
+  commerce: EntitlementOverviewResponse | null,
+  cardType: MonthlyCardType,
+): { canClaim: boolean; label: string } {
+  const card = commerce?.monthly_cards.find((item) => item.card_type === cardType);
+  const cardLabel = monthlyCardLabel(cardType);
+  if (!card?.active) {
+    return { canClaim: false, label: `${cardLabel}未持有` };
+  }
+
+  if (card.last_claim_date === todayDateKey()) {
+    return { canClaim: false, label: `${cardLabel}今日已领` };
+  }
+
+  return { canClaim: true, label: `${cardLabel}今日可领` };
+}
+
+function todayDateKey(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function monthlyCardLabel(cardType: string): string {

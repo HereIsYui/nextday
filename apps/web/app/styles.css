@@ -233,6 +233,39 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.ledger-experience {
+  border-top: 1px solid #dce4df;
+  display: grid;
+  gap: 8px;
+  grid-column: 1 / -1;
+  padding-top: 12px;
+}
+
+.ledger-experience p,
+.ledger-experience span {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ledger-timeline {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ledger-timeline li {
+  border-left: 2px solid #dce4df;
+  display: grid;
+  gap: 4px;
+  padding-left: 8px;
+}
+
+.ledger-timeline strong {
+  font-size: 13px;
+}
+
 .daily-strip {
   align-items: center;
   display: flex;
@@ -546,6 +579,26 @@ h2 {
   display: grid;
   gap: 14px;
   grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+}
+
+.experience-rules {
+  background: #f7f9f5;
+  border: 1px solid #dce4df;
+  border-radius: 8px;
+  color: #5f6f70;
+  font-size: 13px;
+  padding: 8px 10px;
+}
+
+.experience-rules summary,
+.event-boundary summary {
+  color: #42585a;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.experience-rules .reason-tags {
+  margin-top: 8px;
 }
 
 .experience-timeline {
@@ -877,6 +930,10 @@ h2 {
   gap: 12px;
   justify-content: space-between;
   padding: 14px;
+}
+
+details.event-boundary {
+  align-items: stretch;
 }
 
 .event-hero > div,
@@ -1541,6 +1598,16 @@ h2 {
 
 .text-game-shell .metric-card strong {
   font-size: 18px;
+}
+
+.text-game-shell .ledger-experience {
+  border-top-color: #111111;
+  margin-top: 4px;
+  padding-top: 10px;
+}
+
+.text-game-shell .ledger-timeline li {
+  border-left-color: #dddddd;
 }
 
 .text-game-shell .tab-surface {

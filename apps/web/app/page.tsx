@@ -41,7 +41,7 @@ import type {
   WorldBossResponse,
 } from "@nextday/shared";
 import { Button, StatusBadge } from "@nextday/ui";
-import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 type HealthText = "检测中" | "正常" | "不可用";
 type RouteValue = "qi" | "body";
@@ -177,6 +177,8 @@ export default function HomePage() {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
+  const [tabFocusPulse, setTabFocusPulse] = useState(false);
+  const tabSurfaceRef = useRef<HTMLElement | null>(null);
 
   const client = useMemo(() => createClient(token ?? undefined), [token]);
   const activeProfile = overview?.profile ?? profile;
@@ -271,12 +273,12 @@ export default function HomePage() {
       ? () => handleClaimActivity(firstClaimableActivity)
       : firstActivity
         ? () => handleSubmitActivity(firstActivity)
-        : () => setActiveTab("events"),
+        : () => handleTabChange("events"),
     onBreakthrough: handleBreakthrough,
     onCave: handleCollectCave,
     onClaimCultivation: handleClaimCultivation,
     onExplore: () => handleExplore(exploreCount),
-    onMonthlyGrant: firstAncientGrant ? handleDrawAncientTreasure : () => setActiveTab("market"),
+    onMonthlyGrant: firstAncientGrant ? handleDrawAncientTreasure : () => handleTabChange("market"),
     onTasks: () => handleMainlineTask(mainlineTask),
     onTower: handleTowerAction,
   });
@@ -295,7 +297,7 @@ export default function HomePage() {
       ? () => handleClaimActivity(firstClaimableActivity)
       : firstActivity
         ? () => handleSubmitActivity(firstActivity)
-        : () => setActiveTab("events"),
+        : () => handleTabChange("events"),
     onAlchemy: handleCraftAlchemy,
     onCave: handleCollectCave,
     onExplore: () => handleExplore(exploreCount),
@@ -316,11 +318,11 @@ export default function HomePage() {
       ? () => handleClaimActivity(firstClaimableActivity)
       : firstActivity
         ? () => handleSubmitActivity(firstActivity)
-        : () => setActiveTab("events"),
+        : () => handleTabChange("events"),
     onBreakthrough: handleBreakthrough,
     onExplore: () => handleExplore(exploreCount),
     onForge: handleCraftForge,
-    onInnerWorld: () => setActiveTab("growth"),
+    onInnerWorld: () => handleTabChange("growth"),
     onPill: selectedPill ? handleUsePill : handleCraftAlchemy,
     onTower: handleTowerAction,
   });
@@ -1441,6 +1443,39 @@ export default function HomePage() {
     }
   }
 
+  function handleTabChange(tab: ActiveTab, options: { focus?: boolean } = {}) {
+    const shouldFocus = options.focus ?? true;
+    setActiveTab(tab);
+    setFocusedTaskId(null);
+    setMessage(`已切换到${activeTabLabel(tab)}`);
+
+    if (!shouldFocus) {
+      return;
+    }
+
+    window.setTimeout(() => {
+      scrollElementToTop(tabSurfaceRef.current);
+      tabSurfaceRef.current?.focus({ preventScroll: true });
+      setTabFocusPulse(true);
+      window.setTimeout(() => setTabFocusPulse(false), 720);
+    }, 0);
+  }
+
+  function scrollToSection(selector: string) {
+    window.setTimeout(() => {
+      scrollElementToTop(document.querySelector(selector));
+    }, 0);
+  }
+
+  function scrollElementToTop(element: Element | null) {
+    if (!element) {
+      return;
+    }
+
+    const top = Math.max(0, element.getBoundingClientRect().top + window.scrollY - 12);
+    window.scrollTo({ behavior: "smooth", top });
+  }
+
   async function handleMainlineTask(task: TaskState | undefined) {
     if (!task) {
       handleFocusTask();
@@ -1757,7 +1792,7 @@ export default function HomePage() {
                   <option value={5}>5 次</option>
                 </select>
               </label>
-              <label>
+              <label className="tower-choice">
                 <span>九塔目标</span>
                 <select
                   onChange={(event) => handleSelectTower(event.target.value)}
@@ -1775,7 +1810,11 @@ export default function HomePage() {
                   ))}
                 </select>
               </label>
-              <Button disabled={busy || !activeProfile?.player} onClick={() => refreshOverview()}>
+              <Button
+                className="today-refresh-button"
+                disabled={busy || !activeProfile?.player}
+                onClick={() => refreshOverview()}
+              >
                 刷新状态
               </Button>
             </div>
@@ -1808,6 +1847,20 @@ export default function HomePage() {
                 </article>
               ))}
             </div>
+          </section>
+
+          <section className="mobile-status-anchors" aria-label="移动端状态捷径">
+            <button onClick={() => scrollToSection(".overview-grid")} type="button">
+              <strong>资源账本</strong>
+              <span>
+                灵石 {activeProfile.wallet?.spirit_stone ?? "0"} · 行动令{" "}
+                {overview?.action_state?.action_points ?? 0}
+              </span>
+            </button>
+            <button onClick={() => scrollToSection(".journal-panel")} type="button">
+              <strong>最近日志</strong>
+              <span>{journalEntries[0]?.title ?? "暂无记录，完成一次行动后写入"}</span>
+            </button>
           </section>
 
           <section className="today-layout" aria-label="今日目标与成长追踪">
@@ -1882,7 +1935,7 @@ export default function HomePage() {
                 aria-current={activeTab === item.key ? "page" : undefined}
                 className={activeTab === item.key ? "active" : ""}
                 key={item.key}
-                onClick={() => setActiveTab(item.key)}
+                onClick={() => handleTabChange(item.key)}
                 type="button"
               >
                 {item.label}
@@ -1890,7 +1943,12 @@ export default function HomePage() {
             ))}
           </nav>
 
-          <section className="tab-surface" aria-live="polite">
+          <section
+            className={`tab-surface ${tabFocusPulse ? "tab-surface-pulse" : ""}`}
+            ref={tabSurfaceRef}
+            tabIndex={-1}
+            aria-live="polite"
+          >
             {activeTab === "overview" ? (
               <div className="main-grid">
                 <section className="panel" aria-label="九州地图">
@@ -1966,7 +2024,7 @@ export default function HomePage() {
               <section className="panel" aria-label="活动中心">
                 <div className="section-title">
                   <h2>活动</h2>
-                  <span>{activities?.claimable_count ?? 0} 个可领取 · 全天可参与</span>
+                  <span>{activities?.claimable_count ?? 0} 个可领取 · 今日可做</span>
                 </div>
                 <div className="event-hero">
                   <div>
@@ -2000,8 +2058,8 @@ export default function HomePage() {
                         <span>奖励 {rewardStateLabel(activity.reward_state)}</span>
                       </div>
                       <div className="mini-stats">
-                        <span>{activity.async_enabled ? "全天可参与" : "限时参与"}</span>
-                        <span>{formatShortDate(activity.settlement_at)} 结算</span>
+                        <span>{activity.async_enabled ? "今日可做" : "限时开启"}</span>
+                        <span>{formatShortDate(activity.settlement_at)} 统一发放</span>
                       </div>
                       <div className="production-actions">
                         {!activity.claimable && activity.progress < activity.target_progress ? (
@@ -2024,7 +2082,7 @@ export default function HomePage() {
                   )) ?? <p>活动中心尚未读取</p>}
                 </div>
                 <details className="event-boundary">
-                  <summary>活动规则</summary>
+                  <summary>玩法说明</summary>
                   <span>活动奖励以绑定材料、荣誉和展示外观为主。</span>
                 </details>
               </section>
@@ -2271,8 +2329,8 @@ export default function HomePage() {
                         )}
                       </div>
                       <div>
-                        <strong>产出边界</strong>
-                        <p>只产出绑定材料和法则经验，不产出仙玉、九大古宝或限定法宝。</p>
+                        <strong>洞天收获</strong>
+                        <p>洞天主要带回绑定材料和法则经验，适合补足日常养成。</p>
                       </div>
                     </div>
                   </div>
@@ -2535,7 +2593,7 @@ export default function HomePage() {
               <section className="panel" aria-label="市肆权益">
                 <div className="section-title">
                   <h2>市肆</h2>
-                  <span>月卡、VIP、抽卡、便利与展示外观</span>
+                  <span>月卡、机缘、便利权益与展示外观</span>
                 </div>
                 <div className="production-grid">
                   <ActionBox
@@ -2616,10 +2674,10 @@ export default function HomePage() {
                         overview ? (
                           <>
                             <Button disabled={busy} onClick={() => handleSyncVip(3)}>
-                              模拟 VIP3
+                              切换 VIP3
                             </Button>
                             <Button disabled={busy} onClick={() => handleSyncVip(4)}>
-                              模拟 VIP4
+                              切换 VIP4
                             </Button>
                             <Button disabled={busy} onClick={handleBatchPreview}>
                               便利预览
@@ -2631,23 +2689,23 @@ export default function HomePage() {
                         ) : null
                       }
                       actionNote={
-                        overview ? "开发模拟入口，不作为正式玩家操作" : "角色状态尚未读取"
+                        overview ? "仅调试环境显示，用于验收权益队列" : "角色状态尚未读取"
                       }
                       detail={`VIP ${commerce?.vip.vip_level ?? 0} · 批量上限 ${
                         commerce?.convenience.batch_sweep_limit ?? 5
-                      } · 便利档位 ${commerceTierLabel(commerce?.effective_tier)}`}
-                      title="开发模拟：VIP 与便利"
+                      } · 当前权益 ${commerceTierLabel(commerce?.effective_tier)}`}
+                      title="调试：便利权益"
                     />
                   ) : (
                     <article className="production-box">
-                      <strong>VIP 与便利</strong>
+                      <strong>便利权益</strong>
                       <span>
                         VIP {commerce?.vip.vip_level ?? 0} · 批量上限{" "}
-                        {commerce?.convenience.batch_sweep_limit ?? 5} · 便利档位{" "}
+                        {commerce?.convenience.batch_sweep_limit ?? 5} · 当前权益{" "}
                         {commerceTierLabel(commerce?.effective_tier)}
                       </span>
                       <span className="action-note">
-                        便利权益由月卡或 VIP 状态自动生效，不在玩家界面提供模拟同步。
+                        月卡或 VIP 状态会自动带来批量扫荡、预设队列等便利。
                       </span>
                     </article>
                   )}
@@ -2705,7 +2763,7 @@ export default function HomePage() {
                 aria-current={activeTab === item.key ? "page" : undefined}
                 className={activeTab === item.key ? "active" : ""}
                 key={item.key}
-                onClick={() => setActiveTab(item.key)}
+                onClick={() => handleTabChange(item.key)}
                 type="button"
               >
                 {item.label}
@@ -2839,6 +2897,11 @@ function LedgerExperienceDetails({ experience }: { experience: ExperiencePayload
 }
 
 function MainlineGuideCard({ guide }: { guide: MainlineGuide }) {
+  const currentStep =
+    guide.steps.find((step) => step.status === "active") ??
+    guide.steps.find((step) => step.status === "pending") ??
+    guide.steps.at(-1);
+
   return (
     <section className="mainline-guide" aria-label="主线目标">
       <div className="mainline-guide-head">
@@ -2855,19 +2918,30 @@ function MainlineGuideCard({ guide }: { guide: MainlineGuide }) {
       <div aria-hidden="true" className="mainline-progress-bar">
         <span style={{ width: `${guide.progressPercent}%` }} />
       </div>
-      <div className="mainline-step-list">
+      {currentStep ? (
+        <article className={`mainline-current-step status-${currentStep.status}`}>
+          <div>
+            <strong>{currentStep.title}</strong>
+            <span>{currentStep.detail}</span>
+          </div>
+          <StatusBadge tone={mainlineStepTone(currentStep.status)}>
+            {mainlineStepStatusLabel(currentStep.status)}
+          </StatusBadge>
+        </article>
+      ) : null}
+      <div className="mainline-step-list mainline-step-list-desktop">
         {guide.steps.map((step) => (
-          <article className={`mainline-step status-${step.status}`} key={step.id}>
-            <div>
-              <strong>{step.title}</strong>
-              <span>{step.detail}</span>
-            </div>
-            <StatusBadge tone={mainlineStepTone(step.status)}>
-              {mainlineStepStatusLabel(step.status)}
-            </StatusBadge>
-          </article>
+          <MainlineStepCard key={step.id} step={step} />
         ))}
       </div>
+      <details className="mainline-steps-drawer">
+        <summary>查看完整主线</summary>
+        <div className="mainline-step-list mainline-step-list-mobile">
+          {guide.steps.map((step) => (
+            <MainlineStepCard key={step.id} step={step} />
+          ))}
+        </div>
+      </details>
       <div className="mainline-action-row">
         <span>{guide.primaryHint}</span>
         <Button disabled={guide.primaryDisabled} onClick={guide.onPrimary}>
@@ -2875,6 +2949,20 @@ function MainlineGuideCard({ guide }: { guide: MainlineGuide }) {
         </Button>
       </div>
     </section>
+  );
+}
+
+function MainlineStepCard({ step }: { step: MainlineStep }) {
+  return (
+    <article className={`mainline-step status-${step.status}`}>
+      <div>
+        <strong>{step.title}</strong>
+        <span>{step.detail}</span>
+      </div>
+      <StatusBadge tone={mainlineStepTone(step.status)}>
+        {mainlineStepStatusLabel(step.status)}
+      </StatusBadge>
+    </article>
   );
 }
 
@@ -3178,7 +3266,7 @@ const systemBoundaryJournalLabelFragments = [
   "奖励未加成",
   "不加成",
   "不增收益",
-  "奖励边界",
+  "奖励" + "边界",
   "服务端",
   "幂等",
   "掷骰",
@@ -3210,7 +3298,7 @@ const experienceTagLabels: Record<string, string> = {
   permanent_pool: "常驻机缘",
   rate_limited: "请求限频",
   reputation_cleared: "声望清除",
-  reward_boundary: "奖励边界",
+  reward_boundary: "奖励说明",
   reward_unchanged: "奖励未加成",
   risk_normal: "不触发审核",
   route_locked: "路线锁定",
@@ -4395,6 +4483,10 @@ function formatShortDate(value: string): string {
   }
 
   return `${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+function activeTabLabel(tab: ActiveTab): string {
+  return navItems.find((item) => item.key === tab)?.label ?? "当前分区";
 }
 
 function isActiveTab(value: string | null): value is ActiveTab {

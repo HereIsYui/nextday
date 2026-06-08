@@ -304,6 +304,10 @@ h2 {
   padding: 18px;
 }
 
+.mobile-status-anchors {
+  display: none;
+}
+
 .today-hero-copy {
   display: grid;
   gap: 6px;
@@ -385,6 +389,11 @@ h2 {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.mainline-current-step,
+.mainline-steps-drawer {
+  display: none;
+}
+
 .mainline-step {
   border-left: 2px solid #dce4df;
   display: grid;
@@ -413,6 +422,13 @@ h2 {
   display: flex;
   gap: 12px;
   justify-content: space-between;
+}
+
+.mainline-steps-drawer summary {
+  color: #42585a;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .today-controls {
@@ -912,6 +928,16 @@ h2 {
 
 .tab-surface {
   min-height: 420px;
+  scroll-margin-top: 16px;
+  transition: box-shadow 180ms ease, outline-color 180ms ease;
+}
+
+.tab-surface:focus {
+  outline: 0;
+}
+
+.tab-surface-pulse {
+  box-shadow: 0 0 0 3px rgba(47, 125, 104, 0.16);
 }
 
 .main-grid {
@@ -1458,9 +1484,85 @@ details.event-boundary {
     justify-items: start;
   }
 
+  .mainline-current-step {
+    align-items: center;
+    border-left: 2px solid #c69a4a;
+    display: grid;
+    gap: 10px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding-left: 10px;
+  }
+
+  .mainline-current-step.status-done {
+    border-color: #86b89c;
+  }
+
+  .mainline-current-step.status-pending {
+    border-color: #dce4df;
+  }
+
+  .mainline-current-step strong {
+    color: #10292b;
+    display: block;
+    font-size: 15px;
+    line-height: 1.35;
+  }
+
+  .mainline-current-step span {
+    color: #5f6f70;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
   .mainline-step-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
+  }
+
+  .mainline-step-list-desktop {
+    display: none;
+  }
+
+  .mainline-steps-drawer {
+    display: block;
     order: 4;
+  }
+
+  .mainline-step-list-mobile {
+    margin-top: 8px;
+  }
+
+  .today-controls .tower-choice,
+  .today-refresh-button {
+    display: none;
+  }
+
+  .today-action-grid .recommended-action:nth-child(n + 4) {
+    display: none;
+  }
+
+  .mobile-status-anchors {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: 1fr;
+  }
+
+  .mobile-status-anchors button {
+    align-items: flex-start;
+    background: #fbfcfa;
+    border: 1px solid #dce4df;
+    border-radius: 8px;
+    color: #172425;
+    display: grid;
+    gap: 4px;
+    min-height: 44px;
+    padding: 10px 12px;
+    text-align: left;
+  }
+
+  .mobile-status-anchors span {
+    color: #5f6f70;
+    font-size: 13px;
+    line-height: 1.5;
   }
 
   .recommended-action,
@@ -1633,11 +1735,13 @@ details.event-boundary {
   border-radius: 0;
   gap: 14px;
   grid-area: today;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 0.86fr);
   padding: 0;
 }
 
 .text-game-shell .today-hero-copy {
   border-bottom: 1px solid #dddddd;
+  grid-column: 1 / -1;
   padding-bottom: 10px;
 }
 
@@ -1645,8 +1749,14 @@ details.event-boundary {
   font-size: 22px;
 }
 
+.text-game-shell .today-hero-copy p,
+.text-game-shell .mainline-guide-head p {
+  display: none;
+}
+
 .text-game-shell .mainline-guide {
   border-color: #dddddd;
+  grid-column: 1;
   gap: 10px;
   padding: 10px 0;
 }
@@ -1658,6 +1768,44 @@ details.event-boundary {
 
 .text-game-shell .mainline-progress-bar span {
   background: #111111;
+}
+
+.text-game-shell .mainline-current-step {
+  align-items: center;
+  border-left: 1px solid #111111;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding-left: 10px;
+}
+
+.text-game-shell .mainline-current-step strong {
+  color: #111111;
+  display: block;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.text-game-shell .mainline-current-step span {
+  color: #555555;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.text-game-shell .mainline-step-list-desktop {
+  display: none;
+}
+
+.text-game-shell .mainline-steps-drawer {
+  display: block;
+}
+
+.text-game-shell .mainline-steps-drawer summary {
+  color: #555555;
+}
+
+.text-game-shell .mainline-step-list-mobile {
+  margin-top: 8px;
 }
 
 .text-game-shell .mainline-step {
@@ -1672,6 +1820,7 @@ details.event-boundary {
 
 .text-game-shell .today-controls {
   align-items: end;
+  grid-column: 1;
   grid-template-columns: minmax(0, 1fr) 110px minmax(0, 1fr) 92px;
 }
 
@@ -1686,8 +1835,13 @@ details.event-boundary {
 }
 
 .text-game-shell .today-action-grid {
-  gap: 0 18px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  grid-column: 2;
+  grid-template-columns: 1fr;
+}
+
+.text-game-shell .today-action-grid .recommended-action:nth-child(n + 3) {
+  display: none;
 }
 
 .text-game-shell .recommended-action,
@@ -1702,6 +1856,11 @@ details.event-boundary {
   gap: 8px;
   min-height: 0;
   padding: 10px 0;
+}
+
+.text-game-shell .explore-queue-card,
+.text-game-shell .explore-event-card {
+  grid-column: 2;
 }
 
 .text-game-shell .mainline-action-row .nextday-button,
@@ -1724,6 +1883,7 @@ details.event-boundary {
 }
 
 .text-game-shell .explore-event-card.idle {
+  display: none;
   grid-template-columns: minmax(0, 1fr) 72px;
 }
 
@@ -1928,6 +2088,7 @@ details.event-boundary {
     grid-template-areas:
       "top"
       "today"
+      "shortcuts"
       "tabs"
       "goals"
       "ledger"
@@ -1940,8 +2101,108 @@ details.event-boundary {
     padding-bottom: 12px;
   }
 
+  .text-game-shell .mobile-status-anchors {
+    display: grid;
+    gap: 8px;
+    grid-area: shortcuts;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .text-game-shell .mobile-status-anchors button {
+    background: transparent !important;
+    border: 1px solid #111111 !important;
+    border-radius: 0 !important;
+    color: #111111 !important;
+    display: grid;
+    gap: 3px;
+    justify-items: start;
+    min-height: 48px !important;
+    padding: 8px 10px !important;
+    text-align: left;
+  }
+
+  .text-game-shell .mobile-status-anchors span {
+    color: #555555;
+    font-size: 13px;
+    line-height: 1.45;
+    white-space: normal;
+  }
+
   .text-game-shell .tab-nav {
     display: none;
+  }
+
+  .text-game-shell .today-hero {
+    gap: 10px;
+    grid-template-columns: 1fr;
+  }
+
+  .text-game-shell .today-hero > * {
+    grid-column: auto;
+  }
+
+  .text-game-shell .today-hero-copy {
+    padding-bottom: 8px;
+  }
+
+  .text-game-shell .today-hero-copy h2 {
+    font-size: 20px;
+  }
+
+  .text-game-shell .mainline-guide {
+    gap: 8px;
+    padding: 8px 0;
+  }
+
+  .text-game-shell .mainline-guide-head {
+    align-items: flex-start;
+    flex-direction: row;
+  }
+
+  .text-game-shell .mainline-progress-summary {
+    align-items: baseline;
+    display: flex;
+    flex: 0 0 auto;
+    gap: 6px;
+  }
+
+  .text-game-shell .mainline-progress-summary strong {
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  .text-game-shell .mainline-progress-summary span {
+    line-height: 1.2;
+  }
+
+  .text-game-shell .mainline-current-step {
+    border-color: #111111;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    order: 3;
+  }
+
+  .text-game-shell .mainline-action-row {
+    align-items: center;
+    flex-direction: row;
+    order: 4;
+  }
+
+  .text-game-shell .mainline-step-list-desktop {
+    display: none;
+  }
+
+  .text-game-shell .mainline-steps-drawer {
+    display: block;
+    order: 5;
+  }
+
+  .text-game-shell .mainline-steps-drawer summary {
+    color: #555555;
+  }
+
+  .text-game-shell .mainline-step-list-mobile {
+    margin-top: 8px;
   }
 
   .text-game-shell .today-controls,
@@ -1959,6 +2220,19 @@ details.event-boundary {
     gap: 12px;
   }
 
+  .text-game-shell .today-controls .tower-choice,
+  .text-game-shell .today-refresh-button {
+    display: none !important;
+  }
+
+  .text-game-shell .today-action-grid .recommended-action:nth-child(n + 4) {
+    display: none;
+  }
+
+  .text-game-shell .today-layout .nextday-button {
+    display: none;
+  }
+
   .text-game-shell .overview-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1970,6 +2244,17 @@ details.event-boundary {
 
   .text-game-shell .metric-card {
     border-bottom: 0;
+  }
+
+  .text-game-shell .nextday-button,
+  .text-game-shell .event-choice-grid button,
+  .text-game-shell .task-row button {
+    min-height: 44px !important;
+  }
+
+  .text-game-shell .bottom-nav button {
+    min-height: 48px !important;
+    padding: 0 6px !important;
   }
 
   .text-game-shell .recommended-action button,

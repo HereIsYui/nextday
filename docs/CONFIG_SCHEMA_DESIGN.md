@@ -57,6 +57,11 @@
 | `tower_config` | 九塔机制 | tower_id、state_fields、boss_id、contribution_rule |
 | `action_config` | 异步行动 | action_id、cost_token、base_reward、contribution_base |
 | `web_experience_config` | P1 Web 体验 | scene_type、timeline_template、delta_fields、recommendation_rule |
+| `new_player_route_config` | P1-9 新手路线 | route_id、step_group、priority_rule、completion_rule |
+| `explore_event_pool_config` | P1-9 探索事件池 | event_id、province_id、rarity、choice_group、reward_boundary |
+| `production_recommendation_config` | P1-9 丹器推荐 | recipe_id、recommend_condition、material_gap_rule、result_hint |
+| `battle_readability_config` | P1-9 战斗可读性 | scene_type、reason_rule、trigger_mapping、next_advice |
+| `drop_tuning_config` | P1-10 掉落校准 | profile_group、day_range、material_flow、warning_threshold |
 | `reward_group_config` | 奖励组 | reward_group_id、item_id、count_range、weight |
 | `quest_config` | 任务 | quest_id、quest_type、condition_group、reward_group |
 | `event_config` | 活动 | event_id、event_type、schedule_rule、settlement_rule |
@@ -201,6 +206,62 @@
 | reason_tag_mapping | 胜负、衰减、未开放、风控原因标签映射 |
 | reward_mutation_allowed | 固定为 false，体验配置不得改变奖励 |
 
+`new_player_route_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| route_id | 新手路线 ID，例如 `first_30_minutes_ji` |
+| step_group | 初入冀州、第一次探索、处理奇遇、炼第一炉丹、镇封玄铁塔、领取章节奖励 |
+| priority_rule | 今日修行推荐顺序和已完成节点降权规则 |
+| completion_rule | 每个节点的完成条件 |
+| fallback_rule | 材料不足、行动令不足、事件未生成时的替代建议 |
+| reward_boundary | 只能指向绑定材料、基础丹药、普通法宝、灵石、修为和任务进度 |
+
+`explore_event_pool_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| event_id | 探索事件 ID |
+| province_id | 生效州域 |
+| rarity | common / uncommon / rare，P1-9 不开放付费稀有度 |
+| prerequisite_rule | 前置条件，例如章节、州域、探索次数、任务状态 |
+| choice_group | 2-3 个轻选择及其文案 |
+| reward_group | 普通修为、灵石、普通材料和任务进度奖励组 |
+| forbidden_reward_rule | 禁止付费仙玉、九大古宝、限定法宝、唯一战力道具和倍率奖励 |
+
+`production_recommendation_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| recipe_id | 丹方或炼器配方 ID |
+| recommend_condition | 推荐条件，例如路线、当前任务、背包材料和境界 |
+| material_gap_rule | 材料缺口展示规则 |
+| success_hint | 成功率、失败返还和结果意义说明 |
+| next_action_hint | 炼制后推荐服丹、装备、探索或章节任务 |
+| reward_mutation_allowed | 固定为 false，推荐配置不得改变产物和概率 |
+
+`battle_readability_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| scene_type | 探索 / PVP / Boss / 九塔 |
+| reason_rule | 胜负原因摘要规则 |
+| trigger_mapping | 技能、法宝、治疗、承伤和控制触发文案映射 |
+| representative_round_limit | 批量战报最多展示的代表回合数 |
+| next_advice | 失败或低效时的下一步建议 |
+| source_trace_required | 固定为 true，摘要必须能追溯到战斗记录 |
+
+`drop_tuning_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| tuning_id | 掉落校准方案 ID |
+| profile_group | 新手 / 免费 / 小月卡 / 大月卡 / VIP / 重肝 |
+| day_range | 模拟天数，P1-10 默认覆盖前 7 天 |
+| material_flow | 低阶材料、丹方材料、炼器材料和行动令消耗流向 |
+| warning_threshold | 断供、通胀、付费差距和过快毕业预警阈值 |
+| adjustment_suggestion | 输出给策划的调参建议 |
+
 `province_full_config`
 
 | 字段 | 说明 |
@@ -322,6 +383,11 @@
 | 订单记录 | product_config_version、payment_ruleset_version |
 | 纪元结算 | settlement_config_version、reward_config_version、story_ruleset_version |
 | Web 体验展示 | web_experience_config_version、config_version |
+| 新手路线推荐 | new_player_route_config_version、web_experience_config_version |
+| 探索奇遇 | explore_event_pool_config_version、reward_config_version |
+| 丹器推荐 | production_recommendation_config_version、reward_config_version |
+| 战斗摘要 | battle_readability_config_version、combat_config_version |
+| 掉落校准报告 | drop_tuning_config_version、simulation_config_version |
 | 内天地派驻 | inner_world_config_version、reward_config_version |
 | 阵营转道 | faction_route_config_version、ruleset_version |
 | 合服 dry-run | merge_config_version、risk_ruleset_version |
@@ -340,12 +406,14 @@
 - 所有核心玩法均能通过配置调整数值、奖励和开放章节。
 - 配置发布能校验禁止奖励和概率错误。
 - 行动、战斗、抽卡、任务、活动、排行和纪元结算可追溯历史配置。
-- P1 数值模拟、Web 体验、九州全域、内天地、阵营路线、纪元排行、活动模板和合服 dry-run 都有配置入口。
+- P1 数值模拟、Web 体验、九州全域、内天地、阵营路线、纪元排行、活动模板、合服 dry-run、新手路线、探索事件池、丹器推荐、战斗摘要和掉落校准都有配置入口。
 - 九大古宝专属池配置无法混入普通材料、器魂或低阶古宝碎片。
 - 九大古宝专属池当前只能配置月卡赠抽和残页合成，仙玉入口只能以预留未开放状态存在。
 - VIP3、小月卡、VIP4、大月卡便利边界可配置且可校验。
 - 展示外观配置只能影响玩家名片、排行榜、宗门、战报、聊天、鱼排插件小卡片、纪元史册和图鉴展示，不得配置战力、奖励倍率和贡献倍率。
 - Web 体验配置只改变展示过程，不改变收益、贡献、抽卡、战斗和风控结果。
+- 新手路线、探索事件、丹器推荐和战斗摘要配置不得配置付费产物、唯一战力道具、奖励倍率、贡献倍率或客户端结算逻辑。
+- 掉落校准配置只能输出模拟和调参建议，不得直接绕过奖励组、行动令、付费边界和风控规则。
 - 内天地配置无法配置付费货币、九大古宝本体、限定本命法宝和可交易付费产物。
 - 活动配置全部支持异步参与，排行冲刺奖励不补发。
 - 合服 dry-run 配置只能生成报告和建议，不允许真实执行。

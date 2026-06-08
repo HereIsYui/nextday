@@ -378,6 +378,7 @@ export interface BattleSummary {
   damage_taken: number;
   rewards: RewardBundle;
   log: BattleRoundLog[];
+  reason_summary?: string[];
   created_at: string;
 }
 
@@ -409,6 +410,7 @@ export interface ExploreEventChoice {
   label: string;
   description: string;
   reward_preview: string;
+  outcome_hint?: string;
 }
 
 export interface ExploreEventState {
@@ -417,8 +419,11 @@ export interface ExploreEventState {
   province_id: string;
   province_name: string;
   event_type: string;
+  rarity?: "common" | "uncommon" | "rare" | string;
   title: string;
   description: string;
+  prerequisite_hint?: string;
+  route_step_hint?: string;
   status: ExploreEventStatus;
   choices: ExploreEventChoice[];
   selected_choice_id: string | null;
@@ -516,6 +521,30 @@ export interface CaveCollectResponse {
   wallet: PlayerWalletState;
   completed_task_ids: string[];
   experience?: ExperiencePayload;
+}
+
+export type NewPlayerRouteStepStatus = "done" | "active" | "pending";
+
+export interface NewPlayerRouteStepState {
+  step_id: string;
+  title: string;
+  detail: string;
+  status: NewPlayerRouteStepStatus;
+  action_hint: string;
+  action_label: string;
+  unlock_hint?: string;
+}
+
+export interface NewPlayerRouteState {
+  route_id: string;
+  title: string;
+  subtitle: string;
+  progress_percent: number;
+  progress_text: string;
+  primary_step_id: string;
+  primary_action_hint: string;
+  steps: NewPlayerRouteStepState[];
+  config_version: string;
 }
 
 export type InnerWorldCreatureStatus = "idle" | "assigned" | "training";
@@ -810,6 +839,7 @@ export interface AlchemyRecipeSummary {
   success_rate: number;
   materials: Array<{ item_id: string; name: string; count: number }>;
   spirit_stone_cost: string;
+  recommendation?: ProductionRecommendationState;
 }
 
 export interface AlchemyRecipeListResponse {
@@ -841,6 +871,7 @@ export interface AlchemyCraftResponse {
   rewards: RewardBundle;
   wallet: PlayerWalletState;
   bag: BagSummaryResponse;
+  completed_task_ids?: string[];
   experience?: ExperiencePayload;
 }
 
@@ -907,6 +938,24 @@ export interface ForgeRecipeSummary {
   rarity: EquipmentRarity;
   materials: Array<{ item_id: string; name: string; count: number }>;
   spirit_stone_cost: string;
+  recommendation?: ProductionRecommendationState;
+}
+
+export interface MaterialRequirementState {
+  item_id: string;
+  name: string;
+  required: number;
+  owned: number;
+  missing: number;
+}
+
+export interface ProductionRecommendationState {
+  recommended: boolean;
+  reason: string;
+  material_gaps: MaterialRequirementState[];
+  result_hint: string;
+  next_action_hint: string;
+  can_craft: boolean;
 }
 
 export interface ForgeRecipeListResponse {
@@ -924,6 +973,7 @@ export interface EquipmentOperationResponse {
   rewards?: RewardBundle;
   wallet?: PlayerWalletState;
   bag?: BagSummaryResponse;
+  completed_task_ids?: string[];
   experience?: ExperiencePayload;
 }
 
@@ -1014,6 +1064,7 @@ export interface TowerActionResponse {
   risk_status?: RiskStatus;
   risk_record_id?: string | null;
   settlement_status: SettlementStatus;
+  completed_task_ids?: string[];
   experience?: ExperiencePayload;
 }
 
@@ -1629,6 +1680,7 @@ export interface GameOverviewResponse {
   tasks: TaskState[];
   cave: CaveState | null;
   recent_battles: BattleSummary[];
+  new_player_route: NewPlayerRouteState | null;
 }
 
 export interface PluginStatusCardResponse {

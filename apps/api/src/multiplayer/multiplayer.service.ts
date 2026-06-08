@@ -38,6 +38,7 @@ import { toAppearanceState } from "../commerce/commerce.mappers";
 import { PrismaService } from "../database/prisma.service";
 import { defaultEraId, maxOfflineCultivationHours } from "../game/game.constants";
 import { toActionState } from "../game/game.mappers";
+import { incrementPlayerTasks } from "../game/task-progress.utils";
 import { writeJournalFromResponse } from "../journal/journal.utils";
 import {
   buildBossExperience,
@@ -216,6 +217,12 @@ export class MultiplayerService {
             } as unknown as Prisma.InputJsonValue,
             idempotencyKey: input.idempotencyKey,
           });
+          const completedTaskIds =
+            body.tower_id === "tower_xuantie"
+              ? await incrementPlayerTasks(tx, player.playerId, {
+                  novice_tower_xuantie: 1,
+                })
+              : [];
 
           return {
             record_id: record.recordId,
@@ -226,6 +233,7 @@ export class MultiplayerService {
             risk_status: risk.risk_status,
             risk_record_id: risk.risk_record_id,
             settlement_status: "delayed",
+            completed_task_ids: completedTaskIds,
             experience: buildTowerExperience({
               towerBefore: toTowerStateSummary(tower),
               towerAfter: toTowerStateSummary(tower),
@@ -283,6 +291,12 @@ export class MultiplayerService {
           } as unknown as Prisma.InputJsonValue,
           idempotencyKey: input.idempotencyKey,
         });
+        const completedTaskIds =
+          body.tower_id === "tower_xuantie"
+            ? await incrementPlayerTasks(tx, player.playerId, {
+                novice_tower_xuantie: 1,
+              })
+            : [];
 
         return {
           record_id: record.recordId,
@@ -293,6 +307,7 @@ export class MultiplayerService {
           risk_status: risk.risk_status,
           risk_record_id: risk.risk_record_id,
           settlement_status: "settled",
+          completed_task_ids: completedTaskIds,
           experience: buildTowerExperience({
             towerBefore: toTowerStateSummary(tower),
             towerAfter: toTowerStateSummary(updatedTower),

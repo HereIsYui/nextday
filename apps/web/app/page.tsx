@@ -27,6 +27,7 @@ import type {
   JournalEntryState,
   LoginResponse,
   MonthlyCardType,
+  NewPlayerRouteState,
   PlayerProfileResponse,
   ProvinceSummary,
   RankListResponse,
@@ -256,9 +257,11 @@ export default function HomePage() {
     onFocusEvent: handleFocusExploreEvent,
     onTask: () => handleMainlineTask(mainlineTask),
     onTower: handleTowerAction,
+    onGrowth: () => handleTabChange("growth"),
     overview,
     selectedProvince,
     selectedTower,
+    serverRoute: overview?.new_player_route,
   });
   const dailyGoals = buildDailyGoals({
     activity: firstClaimableActivity ?? firstActivity,
@@ -2104,6 +2107,11 @@ export default function HomePage() {
                           )} · 灵石 ${selectedAlchemyRecipe.spirit_stone_cost}`
                         : "暂无可用丹方"}
                     </span>
+                    {selectedAlchemyRecipe?.recommendation ? (
+                      <ProductionRecommendationView
+                        recommendation={selectedAlchemyRecipe.recommendation}
+                      />
+                    ) : null}
                     {alchemyRecipes?.recipes.length ? (
                       <label className="choice-field">
                         <span>选择丹方</span>
@@ -2130,12 +2138,19 @@ export default function HomePage() {
                       <span className="action-note">暂无可用丹方</span>
                     )}
                     <div className="production-actions">
-                      {selectedAlchemyRecipe ? (
+                      {(selectedAlchemyRecipe?.recommendation?.can_craft ??
+                      selectedAlchemyRecipe) ? (
                         <Button disabled={busy} onClick={handleCraftAlchemy}>
                           炼制所选丹方
                         </Button>
                       ) : null}
                     </div>
+                    {selectedAlchemyRecipe?.recommendation &&
+                    !selectedAlchemyRecipe.recommendation.can_craft ? (
+                      <span className="action-note">
+                        {formatMaterialGaps(selectedAlchemyRecipe.recommendation.material_gaps)}
+                      </span>
+                    ) : null}
                   </article>
                   <article className="production-box production-choice">
                     <strong>服用丹药</strong>
@@ -2179,6 +2194,11 @@ export default function HomePage() {
                           )} · 灵石 ${selectedForgeRecipe.spirit_stone_cost}`
                         : `已有 ${equipment?.equipments.length ?? 0} 件 · 炼器不产出九大古宝`}
                     </span>
+                    {selectedForgeRecipe?.recommendation ? (
+                      <ProductionRecommendationView
+                        recommendation={selectedForgeRecipe.recommendation}
+                      />
+                    ) : null}
                     {forgeRecipes?.recipes.length ? (
                       <label className="choice-field">
                         <span>选择配方</span>
@@ -2205,7 +2225,7 @@ export default function HomePage() {
                       <span className="action-note">暂无可用炼器配方</span>
                     )}
                     <div className="production-actions">
-                      {selectedForgeRecipe ? (
+                      {(selectedForgeRecipe?.recommendation?.can_craft ?? selectedForgeRecipe) ? (
                         <Button disabled={busy} onClick={handleCraftForge}>
                           炼制所选配方
                         </Button>
@@ -2218,6 +2238,12 @@ export default function HomePage() {
                     </div>
                     {!selectedForgeRecipe && !firstEquipment ? (
                       <span className="action-note">暂无可炼器配方或可淬炼法宝</span>
+                    ) : null}
+                    {selectedForgeRecipe?.recommendation &&
+                    !selectedForgeRecipe.recommendation.can_craft ? (
+                      <span className="action-note">
+                        {formatMaterialGaps(selectedForgeRecipe.recommendation.material_gaps)}
+                      </span>
                     ) : null}
                   </article>
                   <ActionBox
@@ -3005,6 +3031,37 @@ function GrowthTargetCard({ target }: { target: GrowthTarget }) {
   );
 }
 
+function ProductionRecommendationView({
+  recommendation,
+}: {
+  recommendation: NonNullable<AlchemyRecipeListResponse["recipes"][number]["recommendation"]>;
+}) {
+  const gaps = recommendation.material_gaps.filter((item) => item.missing > 0);
+
+  return (
+    <div className="production-recommendation">
+      <div className="province-head">
+        <strong>{recommendation.recommended ? "今日推荐" : "配方说明"}</strong>
+        <StatusBadge tone={recommendation.can_craft ? "success" : "warning"}>
+          {recommendation.can_craft ? "材料足够" : "材料缺口"}
+        </StatusBadge>
+      </div>
+      <p>{recommendation.reason}</p>
+      <span>{recommendation.result_hint}</span>
+      <span>{recommendation.next_action_hint}</span>
+      {gaps.length ? (
+        <div className="recommendation-gaps">
+          {gaps.map((gap) => (
+            <span key={gap.item_id}>
+              {gap.name} 缺 {gap.missing}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ExploreQueueCard({
   busy,
   canClaim,
@@ -3089,12 +3146,14 @@ function ExploreEventCard({
         <div>
           <strong>{event.title}</strong>
           <span>
-            {event.province_name} · {exploreEventStatusLabel(event.status)}
+            {event.province_name} · {eventRarityLabel(event.rarity)} ·{" "}
+            {exploreEventStatusLabel(event.status)}
           </span>
         </div>
         <StatusBadge tone="success">可处理</StatusBadge>
       </div>
       <p>{event.description}</p>
+      <p className="event-hint">{event.route_step_hint ?? event.prerequisite_hint}</p>
       <div className="event-choice-grid">
         {event.choices.map((choice) => (
           <button
@@ -3105,6 +3164,7 @@ function ExploreEventCard({
           >
             <strong>{choice.label}</strong>
             <span>{choice.reward_preview}</span>
+            {choice.outcome_hint ? <small>{choice.outcome_hint}</small> : null}
           </button>
         ))}
       </div>
@@ -3215,6 +3275,13 @@ function BattleReportCard({ battle }: { battle: BattleSummary }) {
         <span>承伤 {battle.damage_taken}</span>
         <span>灵石 {battle.rewards.spirit_stone ?? "0"}</span>
       </div>
+      {battle.reason_summary?.length ? (
+        <ul className="battle-reason-list">
+          {battle.reason_summary.map((reason) => (
+            <li key={reason}>{reason}</li>
+          ))}
+        </ul>
+      ) : null}
       {latestLogs.length ? (
         <ol className="battle-log-list">
           {latestLogs.map((log) => (
@@ -3520,12 +3587,56 @@ function buildMainlineGuide(input: {
   overview: GameOverviewResponse | null;
   selectedProvince: ProvinceSummary | undefined;
   selectedTower: TowerStateSummary | undefined;
+  serverRoute: NewPlayerRouteState | null | undefined;
   onClaimExplore: () => void | Promise<void>;
   onExplore: () => void | Promise<void>;
   onFocusEvent: () => void;
+  onGrowth: () => void | Promise<void>;
   onTask: () => void | Promise<void>;
   onTower: () => void | Promise<void>;
 }): MainlineGuide {
+  if (input.serverRoute) {
+    const steps = input.serverRoute.steps.map((step) => ({
+      detail: step.detail,
+      id: step.step_id,
+      status: step.status,
+      title: step.title,
+    }));
+    const activeStep =
+      input.serverRoute.steps.find((step) => step.step_id === input.serverRoute?.primary_step_id) ??
+      input.serverRoute.steps.find((step) => step.status === "active") ??
+      input.serverRoute.steps.at(-1);
+    const primary = mainlinePrimaryAction({
+      actionHint: activeStep?.action_hint ?? input.serverRoute.primary_action_hint,
+      activeStepId: activeStep?.step_id,
+      busy: input.busy,
+      canClaimExplore: input.canClaimExplore,
+      hasActiveExplore: Boolean(input.activeExplore),
+      onClaimExplore: input.onClaimExplore,
+      onExplore: input.onExplore,
+      onFocusEvent: input.onFocusEvent,
+      onGrowth: input.onGrowth,
+      onTask: input.onTask,
+      onTower: input.onTower,
+      preferredHint: activeStep?.detail,
+      preferredLabel: activeStep?.action_label,
+      task: input.chapterTask,
+    });
+
+    return {
+      chapterId: input.activeProfile?.progress?.chapter_id ?? 1,
+      onPrimary: primary.onAction,
+      primaryDisabled: primary.disabled,
+      primaryHint: primary.hint,
+      primaryLabel: primary.label,
+      progressPercent: input.serverRoute.progress_percent,
+      progressText: input.serverRoute.progress_text,
+      steps,
+      subtitle: input.serverRoute.subtitle,
+      title: input.serverRoute.title,
+    };
+  }
+
   const chapterId = input.activeProfile?.progress?.chapter_id ?? 1;
   const chapterTitle = chapterTitleById(chapterId);
   const mainProvince =
@@ -3596,6 +3707,7 @@ function buildMainlineGuide(input: {
     onClaimExplore: input.onClaimExplore,
     onExplore: input.onExplore,
     onFocusEvent: input.onFocusEvent,
+    onGrowth: input.onGrowth,
     onTask: input.onTask,
     onTower: input.onTower,
     task: input.chapterTask,
@@ -3626,6 +3738,7 @@ function mainlineTaskStatus(task: TaskState | undefined): MainlineStepStatus {
 }
 
 function mainlinePrimaryAction(input: {
+  actionHint?: string;
   activeStepId: string | undefined;
   busy: boolean;
   canClaimExplore: boolean;
@@ -3634,58 +3747,76 @@ function mainlinePrimaryAction(input: {
   onClaimExplore: () => void | Promise<void>;
   onExplore: () => void | Promise<void>;
   onFocusEvent: () => void;
+  onGrowth: () => void | Promise<void>;
   onTask: () => void | Promise<void>;
   onTower: () => void | Promise<void>;
+  preferredHint?: string;
+  preferredLabel?: string;
 }): {
   disabled?: boolean;
   hint: string;
   label: string;
   onAction: () => void | Promise<void>;
 } {
-  if (input.activeStepId === "chapter_task") {
+  const actionKey = input.actionHint ?? input.activeStepId;
+  if (actionKey === "task" || input.activeStepId === "chapter_task") {
     return {
       disabled: input.busy,
       hint:
-        input.task?.status === "completed"
+        input.preferredHint ??
+        (input.task?.status === "completed"
           ? "章节任务已经完成，先领取奖励。"
-          : "先看清本章任务，再继续推进。",
-      label: input.task?.status === "completed" ? "领取章节奖励" : "查看章节任务",
+          : "先看清本章任务，再继续推进。"),
+      label:
+        input.preferredLabel ??
+        (input.task?.status === "completed" ? "领取章节奖励" : "查看章节任务"),
       onAction: input.onTask,
     };
   }
 
-  if (input.activeStepId === "province_explore") {
+  if (actionKey === "explore" || input.activeStepId === "province_explore") {
     if (input.canClaimExplore) {
       return {
         disabled: input.busy,
-        hint: "探索已经完成，先领取战报和奖励。",
-        label: "领取探索",
+        hint: input.preferredHint ?? "探索已经完成，先领取战报和奖励。",
+        label: input.preferredLabel ?? "领取探索",
         onAction: input.onClaimExplore,
       };
     }
 
     return {
       disabled: input.busy || input.hasActiveExplore,
-      hint: input.hasActiveExplore ? "探索队列正在进行，稍后领取结果。" : "安排一次州域探索。",
-      label: input.hasActiveExplore ? "等待探索完成" : "开始探索",
+      hint:
+        input.preferredHint ??
+        (input.hasActiveExplore ? "探索队列正在进行，稍后领取结果。" : "安排一次州域探索。"),
+      label: input.preferredLabel ?? (input.hasActiveExplore ? "等待探索完成" : "开始探索"),
       onAction: input.onExplore,
     };
   }
 
-  if (input.activeStepId === "explore_event") {
+  if (actionKey === "explore_event" || input.activeStepId === "explore_event") {
     return {
       disabled: input.busy,
-      hint: "途中见闻会给少量普通奖励，也会写入日志。",
-      label: "处理探索奇遇",
+      hint: input.preferredHint ?? "途中见闻会给少量普通奖励，也会写入日志。",
+      label: input.preferredLabel ?? "处理探索奇遇",
       onAction: input.onFocusEvent,
     };
   }
 
-  if (input.activeStepId === "tower") {
+  if (actionKey === "growth" || input.activeStepId === "craft_alchemy") {
     return {
       disabled: input.busy,
-      hint: "镇封九塔会推动本州公共目标。",
-      label: "镇封九塔",
+      hint: input.preferredHint ?? "进入成长页查看推荐丹方和材料缺口。",
+      label: input.preferredLabel ?? "去炼丹",
+      onAction: input.onGrowth,
+    };
+  }
+
+  if (actionKey === "multiplayer" || input.activeStepId === "tower") {
+    return {
+      disabled: input.busy,
+      hint: input.preferredHint ?? "镇封九塔会推动本州公共目标。",
+      label: input.preferredLabel ?? "镇封九塔",
       onAction: input.onTower,
     };
   }
@@ -4443,6 +4574,19 @@ function formatRate(rate: number): string {
   return `${Math.round(rate / 100)}%`;
 }
 
+function formatMaterialGaps(
+  gaps: NonNullable<
+    AlchemyRecipeListResponse["recipes"][number]["recommendation"]
+  >["material_gaps"],
+): string {
+  const missing = gaps.filter((gap) => gap.missing > 0);
+  if (!missing.length) {
+    return "材料已足够";
+  }
+
+  return `缺 ${missing.map((gap) => `${gap.name} ${gap.missing}`).join("、")}`;
+}
+
 function provinceNameById(
   provinces: ProvinceSummary[] | undefined,
   provinceId: string | null | undefined,
@@ -4474,6 +4618,15 @@ function exploreEventStatusLabel(status: ExploreEventState["status"]): string {
     resolved: "已处理",
   };
   return labels[status];
+}
+
+function eventRarityLabel(rarity: ExploreEventState["rarity"]): string {
+  const labels: Record<string, string> = {
+    common: "寻常",
+    rare: "少见",
+    uncommon: "有缘",
+  };
+  return rarity ? (labels[rarity] ?? rarity) : "寻常";
 }
 
 function formatShortDate(value: string): string {

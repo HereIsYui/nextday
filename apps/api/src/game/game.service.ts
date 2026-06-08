@@ -17,6 +17,8 @@ import type {
   ExploreResponse,
   GameOverviewResponse,
   JournalListResponse,
+  NewPlayerRouteState,
+  NewPlayerRouteStepState,
   PlayerProfileResponse,
   ProvinceSummary,
   ResolveExploreEventRequest,
@@ -46,10 +48,8 @@ import { getDefaultSkillLoadout, getSkillName } from "../production/production.c
 import {
   type ExploreEventChoiceConfig,
   type ExploreEventConfig,
-  createInitialTaskRows,
   defaultEraId,
   exploreEventConfigs,
-  getTaskDefinitions,
   maxExploreBatch,
   maxOfflineCultivationHours,
   provinceConfigs,
@@ -64,6 +64,7 @@ import {
   toProvinceSummary,
   toTaskState,
 } from "./game.mappers";
+import { ensureInitialPlayerTasks, incrementPlayerTasks } from "./task-progress.utils";
 
 type Tx = Prisma.TransactionClient;
 type DbClient = Tx | PrismaService;
@@ -90,6 +91,11 @@ export class GameService {
           take: 5,
         }),
       ]);
+    const newPlayerRoute = await this.buildNewPlayerRoute(player.playerId, {
+      actionState,
+      provinces,
+      tasks,
+    });
 
     return {
       profile,
@@ -99,6 +105,7 @@ export class GameService {
       tasks,
       cave,
       recent_battles: recentBattles.map((battle) => toBattleSummary(battle)),
+      new_player_route: newPlayerRoute,
     };
   }
 
@@ -200,7 +207,7 @@ export class GameService {
             weeklyActiveScore: { increment: 5 },
           },
         });
-        const completedTaskIds = await this.incrementTasks(tx, loaded.playerId, {
+        const completedTaskIds = await incrementPlayerTasks(tx, loaded.playerId, {
           novice_claim_cultivation: 1,
         });
         const status = toCultivationStatus({
@@ -518,7 +525,7 @@ export class GameService {
             lastActionAt: new Date(),
           },
         });
-        const completedTaskIds = await this.incrementTasks(tx, loaded.playerId, {
+        const completedTaskIds = await incrementPlayerTasks(tx, loaded.playerId, {
           novice_explore_ji: province.province_id === "ji" ? record.count : 0,
           daily_explore: record.count,
           weekly_explore_10: record.count,
@@ -600,6 +607,9 @@ export class GameService {
           sourceId: event.eventId,
           idempotencyKey: input.idempotencyKey,
         });
+        const completedTaskIds = await incrementPlayerTasks(tx, player.playerId, {
+          novice_resolve_event: 1,
+        });
         const experience = buildExploreEventExperience(event, choice);
         const updatedEvent = await tx.exploreEventRecord.update({
           where: { eventId: event.eventId },
@@ -617,6 +627,13 @@ export class GameService {
           rewards: choice.rewards,
           experience,
         };
+        response.experience.delta_summary.push(
+          ...completedTaskIds.map((taskId) => ({
+            label: "主线推进",
+            delta: taskTitleForProgress(taskId),
+            tone: "success" as const,
+          })),
+        );
 
         await this.writeAudit(tx, {
           accountId: input.accountId,
@@ -728,7 +745,7 @@ export class GameService {
             rewardSnapshot: rewards as unknown as Prisma.InputJsonValue,
           },
         });
-        const completedTaskIds = await this.incrementTasks(tx, player.playerId, {
+        const completedTaskIds = await incrementPlayerTasks(tx, player.playerId, {
           daily_cave_collect: 1,
         });
 
@@ -800,19 +817,7 @@ export class GameService {
       });
     }
 
-    for (const task of createInitialTaskRows(playerId)) {
-      await tx.playerTaskState.upsert({
-        where: {
-          playerId_taskId_resetKey: {
-            playerId,
-            taskId: task.taskId,
-            resetKey: task.resetKey ?? "permanent",
-          },
-        },
-        create: task,
-        update: {},
-      });
-    }
+    await ensureInitialPlayerTasks(tx, playerId);
   }
 
   private async ensureProvinceStates(tx: DbClient = this.prisma) {
@@ -1086,40 +1091,128 @@ export class GameService {
     };
   }
 
-  private async incrementTasks(
-    tx: Tx,
+  private async buildNewPlayerRoute(
     playerId: string,
-    increments: Record<string, number>,
-  ): Promise<string[]> {
-    const completedTaskIds: string[] = [];
+    input: {
+      actionState: ActionState;
+      provinces: ProvinceSummary[];
+      tasks: TaskState[];
+    },
+  ): Promise<NewPlayerRouteState> {
+    const jiProvince = input.provinces.find((province) => province.province_id === "ji");
+    const [pendingEventCount, resolvedEventCount, alchemyCount, forgeCount, towerActionCount] =
+      await Promise.all([
+        this.prisma.exploreEventRecord.count({ where: { playerId, status: "pending" } }),
+        this.prisma.exploreEventRecord.count({ where: { playerId, status: "resolved" } }),
+        this.prisma.alchemyRecord.count({ where: { playerId } }),
+        this.prisma.equipmentOperationRecord.count({
+          where: { playerId, operationType: "forge" },
+        }),
+        this.prisma.towerActionRecord.count({
+          where: { playerId, towerId: "tower_xuantie" },
+        }),
+      ]);
+    const taskMap = new Map(input.tasks.map((task) => [task.task_id, task]));
+    const isTaskDone = (taskId: string) => {
+      const task = taskMap.get(taskId);
+      return Boolean(task && task.status !== "in_progress");
+    };
+    const hasExploredJi =
+      (jiProvince?.exploration_count ?? 0) > 0 || isTaskDone("novice_explore_ji");
+    const hasResolvedEvent = resolvedEventCount > 0 || isTaskDone("novice_resolve_event");
+    const hasAlchemy = alchemyCount > 0 || isTaskDone("novice_craft_alchemy");
+    const hasTower = towerActionCount > 0 || isTaskDone("novice_tower_xuantie");
+    const chapterTask = taskMap.get("chapter_first_30_minutes");
+    const canClaimChapterReward = chapterTask?.status === "completed";
+    const hasClaimedChapterReward = chapterTask?.status === "claimed";
 
-    for (const [taskId, increment] of Object.entries(increments)) {
-      if (increment <= 0) {
-        continue;
-      }
+    const steps: NewPlayerRouteStepState[] = [
+      {
+        action_hint: "overview",
+        action_label: "查看冀州",
+        detail: "角色已落在冀州，先确认行动令、今日主线和推荐行动。",
+        status: "done",
+        step_id: "enter_ji",
+        title: "初入冀州",
+      },
+      {
+        action_hint: "explore",
+        action_label: input.actionState.action_points > 0 ? "开始探索" : "等待行动令",
+        detail: hasExploredJi
+          ? `已完成冀州探索 ${jiProvince?.exploration_count ?? 1} 次。`
+          : `消耗行动令探索冀州，完成后领取战报和普通材料。行动令 ${input.actionState.action_points}/${input.actionState.action_point_cap}。`,
+        status: hasExploredJi ? "done" : "active",
+        step_id: "first_explore",
+        title: "第一次探索",
+        unlock_hint: "需要至少 1 枚行动令。",
+      },
+      {
+        action_hint: "explore_event",
+        action_label: pendingEventCount > 0 ? "处理奇遇" : "继续探索",
+        detail: hasResolvedEvent
+          ? "已处理途中见闻，少量普通奖励已入账。"
+          : pendingEventCount > 0
+            ? "已有探索奇遇待处理，选择一个方式领取普通奖励。"
+            : "领取探索后会出现轻选择奇遇。",
+        status: hasResolvedEvent ? "done" : hasExploredJi ? "active" : "pending",
+        step_id: "resolve_event",
+        title: "处理奇遇",
+        unlock_hint: "完成一次探索并领取后出现。",
+      },
+      {
+        action_hint: "growth",
+        action_label: hasAlchemy ? "查看生产" : "炼第一炉丹",
+        detail: hasAlchemy
+          ? "已完成一次炼丹，可继续服丹或准备炼器。"
+          : "根据路线选择聚灵丹或沸血丹，材料不足时先回到探索或洞府。",
+        status: hasAlchemy ? "done" : hasResolvedEvent ? "active" : "pending",
+        step_id: "craft_alchemy",
+        title: "炼第一炉丹",
+        unlock_hint: "需要凝露草和少量灵石。",
+      },
+      {
+        action_hint: "multiplayer",
+        action_label: hasTower ? "查看九塔" : "镇封玄铁塔",
+        detail: hasTower
+          ? "玄铁塔已有你的镇封记录。"
+          : "提交一次玄铁塔镇封或补给，理解九州对应九塔的全服目标。",
+        status: hasTower ? "done" : hasAlchemy || forgeCount > 0 ? "active" : "pending",
+        step_id: "seal_xuantie",
+        title: "镇封玄铁塔",
+        unlock_hint: "需要行动令，奖励只给普通材料和贡献。",
+      },
+      {
+        action_hint: "task",
+        action_label: hasClaimedChapterReward ? "查看下一章" : "领取章节奖励",
+        detail: hasClaimedChapterReward
+          ? "冀州初定章节奖励已领取，下一步可补洞府、炼器和 7 日目标。"
+          : canClaimChapterReward
+            ? "冀州初定已达成，先领取首章奖励。"
+            : "前 30 分钟节点完成后领取首章奖励。",
+        status: hasClaimedChapterReward ? "done" : hasTower ? "active" : "pending",
+        step_id: "claim_chapter_reward",
+        title: "领取章节奖励",
+        unlock_hint: "完成探索、奇遇、炼丹和玄铁塔行动。",
+      },
+    ];
+    const activeStep =
+      steps.find((step) => step.status === "active") ??
+      steps.find((step) => step.status === "pending") ??
+      steps.at(-1);
+    const doneCount = steps.filter((step) => step.status === "done").length;
+    const progressPercent = Math.round((doneCount / steps.length) * 100);
 
-      const tasks = await tx.playerTaskState.findMany({
-        where: { playerId, taskId, status: "in_progress" },
-      });
-
-      for (const task of tasks) {
-        const nextValue = Math.min(task.targetValue, task.progressValue + increment);
-        const nextStatus = nextValue >= task.targetValue ? "completed" : "in_progress";
-        await tx.playerTaskState.update({
-          where: { taskStateId: task.taskStateId },
-          data: {
-            progressValue: nextValue,
-            status: nextStatus,
-          },
-        });
-
-        if (nextStatus === "completed") {
-          completedTaskIds.push(task.taskId);
-        }
-      }
-    }
-
-    return completedTaskIds;
+    return {
+      config_version: "new_player_route_p1_9_v1",
+      primary_action_hint: activeStep?.action_hint ?? "overview",
+      primary_step_id: activeStep?.step_id ?? "enter_ji",
+      progress_percent: progressPercent,
+      progress_text: `${doneCount}/${steps.length}`,
+      route_id: "first_30_minutes_ji",
+      steps,
+      subtitle: "按顺序完成探索、奇遇、炼丹、玄铁塔和章节奖励。",
+      title: "冀州初定",
+    };
   }
 
   private async applyReward(
@@ -1197,7 +1290,7 @@ export class GameService {
       return existing;
     }
 
-    const config = pickExploreEventConfig(input.record.recordId);
+    const config = pickExploreEventConfig(input.record.recordId, input.province.province_id);
     return tx.exploreEventRecord.create({
       data: {
         eventId: `explore_event_${randomUUID()}`,
@@ -1460,6 +1553,7 @@ function toExploreResponse(
 
 function toExploreEventState(record: ExploreEventRecord): ExploreEventState {
   const choices = exploreEventChoiceConfigsFromJson(record.choices);
+  const config = exploreEventConfigs.find((item) => item.eventType === record.eventType);
   const rewards =
     record.rewardSnapshot && typeof record.rewardSnapshot === "object"
       ? (record.rewardSnapshot as unknown as RewardBundle)
@@ -1475,13 +1569,17 @@ function toExploreEventState(record: ExploreEventRecord): ExploreEventState {
     province_id: record.provinceId,
     province_name: record.provinceName,
     event_type: record.eventType,
+    rarity: config?.rarity ?? "common",
     title: record.title,
     description: record.description,
+    prerequisite_hint: config?.prerequisiteHint ?? "完成探索后出现。",
+    route_step_hint: config?.routeStepHint ?? "处理后可继续推进今日修行。",
     status: normalizeExploreEventStatus(record.status),
     choices: choices.map((choice) => ({
       choice_id: choice.choiceId,
       description: choice.description,
       label: choice.label,
+      outcome_hint: choice.outcomeHint,
       reward_preview: choice.rewardPreview,
     })),
     selected_choice_id: record.selectedChoiceId,
@@ -1518,14 +1616,19 @@ function isExploreEventChoiceConfig(value: unknown): value is ExploreEventChoice
     typeof item.label === "string" &&
     typeof item.description === "string" &&
     typeof item.rewardPreview === "string" &&
+    (item.outcomeHint === undefined || typeof item.outcomeHint === "string") &&
     typeof item.rewards === "object" &&
     item.rewards !== null
   );
 }
 
-function pickExploreEventConfig(seed: string): ExploreEventConfig {
+function pickExploreEventConfig(seed: string, provinceId: string): ExploreEventConfig {
+  const candidates = exploreEventConfigs.filter(
+    (config) => !config.provinceIds || config.provinceIds.includes(provinceId),
+  );
+  const eventPool = candidates.length ? candidates : exploreEventConfigs;
   const sum = Array.from(seed).reduce((value, char) => value + char.charCodeAt(0), 0);
-  return exploreEventConfigs[sum % exploreEventConfigs.length] ?? exploreEventConfigs[0];
+  return eventPool[sum % eventPool.length] ?? exploreEventConfigs[0];
 }
 
 function buildExploreEventExperience(
@@ -1570,6 +1673,16 @@ function rewardDeltaForEvent(rewards: RewardBundle) {
         label: "奇遇奖励",
       }
     : null;
+}
+
+function taskTitleForProgress(taskId: string): string {
+  const labels: Record<string, string> = {
+    chapter_first_30_minutes: "冀州初定可领奖",
+    novice_craft_alchemy: "第一炉丹完成",
+    novice_resolve_event: "途中见闻完成",
+    novice_tower_xuantie: "玄铁塔镇封完成",
+  };
+  return labels[taskId] ?? taskId;
 }
 
 function stringArrayFromJson(value: Prisma.JsonValue): string[] {

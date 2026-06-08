@@ -103,6 +103,13 @@ export function toBattleSummary(battle: BattleLog): BattleSummary {
     damage_taken: battle.damageTaken,
     rewards: normalizeRewardBundle(battle.rewardSnapshot),
     log: battleLog,
+    reason_summary: buildBattleReasonSummary({
+      damageDone: battle.damageDone,
+      damageTaken: battle.damageTaken,
+      result: battle.result,
+      rounds: battle.rounds,
+      log: battleLog,
+    }),
     created_at: battle.createdAt.toISOString(),
   };
 }
@@ -197,4 +204,46 @@ function getItemName(itemId: string): string {
   }
 
   return itemId;
+}
+
+function buildBattleReasonSummary(input: {
+  result: string;
+  rounds: number;
+  damageDone: number;
+  damageTaken: number;
+  log: BattleSummary["log"];
+}): string[] {
+  const playerRounds = input.log.filter((item) => item.actor && item.damage > 0);
+  const skillNames = uniqueStrings(
+    playerRounds
+      .map((item) => item.skill)
+      .filter((skill) => skill && skill !== "山海妖息")
+      .slice(0, 3),
+  );
+  const reasons: string[] = [];
+
+  reasons.push(
+    input.result === "win"
+      ? `胜在总伤害 ${input.damageDone} 压过敌方承受线。`
+      : `失利主因是总伤害 ${input.damageDone} 未能压过敌方强度。`,
+  );
+  reasons.push(
+    input.damageTaken <= 80
+      ? `承伤 ${input.damageTaken}，当前防护足以支撑自动战斗。`
+      : `承伤 ${input.damageTaken} 偏高，建议提升境界、法宝或防御技能。`,
+  );
+
+  if (skillNames.length) {
+    reasons.push(`本场触发 ${skillNames.join("、")}，可在技能预设中调整优先级。`);
+  }
+
+  if (input.rounds >= 3) {
+    reasons.push("战斗进入三回合以上，下一步可通过服丹或炼器缩短回合。");
+  }
+
+  return reasons.slice(0, 4);
+}
+
+function uniqueStrings(items: string[]): string[] {
+  return Array.from(new Set(items));
 }

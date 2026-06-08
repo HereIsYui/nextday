@@ -27,6 +27,7 @@ const journalSourceLabels: Record<string, string> = {
   "POST /api/multiplayer/sects/warehouse/withdraw": "宗门出库",
   "POST /api/multiplayer/towers/action": "九塔提交",
   "POST /api/production/alchemy/craft": "炼丹",
+  "POST /api/production/forge/craft": "炼器",
   "POST /api/production/equipment/forge": "炼器",
   "POST /api/production/equipment/inscribe": "铭刻",
   "POST /api/production/equipment/refine": "淬炼",

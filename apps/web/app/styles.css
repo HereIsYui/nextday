@@ -527,6 +527,13 @@ h2 {
   font-size: 13px;
 }
 
+.event-choice-grid small,
+.event-hint {
+  color: #7b7060;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .today-action-grid {
   display: grid;
   gap: 10px;
@@ -1059,6 +1066,16 @@ h2 {
   padding-left: 18px;
 }
 
+.battle-reason-list {
+  background: #fffaf0;
+  border-left: 3px solid #d9bb78;
+  color: #4f4738;
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 12px 10px 24px;
+}
+
 .task-row div {
   display: grid;
   gap: 4px;
@@ -1092,6 +1109,38 @@ h2 {
 
 .production-choice {
   gap: 10px;
+}
+
+.production-recommendation {
+  background: #fffaf0;
+  border: 1px solid #eadfca;
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+}
+
+.production-recommendation p {
+  margin: 0;
+}
+
+.production-recommendation span {
+  color: #5f6f70;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.recommendation-gaps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.recommendation-gaps span {
+  background: #f4e7d1;
+  border-radius: 6px;
+  color: #6b4f24;
+  padding: 4px 7px;
 }
 
 .choice-field {

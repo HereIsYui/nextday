@@ -4,6 +4,7 @@ import type {
   AlchemyCraftRequest,
   AlchemyCraftResponse,
   AlchemyRecipeListResponse,
+  AlchemyRecipeSummary,
   AlchemyRecordListResponse,
   BagSummaryResponse,
   CultivationRoute,
@@ -14,6 +15,7 @@ import type {
   EquipmentTargetRequest,
   ForgeCraftRequest,
   ForgeRecipeListResponse,
+  ForgeRecipeSummary,
   PillQuality,
   PillUseRequest,
   PillUseResponse,
@@ -28,6 +30,7 @@ import type { EquipmentAffix, EquipmentInstance, Player, PlayerItem, Prisma } fr
 import { PrismaService } from "../database/prisma.service";
 import { defaultEraId } from "../game/game.constants";
 import { normalizeRewardBundle } from "../game/game.mappers";
+import { incrementPlayerTasks } from "../game/task-progress.utils";
 import { writeJournalFromResponse } from "../journal/journal.utils";
 import { buildAlchemyExperience, buildEquipmentExperience } from "../platform/experience";
 import { hashRequestBody } from "../platform/utils/hash";
@@ -114,8 +117,22 @@ export class ProductionService {
 
   async getAlchemyRecipes(accountId: string): Promise<AlchemyRecipeListResponse> {
     const player = await this.requirePlayer(accountId);
+    const [bag, wallet] = await Promise.all([
+      this.getBagByPlayerId(player.playerId),
+      this.getWalletState(this.prisma, player.playerId),
+    ]);
+
     return {
-      recipes: alchemyRecipes.filter((recipe) => isRouteAvailable(recipe.route, player.route)),
+      recipes: alchemyRecipes
+        .filter((recipe) => isRouteAvailable(recipe.route, player.route))
+        .map((recipe) =>
+          withProductionRecommendation(recipe, {
+            bag,
+            kind: "alchemy",
+            playerRoute: player.route,
+            spiritStone: wallet.spirit_stone,
+          }),
+        ),
     };
   }
 
@@ -215,12 +232,17 @@ export class ProductionService {
           idempotencyKey: input.idempotencyKey,
         });
 
+        const completedTaskIds = await incrementPlayerTasks(tx, player.playerId, {
+          novice_craft_alchemy: 1,
+        });
+
         return {
           record_id: record.recordId,
           record: toAlchemyRecordState(record),
           rewards,
           wallet: await this.getWalletState(tx, player.playerId),
           bag: await this.getBagByPlayerId(player.playerId, tx),
+          completed_task_ids: completedTaskIds,
           experience: buildAlchemyExperience({
             recipeName: recipe.name,
             success,
@@ -342,8 +364,22 @@ export class ProductionService {
 
   async getForgeRecipes(accountId: string): Promise<ForgeRecipeListResponse> {
     const player = await this.requirePlayer(accountId);
+    const [bag, wallet] = await Promise.all([
+      this.getBagByPlayerId(player.playerId),
+      this.getWalletState(this.prisma, player.playerId),
+    ]);
+
     return {
-      recipes: forgeRecipes.filter((recipe) => isRouteAvailable(recipe.route, player.route)),
+      recipes: forgeRecipes
+        .filter((recipe) => isRouteAvailable(recipe.route, player.route))
+        .map((recipe) =>
+          withProductionRecommendation(recipe, {
+            bag,
+            kind: "forge",
+            playerRoute: player.route,
+            spiritStone: wallet.spirit_stone,
+          }),
+        ),
     };
   }
 
@@ -1173,6 +1209,124 @@ function recipeCostBundle(recipe: {
       bind_type: "bound",
     })),
   };
+}
+
+function withProductionRecommendation<TRecipe extends AlchemyRecipeSummary | ForgeRecipeSummary>(
+  recipe: TRecipe,
+  input: {
+    bag: BagSummaryResponse;
+    kind: "alchemy" | "forge";
+    playerRoute: string;
+    spiritStone: string;
+  },
+): TRecipe {
+  const materialGaps = [
+    ...recipe.materials.map((material) => {
+      const owned = countBagItem(input.bag, material.item_id);
+      return {
+        item_id: material.item_id,
+        name: material.name,
+        owned,
+        required: material.count,
+        missing: Math.max(0, material.count - owned),
+      };
+    }),
+    {
+      item_id: "spirit_stone",
+      name: "灵石",
+      owned: Number(input.spiritStone),
+      required: Number(recipe.spirit_stone_cost),
+      missing: Math.max(0, Number(recipe.spirit_stone_cost) - Number(input.spiritStone)),
+    },
+  ];
+  const canCraft = materialGaps.every((item) => item.missing <= 0);
+  const routeMatched = recipe.route === "all" || recipe.route === input.playerRoute;
+  const recommended =
+    canCraft &&
+    routeMatched &&
+    (input.kind === "alchemy"
+      ? recipe.route === input.playerRoute || recipe.recipe_id.includes("pojing")
+      : recipe.route === input.playerRoute ||
+        (recipe as ForgeRecipeSummary).rarity === "ancient_craft");
+
+  return {
+    ...recipe,
+    recommendation: {
+      can_craft: canCraft,
+      material_gaps: materialGaps,
+      next_action_hint: productionNextActionHint(recipe, input.kind, canCraft),
+      reason: productionRecommendationReason(recipe, input.kind, canCraft, recommended),
+      recommended,
+      result_hint: productionResultHint(recipe, input.kind),
+    },
+  };
+}
+
+function countBagItem(bag: BagSummaryResponse, itemId: string): number {
+  return bag.items
+    .filter((item) => item.item_id === itemId && !item.expired && !item.locked)
+    .reduce((sum, item) => sum + Number(item.count), 0);
+}
+
+function productionRecommendationReason(
+  recipe: AlchemyRecipeSummary | ForgeRecipeSummary,
+  kind: "alchemy" | "forge",
+  canCraft: boolean,
+  recommended: boolean,
+): string {
+  if (!canCraft) {
+    return "材料或灵石不足，先探索、处理奇遇或收取洞府。";
+  }
+  if (recommended) {
+    return kind === "alchemy"
+      ? "当前路线可直接炼制，适合推进第一炉丹。"
+      : "当前路线可直接炼制，适合补第一件普通法宝。";
+  }
+  return "可以炼制，但优先级低于当前路线主推荐。";
+}
+
+function productionResultHint(
+  recipe: AlchemyRecipeSummary | ForgeRecipeSummary,
+  kind: "alchemy" | "forge",
+): string {
+  if (kind === "alchemy") {
+    const alchemyRecipe = recipe as AlchemyRecipeSummary;
+    return alchemyRecipe.pill_type === "breakthrough"
+      ? `${alchemyRecipe.name}用于突破准备，成功后进入背包，服用仍受同阶递减。`
+      : `${alchemyRecipe.name}提供基础修为成长，适合新手 30 分钟内完成第一炉丹。`;
+  }
+
+  const forgeRecipe = recipe as ForgeRecipeSummary;
+  return `${forgeRecipe.name}会产出${equipmentRarityText(forgeRecipe.rarity)}法宝，炼器不会产出九大古宝。`;
+}
+
+function productionNextActionHint(
+  recipe: AlchemyRecipeSummary | ForgeRecipeSummary,
+  kind: "alchemy" | "forge",
+  canCraft: boolean,
+): string {
+  if (!canCraft) {
+    return "先补齐缺口材料，再回到成长页选择所需丹方或配方。";
+  }
+  if (kind === "alchemy") {
+    return "炼成后去背包选择丹药服用，再回到今日路线推进玄铁塔。";
+  }
+
+  const forgeRecipe = recipe as ForgeRecipeSummary;
+  return forgeRecipe.rarity === "ancient_craft"
+    ? "古器胚用于长期养成，第一件法宝可先选择路线普通配方。"
+    : "炼成后查看战报，观察法宝触发和胜负原因。";
+}
+
+function equipmentRarityText(rarity: string): string {
+  const labels: Record<string, string> = {
+    ancient_craft: "古器胚",
+    earth: "地品",
+    heaven: "天品",
+    immortal: "仙品",
+    ordinary: "凡品",
+  };
+  return labels[rarity] ?? rarity;
 }
 
 function pickPillQuality(seed: string): PillQuality {

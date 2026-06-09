@@ -38,6 +38,7 @@ import type {
   MentorSummaryResponse,
   MonthlyCardType,
   NewPlayerRouteState,
+  PillQuality,
   PlayerProfileResponse,
   ProposeSectDiplomacyRequest,
   ProvinceSummary,
@@ -52,6 +53,7 @@ import type {
   SectHireState,
   SectListResponse,
   SkillLoadoutResponse,
+  SkillSummary,
   StoryScrollDetailResponse,
   StoryScrollListResponse,
   TaskState,
@@ -214,6 +216,9 @@ export default function HomePage() {
   const [selectedAlchemyRecipeId, setSelectedAlchemyRecipeId] = useState("");
   const [selectedForgeRecipeId, setSelectedForgeRecipeId] = useState("");
   const [selectedPillItemInstanceId, setSelectedPillItemInstanceId] = useState("");
+  const [selectedActiveSkillIds, setSelectedActiveSkillIds] = useState<string[]>([]);
+  const [selectedTreasureSkillId, setSelectedTreasureSkillId] = useState("");
+  const [skillPriorityIds, setSkillPriorityIds] = useState<string[]>([]);
   const [selectedStoryScrollId, setSelectedStoryScrollId] = useState("");
   const [currentExplore, setCurrentExplore] = useState<ExploreResponse | null>(null);
   const [pendingExploreEvents, setPendingExploreEvents] = useState<ExploreEventState[]>([]);
@@ -245,6 +250,14 @@ export default function HomePage() {
   const selectedPill =
     availablePills.find((item) => item.item_instance_id === selectedPillItemInstanceId) ??
     availablePills[0];
+  const activeSkillOptions = useMemo(
+    () => skills?.available_skills.filter((skill) => skill.skill_type === "active") ?? [],
+    [skills],
+  );
+  const treasureSkillOptions = useMemo(
+    () => skills?.available_skills.filter((skill) => skill.skill_type === "treasure") ?? [],
+    [skills],
+  );
   const firstEquipment = equipment?.equipments[0];
   const firstTower = towers?.towers[0];
   const towerBySelectedProvince = selectedProvince
@@ -482,6 +495,41 @@ export default function HomePage() {
       setSelectedPillItemInstanceId(availablePills[0].item_instance_id);
     }
   }, [availablePills, selectedPillItemInstanceId]);
+
+  useEffect(() => {
+    if (!skills) {
+      setSelectedActiveSkillIds([]);
+      setSelectedTreasureSkillId("");
+      setSkillPriorityIds([]);
+      return;
+    }
+
+    const activeOptions = skills.available_skills.filter((skill) => skill.skill_type === "active");
+    const treasureOptions = skills.available_skills.filter(
+      (skill) => skill.skill_type === "treasure",
+    );
+    const activeOptionIds = new Set(activeOptions.map((skill) => skill.skill_id));
+    const activeIds = skills.active_skill_ids
+      .filter((skillId) => activeOptionIds.has(skillId))
+      .slice(0, 3);
+    const nextActiveSkillIds = activeIds.length
+      ? activeIds
+      : activeOptions.slice(0, 3).map((skill) => skill.skill_id);
+    const nextTreasureSkillId = treasureOptions.some(
+      (skill) => skill.skill_id === skills.treasure_skill_id,
+    )
+      ? skills.treasure_skill_id
+      : (treasureOptions[0]?.skill_id ?? "");
+    const nextPriorityIds = normalizeSkillPriority(
+      skills.auto_priority,
+      nextActiveSkillIds,
+      nextTreasureSkillId,
+    );
+
+    setSelectedActiveSkillIds(nextActiveSkillIds);
+    setSelectedTreasureSkillId(nextTreasureSkillId);
+    setSkillPriorityIds(nextPriorityIds);
+  }, [skills]);
 
   useEffect(() => {
     if (!token || !activePlayerId) {
@@ -1145,7 +1193,7 @@ export default function HomePage() {
       );
       ensureOk(response);
       rememberExperience(undefined, {
-        summary: `服用 ${selectedPill.name}，本次效果 ${response.data.effect_value}，有效倍率 ${Math.round(
+        summary: `服用 ${formatPillItemLabel(selectedPill)}，本次效果 ${response.data.effect_value}，有效倍率 ${Math.round(
           response.data.effective_rate * 100,
         )}%。`,
         tags: ["丹药", "修为成长"],
@@ -1191,26 +1239,81 @@ export default function HomePage() {
     });
   }
 
+  function handleToggleActiveSkill(skillId: string) {
+    const nextActiveSkillIds = selectedActiveSkillIds.includes(skillId)
+      ? selectedActiveSkillIds.filter((selectedSkillId) => selectedSkillId !== skillId)
+      : selectedActiveSkillIds.length >= 3
+        ? selectedActiveSkillIds
+        : [...selectedActiveSkillIds, skillId];
+
+    if (nextActiveSkillIds === selectedActiveSkillIds) {
+      setMessage("主动技能最多配置 3 个");
+      return;
+    }
+
+    setSelectedActiveSkillIds(nextActiveSkillIds);
+    setSkillPriorityIds((current) =>
+      normalizeSkillPriority(current, nextActiveSkillIds, selectedTreasureSkillId),
+    );
+  }
+
+  function handleSelectTreasureSkill(skillId: string) {
+    setSelectedTreasureSkillId(skillId);
+    setSkillPriorityIds((current) =>
+      normalizeSkillPriority(current, selectedActiveSkillIds, skillId),
+    );
+  }
+
+  function handleMoveSkillPriority(skillId: string, direction: "up" | "down") {
+    setSkillPriorityIds((current) => {
+      const priority = normalizeSkillPriority(
+        current,
+        selectedActiveSkillIds,
+        selectedTreasureSkillId,
+      );
+      const index = priority.indexOf(skillId);
+      const nextIndex = direction === "up" ? index - 1 : index + 1;
+      if (index < 0 || nextIndex < 0 || nextIndex >= priority.length) {
+        return priority;
+      }
+
+      const next = [...priority];
+      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+      return next;
+    });
+  }
+
   async function handleSaveSkillPreset() {
     if (!skills) {
       setMessage("技能配置尚未读取");
       return;
     }
 
-    const activeSkills = skills.available_skills
-      .filter((skill) => skill.skill_type === "active")
-      .slice(0, 3)
-      .map((skill) => skill.skill_id);
-    const treasureSkill =
-      skills.available_skills.find((skill) => skill.skill_type === "treasure")?.skill_id ??
-      skills.treasure_skill_id;
+    const activeOptionIds = new Set(activeSkillOptions.map((skill) => skill.skill_id));
+    const treasureOptionIds = new Set(treasureSkillOptions.map((skill) => skill.skill_id));
+    const activeSkills = selectedActiveSkillIds
+      .filter((skillId) => activeOptionIds.has(skillId))
+      .slice(0, 3);
+    const treasureSkill = treasureOptionIds.has(selectedTreasureSkillId)
+      ? selectedTreasureSkillId
+      : (treasureSkillOptions[0]?.skill_id ?? "");
+
+    if (activeSkills.length < 1) {
+      setMessage("请至少选择 1 个主动技能");
+      return;
+    }
+    if (!treasureSkill) {
+      setMessage("请先选择本命法宝技能");
+      return;
+    }
 
     await runAction("保存技能", async () => {
+      const autoPriority = normalizeSkillPriority(skillPriorityIds, activeSkills, treasureSkill);
       const response = await client.saveSkillLoadout(
         {
           active_skill_ids: activeSkills,
           treasure_skill_id: treasureSkill,
-          auto_priority: [treasureSkill, ...activeSkills.slice().reverse()],
+          auto_priority: autoPriority,
         },
         createIdempotencyKey("web_skill"),
       );
@@ -2728,6 +2831,10 @@ export default function HomePage() {
                         <span>奖励 {rewardStateLabel(activity.reward_state)}</span>
                       </div>
                       <div className="mini-stats">
+                        <span>
+                          {activityTypeLabel(activity.event_type)} ·{" "}
+                          {activityStatusLabel(activity.status)}
+                        </span>
                         <span>{activity.async_enabled ? "今日可做" : "限时开启"}</span>
                         <span>{formatShortDate(activity.settlement_at)} 统一发放</span>
                       </div>
@@ -2823,7 +2930,7 @@ export default function HomePage() {
                     <strong>服用丹药</strong>
                     <span>
                       {selectedPill
-                        ? `${selectedPill.name} x${selectedPill.count} · 服用后按同阶递减`
+                        ? `${formatPillItemLabel(selectedPill)} · 服用后按同阶递减`
                         : "背包中暂无可服用丹药"}
                     </span>
                     {availablePills.length ? (
@@ -2836,7 +2943,7 @@ export default function HomePage() {
                         >
                           {availablePills.map((item) => (
                             <option key={item.item_instance_id} value={item.item_instance_id}>
-                              {item.name} x{item.count}
+                              {formatPillItemLabel(item)}
                             </option>
                           ))}
                         </select>
@@ -2913,17 +3020,18 @@ export default function HomePage() {
                       </span>
                     ) : null}
                   </article>
-                  <ActionBox
-                    actions={
-                      skills ? (
-                        <Button disabled={busy} onClick={handleSaveSkillPreset}>
-                          保存预设
-                        </Button>
-                      ) : null
-                    }
-                    actionNote={skills ? undefined : "技能配置尚未读取"}
-                    detail={`主动 ${skills?.active_skill_ids.length ?? 0}/3 · 本命 ${skillName(skills, skills?.treasure_skill_id)}`}
-                    title="技能"
+                  <SkillLoadoutPanel
+                    activeOptions={activeSkillOptions}
+                    busy={busy}
+                    onMovePriority={handleMoveSkillPriority}
+                    onSave={handleSaveSkillPreset}
+                    onSelectTreasure={handleSelectTreasureSkill}
+                    onToggleActive={handleToggleActiveSkill}
+                    priorityIds={skillPriorityIds}
+                    selectedActiveSkillIds={selectedActiveSkillIds}
+                    selectedTreasureSkillId={selectedTreasureSkillId}
+                    skills={skills}
+                    treasureOptions={treasureSkillOptions}
                   />
                 </div>
                 <section className="inner-world-panel" id="inner-world" aria-label="内天地">
@@ -3601,7 +3709,9 @@ export default function HomePage() {
                     }
                     detail={
                       currentTransferRequest
-                        ? `执行 ${currentTransferRequest.execute_status} · 排行冷却 ${
+                        ? `执行 ${transferExecuteStatusLabel(
+                            currentTransferRequest.execute_status,
+                          )} · 排行冷却 ${
                             currentTransferRequest.rank_cooldown_until ? "已计算" : "未生成"
                           }`
                         : "默认目标 mvp_beta · 不会立即迁移资产"
@@ -4004,6 +4114,152 @@ function ProductionRecommendationView({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function SkillLoadoutPanel({
+  activeOptions,
+  busy,
+  onMovePriority,
+  onSave,
+  onSelectTreasure,
+  onToggleActive,
+  priorityIds,
+  selectedActiveSkillIds,
+  selectedTreasureSkillId,
+  skills,
+  treasureOptions,
+}: {
+  activeOptions: SkillSummary[];
+  busy: boolean;
+  onMovePriority: (skillId: string, direction: "up" | "down") => void;
+  onSave: () => void | Promise<void>;
+  onSelectTreasure: (skillId: string) => void;
+  onToggleActive: (skillId: string) => void;
+  priorityIds: string[];
+  selectedActiveSkillIds: string[];
+  selectedTreasureSkillId: string;
+  skills: SkillLoadoutResponse | null;
+  treasureOptions: SkillSummary[];
+}) {
+  if (!skills) {
+    return (
+      <article className="production-box skill-loadout-card">
+        <strong>已掌握技能与预设</strong>
+        <span>技能配置尚未读取。</span>
+      </article>
+    );
+  }
+
+  const selectedSkillIds = normalizeSkillPriority(
+    priorityIds,
+    selectedActiveSkillIds,
+    selectedTreasureSkillId,
+  );
+  const selectedSkills = selectedSkillIds
+    .map((skillId) => skills.available_skills.find((skill) => skill.skill_id === skillId))
+    .filter((skill): skill is SkillSummary => Boolean(skill));
+  const canSave = selectedActiveSkillIds.length >= 1 && Boolean(selectedTreasureSkillId);
+
+  return (
+    <article className="production-box skill-loadout-card">
+      <div className="province-head">
+        <div>
+          <strong>已掌握技能与预设</strong>
+          <span>
+            主动 {selectedActiveSkillIds.length}/3 · 本命{" "}
+            {skillName(skills, selectedTreasureSkillId)}
+          </span>
+        </div>
+        <StatusBadge tone={canSave ? "success" : "neutral"}>
+          {canSave ? "可保存" : "待选择"}
+        </StatusBadge>
+      </div>
+
+      <div className="skill-loadout-section">
+        <span className="skill-loadout-label">主动技能</span>
+        <div className="skill-option-grid">
+          {activeOptions.map((skill) => {
+            const selected = selectedActiveSkillIds.includes(skill.skill_id);
+            const disabled = busy || (!selected && selectedActiveSkillIds.length >= 3);
+            return (
+              <button
+                aria-pressed={selected}
+                className={selected ? "skill-option selected" : "skill-option"}
+                disabled={disabled}
+                key={skill.skill_id}
+                onClick={() => onToggleActive(skill.skill_id)}
+                type="button"
+              >
+                <strong>{skill.name}</strong>
+                <span>{skill.description}</span>
+                <small>
+                  {skillRouteLabel(skill.route)} · 冷却 {skill.cooldown_rounds} 回合
+                </small>
+              </button>
+            );
+          })}
+        </div>
+        {activeOptions.length === 0 ? <span className="action-note">暂无可用主动技能</span> : null}
+      </div>
+
+      <label className="choice-field skill-treasure-select">
+        <span>本命法宝技能</span>
+        <select
+          disabled={busy || treasureOptions.length === 0}
+          onChange={(event) => onSelectTreasure(event.target.value)}
+          value={selectedTreasureSkillId}
+        >
+          {treasureOptions.map((skill) => (
+            <option key={skill.skill_id} value={skill.skill_id}>
+              {skill.name} · 冷却 {skill.cooldown_rounds} 回合
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <div className="skill-loadout-section">
+        <span className="skill-loadout-label">自动释放顺序</span>
+        <div className="skill-priority-list">
+          {selectedSkills.map((skill, index) => (
+            <article className="skill-priority-row" key={skill.skill_id}>
+              <div>
+                <strong>
+                  {index + 1}. {skill.name}
+                </strong>
+                <span>
+                  {skillTypeLabel(skill.skill_type)} · {skill.description}
+                </span>
+              </div>
+              <div className="skill-priority-actions">
+                <Button
+                  disabled={busy || index === 0}
+                  onClick={() => onMovePriority(skill.skill_id, "up")}
+                >
+                  上移
+                </Button>
+                <Button
+                  disabled={busy || index === selectedSkills.length - 1}
+                  onClick={() => onMovePriority(skill.skill_id, "down")}
+                >
+                  下移
+                </Button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+
+      <div className="production-actions">
+        {canSave ? (
+          <Button disabled={busy} onClick={onSave}>
+            保存预设
+          </Button>
+        ) : (
+          <span className="action-note">至少选择 1 个主动技能和 1 个本命技能</span>
+        )}
+      </div>
+    </article>
   );
 }
 
@@ -5071,7 +5327,7 @@ function buildGrowthTargets(input: {
       actionLabel: input.firstPill ? "服丹" : "炼丹",
       actionUnavailableReason: input.overview ? undefined : "角色状态尚未读取",
       detail: input.firstPill
-        ? `${input.firstPill.name} 可服用。`
+        ? `${formatPillItemLabel(input.firstPill)} 可服用。`
         : "暂无可服丹药，先炼制基础丹药。",
       disabled: input.busy,
       id: "pill",
@@ -5395,6 +5651,17 @@ function activityStatusLabel(status: string): string {
   return labels[status] ?? "未知状态";
 }
 
+function activityTypeLabel(type: string): string {
+  const labels: Record<string, string> = {
+    compensation: "补偿活动",
+    craft_trial: "丹器加试",
+    jiuzhou_travel: "九州游历",
+    return_support: "归山扶持",
+    sect_celebration: "宗门同贺",
+  };
+  return labels[type] ?? "活动";
+}
+
 function playerFacingActivityDescription(activity: ActivitySummaryState): string {
   const replacements: Record<string, string> = {
     "当前 MVP 以异步扶持样板开放。": "完成归山目标后领取扶持奖励。",
@@ -5510,6 +5777,15 @@ function transferRequestStatusLabel(status: string): string {
     submitted: "已提交",
   };
   return labels[status] ?? "转服记录";
+}
+
+function transferExecuteStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    dry_run_only: "仅生成影响报告",
+    executed: "已迁移",
+    reserved_only: "执行入口预留",
+  };
+  return labels[status] ?? "执行状态待确认";
 }
 
 function mentorTaskClaimed(relation: MentorRelationState): boolean {
@@ -5672,12 +5948,65 @@ function assignmentStatusLabel(status: string): string {
   return labels[status] ?? "未知派驻状态";
 }
 
+function pillQualityLabel(quality?: PillQuality | null): string {
+  const labels: Record<PillQuality, string> = {
+    best: "极品",
+    flawless: "无瑕",
+    high: "上品",
+    low: "下品",
+    middle: "中品",
+  };
+  return quality ? labels[quality] : "品质未记录";
+}
+
+function formatPillItemLabel(item: BagSummaryResponse["items"][number]): string {
+  return `${item.name}（${pillQualityLabel(item.quality)}）x${item.count}`;
+}
+
+function skillRouteLabel(route: SkillSummary["route"]): string {
+  if (route === "all") {
+    return "通用";
+  }
+  return cultivationRouteLabels[route];
+}
+
+function skillTypeLabel(type: SkillSummary["skill_type"]): string {
+  const labels: Record<SkillSummary["skill_type"], string> = {
+    active: "主动技能",
+    treasure: "本命技能",
+  };
+  return labels[type];
+}
+
 function skillName(skills: SkillLoadoutResponse | null, skillId?: string): string {
   if (!skills || !skillId) {
     return "未配置";
   }
 
   return skills.available_skills.find((skill) => skill.skill_id === skillId)?.name ?? "未命名技能";
+}
+
+function normalizeSkillPriority(
+  currentPriorityIds: string[] | undefined,
+  activeSkillIds: string[],
+  treasureSkillId: string,
+): string[] {
+  const allowedSkillIds = new Set([treasureSkillId, ...activeSkillIds].filter(Boolean));
+  const nextPriorityIds = Array.from(new Set(currentPriorityIds ?? [])).filter((skillId) =>
+    allowedSkillIds.has(skillId),
+  );
+
+  if (treasureSkillId && !nextPriorityIds.includes(treasureSkillId)) {
+    nextPriorityIds.unshift(treasureSkillId);
+  }
+
+  for (const skillId of activeSkillIds) {
+    if (!nextPriorityIds.includes(skillId)) {
+      nextPriorityIds.push(skillId);
+    }
+  }
+
+  return nextPriorityIds;
 }
 
 function creatureStatusLabel(status: string): string {

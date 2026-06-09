@@ -46,11 +46,11 @@ describe("M3 生产成长循环", () => {
 
     expect(success.body.data.record.success).toBe(true);
     expect(success.body.data.record.pill_item_id).toBe("pill_juling_1");
-    expect(
-      success.body.data.bag.items.some(
-        (item: { item_id: string }) => item.item_id === "pill_juling_1",
-      ),
-    ).toBe(true);
+    const pillItem = success.body.data.bag.items.find(
+      (item: { item_id: string }) => item.item_id === "pill_juling_1",
+    );
+    expect(pillItem).toBeTruthy();
+    expect(pillItem.quality).toBe(success.body.data.record.quality);
 
     const failKey = findIdempotencyKey("m3_alchemy_fail", "recipe_pojing_1", 7000, false);
     const failed = await request(app.getHttpServer())

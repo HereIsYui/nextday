@@ -14,11 +14,12 @@ import type {
   PlayerItem,
 } from "@prisma/client";
 import { normalizeRewardBundle } from "../game/game.mappers";
-import { getItemMeta } from "./production.constants";
+import { getItemMeta, pillQualityConfigs } from "./production.constants";
 
 export function toBagItemState(item: PlayerItem, now = new Date()): BagItemState {
   const meta = getItemMeta(item.itemId);
   const expired = Boolean(item.expireAt && item.expireAt.getTime() <= now.getTime());
+  const quality = extractPillQuality(item);
 
   return {
     item_instance_id: item.itemInstanceId,
@@ -26,6 +27,7 @@ export function toBagItemState(item: PlayerItem, now = new Date()): BagItemState
     name: meta.name,
     category: meta.category,
     count: item.count.toString(),
+    quality,
     bind_type: item.bindType,
     locked: item.locked,
     tradeable: meta.tradeable && item.bindType === "unbound" && !expired,
@@ -33,6 +35,23 @@ export function toBagItemState(item: PlayerItem, now = new Date()): BagItemState
     expire_at: item.expireAt?.toISOString() ?? null,
     source_type: item.sourceType,
   };
+}
+
+function extractPillQuality(item: PlayerItem): BagItemState["quality"] {
+  const meta = getItemMeta(item.itemId);
+  if (meta.category !== "pill") {
+    return null;
+  }
+
+  const metadata =
+    item.metadata && typeof item.metadata === "object"
+      ? (item.metadata as Record<string, unknown>)
+      : {};
+  const quality = metadata.quality;
+  return typeof quality === "string" &&
+    pillQualityConfigs.some((config) => config.quality === quality)
+    ? (quality as BagItemState["quality"])
+    : null;
 }
 
 export function toAlchemyRecordState(record: AlchemyRecord): AlchemyRecordState {

@@ -658,7 +658,10 @@ export default function AdminHomePage() {
           <SummaryList
             rows={[
               ["状态", mergeReport?.report.status ?? "未生成"],
-              ["执行", mergeReport?.report.execute_status ?? "reserved_only"],
+              [
+                "执行",
+                transferExecuteStatusLabel(mergeReport?.report.execute_status ?? "reserved_only"),
+              ],
               ["风险", String(mergeReport?.report.risk_summary.risk_level ?? "未评估")],
               ["玩家", String(mergeReport?.report.summary.player_count ?? 0)],
               [
@@ -726,7 +729,10 @@ export default function AdminHomePage() {
           <SummaryList
             rows={[
               ["状态", transferRequest ? transferStatusLabel(transferRequest.status) : "未生成"],
-              ["执行", transferRequest?.execute_status ?? "dry_run_only"],
+              [
+                "执行",
+                transferExecuteStatusLabel(transferRequest?.execute_status ?? "dry_run_only"),
+              ],
               ["目标服", transferRequest?.target_server_id ?? "mvp_beta"],
               ["排行冷却", transferRequest?.rank_cooldown_until ? "已生成" : "未生成"],
               ["风险", String(transferRequest?.risk_summary?.risk_level ?? "未评估")],
@@ -797,6 +803,15 @@ function transferStatusLabel(status: string): string {
     submitted: "已提交",
   };
   return labels[status] ?? "转服记录";
+}
+
+function transferExecuteStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    dry_run_only: "仅生成影响报告",
+    executed: "已执行",
+    reserved_only: "执行入口预留",
+  };
+  return labels[status] ?? "执行状态待确认";
 }
 
 function getDefaultConfigPayload(configType: ConfigType): string {

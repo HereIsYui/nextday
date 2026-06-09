@@ -510,7 +510,8 @@ h2 {
 .event-choice-grid {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  min-width: 0;
 }
 
 .event-choice-grid button {
@@ -518,8 +519,21 @@ h2 {
   display: grid;
   gap: 4px;
   justify-items: start;
+  min-width: 0;
   min-height: 56px;
+  overflow-wrap: anywhere;
+  padding: 10px 12px;
   text-align: left;
+  white-space: normal;
+  width: 100%;
+}
+
+.event-choice-grid strong,
+.event-choice-grid span,
+.event-choice-grid small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .event-choice-grid span {
@@ -978,6 +992,13 @@ h2 {
   display: flex;
   gap: 10px;
   justify-content: space-between;
+  min-width: 0;
+}
+
+.province-head > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
 }
 
 .province strong {
@@ -1001,6 +1022,7 @@ h2 {
 .battle-list {
   display: grid;
   gap: 10px;
+  min-width: 0;
 }
 
 .task-row,
@@ -1031,6 +1053,7 @@ h2 {
   border-radius: 8px;
   display: grid;
   gap: 12px;
+  min-width: 0;
   padding: 14px;
 }
 
@@ -1090,6 +1113,7 @@ h2 {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  min-width: 0;
 }
 
 .production-box {
@@ -1098,6 +1122,7 @@ h2 {
   border-radius: 8px;
   display: grid;
   gap: 10px;
+  min-width: 0;
   min-height: 138px;
   padding: 14px;
 }
@@ -1160,6 +1185,103 @@ h2 {
   width: 100%;
 }
 
+.skill-loadout-card {
+  grid-column: 1 / -1;
+}
+
+.skill-loadout-section {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.skill-loadout-label {
+  color: #5f6f70;
+  font-size: 13px;
+}
+
+.skill-option-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  min-width: 0;
+}
+
+.skill-option {
+  align-items: start;
+  background: #ffffff;
+  border: 1px solid #cdd8d4;
+  border-radius: 8px;
+  color: #172425;
+  cursor: pointer;
+  display: grid;
+  gap: 5px;
+  justify-items: start;
+  min-height: 112px;
+  min-width: 0;
+  padding: 10px 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.skill-option.selected {
+  background: #fffaf0;
+  border-color: #c69a4a;
+}
+
+.skill-option:disabled:not(.selected) {
+  cursor: not-allowed;
+}
+
+.skill-option strong,
+.skill-option span,
+.skill-option small,
+.skill-priority-row strong,
+.skill-priority-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.skill-option span,
+.skill-option small,
+.skill-priority-row span {
+  color: #5f6f70;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.skill-priority-list {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.skill-priority-row {
+  align-items: center;
+  background: #f7f9f5;
+  border: 1px solid #dce4df;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+  padding: 10px;
+}
+
+.skill-priority-row > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.skill-priority-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
 .event-hero,
 .event-boundary {
   align-items: center;
@@ -1203,6 +1325,7 @@ details.event-boundary {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  min-width: 0;
 }
 
 .event-card {
@@ -1211,6 +1334,7 @@ details.event-boundary {
   border-radius: 8px;
   display: grid;
   gap: 10px;
+  min-width: 0;
   min-height: 210px;
   padding: 14px;
 }
@@ -1234,6 +1358,7 @@ details.event-boundary {
   display: grid;
   gap: 12px;
   grid-template-columns: minmax(240px, 0.82fr) minmax(0, 1.18fr);
+  min-width: 0;
 }
 
 .inner-world-summary,
@@ -1243,6 +1368,7 @@ details.event-boundary {
   border-radius: 8px;
   display: grid;
   gap: 8px;
+  min-width: 0;
   padding: 14px;
 }
 
@@ -1282,6 +1408,7 @@ details.event-boundary {
   display: grid;
   gap: 12px;
   grid-template-columns: minmax(240px, 0.85fr) minmax(0, 1.15fr);
+  min-width: 0;
 }
 
 .faction-state-card,
@@ -1291,6 +1418,7 @@ details.event-boundary {
   border-radius: 8px;
   display: grid;
   gap: 8px;
+  min-width: 0;
   padding: 14px;
 }
 
@@ -1326,6 +1454,7 @@ details.event-boundary {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  min-width: 0;
 }
 
 .rank-mini-card,
@@ -1335,6 +1464,7 @@ details.event-boundary {
   border-radius: 8px;
   display: grid;
   gap: 8px;
+  min-width: 0;
   padding: 14px;
 }
 
@@ -1357,6 +1487,7 @@ details.event-boundary {
   gap: 12px;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   margin-top: 12px;
+  min-width: 0;
 }
 
 .tower-card {
@@ -1365,6 +1496,7 @@ details.event-boundary {
   border-radius: 8px;
   display: grid;
   gap: 8px;
+  min-width: 0;
   min-height: 154px;
   padding: 14px;
 }
@@ -1478,12 +1610,15 @@ details.event-boundary {
   .overview-grid,
   .today-controls,
   .today-action-grid,
+  .event-choice-grid,
   .recommended-action,
   .goal-card,
   .growth-target-card,
   .battle-stat-grid,
   .inner-world-lists,
-  .faction-route-list {
+  .faction-route-list,
+  .skill-option-grid,
+  .skill-priority-row {
     grid-template-columns: 1fr;
   }
 
@@ -1645,6 +1780,15 @@ details.event-boundary {
   .production-actions > * {
     flex: 1 1 116px;
     min-height: 44px;
+  }
+
+  .skill-priority-actions {
+    justify-content: stretch;
+    width: 100%;
+  }
+
+  .skill-priority-actions .nextday-button {
+    flex: 1 1 96px;
   }
 
   .tab-nav {
@@ -1937,7 +2081,29 @@ details.event-boundary {
 }
 
 .text-game-shell .event-choice-grid button {
+  align-items: start;
+  display: grid;
+  justify-content: start;
+  justify-items: start;
   min-height: 44px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: 8px 10px !important;
+  text-align: left;
+  white-space: normal;
+  width: 100%;
+}
+
+.text-game-shell .event-choice-grid strong,
+.text-game-shell .event-choice-grid span,
+.text-game-shell .event-choice-grid small,
+.text-game-shell .skill-option strong,
+.text-game-shell .skill-option span,
+.text-game-shell .skill-option small,
+.text-game-shell .skill-priority-row strong,
+.text-game-shell .skill-priority-row span {
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .text-game-shell .goal-card,
@@ -2085,14 +2251,19 @@ details.event-boundary {
 .text-game-shell .production-grid,
 .text-game-shell .event-grid,
 .text-game-shell .tower-grid,
-.text-game-shell .rank-summary-grid {
+.text-game-shell .rank-summary-grid,
+.text-game-shell .skill-option-grid,
+.text-game-shell .skill-priority-list {
   gap: 14px;
+  min-width: 0;
 }
 
 .text-game-shell .province,
 .text-game-shell .task-row,
 .text-game-shell .battle-card,
 .text-game-shell .production-box,
+.text-game-shell .skill-option,
+.text-game-shell .skill-priority-row,
 .text-game-shell .choice-field select,
 .text-game-shell .event-hero,
 .text-game-shell .event-boundary,
@@ -2108,6 +2279,36 @@ details.event-boundary {
   border: 1px solid #dddddd;
   border-radius: 0;
   box-shadow: none;
+  min-width: 0;
+}
+
+.text-game-shell .skill-loadout-card {
+  grid-column: 1 / -1;
+}
+
+.text-game-shell .skill-option {
+  align-items: start;
+  color: #111111 !important;
+  display: grid;
+  justify-content: start;
+  justify-items: start;
+  min-height: 0;
+  padding: 10px !important;
+  text-align: left;
+  white-space: normal;
+}
+
+.text-game-shell .skill-option.selected {
+  border-color: #111111 !important;
+  outline: 1px solid #111111;
+}
+
+.text-game-shell .skill-priority-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.text-game-shell .skill-priority-actions {
+  justify-content: end;
 }
 
 .text-game-shell .empty {
@@ -2262,9 +2463,12 @@ details.event-boundary {
   .text-game-shell .today-action-grid,
   .text-game-shell .recommended-action,
   .text-game-shell .explore-queue-card,
+  .text-game-shell .event-choice-grid,
   .text-game-shell .explore-event-card.idle,
   .text-game-shell .goal-card,
   .text-game-shell .growth-target-card,
+  .text-game-shell .skill-option-grid,
+  .text-game-shell .skill-priority-row,
   .text-game-shell .today-layout {
     grid-template-columns: 1fr;
   }

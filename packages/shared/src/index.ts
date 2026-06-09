@@ -962,6 +962,7 @@ export interface BagItemState {
   name: string;
   category: ItemCategory;
   count: string;
+  quality?: PillQuality | null;
   bind_type: ItemBindType | string;
   locked: boolean;
   tradeable: boolean;

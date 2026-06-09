@@ -28,6 +28,7 @@
 - [章节剧本与剧情配置设计](docs/STORY_CHAPTER_SCRIPT_DESIGN.md)
 - [研发 Backlog 拆分](docs/DEVELOPMENT_BACKLOG_DESIGN.md)
 - [P1 落地路线图](docs/P1_ROADMAP_DESIGN.md)
+- [P2 长线增强路线图](docs/P2_ROADMAP_DESIGN.md)
 - [API 接口契约设计](docs/API_CONTRACT_DESIGN.md)
 - [数据库表结构设计](docs/DATABASE_SCHEMA_DESIGN.md)
 - [配置样例表](docs/CONFIG_SAMPLE_TABLES.md)

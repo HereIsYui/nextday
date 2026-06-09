@@ -21,6 +21,7 @@ import type {
   AppearanceMutationResponse,
   AuthMeResponse,
   BagSummaryResponse,
+  BattleNarrativeResponse,
   BreakthroughResponse,
   CaveCollectResponse,
   ChooseFactionRouteRequest,
@@ -53,6 +54,7 @@ import type {
   EquipmentOperationRecordListResponse,
   EquipmentOperationResponse,
   EquipmentTargetRequest,
+  EraChronicleResponse,
   ExecuteMergeReservedRequest,
   ExecuteMergeReservedResponse,
   ExploreClaimRequest,
@@ -129,6 +131,8 @@ import type {
   SetItemLockRequest,
   SetItemLockResponse,
   SkillLoadoutResponse,
+  StoryScrollDetailResponse,
+  StoryScrollListResponse,
   SubmitActivityProgressRequest,
   SubmitActivityProgressResponse,
   SyncVipRequest,
@@ -211,6 +215,22 @@ export class GameClient {
 
   getConfig(configType: ConfigType): Promise<ApiResponse<ConfigEnvelope>> {
     return this.get<ConfigEnvelope>(`/api/config/${configType}`);
+  }
+
+  storyScrolls(): Promise<ApiResponse<StoryScrollListResponse>> {
+    return this.get<StoryScrollListResponse>("/api/story/scrolls");
+  }
+
+  storyScroll(scrollId: string): Promise<ApiResponse<StoryScrollDetailResponse>> {
+    return this.get<StoryScrollDetailResponse>(`/api/story/scrolls/${scrollId}`);
+  }
+
+  battleNarrative(battleId: string): Promise<ApiResponse<BattleNarrativeResponse>> {
+    return this.get<BattleNarrativeResponse>(`/api/story/battle-narratives/${battleId}`);
+  }
+
+  eraChronicle(): Promise<ApiResponse<EraChronicleResponse>> {
+    return this.get<EraChronicleResponse>("/api/story/era-chronicle");
   }
 
   gameOverview(): Promise<ApiResponse<GameOverviewResponse>> {

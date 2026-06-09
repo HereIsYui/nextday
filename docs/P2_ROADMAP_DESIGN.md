@@ -140,4 +140,13 @@ P2-0 文档与接口预备已完成：
 - `CONFIG_SCHEMA_DESIGN.md`：已补 P2 配置类型、发布校验、版本追溯和 ID 命名规范。
 - `QA_TEST_PLAN.md`：已补 P2 专项测试占位和验收口径。
 
-下一步从 P2-1 开始，优先实现高阶剧情演出 / 章节卷轴，避免先做转服这类高风险能力。
+P2-1 高阶剧情演出 / 章节卷轴已完成：
+
+- `prisma/schema.prisma` 与 migration：已新增 `story_scroll_record`、`era_chronicle_record`。
+- `apps/api/src/story`：已新增章节卷轴、战报叙事和纪元史册 API。
+- `apps/api/src/game-config/default-configs.ts`：已新增 `story_presentation` 配置。
+- `packages/shared` 与 `packages/game-client`：已新增剧情卷轴、战报叙事和纪元史册类型与客户端方法。
+- `apps/web/app/page.tsx`：已新增“卷轴”页签，展示章节片段、战报引用和纪元史册。
+- `apps/api/test/p2-story.e2e-spec.ts`：已接入 `npm run test:p2-story`，覆盖配置边界、持久化、叙事和敏感信息过滤。
+
+下一步从 P2-2 开始，推进多纪元收藏 / 纪元博物志，继续保持不加战力、不叠加多纪元 Buff 的边界。

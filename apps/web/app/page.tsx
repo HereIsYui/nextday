@@ -13,6 +13,7 @@ import type {
   BattleSummary,
   EntitlementOverviewResponse,
   EquipmentListResponse,
+  EraChronicleResponse,
   ExperiencePayload,
   ExperienceTone,
   ExploreEventState,
@@ -35,6 +36,8 @@ import type {
   ResourcePointListResponse,
   SectDetailResponse,
   SkillLoadoutResponse,
+  StoryScrollDetailResponse,
+  StoryScrollListResponse,
   TaskState,
   TitleCollectionResponse,
   TowerListResponse,
@@ -46,7 +49,7 @@ import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } 
 
 type HealthText = "检测中" | "正常" | "不可用";
 type RouteValue = "qi" | "body";
-type ActiveTab = "overview" | "events" | "growth" | "multiplayer" | "market" | "battle";
+type ActiveTab = "overview" | "story" | "events" | "growth" | "multiplayer" | "market" | "battle";
 
 const tokenStorageKey = "nextday_m1_token";
 const deviceStorageKey = "nextday_m1_device_id";
@@ -56,6 +59,7 @@ const showDevelopmentActions = process.env.NEXT_PUBLIC_SHOW_DEV_ACTIONS === "tru
 
 const navItems: Array<{ key: ActiveTab; label: string }> = [
   { key: "overview", label: "九州" },
+  { key: "story", label: "卷轴" },
   { key: "events", label: "活动" },
   { key: "growth", label: "成长" },
   { key: "multiplayer", label: "多人" },
@@ -160,6 +164,9 @@ export default function HomePage() {
     null,
   );
   const [appearances, setAppearances] = useState<AppearanceListResponse | null>(null);
+  const [storyScrolls, setStoryScrolls] = useState<StoryScrollListResponse | null>(null);
+  const [storyDetail, setStoryDetail] = useState<StoryScrollDetailResponse | null>(null);
+  const [eraChronicle, setEraChronicle] = useState<EraChronicleResponse | null>(null);
   const [playerName, setPlayerName] = useState("云游修士");
   const [route, setRoute] = useState<RouteValue>("qi");
   const [message, setMessage] = useState("尚未登录");
@@ -173,6 +180,7 @@ export default function HomePage() {
   const [selectedAlchemyRecipeId, setSelectedAlchemyRecipeId] = useState("");
   const [selectedForgeRecipeId, setSelectedForgeRecipeId] = useState("");
   const [selectedPillItemInstanceId, setSelectedPillItemInstanceId] = useState("");
+  const [selectedStoryScrollId, setSelectedStoryScrollId] = useState("");
   const [currentExplore, setCurrentExplore] = useState<ExploreResponse | null>(null);
   const [pendingExploreEvents, setPendingExploreEvents] = useState<ExploreEventState[]>([]);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -238,6 +246,9 @@ export default function HomePage() {
   const ownedTreasureCount =
     ancientTreasures?.treasures.filter((treasure) => treasure.owned).length ?? 0;
   const firstAppearance = appearances?.appearances[0];
+  const selectedStoryScroll =
+    storyScrolls?.scrolls.find((scroll) => scroll.scroll_id === selectedStoryScrollId) ??
+    storyScrolls?.scrolls[0];
   const firstPendingExploreEvent = pendingExploreEvents[0];
   const firstInnerCreature = innerWorld?.creatures.find((creature) => creature.status === "idle");
   const firstUnlockedProvince =
@@ -608,6 +619,35 @@ export default function HomePage() {
       ignore = true;
     };
   }, [token, activePlayerId]);
+
+  useEffect(() => {
+    if (!token || !activePlayerId) {
+      return;
+    }
+
+    let ignore = false;
+    loadStory(createClient(token), selectedStoryScrollId)
+      .then((state) => {
+        if (ignore) {
+          return;
+        }
+        setStoryScrolls(state.storyScrolls);
+        setStoryDetail(state.storyDetail);
+        setEraChronicle(state.eraChronicle);
+        if (state.storyDetail && state.storyDetail.scroll.scroll_id !== selectedStoryScrollId) {
+          setSelectedStoryScrollId(state.storyDetail.scroll.scroll_id);
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setMessage("章节卷轴读取失败");
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [token, activePlayerId, selectedStoryScrollId]);
 
   useEffect(() => {
     if (!token || !activePlayerId) {
@@ -1514,6 +1554,16 @@ export default function HomePage() {
     }, 0);
   }
 
+  async function handleSelectStoryScroll(scrollId: string) {
+    setSelectedStoryScrollId(scrollId);
+    await runAction("卷轴已展开", async () => {
+      const response = await client.storyScroll(scrollId);
+      ensureOk(response);
+      setStoryDetail(response.data);
+      handleTabChange("story", { focus: true });
+    });
+  }
+
   function rememberExperience(
     experience?: ExperiencePayload,
     fallback?: {
@@ -2021,6 +2071,107 @@ export default function HomePage() {
                   </div>
                 </section>
               </div>
+            ) : null}
+
+            {activeTab === "story" ? (
+              <section className="panel" aria-label="章节卷轴">
+                <div className="section-title">
+                  <h2>章节卷轴</h2>
+                  <span>战报、选择与纪元史册回放</span>
+                </div>
+                <div className="main-grid">
+                  <div className="task-list">
+                    {storyScrolls?.scrolls.map((scroll) => (
+                      <article
+                        className={`task-row ${
+                          selectedStoryScroll?.scroll_id === scroll.scroll_id
+                            ? "task-row-focused"
+                            : ""
+                        }`}
+                        key={scroll.scroll_id}
+                      >
+                        <div>
+                          <strong>{scroll.title}</strong>
+                          <span>
+                            第 {scroll.chapter_id} 章 · {scroll.latest_fragment} ·{" "}
+                            {scroll.progress_percent}%
+                          </span>
+                        </div>
+                        {scroll.unlock_state === "unlocked" ? (
+                          <Button
+                            disabled={busy}
+                            onClick={() => handleSelectStoryScroll(scroll.scroll_id)}
+                          >
+                            阅读
+                          </Button>
+                        ) : (
+                          <StatusBadge tone="neutral">未解锁</StatusBadge>
+                        )}
+                      </article>
+                    )) ?? <p className="empty">章节卷轴尚未读取。</p>}
+                  </div>
+
+                  <article className="production-box">
+                    <div className="province-head">
+                      <strong>{storyDetail?.scroll.title ?? "未选择卷轴"}</strong>
+                      <StatusBadge
+                        tone={
+                          storyDetail?.scroll.unlock_state === "unlocked" ? "success" : "neutral"
+                        }
+                      >
+                        {storyDetail?.scroll.unlock_state === "unlocked" ? "可回看" : "待解锁"}
+                      </StatusBadge>
+                    </div>
+                    <p>{storyDetail?.scroll.subtitle ?? "选择一卷，查看已归档的修行片段。"}</p>
+                    <div className="journal-list">
+                      {storyDetail?.scroll.fragments.map((fragment) => (
+                        <article
+                          className={fragment.unlocked ? "journal-entry" : "journal-entry muted"}
+                          key={fragment.fragment_id}
+                        >
+                          <div className="journal-entry-head">
+                            <strong>{fragment.title}</strong>
+                            <StatusBadge tone={fragment.unlocked ? "success" : "neutral"}>
+                              {fragment.unlocked ? "已归档" : "未解锁"}
+                            </StatusBadge>
+                          </div>
+                          <p>{fragment.body}</p>
+                        </article>
+                      ))}
+                    </div>
+                    {storyDetail?.scroll.battle_refs.length ? (
+                      <div className="mini-stats">
+                        {storyDetail.scroll.battle_refs.slice(0, 3).map((battle) => (
+                          <span key={battle.battle_id}>
+                            {battle.title} · {battle.summary}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="action-note">暂无可引用战报，完成探索后会自动归档。</span>
+                    )}
+                  </article>
+                </div>
+
+                <div className="rank-summary-grid">
+                  {eraChronicle?.entries.map((entry) => (
+                    <article className="rank-mini-card" key={entry.chronicle_id}>
+                      <div className="province-head">
+                        <strong>{entry.title}</strong>
+                        <StatusBadge tone="neutral">
+                          {chronicleTypeLabel(entry.chronicle_type)}
+                        </StatusBadge>
+                      </div>
+                      <p>{entry.summary}</p>
+                      <div className="mini-stats">
+                        {entry.highlights.slice(0, 3).map((highlight) => (
+                          <span key={highlight}>{highlight}</span>
+                        ))}
+                      </div>
+                    </article>
+                  )) ?? <p className="empty">纪元史册尚未生成。</p>}
+                </div>
+              </section>
             ) : null}
 
             {activeTab === "events" ? (
@@ -4312,6 +4463,31 @@ async function loadActivities(client: GameClient) {
   return response.data;
 }
 
+async function loadStory(client: GameClient, preferredScrollId?: string) {
+  const [scrollsResponse, chronicleResponse] = await Promise.all([
+    client.storyScrolls(),
+    client.eraChronicle(),
+  ]);
+
+  ensureOk(scrollsResponse);
+  ensureOk(chronicleResponse);
+
+  const scrollId =
+    scrollsResponse.data.scrolls.find((scroll) => scroll.scroll_id === preferredScrollId)
+      ?.scroll_id ??
+    scrollsResponse.data.scrolls.find((scroll) => scroll.unlock_state === "unlocked")?.scroll_id;
+  const detailResponse = scrollId ? await client.storyScroll(scrollId) : null;
+  if (detailResponse) {
+    ensureOk(detailResponse);
+  }
+
+  return {
+    storyScrolls: scrollsResponse.data,
+    storyDetail: detailResponse?.data ?? null,
+    eraChronicle: chronicleResponse.data,
+  };
+}
+
 async function loadCommerce(client: GameClient) {
   const [overviewResponse, poolResponse, treasureResponse, appearanceResponse] = await Promise.all([
     client.commerceOverview(),
@@ -4432,6 +4608,15 @@ function sourceTypeLabel(sourceType: string): string {
     tower: "九塔",
   };
   return labels[sourceType] ?? "未知来源";
+}
+
+function chronicleTypeLabel(type: string): string {
+  const labels: Record<string, string> = {
+    event: "活动",
+    rank: "排行",
+    tower: "九塔",
+  };
+  return labels[type] ?? "史册";
 }
 
 function battleTypeLabel(battleType: string): string {
@@ -4645,6 +4830,7 @@ function activeTabLabel(tab: ActiveTab): string {
 function isActiveTab(value: string | null): value is ActiveTab {
   return (
     value === "overview" ||
+    value === "story" ||
     value === "events" ||
     value === "growth" ||
     value === "multiplayer" ||

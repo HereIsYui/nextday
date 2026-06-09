@@ -2021,6 +2021,10 @@ details.event-boundary {
   padding: 0 0 14px;
 }
 
+.text-game-shell .journal-entry.muted {
+  opacity: 0.68;
+}
+
 .text-game-shell .journal-entry-head {
   align-items: baseline;
   gap: 8px;

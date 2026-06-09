@@ -20,6 +20,7 @@ import { PlayerModule } from "./player/player.module";
 import { PluginModule } from "./plugin/plugin.module";
 import { ProductionModule } from "./production/production.module";
 import { RiskModule } from "./risk/risk.module";
+import { StoryModule } from "./story/story.module";
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { RiskModule } from "./risk/risk.module";
     InnerWorldModule,
     FactionsModule,
     EventsModule,
+    StoryModule,
     PluginModule,
     AdminModule,
   ],

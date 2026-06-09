@@ -197,6 +197,86 @@ export interface JournalListResponse {
   next_cursor: string | null;
 }
 
+export type StoryScrollUnlockState = "locked" | "unlocked" | "archived";
+
+export interface StoryScrollFragmentState {
+  fragment_id: string;
+  title: string;
+  body: string;
+  fragment_type: "opening" | "choice" | "battle_ref" | "ending" | string;
+  unlocked: boolean;
+  source_type?: string;
+  source_id?: string | null;
+}
+
+export interface StoryBattleReference {
+  battle_id: string;
+  battle_type: string;
+  title: string;
+  summary: string;
+  result: "win" | "lose" | string;
+  created_at: string;
+}
+
+export interface StoryScrollSummaryState {
+  scroll_record_id: string | null;
+  scroll_id: string;
+  title: string;
+  subtitle: string;
+  chapter_id: number;
+  unlock_state: StoryScrollUnlockState;
+  progress_percent: number;
+  latest_fragment: string;
+  updated_at: string | null;
+  story_config_version: string;
+}
+
+export interface StoryScrollDetailState extends StoryScrollSummaryState {
+  fragments: StoryScrollFragmentState[];
+  battle_refs: StoryBattleReference[];
+  choice_summary: string[];
+  sensitive_filtered: boolean;
+}
+
+export interface StoryScrollListResponse {
+  scrolls: StoryScrollSummaryState[];
+}
+
+export interface StoryScrollDetailResponse {
+  scroll: StoryScrollDetailState;
+}
+
+export interface BattleNarrativeResponse {
+  battle_id: string;
+  battle_type: string;
+  title: string;
+  summary: string;
+  narrative_lines: string[];
+  key_rounds: string[];
+  result_reason: string[];
+  source_battle_id: string;
+  story_config_version: string;
+}
+
+export interface EraChronicleEntryState {
+  chronicle_id: string;
+  era_id: string;
+  server_id: string;
+  chronicle_type: string;
+  title: string;
+  summary: string;
+  highlights: string[];
+  visibility_rule: "public" | "server" | "sect" | "personal" | "admin" | string;
+  related_source_ids: string[];
+  created_at: string;
+}
+
+export interface EraChronicleResponse {
+  entries: EraChronicleEntryState[];
+  story_config_version: string;
+  collection_config_version: string;
+}
+
 export const ErrorCode = {
   ok: 0,
   authRequired: 10000,
@@ -1807,6 +1887,13 @@ export type ConfigType =
   | "event"
   | "activity_template"
   | "merge_dry_run"
+  | "story_presentation"
+  | "era_collection"
+  | "appearance_plus"
+  | "mentor_rule"
+  | "sect_diplomacy"
+  | "sect_hire"
+  | "transfer_rule"
   | "risk";
 
 export interface ConfigEnvelope<TPayload = Record<string, unknown>> {

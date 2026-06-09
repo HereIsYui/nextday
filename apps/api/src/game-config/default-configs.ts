@@ -66,6 +66,12 @@ import {
   skillConfigs,
 } from "../production/production.constants";
 import { riskConfig, riskConfigVersion, riskRulesetVersion } from "../risk/risk.constants";
+import {
+  sensitiveStoryTerms,
+  storyConfigVersion,
+  storyRulesetVersion,
+  storyScrollConfigs,
+} from "../story/story.constants";
 
 export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
   realm: {
@@ -363,6 +369,28 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
       inheritance_rule:
         "付费仙玉、月卡剩余天数、抽卡保底、展示外观只生成检查报告，不在 dry-run 中迁移。",
       execution_rule: "真实合服执行入口预留但默认不可用，必须人工确认并单独发布。",
+    },
+  },
+  story_presentation: {
+    config_type: "story_presentation",
+    config_version: storyConfigVersion,
+    ruleset_version: storyRulesetVersion,
+    reward_config_version: "reward_p2_story_none_v1",
+    payload: {
+      scrolls: storyScrollConfigs.map((scroll) => ({
+        scroll_id: scroll.scrollId,
+        title: scroll.title,
+        subtitle: scroll.subtitle,
+        chapter_id: scroll.chapterId,
+        unlock_condition: scroll.unlockCondition,
+        source_types: scroll.sourceTypes,
+        battle_types: scroll.battleTypes,
+        fragment_count: scroll.fragments.length,
+        fallback_text: scroll.fallbackText,
+      })),
+      sensitive_filter_terms: sensitiveStoryTerms,
+      reward_mutation_allowed: false,
+      websocket_settlement_allowed: false,
     },
   },
   gacha: {

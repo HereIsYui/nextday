@@ -94,6 +94,7 @@ model Player {
   riskRecords               BehaviorRiskRecord[]
   delayedSettlements        DelayedSettlementRecord[]
   mails                     PlayerMail[]
+  storyScrollRecords        StoryScrollRecord[]
 
   @@index([accountId])
   @@index([sectId])
@@ -314,19 +315,19 @@ model ExploreEventRecord {
 }
 
 model PlayerJournalEntry {
-  journalEntryId    String   @id @map("journal_entry_id")
-  playerId          String   @map("player_id")
-  eraId             String   @default("era_mvp_001") @map("era_id")
-  sourceType        String   @map("source_type")
-  sourceId          String?  @map("source_id")
-  title             String
-  summary           String
-  deltaSummary      Json     @map("delta_summary")
-  tags              Json
-  recommendations   Json
-  experienceSnapshot Json?   @map("experience_snapshot")
-  configVersion     String   @default("p1_7_journal_v1") @map("config_version")
-  createdAt         DateTime @default(now()) @map("created_at")
+  journalEntryId     String   @id @map("journal_entry_id")
+  playerId           String   @map("player_id")
+  eraId              String   @default("era_mvp_001") @map("era_id")
+  sourceType         String   @map("source_type")
+  sourceId           String?  @map("source_id")
+  title              String
+  summary            String
+  deltaSummary       Json     @map("delta_summary")
+  tags               Json
+  recommendations    Json
+  experienceSnapshot Json?    @map("experience_snapshot")
+  configVersion      String   @default("p1_7_journal_v1") @map("config_version")
+  createdAt          DateTime @default(now()) @map("created_at")
 
   player Player @relation(fields: [playerId], references: [playerId])
 
@@ -410,8 +411,8 @@ model EventRecord {
   lastActionAt        DateTime? @map("last_action_at")
   settledAt           DateTime? @map("settled_at")
 
-  eventInstance EventInstance      @relation(fields: [eventInstanceId], references: [eventInstanceId])
-  player        Player             @relation(fields: [playerId], references: [playerId])
+  eventInstance EventInstance       @relation(fields: [eventInstanceId], references: [eventInstanceId])
+  player        Player              @relation(fields: [playerId], references: [playerId])
   rewards       EventRewardRecord[]
 
   @@unique([eventInstanceId, playerId, periodKey])
@@ -1518,6 +1519,58 @@ model MergeDryRunReport {
   @@index([executeStatus])
   @@index([createdAt])
   @@map("merge_dry_run_report")
+}
+
+model StoryScrollRecord {
+  scrollRecordId      String   @id @map("scroll_record_id")
+  playerId            String   @map("player_id")
+  eraId               String   @default("era_mvp_001") @map("era_id")
+  scrollId            String   @map("scroll_id")
+  chapterId           Int      @map("chapter_id")
+  unlockState         String   @default("unlocked") @map("unlock_state")
+  fragmentState       Json     @map("fragment_state")
+  battleRefs          Json     @map("battle_refs")
+  choiceSummary       Json     @map("choice_summary")
+  sourceType          String   @map("source_type")
+  sourceId            String?  @map("source_id")
+  storyConfigVersion  String   @map("story_config_version")
+  storyRulesetVersion String   @map("story_ruleset_version")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@unique([playerId, eraId, scrollId])
+  @@index([playerId])
+  @@index([eraId])
+  @@index([scrollId])
+  @@index([chapterId])
+  @@index([sourceType, sourceId])
+  @@index([updatedAt])
+  @@map("story_scroll_record")
+}
+
+model EraChronicleRecord {
+  chronicleId             String   @id @map("chronicle_id")
+  eraId                   String   @default("era_mvp_001") @map("era_id")
+  serverId                String   @default("default") @map("server_id")
+  chronicleType           String   @map("chronicle_type")
+  publicSummary           Json     @map("public_summary")
+  privateSummary          Json?    @map("private_summary")
+  relatedSnapshotId       String?  @map("related_snapshot_id")
+  relatedSourceIds        Json     @map("related_source_ids")
+  visibilityRule          String   @default("server") @map("visibility_rule")
+  storyConfigVersion      String   @map("story_config_version")
+  collectionConfigVersion String   @map("collection_config_version")
+  createdAt               DateTime @default(now()) @map("created_at")
+
+  @@unique([eraId, serverId, chronicleType])
+  @@index([eraId])
+  @@index([serverId])
+  @@index([chronicleType])
+  @@index([visibilityRule])
+  @@index([createdAt])
+  @@map("era_chronicle_record")
 }
 
 model AuditLog {

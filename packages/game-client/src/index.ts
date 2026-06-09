@@ -33,6 +33,7 @@ import type {
   ClaimMonthlyDailyResponse,
   ClaimRankTitleRequest,
   ClaimRankTitleResponse,
+  CollectionSummaryResponse,
   ConfigEnvelope,
   ConfigType,
   ConvenienceBatchPreviewRequest,
@@ -49,12 +50,15 @@ import type {
   CultivationClaimResponse,
   EntitlementOverviewResponse,
   EquipAppearanceRequest,
+  EquipCollectionDisplayRequest,
+  EquipCollectionDisplayResponse,
   EquipmentInscribeRequest,
   EquipmentListResponse,
   EquipmentOperationRecordListResponse,
   EquipmentOperationResponse,
   EquipmentTargetRequest,
   EraChronicleResponse,
+  EraMuseumResponse,
   ExecuteMergeReservedRequest,
   ExecuteMergeReservedResponse,
   ExploreClaimRequest,
@@ -231,6 +235,25 @@ export class GameClient {
 
   eraChronicle(): Promise<ApiResponse<EraChronicleResponse>> {
     return this.get<EraChronicleResponse>("/api/story/era-chronicle");
+  }
+
+  collectionSummary(): Promise<ApiResponse<CollectionSummaryResponse>> {
+    return this.get<CollectionSummaryResponse>("/api/collection/summary");
+  }
+
+  equipCollectionDisplay(
+    body: EquipCollectionDisplayRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<EquipCollectionDisplayResponse>> {
+    return this.post<EquipCollectionDisplayResponse, EquipCollectionDisplayRequest>(
+      "/api/collection/display/equip",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  eraMuseum(): Promise<ApiResponse<EraMuseumResponse>> {
+    return this.get<EraMuseumResponse>("/api/collection/museum");
   }
 
   gameOverview(): Promise<ApiResponse<GameOverviewResponse>> {

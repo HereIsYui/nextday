@@ -95,6 +95,7 @@ model Player {
   delayedSettlements        DelayedSettlementRecord[]
   mails                     PlayerMail[]
   storyScrollRecords        StoryScrollRecord[]
+  eraCollections            EraCollectionRecord[]
 
   @@index([accountId])
   @@index([sectId])
@@ -1571,6 +1572,40 @@ model EraChronicleRecord {
   @@index([visibilityRule])
   @@index([createdAt])
   @@map("era_chronicle_record")
+}
+
+model EraCollectionRecord {
+  collectionRecordId      String    @id @map("collection_record_id")
+  playerId                String    @map("player_id")
+  eraId                   String    @default("era_mvp_001") @map("era_id")
+  collectionId            String    @map("collection_id")
+  collectionType          String    @map("collection_type")
+  sourceType              String    @map("source_type")
+  sourceId                String?   @map("source_id")
+  rarity                  String    @default("common")
+  inherited               Boolean   @default(false)
+  duplicateCount          Int       @default(0) @map("duplicate_count")
+  displayLevel            Int       @default(1) @map("display_level")
+  displaySlot             String?   @map("display_slot")
+  blessingPercent         Int       @default(0) @map("blessing_percent")
+  displayPayload          Json      @map("display_payload")
+  inheritRule             String    @map("inherit_rule")
+  configVersion           String    @map("config_version")
+  rulesetVersion          String    @map("ruleset_version")
+  rewardBoundaryVersion   String    @map("reward_boundary_version")
+  acquiredAt              DateTime  @default(now()) @map("acquired_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@unique([playerId, collectionId])
+  @@index([playerId])
+  @@index([eraId])
+  @@index([collectionType])
+  @@index([sourceType])
+  @@index([displaySlot])
+  @@index([inherited])
+  @@map("era_collection_record")
 }
 
 model AuditLog {

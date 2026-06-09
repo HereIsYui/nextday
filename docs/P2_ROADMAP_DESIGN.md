@@ -149,4 +149,13 @@ P2-1 高阶剧情演出 / 章节卷轴已完成：
 - `apps/web/app/page.tsx`：已新增“卷轴”页签，展示章节片段、战报引用和纪元史册。
 - `apps/api/test/p2-story.e2e-spec.ts`：已接入 `npm run test:p2-story`，覆盖配置边界、持久化、叙事和敏感信息过滤。
 
-下一步从 P2-2 开始，推进多纪元收藏 / 纪元博物志，继续保持不加战力、不叠加多纪元 Buff 的边界。
+P2-2 多纪元收藏 / 纪元博物志已完成：
+
+- `prisma/schema.prisma` 与 migration：已新增 `era_collection_record`，记录收藏来源、展示栏、继承规则、重复转化和限幅祝福。
+- `apps/api/src/collection`：已新增收藏馆摘要、展示栏装备和纪元博物志 API。
+- `apps/api/src/game-config/default-configs.ts`：已新增 `era_collection` 配置，明确 `stat_bonus_allowed=false` 与 `reward_mutation_allowed=false`。
+- `packages/shared` 与 `packages/game-client`：已新增收藏馆、展示槽、装备响应和博物志类型与客户端方法。
+- `apps/web/app/page.tsx`：已新增“收藏”页签，展示个人收藏馆、展示栏、纪元博物志和收藏规则。
+- `apps/api/test/p2-collection.e2e-spec.ts`：已接入 `npm run test:p2-collection`，覆盖配置边界、收藏持久化、展示栏幂等、史料过滤和禁止战力字段。
+
+下一步从 P2-3 开始，推进深度外观，继续保持外观只影响展示、不改变战力、掉落、贡献和排行公式。

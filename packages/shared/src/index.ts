@@ -277,6 +277,84 @@ export interface EraChronicleResponse {
   collection_config_version: string;
 }
 
+export type EraCollectionType =
+  | "story_scroll"
+  | "era_chronicle"
+  | "title"
+  | "tower_achievement"
+  | "faction_ending"
+  | "event_memorial"
+  | "ancient_catalog"
+  | string;
+
+export interface EraCollectionItemState {
+  collection_record_id: string | null;
+  collection_id: string;
+  name: string;
+  collection_type: EraCollectionType;
+  rarity: "common" | "rare" | "epic" | "legendary" | string;
+  source_type: string;
+  source_id: string | null;
+  source_hint: string;
+  era_id: string;
+  owned: boolean;
+  inherited: boolean;
+  duplicate_count: number;
+  display_level: number;
+  display_slot: string | null;
+  display_positions: string[];
+  inherit_rule: string;
+  duplicate_convert: string;
+  blessing_percent: number;
+  effective_blessing_percent: number;
+  stat_bonus: null;
+  unlock_hint: string;
+  public_summary: string;
+  updated_at: string | null;
+}
+
+export interface CollectionDisplaySlotState {
+  slot_id: string;
+  name: string;
+  allowed_types: EraCollectionType[];
+  equipped_collection_id: string | null;
+  equipped_name: string | null;
+}
+
+export interface CollectionBlessingSummary {
+  cap_percent: number;
+  effective_percent: number;
+  stacking_rule: string;
+}
+
+export interface CollectionSummaryResponse {
+  collections: EraCollectionItemState[];
+  display_slots: CollectionDisplaySlotState[];
+  chronicle_entries: EraChronicleEntryState[];
+  blessing_summary: CollectionBlessingSummary;
+  config_version: string;
+  ruleset_version: string;
+}
+
+export interface EquipCollectionDisplayRequest {
+  collection_id: string;
+  display_slot: string;
+}
+
+export interface EquipCollectionDisplayResponse {
+  record_id: string;
+  collection: EraCollectionItemState;
+  display_slots: CollectionDisplaySlotState[];
+  blessing_summary: CollectionBlessingSummary;
+}
+
+export interface EraMuseumResponse {
+  entries: EraChronicleEntryState[];
+  featured_collections: EraCollectionItemState[];
+  sensitive_filtered: boolean;
+  config_version: string;
+}
+
 export const ErrorCode = {
   ok: 0,
   authRequired: 10000,

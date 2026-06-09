@@ -11,9 +11,12 @@ import type {
   AppearanceListResponse,
   BagSummaryResponse,
   BattleSummary,
+  CollectionSummaryResponse,
   EntitlementOverviewResponse,
   EquipmentListResponse,
   EraChronicleResponse,
+  EraCollectionItemState,
+  EraMuseumResponse,
   ExperiencePayload,
   ExperienceTone,
   ExploreEventState,
@@ -49,7 +52,15 @@ import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } 
 
 type HealthText = "检测中" | "正常" | "不可用";
 type RouteValue = "qi" | "body";
-type ActiveTab = "overview" | "story" | "events" | "growth" | "multiplayer" | "market" | "battle";
+type ActiveTab =
+  | "overview"
+  | "story"
+  | "collection"
+  | "events"
+  | "growth"
+  | "multiplayer"
+  | "market"
+  | "battle";
 
 const tokenStorageKey = "nextday_m1_token";
 const deviceStorageKey = "nextday_m1_device_id";
@@ -60,6 +71,7 @@ const showDevelopmentActions = process.env.NEXT_PUBLIC_SHOW_DEV_ACTIONS === "tru
 const navItems: Array<{ key: ActiveTab; label: string }> = [
   { key: "overview", label: "九州" },
   { key: "story", label: "卷轴" },
+  { key: "collection", label: "收藏" },
   { key: "events", label: "活动" },
   { key: "growth", label: "成长" },
   { key: "multiplayer", label: "多人" },
@@ -167,6 +179,8 @@ export default function HomePage() {
   const [storyScrolls, setStoryScrolls] = useState<StoryScrollListResponse | null>(null);
   const [storyDetail, setStoryDetail] = useState<StoryScrollDetailResponse | null>(null);
   const [eraChronicle, setEraChronicle] = useState<EraChronicleResponse | null>(null);
+  const [collection, setCollection] = useState<CollectionSummaryResponse | null>(null);
+  const [eraMuseum, setEraMuseum] = useState<EraMuseumResponse | null>(null);
   const [playerName, setPlayerName] = useState("云游修士");
   const [route, setRoute] = useState<RouteValue>("qi");
   const [message, setMessage] = useState("尚未登录");
@@ -648,6 +662,31 @@ export default function HomePage() {
       ignore = true;
     };
   }, [token, activePlayerId, selectedStoryScrollId]);
+
+  useEffect(() => {
+    if (!token || !activePlayerId) {
+      return;
+    }
+
+    let ignore = false;
+    loadCollection(createClient(token))
+      .then((state) => {
+        if (ignore) {
+          return;
+        }
+        setCollection(state.collection);
+        setEraMuseum(state.eraMuseum);
+      })
+      .catch(() => {
+        if (!ignore) {
+          setMessage("收藏馆读取失败");
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [token, activePlayerId]);
 
   useEffect(() => {
     if (!token || !activePlayerId) {
@@ -1564,6 +1603,29 @@ export default function HomePage() {
     });
   }
 
+  async function handleEquipCollectionDisplay(
+    collectionItem: EraCollectionItemState,
+    slotId: string,
+  ) {
+    if (!token) {
+      return;
+    }
+
+    await runAction("收藏已陈列", async () => {
+      const collectionClient = createClient(token);
+      const response = await collectionClient.equipCollectionDisplay(
+        { collection_id: collectionItem.collection_id, display_slot: slotId },
+        `idem_collection_display_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      );
+      ensureOk(response);
+      const state = await loadCollection(collectionClient);
+      setCollection(state.collection);
+      setEraMuseum(state.eraMuseum);
+      setMessage(`${collectionItem.name} 已放入${collectionDisplaySlotName(slotId)}。`);
+      handleTabChange("collection", { focus: true });
+    });
+  }
+
   function rememberExperience(
     experience?: ExperiencePayload,
     fallback?: {
@@ -2171,6 +2233,107 @@ export default function HomePage() {
                     </article>
                   )) ?? <p className="empty">纪元史册尚未生成。</p>}
                 </div>
+              </section>
+            ) : null}
+
+            {activeTab === "collection" ? (
+              <section className="panel" aria-label="多纪元收藏">
+                <div className="section-title">
+                  <h2>收藏馆</h2>
+                  <span>跨纪元回看 · 陈列不加战力</span>
+                </div>
+                <div className="main-grid">
+                  <div className="task-list">
+                    {collection?.collections.map((item) => (
+                      <article
+                        className={item.owned ? "task-row" : "task-row muted"}
+                        key={item.collection_id}
+                      >
+                        <div>
+                          <strong>{item.name}</strong>
+                          <span>
+                            {collectionTypeLabel(item.collection_type)} ·{" "}
+                            {item.owned ? item.public_summary : item.unlock_hint}
+                          </span>
+                        </div>
+                        <StatusBadge tone={item.owned ? "success" : "neutral"}>
+                          {item.owned ? "已归档" : "待归档"}
+                        </StatusBadge>
+                        {item.owned ? (
+                          <div className="production-actions">
+                            {item.display_positions.map((slotId) =>
+                              item.display_slot === slotId ? (
+                                <StatusBadge key={slotId} tone="success">
+                                  {collectionDisplaySlotName(slotId)}
+                                </StatusBadge>
+                              ) : (
+                                <Button
+                                  disabled={busy}
+                                  key={slotId}
+                                  onClick={() => handleEquipCollectionDisplay(item, slotId)}
+                                >
+                                  放入{collectionDisplaySlotName(slotId)}
+                                </Button>
+                              ),
+                            )}
+                          </div>
+                        ) : null}
+                      </article>
+                    )) ?? <p className="empty">收藏馆尚未读取。</p>}
+                  </div>
+
+                  <article className="production-box">
+                    <div className="province-head">
+                      <strong>展示栏</strong>
+                      <StatusBadge tone="neutral">
+                        {collection?.blessing_summary.effective_percent ?? 0}% /{" "}
+                        {collection?.blessing_summary.cap_percent ?? 1}%
+                      </StatusBadge>
+                    </div>
+                    <p>{collection?.blessing_summary.stacking_rule ?? "收藏只影响展示。"}</p>
+                    <div className="rank-summary-grid">
+                      {collection?.display_slots.map((slot) => (
+                        <article className="rank-mini-card" key={slot.slot_id}>
+                          <div className="province-head">
+                            <strong>{slot.name}</strong>
+                            <StatusBadge tone={slot.equipped_collection_id ? "success" : "neutral"}>
+                              {slot.equipped_collection_id ? "已陈列" : "空位"}
+                            </StatusBadge>
+                          </div>
+                          <p>{slot.equipped_name ?? "选择已归档收藏后可放入此处。"}</p>
+                          <div className="mini-stats">
+                            <span>
+                              可放入 {slot.allowed_types.map(collectionTypeLabel).join(" / ")}
+                            </span>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </article>
+                </div>
+
+                <div className="rank-summary-grid">
+                  {eraMuseum?.featured_collections.map((item) => (
+                    <article className="rank-mini-card" key={item.collection_id}>
+                      <div className="province-head">
+                        <strong>{item.name}</strong>
+                        <StatusBadge tone="success">
+                          {collectionTypeLabel(item.collection_type)}
+                        </StatusBadge>
+                      </div>
+                      <p>{item.public_summary}</p>
+                      <div className="mini-stats">
+                        <span>{item.inherit_rule}</span>
+                        <span>{item.duplicate_convert}</span>
+                      </div>
+                    </article>
+                  )) ?? <p className="empty">博物志尚未生成。</p>}
+                </div>
+
+                <details className="event-boundary">
+                  <summary>收藏规则</summary>
+                  <span>收藏只继承展示、回看和纪念，不继承攻击、防御、掉落或贡献倍率。</span>
+                </details>
               </section>
             ) : null}
 
@@ -4488,6 +4651,21 @@ async function loadStory(client: GameClient, preferredScrollId?: string) {
   };
 }
 
+async function loadCollection(client: GameClient) {
+  const [collectionResponse, museumResponse] = await Promise.all([
+    client.collectionSummary(),
+    client.eraMuseum(),
+  ]);
+
+  ensureOk(collectionResponse);
+  ensureOk(museumResponse);
+
+  return {
+    collection: collectionResponse.data,
+    eraMuseum: museumResponse.data,
+  };
+}
+
 async function loadCommerce(client: GameClient) {
   const [overviewResponse, poolResponse, treasureResponse, appearanceResponse] = await Promise.all([
     client.commerceOverview(),
@@ -4612,11 +4790,35 @@ function sourceTypeLabel(sourceType: string): string {
 
 function chronicleTypeLabel(type: string): string {
   const labels: Record<string, string> = {
+    era_museum: "博物志",
     event: "活动",
+    history_catalog: "图鉴",
     rank: "排行",
     tower: "九塔",
   };
   return labels[type] ?? "史册";
+}
+
+function collectionTypeLabel(type: string): string {
+  const labels: Record<string, string> = {
+    ancient_catalog: "古宝图鉴",
+    era_chronicle: "史册",
+    event_memorial: "活动纪念",
+    faction_ending: "阵营结局",
+    story_scroll: "卷轴",
+    title: "称号",
+    tower_achievement: "九塔战绩",
+  };
+  return labels[type] ?? "收藏";
+}
+
+function collectionDisplaySlotName(slotId: string): string {
+  const labels: Record<string, string> = {
+    chronicle_wall: "史册墙",
+    museum_focus: "博物志焦点",
+    profile_showcase: "名片陈列",
+  };
+  return labels[slotId] ?? "展示栏";
 }
 
 function battleTypeLabel(battleType: string): string {
@@ -4831,6 +5033,7 @@ function isActiveTab(value: string | null): value is ActiveTab {
   return (
     value === "overview" ||
     value === "story" ||
+    value === "collection" ||
     value === "events" ||
     value === "growth" ||
     value === "multiplayer" ||

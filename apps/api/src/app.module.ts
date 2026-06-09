@@ -1,6 +1,7 @@
 import { Inject, type MiddlewareConsumer, Module, type NestModule } from "@nestjs/common";
 import { AdminModule } from "./admin/admin.module";
 import { AuthModule } from "./auth/auth.module";
+import { CollectionModule } from "./collection/collection.module";
 import { CommerceModule } from "./commerce/commerce.module";
 import { DatabaseModule } from "./database/database.module";
 import { EventsModule } from "./events/events.module";
@@ -28,6 +29,7 @@ import { StoryModule } from "./story/story.module";
     LogModule,
     AuthModule,
     PlayerModule,
+    CollectionModule,
     GameModule,
     GameConfigModule,
     ProductionModule,

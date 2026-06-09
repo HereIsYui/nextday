@@ -1,5 +1,13 @@
 import type { ConfigEnvelope } from "@nextday/shared";
 import {
+  collectionBlessingCapPercent,
+  collectionConfigVersion,
+  collectionDisplaySlots,
+  collectionRewardBoundaryVersion,
+  collectionRulesetVersion,
+  eraCollectionConfigs,
+} from "../collection/collection.constants";
+import {
   ancientPageDrawCost,
   ancientTreasures,
   appearanceConfigs,
@@ -391,6 +399,39 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
       sensitive_filter_terms: sensitiveStoryTerms,
       reward_mutation_allowed: false,
       websocket_settlement_allowed: false,
+    },
+  },
+  era_collection: {
+    config_type: "era_collection",
+    config_version: collectionConfigVersion,
+    ruleset_version: collectionRulesetVersion,
+    reward_config_version: collectionRewardBoundaryVersion,
+    payload: {
+      collections: eraCollectionConfigs.map((collection) => ({
+        collection_id: collection.collectionId,
+        name: collection.name,
+        collection_type: collection.collectionType,
+        rarity: collection.rarity,
+        source_type: collection.sourceType,
+        source_hint: collection.sourceHint,
+        display_positions: collection.displayPositions,
+        inherit_rule: collection.inheritRule,
+        duplicate_convert: collection.duplicateConvert,
+        blessing_percent: Math.min(collection.blessingPercent, collectionBlessingCapPercent),
+        unlock_hint: collection.unlockHint,
+        stat_bonus: null,
+      })),
+      display_slots: collectionDisplaySlots.map((slot) => ({
+        slot_id: slot.slotId,
+        name: slot.name,
+        allowed_types: slot.allowedTypes,
+      })),
+      inheritance_boundary:
+        "多纪元收藏只继承展示、回看、图鉴和纪念物；不继承攻击、防御、掉落、贡献或排行倍率。",
+      blessing_cap_percent: collectionBlessingCapPercent,
+      duplicate_rule: "重复收藏只转收藏材料或展示等级，不产生战力。",
+      reward_mutation_allowed: false,
+      stat_bonus_allowed: false,
     },
   },
   gacha: {

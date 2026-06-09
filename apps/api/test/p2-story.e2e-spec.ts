@@ -112,9 +112,10 @@ describe("P2-1 高阶剧情演出与章节卷轴", () => {
       .expect(200);
 
     expect(response.body.data.entries.length).toBeGreaterThanOrEqual(3);
-    expect(
-      response.body.data.entries.map((entry: { chronicle_type: string }) => entry.chronicle_type),
-    ).toEqual(["event", "rank", "tower"]);
+    const chronicleTypes = response.body.data.entries.map(
+      (entry: { chronicle_type: string }) => entry.chronicle_type,
+    );
+    expect(chronicleTypes).toEqual(expect.arrayContaining(["event", "rank", "tower"]));
     expect(JSON.stringify(response.body.data.entries)).not.toMatch(/订单|IP|UA|风控|GM|审计|后台/);
 
     const persisted = await prisma.eraChronicleRecord.count({

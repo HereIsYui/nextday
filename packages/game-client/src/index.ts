@@ -19,6 +19,7 @@ import type {
   ApiResponse,
   AppearanceListResponse,
   AppearanceMutationResponse,
+  AppearancePlusCatalogResponse,
   AuthMeResponse,
   BagSummaryResponse,
   BattleNarrativeResponse,
@@ -49,6 +50,8 @@ import type {
   CreateSectRequest,
   CultivationClaimResponse,
   EntitlementOverviewResponse,
+  EquipAppearancePlusRequest,
+  EquipAppearancePlusResponse,
   EquipAppearanceRequest,
   EquipCollectionDisplayRequest,
   EquipCollectionDisplayResponse,
@@ -254,6 +257,21 @@ export class GameClient {
 
   eraMuseum(): Promise<ApiResponse<EraMuseumResponse>> {
     return this.get<EraMuseumResponse>("/api/collection/museum");
+  }
+
+  appearancePlusCatalog(): Promise<ApiResponse<AppearancePlusCatalogResponse>> {
+    return this.get<AppearancePlusCatalogResponse>("/api/appearance-plus/catalog");
+  }
+
+  equipAppearancePlus(
+    body: EquipAppearancePlusRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<EquipAppearancePlusResponse>> {
+    return this.post<EquipAppearancePlusResponse, EquipAppearancePlusRequest>(
+      "/api/appearance-plus/equip",
+      body,
+      { idempotencyKey },
+    );
   }
 
   gameOverview(): Promise<ApiResponse<GameOverviewResponse>> {

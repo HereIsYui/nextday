@@ -9,6 +9,8 @@ import type {
   AncientTreasureListResponse,
   ApiResponse,
   AppearanceListResponse,
+  AppearancePlusCatalogResponse,
+  AppearancePlusState,
   BagSummaryResponse,
   BattleSummary,
   CollectionSummaryResponse,
@@ -176,6 +178,7 @@ export default function HomePage() {
     null,
   );
   const [appearances, setAppearances] = useState<AppearanceListResponse | null>(null);
+  const [appearancePlus, setAppearancePlus] = useState<AppearancePlusCatalogResponse | null>(null);
   const [storyScrolls, setStoryScrolls] = useState<StoryScrollListResponse | null>(null);
   const [storyDetail, setStoryDetail] = useState<StoryScrollDetailResponse | null>(null);
   const [eraChronicle, setEraChronicle] = useState<EraChronicleResponse | null>(null);
@@ -622,6 +625,7 @@ export default function HomePage() {
         setGachaPools(state.gachaPools);
         setAncientTreasures(state.ancientTreasures);
         setAppearances(state.appearances);
+        setAppearancePlus(state.appearancePlus);
       })
       .catch(() => {
         if (!ignore) {
@@ -1623,6 +1627,34 @@ export default function HomePage() {
       setEraMuseum(state.eraMuseum);
       setMessage(`${collectionItem.name} 已放入${collectionDisplaySlotName(slotId)}。`);
       handleTabChange("collection", { focus: true });
+    });
+  }
+
+  async function handleEquipAppearancePlus(appearanceItem: AppearancePlusState) {
+    if (!token) {
+      return;
+    }
+
+    await runAction("外观已更新", async () => {
+      const appearanceClient = createClient(token);
+      const response = await appearanceClient.equipAppearancePlus(
+        {
+          appearance_id: appearanceItem.appearance_id,
+          display_slot: appearanceItem.display_slot,
+        },
+        `idem_appearance_plus_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      );
+      ensureOk(response);
+      const state = await loadCommerce(appearanceClient);
+      setCommerce(state.commerce);
+      setGachaPools(state.gachaPools);
+      setAncientTreasures(state.ancientTreasures);
+      setAppearances(state.appearances);
+      setAppearancePlus(state.appearancePlus);
+      setMessage(
+        `${appearanceItem.name} 已装备到${appearancePlusSlotLabel(appearanceItem.display_slot)}。`,
+      );
+      handleTabChange("market", { focus: true });
     });
   }
 
@@ -3075,6 +3107,78 @@ export default function HomePage() {
                     title="展示外观"
                   />
                 </div>
+                <section className="rank-panel" aria-label="深度外观编辑">
+                  <div className="section-title">
+                    <h2>深度外观</h2>
+                    <span>名片、战报、洞府与宗门驻地预览</span>
+                  </div>
+                  <div className="rank-summary-grid">
+                    {appearancePlus?.display_slots.map((slot) => (
+                      <article className="rank-mini-card" key={slot.slot_id}>
+                        <div className="province-head">
+                          <strong>{slot.name}</strong>
+                          <StatusBadge tone={slot.equipped_appearance_id ? "success" : "neutral"}>
+                            {slot.equipped_appearance_id ? "已装备" : "空位"}
+                          </StatusBadge>
+                        </div>
+                        <p>{slot.equipped_name ?? "选择已拥有外观后可装备到此处。"}</p>
+                        <div className="mini-stats">
+                          <span>
+                            可放入 {slot.allowed_types.map(appearancePlusTypeLabel).join(" / ")}
+                          </span>
+                        </div>
+                      </article>
+                    )) ?? <p className="empty">外观展示栏尚未读取。</p>}
+                  </div>
+                  <div className="event-grid">
+                    {appearancePlus?.appearances.map((appearance) => (
+                      <article
+                        className={appearance.owned ? "event-card" : "event-card muted"}
+                        key={appearance.appearance_id}
+                      >
+                        <div className="province-head">
+                          <strong>{appearance.name}</strong>
+                          <StatusBadge tone={appearance.equipped ? "success" : "neutral"}>
+                            {appearance.equipped
+                              ? "已装备"
+                              : appearance.owned
+                                ? "已拥有"
+                                : "待获得"}
+                          </StatusBadge>
+                        </div>
+                        <p>{appearance.preview.subtitle}</p>
+                        <div className="mini-stats">
+                          <span>{appearance.preview.sample_text}</span>
+                          <span>
+                            {appearance.preview.display_positions.join(" / ")} ·{" "}
+                            {appearancePlusTypeLabel(appearance.appearance_type)}
+                          </span>
+                        </div>
+                        <div className="production-actions">
+                          {appearance.owned &&
+                          appearance.permission.can_equip &&
+                          !appearance.equipped ? (
+                            <Button
+                              disabled={busy}
+                              onClick={() => handleEquipAppearancePlus(appearance)}
+                            >
+                              装备到{appearancePlusSlotLabel(appearance.display_slot)}
+                            </Button>
+                          ) : null}
+                        </div>
+                        {!appearance.owned || !appearance.permission.can_equip ? (
+                          <span className="action-note">
+                            {appearance.permission.reason ?? appearance.source_hint}
+                          </span>
+                        ) : null}
+                      </article>
+                    )) ?? <p className="empty">深度外观目录尚未读取。</p>}
+                  </div>
+                  <details className="event-boundary">
+                    <summary>外观规则</summary>
+                    <span>外观只改变名片、战报、洞府、宗门驻地和史册展示，不提高战力或贡献。</span>
+                  </details>
+                </section>
               </section>
             ) : null}
 
@@ -4667,23 +4771,32 @@ async function loadCollection(client: GameClient) {
 }
 
 async function loadCommerce(client: GameClient) {
-  const [overviewResponse, poolResponse, treasureResponse, appearanceResponse] = await Promise.all([
+  const [
+    overviewResponse,
+    poolResponse,
+    treasureResponse,
+    appearanceResponse,
+    appearancePlusResponse,
+  ] = await Promise.all([
     client.commerceOverview(),
     client.gachaPools(),
     client.ancientTreasures(),
     client.appearances(),
+    client.appearancePlusCatalog(),
   ]);
 
   ensureOk(overviewResponse);
   ensureOk(poolResponse);
   ensureOk(treasureResponse);
   ensureOk(appearanceResponse);
+  ensureOk(appearancePlusResponse);
 
   return {
     commerce: overviewResponse.data,
     gachaPools: poolResponse.data,
     ancientTreasures: treasureResponse.data,
     appearances: appearanceResponse.data,
+    appearancePlus: appearancePlusResponse.data,
   };
 }
 
@@ -4819,6 +4932,30 @@ function collectionDisplaySlotName(slotId: string): string {
     profile_showcase: "名片陈列",
   };
   return labels[slotId] ?? "展示栏";
+}
+
+function appearancePlusTypeLabel(type: string): string {
+  const labels: Record<string, string> = {
+    battle_frame: "战报边框",
+    cave_decoration: "洞府摆件",
+    chronicle_skin: "史册外观",
+    dynamic_title: "动态称号",
+    name_card: "名片布局",
+    sect_decoration: "宗门驻地",
+  };
+  return labels[type] ?? "外观";
+}
+
+function appearancePlusSlotLabel(slotId: string): string {
+  const labels: Record<string, string> = {
+    battle_report: "战报边框",
+    cave_scene: "洞府摆件",
+    chronicle_skin: "史册外观",
+    name_card: "名片布局",
+    profile_title: "名片称号",
+    sect_hall: "宗门驻地",
+  };
+  return labels[slotId] ?? "展示位";
 }
 
 function battleTypeLabel(battleType: string): string {

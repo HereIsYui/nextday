@@ -1830,6 +1830,81 @@ export interface AppearanceMutationResponse {
   appearance: AppearanceState;
 }
 
+export type AppearancePlusOwnerType = "player" | "sect" | string;
+
+export interface AppearancePlusPreview {
+  title: string;
+  subtitle: string;
+  sample_text: string;
+  display_positions: string[];
+  color_token: string;
+}
+
+export interface AppearancePlusPermission {
+  can_equip: boolean;
+  reason: string | null;
+  required_role?: string | null;
+}
+
+export interface AppearancePlusState {
+  ownership_record_id: string | null;
+  appearance_id: string;
+  name: string;
+  appearance_type: string;
+  display_slot: string;
+  source_type: string;
+  source_hint: string;
+  owner_type: AppearancePlusOwnerType;
+  owner_id: string | null;
+  owned: boolean;
+  equipped: boolean;
+  inherited: boolean;
+  limited: boolean;
+  expires_at: string | null;
+  preview: AppearancePlusPreview;
+  permission: AppearancePlusPermission;
+  stat_bonus: null;
+  config_version: string;
+}
+
+export interface AppearancePlusDisplaySlotState {
+  slot_id: string;
+  name: string;
+  allowed_types: string[];
+  equipped_appearance_id: string | null;
+  equipped_name: string | null;
+}
+
+export interface AppearancePlusCatalogResponse {
+  appearances: AppearancePlusState[];
+  display_slots: AppearancePlusDisplaySlotState[];
+  sect_decoration: {
+    sect_id: string | null;
+    sect_name: string | null;
+    equipped_appearance_id: string | null;
+    equipped_name: string | null;
+  };
+  boundary: {
+    stat_bonus_allowed: false;
+    reward_mutation_allowed: false;
+    contribution_multiplier_allowed: false;
+    drop_rate_allowed: false;
+  };
+  config_version: string;
+  ruleset_version: string;
+}
+
+export interface EquipAppearancePlusRequest {
+  appearance_id: string;
+  display_slot?: string;
+}
+
+export interface EquipAppearancePlusResponse {
+  record_id: string;
+  appearance: AppearancePlusState;
+  display_slots: AppearancePlusDisplaySlotState[];
+}
+
 export interface GameOverviewResponse {
   profile: PlayerProfileResponse;
   cultivation: CultivationStatus | null;

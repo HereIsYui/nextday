@@ -1,5 +1,12 @@
 import type { ConfigEnvelope } from "@nextday/shared";
 import {
+  appearancePlusConfigVersion,
+  appearancePlusConfigs,
+  appearancePlusRewardBoundaryVersion,
+  appearancePlusRulesetVersion,
+  appearancePlusSlots,
+} from "../appearance-plus/appearance-plus.constants";
+import {
   collectionBlessingCapPercent,
   collectionConfigVersion,
   collectionDisplaySlots,
@@ -498,6 +505,40 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
     payload: {
       appearances: appearanceConfigs,
       stat_bonus_rule: "展示外观 statBonus 固定为空，不参与战力、贡献和奖励结算",
+    },
+  },
+  appearance_plus: {
+    config_type: "appearance_plus",
+    config_version: appearancePlusConfigVersion,
+    ruleset_version: appearancePlusRulesetVersion,
+    reward_config_version: appearancePlusRewardBoundaryVersion,
+    payload: {
+      appearances: appearancePlusConfigs.map((appearance) => ({
+        appearance_id: appearance.appearanceId,
+        name: appearance.name,
+        appearance_type: appearance.appearanceType,
+        display_slot: appearance.displaySlot,
+        source_type: appearance.sourceType,
+        source_hint: appearance.sourceHint,
+        owner_scope: appearance.ownerScope,
+        required_role: appearance.requiredRole ?? null,
+        display_positions: appearance.preview.displayPositions,
+        preview_sample: appearance.preview.sampleText,
+        stat_bonus: null,
+      })),
+      display_slots: appearancePlusSlots.map((slot) => ({
+        slot_id: slot.slotId,
+        name: slot.name,
+        allowed_types: slot.allowedTypes,
+      })),
+      boundary: {
+        stat_bonus_allowed: false,
+        reward_mutation_allowed: false,
+        contribution_multiplier_allowed: false,
+        drop_rate_allowed: false,
+      },
+      inheritance_rule: "深度外观只继承展示状态，不继承战力、掉落、贡献或排行倍率。",
+      sect_decoration_rule: "宗门驻地装饰只影响宗门展示，不改变宗门产出或仓库规则。",
     },
   },
   inner_world: {

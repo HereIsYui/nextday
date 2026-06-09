@@ -91,6 +91,7 @@ model Player {
   convenienceStrategies     ConvenienceStrategy[]
   automationQueues          AutomationQueue[]
   appearances               PlayerAppearance[]
+  appearanceOwnerships      AppearanceOwnershipRecord[]
   riskRecords               BehaviorRiskRecord[]
   delayedSettlements        DelayedSettlementRecord[]
   mails                     PlayerMail[]
@@ -920,6 +921,7 @@ model Sect {
   taskRecords    SectTaskRecord[]
   towerActions   TowerActionRecord[]
   bossChallenges WorldBossChallengeRecord[]
+  appearanceOwnerships AppearanceOwnershipRecord[]
 
   @@index([alignment])
   @@index([level])
@@ -1606,6 +1608,45 @@ model EraCollectionRecord {
   @@index([displaySlot])
   @@index([inherited])
   @@map("era_collection_record")
+}
+
+model AppearanceOwnershipRecord {
+  ownershipRecordId     String    @id @map("ownership_record_id")
+  ownerType             String    @map("owner_type")
+  ownerId               String    @map("owner_id")
+  playerId              String?   @map("player_id")
+  sectId                String?   @map("sect_id")
+  appearanceId          String    @map("appearance_id")
+  appearanceType        String    @map("appearance_type")
+  displaySlot           String    @map("display_slot")
+  sourceType            String    @map("source_type")
+  sourceRecordId        String?   @map("source_record_id")
+  inherited             Boolean   @default(false)
+  equipped              Boolean   @default(false)
+  limited               Boolean   @default(false)
+  expiresAt             DateTime? @map("expires_at")
+  previewPayload        Json      @map("preview_payload")
+  permissionSnapshot    Json      @map("permission_snapshot")
+  configVersion         String    @map("config_version")
+  rulesetVersion        String    @map("ruleset_version")
+  rewardBoundaryVersion String    @map("reward_boundary_version")
+  idempotencyKey        String?   @unique @map("idempotency_key")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  player Player? @relation(fields: [playerId], references: [playerId])
+  sect   Sect?   @relation(fields: [sectId], references: [sectId])
+
+  @@unique([ownerType, ownerId, appearanceId])
+  @@index([ownerType, ownerId])
+  @@index([playerId])
+  @@index([sectId])
+  @@index([appearanceType])
+  @@index([displaySlot])
+  @@index([sourceType])
+  @@index([equipped])
+  @@index([expiresAt])
+  @@map("appearance_ownership_record")
 }
 
 model AuditLog {

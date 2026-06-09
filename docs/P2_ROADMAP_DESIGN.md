@@ -158,4 +158,13 @@ P2-2 多纪元收藏 / 纪元博物志已完成：
 - `apps/web/app/page.tsx`：已新增“收藏”页签，展示个人收藏馆、展示栏、纪元博物志和收藏规则。
 - `apps/api/test/p2-collection.e2e-spec.ts`：已接入 `npm run test:p2-collection`，覆盖配置边界、收藏持久化、展示栏幂等、史料过滤和禁止战力字段。
 
-下一步从 P2-3 开始，推进深度外观，继续保持外观只影响展示、不改变战力、掉落、贡献和排行公式。
+P2-3 深度外观已完成：
+
+- `prisma/schema.prisma` 与 migration：已新增 `appearance_ownership_record`，记录玩家 / 宗门外观持有、展示位、权限快照、来源和装备状态。
+- `apps/api/src/appearance-plus`：已新增深度外观目录和装备 API，宗门驻地装饰需宗门身份与角色权限。
+- `apps/api/src/game-config/default-configs.ts`：已新增 `appearance_plus` 配置，明确 `stat_bonus_allowed=false`、`drop_rate_allowed=false`、`contribution_multiplier_allowed=false`。
+- `packages/shared` 与 `packages/game-client`：已新增深度外观目录、展示位、权限、预览和装备响应类型与客户端方法。
+- `apps/web/app/page.tsx`：已在市肆新增“深度外观”编辑区，展示名片、称号、战报、洞府、宗门驻地和史册外观预览。
+- `apps/api/test/p2-appearance.e2e-spec.ts`：已接入 `npm run test:p2-appearance`，覆盖配置边界、默认外观、未拥有拒绝、旧外观归档、宗门权限和禁止战力字段。
+
+下一步从 P2-4 开始，推进高级社交，重点是导师、宗门外交和跨宗门雇佣的异步协作与资产隔离。

@@ -3,13 +3,19 @@ import type {
   ActivityDetailResponse,
   ActivityListResponse,
   AdminConfigVersionListResponse,
+  AdminCreateTransferDryRunRequest,
+  AdminCreateTransferDryRunResponse,
   AdminDelayedSettlementListResponse,
+  AdminExecuteTransferRequest,
+  AdminExecuteTransferResponse,
   AdminGmOperationListResponse,
   AdminLogType,
   AdminMailListResponse,
   AdminPlayerDigestResponse,
   AdminPlayerLogsResponse,
   AdminPlayerRiskResponse,
+  AdminReviewTransferRequest,
+  AdminReviewTransferResponse,
   AdminRiskRecordListResponse,
   AlchemyCraftRequest,
   AlchemyCraftResponse,
@@ -26,6 +32,8 @@ import type {
   BagSummaryResponse,
   BattleNarrativeResponse,
   BreakthroughResponse,
+  CancelTransferRequestRequest,
+  CancelTransferRequestResponse,
   CaveCollectResponse,
   ChooseFactionRouteRequest,
   ChooseFactionRouteResponse,
@@ -52,6 +60,8 @@ import type {
   CreatePlayerResponse,
   CreateSectHireRequest,
   CreateSectRequest,
+  CreateTransferRequestRequest,
+  CreateTransferRequestResponse,
   CultivationClaimResponse,
   EntitlementOverviewResponse,
   EquipAppearancePlusRequest,
@@ -168,6 +178,8 @@ import type {
   TowerListResponse,
   TransferFactionRouteRequest,
   TransferFactionRouteResponse,
+  TransferRuleResponse,
+  TransferStatusResponse,
   WorldBossChallengeRequest,
   WorldBossChallengeResponse,
   WorldBossResponse,
@@ -821,6 +833,36 @@ export class GameClient {
     );
   }
 
+  transferRules(): Promise<ApiResponse<TransferRuleResponse>> {
+    return this.get<TransferRuleResponse>("/api/transfer/rules");
+  }
+
+  transferStatus(): Promise<ApiResponse<TransferStatusResponse>> {
+    return this.get<TransferStatusResponse>("/api/transfer/status");
+  }
+
+  createTransferRequest(
+    body: CreateTransferRequestRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<CreateTransferRequestResponse>> {
+    return this.post<CreateTransferRequestResponse, CreateTransferRequestRequest>(
+      "/api/transfer/request",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  cancelTransferRequest(
+    body: CancelTransferRequestRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<CancelTransferRequestResponse>> {
+    return this.post<CancelTransferRequestResponse, CancelTransferRequestRequest>(
+      "/api/transfer/cancel",
+      body,
+      { idempotencyKey },
+    );
+  }
+
   activityList(): Promise<ApiResponse<ActivityListResponse>> {
     return this.get<ActivityListResponse>("/api/events/list");
   }
@@ -1227,6 +1269,54 @@ export class GameClient {
   ): Promise<ApiResponse<ExecuteMergeReservedResponse>> {
     return this.post<ExecuteMergeReservedResponse, ExecuteMergeReservedRequest>(
       "/api/admin/merge/execute",
+      body,
+      {
+        idempotencyKey: input.idempotencyKey,
+        headers: {
+          "X-Admin-Token": input.adminToken,
+        },
+      },
+    );
+  }
+
+  createTransferDryRun(
+    body: AdminCreateTransferDryRunRequest,
+    input: { adminToken: string; idempotencyKey: string },
+  ): Promise<ApiResponse<AdminCreateTransferDryRunResponse>> {
+    return this.post<AdminCreateTransferDryRunResponse, AdminCreateTransferDryRunRequest>(
+      "/api/admin/transfer/dry-run",
+      body,
+      {
+        idempotencyKey: input.idempotencyKey,
+        headers: {
+          "X-Admin-Token": input.adminToken,
+        },
+      },
+    );
+  }
+
+  reviewTransferRequest(
+    body: AdminReviewTransferRequest,
+    input: { adminToken: string; idempotencyKey: string },
+  ): Promise<ApiResponse<AdminReviewTransferResponse>> {
+    return this.post<AdminReviewTransferResponse, AdminReviewTransferRequest>(
+      "/api/admin/transfer/review",
+      body,
+      {
+        idempotencyKey: input.idempotencyKey,
+        headers: {
+          "X-Admin-Token": input.adminToken,
+        },
+      },
+    );
+  }
+
+  executeTransferReserved(
+    body: AdminExecuteTransferRequest,
+    input: { adminToken: string; idempotencyKey: string },
+  ): Promise<ApiResponse<AdminExecuteTransferResponse>> {
+    return this.post<AdminExecuteTransferResponse, AdminExecuteTransferRequest>(
+      "/api/admin/transfer/execute",
       body,
       {
         idempotencyKey: input.idempotencyKey,

@@ -24,6 +24,7 @@ import { ProductionModule } from "./production/production.module";
 import { RiskModule } from "./risk/risk.module";
 import { SocialModule } from "./social/social.module";
 import { StoryModule } from "./story/story.module";
+import { TransferModule } from "./transfer/transfer.module";
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { StoryModule } from "./story/story.module";
     EventsModule,
     StoryModule,
     SocialModule,
+    TransferModule,
     PluginModule,
     AdminModule,
   ],

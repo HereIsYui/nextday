@@ -29,7 +29,8 @@
     "test:p2-story": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p2-story.e2e-spec.ts",
     "test:p2-collection": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p2-collection.e2e-spec.ts",
     "test:p2-appearance": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p2-appearance.e2e-spec.ts",
-    "test:p2-social": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p2-social.e2e-spec.ts"
+    "test:p2-social": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p2-social.e2e-spec.ts",
+    "test:p2-transfer": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p2-transfer.e2e-spec.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",

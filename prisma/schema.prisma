@@ -24,6 +24,7 @@ model Account {
   behaviorLogs BehaviorLog[]
   riskRecords  BehaviorRiskRecord[]
   idempotency  IdempotencyRecord[]
+  transferRequests TransferRequestRecord[]
 
   @@index([accountType])
   @@index([status])
@@ -100,6 +101,7 @@ model Player {
   mentorRelationsAsMentor   MentorRelationRecord[]    @relation("MentorRelationMentor")
   mentorRelationsAsApprentice MentorRelationRecord[]  @relation("MentorRelationApprentice")
   hireHelpRecords           SectHireRecord[]
+  transferRequests          TransferRequestRecord[]
 
   @@index([accountId])
   @@index([sectId])
@@ -1756,6 +1758,52 @@ model SectHireRecord {
   @@index([status, createdAt])
   @@index([helperSectId, helperPlayerId, status])
   @@map("sect_hire_record")
+}
+
+model TransferRequestRecord {
+  transferRequestId         String    @id @map("transfer_request_id")
+  playerId                  String    @map("player_id")
+  accountId                 String    @map("account_id")
+  sourceServerId            String    @map("source_server_id")
+  targetServerId            String    @map("target_server_id")
+  eraId                     String    @default("era_mvp_001") @map("era_id")
+  status                    String    @default("submitted")
+  dryRunReport              Json      @map("dry_run_report")
+  assetMappingSummary       Json?     @map("asset_mapping_summary")
+  rankCooldownUntil         DateTime? @map("rank_cooldown_until")
+  sectCleanupSummary        Json?     @map("sect_cleanup_summary")
+  paymentAssetCheckSummary  Json?     @map("payment_asset_check_summary")
+  riskSummary               Json?     @map("risk_summary")
+  reviewOperatorId          String?   @map("review_operator_id")
+  reviewReason              String?   @map("review_reason")
+  executeStatus             String    @default("dry_run_only") @map("execute_status")
+  idempotencyKey            String?   @unique @map("idempotency_key")
+  transferConfigVersion     String    @map("transfer_config_version")
+  riskRulesetVersion        String    @map("risk_ruleset_version")
+  settlementConfigVersion   String    @map("settlement_config_version")
+  createdAt                 DateTime  @default(now()) @map("created_at")
+  updatedAt                 DateTime  @updatedAt @map("updated_at")
+  reviewedAt                DateTime? @map("reviewed_at")
+  executedAt                DateTime? @map("executed_at")
+
+  player  Player  @relation(fields: [playerId], references: [playerId])
+  account Account @relation(fields: [accountId], references: [accountId])
+
+  @@index([playerId])
+  @@index([accountId])
+  @@index([sourceServerId])
+  @@index([targetServerId])
+  @@index([eraId])
+  @@index([status])
+  @@index([executeStatus])
+  @@index([rankCooldownUntil])
+  @@index([reviewOperatorId])
+  @@index([createdAt])
+  @@index([reviewedAt])
+  @@index([executedAt])
+  @@index([playerId, status, createdAt])
+  @@index([targetServerId, status])
+  @@map("transfer_request_record")
 }
 
 model AuditLog {

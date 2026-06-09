@@ -58,6 +58,7 @@ import type {
   TitleCollectionResponse,
   TowerListResponse,
   TowerStateSummary,
+  TransferStatusResponse,
   WorldBossResponse,
 } from "@nextday/shared";
 import { Button, StatusBadge } from "@nextday/ui";
@@ -194,6 +195,7 @@ export default function HomePage() {
   );
   const [appearances, setAppearances] = useState<AppearanceListResponse | null>(null);
   const [appearancePlus, setAppearancePlus] = useState<AppearancePlusCatalogResponse | null>(null);
+  const [transferStatus, setTransferStatus] = useState<TransferStatusResponse | null>(null);
   const [storyScrolls, setStoryScrolls] = useState<StoryScrollListResponse | null>(null);
   const [storyDetail, setStoryDetail] = useState<StoryScrollDetailResponse | null>(null);
   const [eraChronicle, setEraChronicle] = useState<EraChronicleResponse | null>(null);
@@ -287,6 +289,7 @@ export default function HomePage() {
   const firstAncientGrant = commerce?.available_monthly_grants[0];
   const smallMonthlyState = monthlyCardClaimState(commerce, "small_monthly");
   const largeMonthlyState = monthlyCardClaimState(commerce, "large_monthly");
+  const currentTransferRequest = transferStatus?.current_request ?? null;
   const firstActivity = activities?.events[0];
   const firstClaimableActivity = activities?.events.find((activity) => activity.claimable);
   const ownedTreasureCount =
@@ -497,6 +500,32 @@ export default function HomePage() {
       .catch(() => {
         if (!ignore) {
           setMessage("探索队列读取失败");
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [token, activePlayerId]);
+
+  useEffect(() => {
+    if (!token || !activePlayerId) {
+      return;
+    }
+
+    let ignore = false;
+    createClient(token)
+      .transferStatus()
+      .then((response) => {
+        if (ignore) {
+          return;
+        }
+        ensureOk(response);
+        setTransferStatus(response.data);
+      })
+      .catch(() => {
+        if (!ignore) {
+          setMessage("转服状态读取失败");
         }
       });
 
@@ -809,6 +838,7 @@ export default function HomePage() {
     await refreshMultiplayer();
     await refreshActivities();
     await refreshCommerce();
+    await refreshTransfer();
     await refreshExplore();
     await refreshJournal();
     await refreshExploreEvents();
@@ -879,6 +909,16 @@ export default function HomePage() {
     setGachaPools(state.gachaPools);
     setAncientTreasures(state.ancientTreasures);
     setAppearances(state.appearances);
+  }
+
+  async function refreshTransfer() {
+    if (!token) {
+      return;
+    }
+
+    const response = await createClient(token).transferStatus();
+    ensureOk(response);
+    setTransferStatus(response.data);
   }
 
   async function refreshExplore() {
@@ -1715,6 +1755,48 @@ export default function HomePage() {
           ? `领取仙玉 ${response.data.rewards.jade_paid ?? "0"} / 绑定仙玉 ${response.data.rewards.jade_bound ?? "0"}`
           : "今日月卡权益已领取",
       );
+    });
+  }
+
+  async function handleCreateTransferRequest() {
+    await runAction("提交转服申请", async () => {
+      const response = await client.createTransferRequest(
+        { target_server_id: "mvp_beta", reason: "玩家发起受限转服申请" },
+        createIdempotencyKey("web_transfer_request"),
+      );
+      ensureOk(response);
+      rememberExperience(undefined, {
+        summary: `已生成前往 ${response.data.request.target_server_id} 的转服影响报告，等待后台人工审核。`,
+        tags: ["转服申请"],
+        title: "提交转服申请",
+        tone: "success",
+      });
+      await refreshOverview("转服申请已提交");
+    });
+  }
+
+  async function handleCancelTransferRequest() {
+    if (!currentTransferRequest) {
+      setMessage("暂无可取消的转服申请");
+      return;
+    }
+
+    await runAction("取消转服申请", async () => {
+      const response = await client.cancelTransferRequest(
+        {
+          transfer_request_id: currentTransferRequest.transfer_request_id,
+          reason: "玩家取消",
+        },
+        createIdempotencyKey("web_transfer_cancel"),
+      );
+      ensureOk(response);
+      rememberExperience(undefined, {
+        summary: `已取消前往 ${response.data.request.target_server_id} 的转服申请。`,
+        tags: ["转服取消"],
+        title: "取消转服申请",
+        tone: "neutral",
+      });
+      await refreshOverview("转服申请已取消");
     });
   }
 
@@ -3495,6 +3577,37 @@ export default function HomePage() {
                       </span>
                     </article>
                   )}
+                  <ActionBox
+                    actions={
+                      currentTransferRequest ? (
+                        currentTransferRequest.status === "submitted" ||
+                        currentTransferRequest.status === "reviewing" ? (
+                          <Button disabled={busy} onClick={handleCancelTransferRequest}>
+                            取消申请
+                          </Button>
+                        ) : null
+                      ) : overview && transferStatus?.current_request === null ? (
+                        <Button disabled={busy} onClick={handleCreateTransferRequest}>
+                          提交申请
+                        </Button>
+                      ) : null
+                    }
+                    actionNote={
+                      currentTransferRequest
+                        ? `${transferRequestStatusLabel(
+                            currentTransferRequest.status,
+                          )} · 目标 ${currentTransferRequest.target_server_id}`
+                        : "转服会先生成影响报告，并等待后台人工审核"
+                    }
+                    detail={
+                      currentTransferRequest
+                        ? `执行 ${currentTransferRequest.execute_status} · 排行冷却 ${
+                            currentTransferRequest.rank_cooldown_until ? "已计算" : "未生成"
+                          }`
+                        : "默认目标 mvp_beta · 不会立即迁移资产"
+                    }
+                    title="转服申请"
+                  />
                   <ActionBox
                     actions={
                       <>
@@ -5383,6 +5496,20 @@ function sectHireStatusLabel(status: string): string {
     settled: "已结算",
   };
   return labels[status] ?? "委托记录";
+}
+
+function transferRequestStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    canceled: "已取消",
+    draft: "报告草稿",
+    executed: "已执行",
+    pending_confirm: "待二次确认",
+    rejected: "已驳回",
+    reviewing: "审核中",
+    rolled_back: "已回滚",
+    submitted: "已提交",
+  };
+  return labels[status] ?? "转服记录";
 }
 
 function mentorTaskClaimed(relation: MentorRelationState): boolean {

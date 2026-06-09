@@ -100,6 +100,13 @@ import {
   storyRulesetVersion,
   storyScrollConfigs,
 } from "../story/story.constants";
+import {
+  transferConfigVersion,
+  transferRiskRulesetVersion,
+  transferRule,
+  transferRulesetVersion,
+  transferSettlementConfigVersion,
+} from "../transfer/transfer.constants";
 
 export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
   realm: {
@@ -590,6 +597,18 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
       forbidden_assets: ["付费仙玉", "绑定道具转移", "限定产物", "九大古宝本体", "唯一战力道具"],
       contribution_multiplier_allowed: false,
       rank_score_allowed: false,
+    },
+  },
+  transfer_rule: {
+    config_type: "transfer_rule",
+    config_version: transferConfigVersion,
+    ruleset_version: transferRulesetVersion,
+    reward_config_version: transferSettlementConfigVersion,
+    payload: {
+      rule: transferRule,
+      risk_ruleset_version: transferRiskRulesetVersion,
+      boundary:
+        "P2 转服只开放 dry-run、申请、人工审核和执行预留；默认不开放自由转服，不迁移真实资产。",
     },
   },
   inner_world: {

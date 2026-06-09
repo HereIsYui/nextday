@@ -1019,6 +1019,9 @@ function validateConfigPayload(
   if (configType === "merge_dry_run") {
     validateMergeDryRunConfig(payload);
   }
+  if (configType === "transfer_rule") {
+    validateTransferRuleConfig(payload);
+  }
   if (configType === "convenience" && text.includes('"reward_multiplier":2')) {
     throw new BadRequestException("便利配置不能提高奖励倍率");
   }
@@ -1185,6 +1188,22 @@ function validateMergeDryRunConfig(payload: Record<string, unknown>) {
   }
   if (!text.includes("dry_run")) {
     throw new BadRequestException("合服配置必须明确 dry-run 模式");
+  }
+}
+
+function validateTransferRuleConfig(payload: Record<string, unknown>) {
+  const text = JSON.stringify(payload);
+  if (text.includes('"free_transfer_enabled":true')) {
+    throw new BadRequestException("P2 转服配置不能开放自由转服");
+  }
+  if (text.includes('"execute_enabled":true')) {
+    throw new BadRequestException("P2 转服配置不能开放真实执行");
+  }
+  if (text.includes('"rank_cooldown_days":0')) {
+    throw new BadRequestException("P2 转服配置不能取消排行冷却");
+  }
+  if (!text.includes("dry_run") || !text.includes("manual_review")) {
+    throw new BadRequestException("转服配置必须明确 dry-run 和人工审核流程");
   }
 }
 

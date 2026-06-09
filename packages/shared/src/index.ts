@@ -2057,6 +2057,116 @@ export interface SectHireMutationResponse {
   rewards?: RewardBundle;
 }
 
+export type TransferRequestStatus =
+  | "draft"
+  | "submitted"
+  | "reviewing"
+  | "rejected"
+  | "pending_confirm"
+  | "executed"
+  | "canceled"
+  | "rolled_back";
+
+export type TransferExecuteStatus = "dry_run_only" | "reserved_only" | "executed";
+
+export interface TransferRequestState {
+  transfer_request_id: string;
+  player_id: string;
+  account_id: string;
+  source_server_id: string;
+  target_server_id: string;
+  era_id: string;
+  status: TransferRequestStatus | string;
+  dry_run_report: Record<string, unknown>;
+  asset_mapping_summary: Record<string, unknown> | null;
+  rank_cooldown_until: string | null;
+  sect_cleanup_summary: Record<string, unknown> | null;
+  payment_asset_check_summary: Record<string, unknown> | null;
+  risk_summary: Record<string, unknown> | null;
+  review_operator_id: string | null;
+  review_reason: string | null;
+  execute_status: TransferExecuteStatus | string;
+  transfer_config_version: string;
+  risk_ruleset_version: string;
+  settlement_config_version: string;
+  created_at: string;
+  updated_at: string;
+  reviewed_at: string | null;
+  executed_at: string | null;
+}
+
+export interface TransferRuleResponse {
+  current_server_id: string;
+  can_request: boolean;
+  reason: string | null;
+  rule: Record<string, unknown>;
+}
+
+export interface TransferStatusResponse {
+  current_request: TransferRequestState | null;
+  recent_requests: TransferRequestState[];
+  rule: Record<string, unknown>;
+}
+
+export interface CreateTransferRequestRequest {
+  target_server_id: string;
+  reason?: string;
+}
+
+export interface CreateTransferRequestResponse {
+  request: TransferRequestState;
+}
+
+export interface CancelTransferRequestRequest {
+  transfer_request_id: string;
+  reason?: string;
+}
+
+export interface CancelTransferRequestResponse {
+  request: TransferRequestState;
+}
+
+export interface AdminCreateTransferDryRunRequest {
+  player_id: string;
+  target_server_id: string;
+  source_server_id?: string;
+  target_server_stage?: string;
+  operator?: string;
+  reason?: string;
+}
+
+export interface AdminCreateTransferDryRunResponse {
+  request: TransferRequestState;
+  operation: AdminGmOperationState;
+}
+
+export interface AdminReviewTransferRequest {
+  transfer_request_id: string;
+  decision: "approve" | "reject";
+  operator?: string;
+  reason?: string;
+}
+
+export interface AdminReviewTransferResponse {
+  request: TransferRequestState;
+  operation: AdminGmOperationState;
+}
+
+export interface AdminExecuteTransferRequest {
+  transfer_request_id: string;
+  confirm_text: string;
+  operator?: string;
+  reason?: string;
+}
+
+export interface AdminExecuteTransferResponse {
+  allowed: boolean;
+  execution_status: TransferExecuteStatus | string;
+  message: string;
+  request: TransferRequestState;
+  operation: AdminGmOperationState;
+}
+
 export interface GameOverviewResponse {
   profile: PlayerProfileResponse;
   cultivation: CultivationStatus | null;

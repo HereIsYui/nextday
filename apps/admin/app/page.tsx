@@ -14,6 +14,7 @@ import type {
   ConfigType,
   HealthStatus,
   MergeDryRunReportResponse,
+  TransferRequestState,
 } from "@nextday/shared";
 import { Button, StatusBadge } from "@nextday/ui";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
@@ -28,6 +29,7 @@ export default function AdminHomePage() {
   const [configType, setConfigType] = useState<ConfigType>("gacha");
   const [configPayload, setConfigPayload] = useState(getDefaultConfigPayload("gacha"));
   const [mergeReportId, setMergeReportId] = useState("");
+  const [transferRequestId, setTransferRequestId] = useState("");
   const [digest, setDigest] = useState<AdminPlayerDigestResponse | null>(null);
   const [logs, setLogs] = useState<AdminPlayerLogsResponse | null>(null);
   const [mails, setMails] = useState<AdminMailListResponse | null>(null);
@@ -36,6 +38,7 @@ export default function AdminHomePage() {
   const [operations, setOperations] = useState<AdminGmOperationListResponse | null>(null);
   const [delayed, setDelayed] = useState<AdminDelayedSettlementListResponse | null>(null);
   const [mergeReport, setMergeReport] = useState<MergeDryRunReportResponse | null>(null);
+  const [transferRequest, setTransferRequest] = useState<TransferRequestState | null>(null);
   const [message, setMessage] = useState("等待操作");
   const [busy, setBusy] = useState(false);
 
@@ -337,6 +340,82 @@ export default function AdminHomePage() {
     });
   }
 
+  async function handleCreateTransferDryRun() {
+    const normalizedPlayerId = playerId.trim();
+    if (!normalizedPlayerId) {
+      setMessage("请输入玩家 ID 后再生成转服报告");
+      return;
+    }
+
+    await runAdminAction("生成转服影响报告", async () => {
+      const response = await client.createTransferDryRun(
+        {
+          player_id: normalizedPlayerId,
+          target_server_id: "mvp_beta",
+          source_server_id: "server_mvp_001",
+          operator: "admin_dev",
+          reason: "P2 转服 dry-run 后台验收",
+        },
+        { adminToken, idempotencyKey: createIdempotencyKey("admin_transfer_dry_run") },
+      );
+      ensureOk(response);
+      setTransferRequest(response.data.request);
+      setTransferRequestId(response.data.request.transfer_request_id);
+      setMessage(`转服报告已生成：${response.data.request.transfer_request_id}`);
+      await handleLoadOps();
+    });
+  }
+
+  async function handleReviewTransfer(decision: "approve" | "reject") {
+    const requestId = transferRequest?.transfer_request_id ?? transferRequestId.trim();
+    if (!requestId) {
+      setMessage("请先生成或输入转服申请 ID");
+      return;
+    }
+
+    await runAdminAction(decision === "approve" ? "审核通过转服" : "驳回转服", async () => {
+      const response = await client.reviewTransferRequest(
+        {
+          transfer_request_id: requestId,
+          decision,
+          operator: "admin_dev",
+          reason: decision === "approve" ? "人工复核通过" : "阶段或风险不满足",
+        },
+        { adminToken, idempotencyKey: createIdempotencyKey("admin_transfer_review") },
+      );
+      ensureOk(response);
+      setTransferRequest(response.data.request);
+      setTransferRequestId(response.data.request.transfer_request_id);
+      setMessage(`转服审核已处理：${transferStatusLabel(response.data.request.status)}`);
+      await handleLoadOps();
+    });
+  }
+
+  async function handleReserveTransferExecution() {
+    const requestId = transferRequest?.transfer_request_id ?? transferRequestId.trim();
+    if (!requestId) {
+      setMessage("请先生成或输入转服申请 ID");
+      return;
+    }
+
+    await runAdminAction("写入转服执行预留审计", async () => {
+      const response = await client.executeTransferReserved(
+        {
+          transfer_request_id: requestId,
+          confirm_text: "确认转服执行预留",
+          operator: "admin_dev",
+          reason: "P2 当前只验证执行入口预留，不迁移真实资产",
+        },
+        { adminToken, idempotencyKey: createIdempotencyKey("admin_transfer_execute_reserved") },
+      );
+      ensureOk(response);
+      setTransferRequest(response.data.request);
+      setTransferRequestId(response.data.request.transfer_request_id);
+      setMessage(response.data.message);
+      await handleLoadOps();
+    });
+  }
+
   async function runAdminAction(label: string, action: () => Promise<void>) {
     setBusy(true);
     setMessage(`${label}中`);
@@ -493,6 +572,7 @@ export default function AdminHomePage() {
               <option value="reward">奖励</option>
               <option value="activity_template">活动模板</option>
               <option value="merge_dry_run">合服演练</option>
+              <option value="transfer_rule">转服规则</option>
             </select>
           </label>
           <label className="stack-label">
@@ -606,6 +686,67 @@ export default function AdminHomePage() {
               : "暂无合服演练报告"}
           </pre>
         </article>
+
+        <article className="ops-panel">
+          <div className="panel-title">
+            <h2>转服演练</h2>
+            <span>个人影响报告、人工审核和执行预留</span>
+          </div>
+          <label className="stack-label">
+            <span>转服申请 ID</span>
+            <input
+              onChange={(event) => setTransferRequestId(event.target.value)}
+              placeholder="transfer_req_xxx"
+              value={transferRequestId}
+            />
+          </label>
+          <div className="button-row">
+            <Button disabled={busy || !playerId.trim()} onClick={handleCreateTransferDryRun}>
+              生成转服报告
+            </Button>
+            <Button
+              disabled={busy || !transferRequestId.trim()}
+              onClick={() => handleReviewTransfer("approve")}
+            >
+              审核通过
+            </Button>
+            <Button
+              disabled={busy || !transferRequestId.trim()}
+              onClick={() => handleReviewTransfer("reject")}
+            >
+              驳回
+            </Button>
+            <Button
+              disabled={busy || !transferRequestId.trim()}
+              onClick={handleReserveTransferExecution}
+            >
+              执行预留
+            </Button>
+          </div>
+          <SummaryList
+            rows={[
+              ["状态", transferRequest ? transferStatusLabel(transferRequest.status) : "未生成"],
+              ["执行", transferRequest?.execute_status ?? "dry_run_only"],
+              ["目标服", transferRequest?.target_server_id ?? "mvp_beta"],
+              ["排行冷却", transferRequest?.rank_cooldown_until ? "已生成" : "未生成"],
+              ["风险", String(transferRequest?.risk_summary?.risk_level ?? "未评估")],
+            ]}
+          />
+          <pre className="compact-output">
+            {transferRequest
+              ? JSON.stringify(
+                  {
+                    request_id: transferRequest.transfer_request_id,
+                    asset: transferRequest.asset_mapping_summary,
+                    payment: transferRequest.payment_asset_check_summary,
+                    sect: transferRequest.sect_cleanup_summary,
+                  },
+                  null,
+                  2,
+                )
+              : "暂无转服影响报告"}
+          </pre>
+        </article>
       </section>
     </main>
   );
@@ -644,7 +785,41 @@ function createIdempotencyKey(prefix: string): string {
   return `${prefix}_${Date.now()}_${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2, 10)}`;
 }
 
+function transferStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    canceled: "已取消",
+    draft: "报告草稿",
+    executed: "已执行",
+    pending_confirm: "待二次确认",
+    rejected: "已驳回",
+    reviewing: "审核中",
+    rolled_back: "已回滚",
+    submitted: "已提交",
+  };
+  return labels[status] ?? "转服记录";
+}
+
 function getDefaultConfigPayload(configType: ConfigType): string {
+  if (configType === "transfer_rule") {
+    return JSON.stringify(
+      {
+        rule: {
+          mode: "dry_run_manual_review_reserved_execute",
+          free_transfer_enabled: false,
+          execute_enabled: false,
+          final_battle_forbidden_days: 30,
+          rank_cooldown_days: 7,
+          review_rule: {
+            manual_review_required: true,
+            second_confirm_required: true,
+          },
+        },
+      },
+      null,
+      2,
+    );
+  }
+
   if (configType === "merge_dry_run") {
     return JSON.stringify(
       {

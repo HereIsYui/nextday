@@ -128,3 +128,16 @@ P2 总体验收：
 - 导师、外交和雇佣都支持异步参与，不要求同时在线，不转移付费资产。
 - 转服 dry-run 不修改真实数据，受限转服执行前必须人工审核和二次确认。
 - 所有 P2 状态变更继续使用 `Idempotency-Key`，并写入可追溯审计日志。
+
+## 七、当前进度
+
+P2-0 文档与接口预备已完成：
+
+- `DEVELOPMENT_BACKLOG_DESIGN.md`：P2-00 到 P2-35 已拆为可执行任务表，P2-0 标记为已完成。
+- `API_CONTRACT_DESIGN.md`：已补剧情卷轴、纪元史册、多纪元收藏、深度外观、导师、宗门外交、跨宗门雇佣和转服接口占位。
+- `DATA_MODEL_DESIGN.md`：已补 `story_scroll_record`、`era_chronicle_record`、`era_collection_record`、`appearance_ownership_record`、`mentor_relation_record`、`sect_diplomacy_record`、`sect_hire_record`、`transfer_request_record` 的模型边界。
+- `DATABASE_SCHEMA_DESIGN.md`：已补 P2 字段级表结构、核心索引、幂等和事务边界。
+- `CONFIG_SCHEMA_DESIGN.md`：已补 P2 配置类型、发布校验、版本追溯和 ID 命名规范。
+- `QA_TEST_PLAN.md`：已补 P2 专项测试占位和验收口径。
+
+下一步从 P2-1 开始，优先实现高阶剧情演出 / 章节卷轴，避免先做转服这类高风险能力。

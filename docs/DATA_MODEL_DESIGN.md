@@ -63,6 +63,14 @@
 | announcement_record | 公告记录 |
 | merge_dry_run_report | P1 合服演练报告 |
 | merge_conflict_item | P1 合服冲突项，当前 P1-8 先聚合在 `merge_dry_run_report` 的 JSON 摘要中，真实多服执行前再拆独立表 |
+| story_scroll_record | P2 章节卷轴记录 |
+| era_chronicle_record | P2 纪元史册快照 |
+| era_collection_record | P2 多纪元收藏记录 |
+| appearance_ownership_record | P2 深度外观持有与装备 |
+| mentor_relation_record | P2 导师关系记录 |
+| sect_diplomacy_record | P2 宗门外交记录 |
+| sect_hire_record | P2 跨宗门雇佣记录 |
+| transfer_request_record | P2 转服申请与影响报告 |
 
 所有可回放、可补偿、可结算的记录必须保存配置版本。版本字段用于处理长线运营中的数值调整、战报复现、补单、补偿和回滚。
 
@@ -1076,7 +1084,184 @@ P1 v2 先补 Web 玩法体验厚度，再扩中后期内容。Web 体验字段�
 
 合服 dry-run 只能读取和生成报告，不得修改真实玩家、宗门、排行、订单、保底、纪元和九州状态。
 
-## 十六、服务边界建议
+## 十六、P2 数据模型增量
+
+P2 长线增强围绕剧情回放、跨纪元收藏、展示外观、高级社交和受限转服展开。以下模型为设计占位，后续建表或 Prisma migration 时应按 `DATABASE_SCHEMA_DESIGN.md` 进一步落字段、索引和唯一约束。
+
+### P2 剧情与纪元史册增量
+
+`story_scroll_record`
+
+| 字段 | 说明 |
+| --- | --- |
+| scroll_record_id | 章节卷轴记录 ID |
+| player_id | 玩家 ID |
+| era_id | 纪元 ID |
+| scroll_id | 章节卷轴配置 ID |
+| chapter_id | 章节 ID |
+| unlock_state | 未解锁 / 已解锁 / 已归档 |
+| fragment_state | 已解锁文本片段、选择摘要和缺失降级摘要 |
+| battle_refs | 关联战报 ID 列表和展示权限 |
+| choice_summary | 玩家关键选择摘要 |
+| source_type | 来源类型：章节 / 探索 / 九塔 / PVP / 活动 / 纪元结算 |
+| source_id | 来源记录 ID |
+| story_config_version | 剧情演出配置版本 |
+| created_at | 创建时间 |
+| updated_at | 更新时间 |
+
+`era_chronicle_record`
+
+| 字段 | 说明 |
+| --- | --- |
+| chronicle_id | 纪元史册记录 ID |
+| era_id | 纪元 ID |
+| server_id | 服务器 ID |
+| chronicle_type | 排行 / 阵营结局 / 九塔状态 / 活动节点 / 合服演练摘要 |
+| public_summary | 可公开展示摘要 |
+| private_summary | 运营内部摘要，不对普通玩家开放 |
+| related_snapshot_id | 关联排行或纪元快照，可为空 |
+| related_source_ids | 关联活动、战报、宗门或合服报告 ID |
+| visibility_rule | 公开 / 本服 / 本宗门 / 个人 / 后台 |
+| story_config_version | 史册展示配置版本 |
+| created_at | 创建时间 |
+
+章节卷轴和纪元史册不得保存或展示订单明细、IP / UA 摘要、后台风控细节和 GM 审计细节。
+
+### P2 多纪元收藏与深度外观增量
+
+`era_collection_record`
+
+| 字段 | 说明 |
+| --- | --- |
+| collection_record_id | 收藏记录 ID |
+| player_id | 玩家 ID |
+| source_era_id | 来源纪元 |
+| target_era_id | 当前展示纪元，可为空 |
+| collection_id | 收藏配置 ID |
+| collection_type | 称号 / 纪念物 / 图鉴 / 史册 / 活动纪念 / 古宝图鉴外观 |
+| source_type | 来源：排行 / 活动 / 纪元结算 / 剧情 / 外观兑换 |
+| source_id | 来源记录 ID |
+| display_state | 未展示 / 展示中 / 归档 |
+| duplicate_convert_summary | 重复收藏转化摘要 |
+| blessing_effective | 当前有效祝福是否启用 |
+| blessing_cap_summary | 祝福限幅摘要 |
+| collection_config_version | 收藏配置版本 |
+| created_at | 创建时间 |
+| updated_at | 更新时间 |
+
+`appearance_ownership_record`
+
+| 字段 | 说明 |
+| --- | --- |
+| ownership_record_id | 外观持有记录 ID |
+| player_id | 玩家 ID |
+| era_id | 获得纪元 ID |
+| appearance_id | 外观配置 ID |
+| appearance_type | 动态称号 / 名片 / 战报 / 洞府 / 宗门驻地装饰 |
+| source_type | 付费仙玉 / 外观券 / 排行奖励 / 活动奖励 / 纪元结算 / 收藏兑换 |
+| source_id | 来源记录 ID |
+| display_slot | 当前装备位置，可为空 |
+| inherit_state | 不继承 / 跨纪元展示继承 / 图鉴继承 |
+| expire_at | 过期时间，可为空 |
+| status | 持有 / 装备中 / 已过期 / 已回收 |
+| appearance_config_version | 外观配置版本 |
+| created_at | 创建时间 |
+| updated_at | 更新时间 |
+
+收藏与外观只允许影响资料页、排行榜、宗门列表、战报、聊天、洞府、宗门驻地、鱼排插件小卡片、纪元史册和图鉴展示，不得写入战力、掉落、贡献和排行分数。
+
+### P2 高级社交增量
+
+`mentor_relation_record`
+
+| 字段 | 说明 |
+| --- | --- |
+| mentor_relation_id | 师徒关系 ID |
+| mentor_player_id | 导师玩家 ID |
+| apprentice_player_id | 徒弟玩家 ID |
+| era_id | 纪元 ID |
+| status | 申请中 / 已建立 / 已出师 / 已解除 / 已拒绝 |
+| task_summary | 师徒任务进度摘要 |
+| reward_boundary_summary | 奖励边界摘要 |
+| cooldown_until | 解除或出师后的冷却时间 |
+| risk_summary | 同设备、多账号、异常频率等风控摘要 |
+| idempotency_key | 关键状态变更幂等键 |
+| mentor_config_version | 导师规则配置版本 |
+| created_at | 创建时间 |
+| updated_at | 更新时间 |
+
+`sect_diplomacy_record`
+
+| 字段 | 说明 |
+| --- | --- |
+| diplomacy_record_id | 外交记录 ID |
+| source_sect_id | 发起宗门 ID |
+| target_sect_id | 目标宗门 ID |
+| era_id | 纪元 ID |
+| diplomacy_type | 盟约 / 敌对 / 援助 / 协防 |
+| status | 提案中 / 已生效 / 已拒绝 / 已过期 / 已解除 |
+| proposal_summary | 提案摘要 |
+| approval_summary | 审批角色、权限和结果摘要 |
+| cooldown_until | 外交变更冷却结束时间 |
+| announcement_id | 关联公告，可为空 |
+| idempotency_key | 状态变更幂等键 |
+| diplomacy_config_version | 外交配置版本 |
+| created_at | 创建时间 |
+| updated_at | 更新时间 |
+
+`sect_hire_record`
+
+| 字段 | 说明 |
+| --- | --- |
+| hire_record_id | 雇佣委托 ID |
+| employer_sect_id | 发起宗门 ID |
+| helper_sect_id | 协助宗门 ID，可为空 |
+| helper_player_id | 协助玩家 ID，可为空 |
+| era_id | 纪元 ID |
+| hire_type | 探索协助 / 宗门建设 / 九塔补给 / 活动协助 |
+| status | 发布中 / 已接取 / 已完成 / 已取消 / 已结算 / 已回滚 |
+| allowed_action_scope | 允许协助的行动范围 |
+| reward_escrow_summary | 托管奖励摘要 |
+| risk_status | 正常 / 延迟结算 / 收益衰减 / 人工审核 |
+| idempotency_key | 状态变更幂等键 |
+| hire_config_version | 雇佣配置版本 |
+| reward_config_version | 奖励配置版本 |
+| created_at | 创建时间 |
+| settled_at | 结算时间，可为空 |
+
+导师、外交和雇佣不能成为转移付费资产、绑定道具、限定产物、九大古宝本体或刷排行贡献的通道。
+
+### P2 受限转服增量
+
+`transfer_request_record`
+
+| 字段 | 说明 |
+| --- | --- |
+| transfer_request_id | 转服申请 ID |
+| player_id | 玩家 ID |
+| account_id | 账号 ID |
+| source_server_id | 来源服务器 |
+| target_server_id | 目标服务器 |
+| era_id | 当前纪元 ID |
+| status | 草稿 / 已提交 / 审核中 / 已拒绝 / 待确认 / 已执行 / 已取消 / 已回滚 |
+| dry_run_report | 个人转服影响报告摘要 |
+| asset_mapping_summary | 钱包、背包、月卡、保底、外观、收藏和日志映射摘要 |
+| rank_cooldown_until | 排行冷却结束时间 |
+| sect_cleanup_summary | 宗门退出、外交清理和补偿建议 |
+| payment_asset_check_summary | 付费资产、月卡、订单和保底检查摘要 |
+| risk_summary | 风险、延迟收益和人工审核摘要 |
+| review_operator_id | 审核 GM，可为空 |
+| review_reason | 审核原因，可为空 |
+| execute_status | dry_run_only / reserved_only / executed |
+| idempotency_key | 申请或执行幂等键 |
+| transfer_config_version | 转服配置版本 |
+| created_at | 创建时间 |
+| reviewed_at | 审核时间，可为空 |
+| executed_at | 执行时间，可为空 |
+
+转服必须先生成 dry-run 报告；未通过人工审核和二次确认前，不得迁移真实玩家资产。最终战前 30 天禁止转服，转服后至少 7 天内不能参与部分排行奖励。
+
+## 十七、服务边界建议
 
 | 服务 | 负责 |
 | --- | --- |
@@ -1101,8 +1286,12 @@ P1 v2 先补 Web 玩法体验厚度，再扩中后期内容。Web 体验字段�
 | 邮件公告服务 | mail_record、announcement_record、补偿和公告发布 |
 | 配置服务 | config_version、config_publish_record、配置发布、版本回放 |
 | 合服演练服务 | merge_dry_run_report、merge_conflict_item、合服影响报告 |
+| 剧情演出服务 | story_scroll_record、era_chronicle_record、章节卷轴和战报叙事 |
+| 收藏外观服务 | era_collection_record、appearance_ownership_record、多纪元收藏和深度外观 |
+| 高级社交服务 | mentor_relation_record、sect_diplomacy_record、sect_hire_record、导师、外交和雇佣 |
+| 转服服务 | transfer_request_record、转服 dry-run、审核、资产映射和执行预留 |
 
-## 十七、验收场景
+## 十八、验收场景
 
 - 开发能根据本文拆出玩家、宗门、九州、九塔、战斗、订单、抽卡、纪元核心表。
 - 开发能根据本文拆出宗门战、择日、洞府和内天地的最小核心表。
@@ -1120,3 +1309,6 @@ P1 v2 先补 Web 玩法体验厚度，再扩中后期内容。Web 体验字段�
 - 九大古宝付费仙玉预留入口不会写成功抽卡记录，也不会改变 `gacha_pity_state`。
 - P1 Web 体验展示字段可由现有记录派生，不成为奖励、贡献和风控的权威来源。
 - 合服 dry-run 只生成报告和冲突项，不修改真实数据。
+- 开发能根据本文拆出 P2 章节卷轴、纪元史册、多纪元收藏、深度外观、导师、宗门外交、雇佣和转服申请模型。
+- P2 收藏、外观和纪元祝福不写入无限叠加战力，不改变奖励、贡献和排行公式。
+- P2 转服模型能追溯 dry-run、审核、资产映射、排行冷却、宗门清理、执行预留和 GM 操作。

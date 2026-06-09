@@ -804,7 +804,218 @@ P1 合服演练只生成影响报告，不修改真实业务数据。冲突明�
 - `idx_merge_dry_run_execute_status(execute_status)`。
 - `idx_merge_dry_run_created_at(created_at)`。
 
-## 十二、幂等与事务边界
+## 十二、P2 长线增强表结构
+
+P2 表结构为设计占位，正式 migration 可按功能阶段拆分落地。所有 P2 表都必须保留配置版本、来源记录和审计所需字段。
+
+`story_scroll_record`
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| scroll_record_id | varchar | PK | 章节卷轴记录 |
+| player_id | varchar | index | 玩家 |
+| era_id | varchar | index | 纪元 |
+| scroll_id | varchar | index | 章节卷轴配置 |
+| chapter_id | varchar | index | 章节 |
+| unlock_state | varchar | index | locked / unlocked / archived |
+| fragment_state | jsonb | not null | 已解锁片段、选择和降级摘要 |
+| battle_refs | jsonb |  | 关联战报和展示权限 |
+| choice_summary | jsonb |  | 关键选择摘要 |
+| source_type | varchar | index | 来源类型 |
+| source_id | varchar | index nullable | 来源记录 |
+| story_config_version | varchar |  | 剧情配置版本 |
+| created_at | datetime | index | 创建 |
+| updated_at | datetime |  | 更新 |
+
+索引：
+
+- `idx_story_scroll_player(player_id, era_id, chapter_id)`。
+- `idx_story_scroll_source(source_type, source_id)`。
+
+`era_chronicle_record`
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| chronicle_id | varchar | PK | 纪元史册记录 |
+| era_id | varchar | index | 纪元 |
+| server_id | varchar | index | 服务器 |
+| chronicle_type | varchar | index | 排行 / 阵营结局 / 九塔状态 / 活动节点 / 合服演练摘要 |
+| public_summary | jsonb | not null | 玩家可见摘要 |
+| private_summary | jsonb | nullable | 后台内部摘要 |
+| related_snapshot_id | varchar | index nullable | 关联快照 |
+| related_source_ids | jsonb |  | 关联来源 ID |
+| visibility_rule | varchar | index | public / server / sect / personal / admin |
+| story_config_version | varchar |  | 史册配置版本 |
+| created_at | datetime | index | 创建 |
+
+索引：
+
+- `idx_era_chronicle_server(era_id, server_id, chronicle_type)`。
+- `idx_era_chronicle_visibility(visibility_rule, created_at)`。
+
+`era_collection_record`
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| collection_record_id | varchar | PK | 收藏记录 |
+| player_id | varchar | index | 玩家 |
+| source_era_id | varchar | index | 来源纪元 |
+| target_era_id | varchar | index nullable | 当前展示纪元 |
+| collection_id | varchar | index | 收藏配置 |
+| collection_type | varchar | index | 称号 / 纪念物 / 图鉴 / 史册 / 活动纪念 / 古宝图鉴外观 |
+| source_type | varchar | index | 来源类型 |
+| source_id | varchar | index nullable | 来源记录 |
+| display_state | varchar | index | hidden / displayed / archived |
+| duplicate_convert_summary | jsonb | nullable | 重复收藏转化 |
+| blessing_effective | boolean | default false | 当前有效祝福 |
+| blessing_cap_summary | jsonb | nullable | 祝福限幅摘要 |
+| collection_config_version | varchar |  | 收藏配置版本 |
+| created_at | datetime | index | 创建 |
+| updated_at | datetime |  | 更新 |
+
+唯一键：
+
+- `uk_collection_player_source(player_id, source_era_id, collection_id)`。
+
+索引：
+
+- `idx_collection_player_display(player_id, display_state)`。
+- `idx_collection_type(collection_type, created_at)`。
+
+`appearance_ownership_record`
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| ownership_record_id | varchar | PK | 外观持有记录 |
+| player_id | varchar | index | 玩家 |
+| era_id | varchar | index | 获得纪元 |
+| appearance_id | varchar | index | 外观配置 |
+| appearance_type | varchar | index | 动态称号 / 名片 / 战报 / 洞府 / 宗门驻地装饰 |
+| source_type | varchar | index | 来源类型 |
+| source_id | varchar | index nullable | 来源记录 |
+| display_slot | varchar | index nullable | 当前装备位置 |
+| inherit_state | varchar | index | none / display / atlas |
+| expire_at | datetime | index nullable | 过期 |
+| status | varchar | index | owned / equipped / expired / revoked |
+| appearance_config_version | varchar |  | 外观配置版本 |
+| created_at | datetime | index | 创建 |
+| updated_at | datetime |  | 更新 |
+
+唯一键：
+
+- `uk_appearance_player(player_id, appearance_id)`。
+
+索引：
+
+- `idx_appearance_player_slot(player_id, display_slot, status)`。
+- `idx_appearance_expire(expire_at, status)`。
+
+`mentor_relation_record`
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| mentor_relation_id | varchar | PK | 师徒关系 |
+| mentor_player_id | varchar | index | 导师 |
+| apprentice_player_id | varchar | index | 徒弟 |
+| era_id | varchar | index | 纪元 |
+| status | varchar | index | pending / active / graduated / dissolved / rejected |
+| task_summary | jsonb |  | 师徒任务摘要 |
+| reward_boundary_summary | jsonb |  | 奖励边界 |
+| cooldown_until | datetime | index nullable | 冷却结束 |
+| risk_summary | jsonb | nullable | 风控摘要 |
+| idempotency_key | varchar | unique nullable | 状态变更幂等键 |
+| mentor_config_version | varchar |  | 导师配置 |
+| created_at | datetime | index | 创建 |
+| updated_at | datetime |  | 更新 |
+
+索引：
+
+- `idx_mentor_pair(mentor_player_id, apprentice_player_id, status)`。
+- `idx_mentor_apprentice(apprentice_player_id, status)`。
+
+`sect_diplomacy_record`
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| diplomacy_record_id | varchar | PK | 外交记录 |
+| source_sect_id | varchar | index | 发起宗门 |
+| target_sect_id | varchar | index | 目标宗门 |
+| era_id | varchar | index | 纪元 |
+| diplomacy_type | varchar | index | alliance / hostility / aid / defense |
+| status | varchar | index | proposed / active / rejected / expired / dissolved |
+| proposal_summary | jsonb | not null | 提案摘要 |
+| approval_summary | jsonb | nullable | 审批摘要 |
+| cooldown_until | datetime | index nullable | 冷却结束 |
+| announcement_id | varchar | index nullable | 关联公告 |
+| idempotency_key | varchar | unique nullable | 状态变更幂等键 |
+| diplomacy_config_version | varchar |  | 外交配置 |
+| created_at | datetime | index | 创建 |
+| updated_at | datetime |  | 更新 |
+
+索引：
+
+- `idx_diplomacy_pair(source_sect_id, target_sect_id, status)`。
+- `idx_diplomacy_era_type(era_id, diplomacy_type, status)`。
+
+`sect_hire_record`
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| hire_record_id | varchar | PK | 雇佣委托 |
+| employer_sect_id | varchar | index | 发起宗门 |
+| helper_sect_id | varchar | index nullable | 协助宗门 |
+| helper_player_id | varchar | index nullable | 协助玩家 |
+| era_id | varchar | index | 纪元 |
+| hire_type | varchar | index | 探索协助 / 宗门建设 / 九塔补给 / 活动协助 |
+| status | varchar | index | open / accepted / completed / canceled / settled / rolled_back |
+| allowed_action_scope | jsonb | not null | 可协助行动范围 |
+| reward_escrow_summary | jsonb | not null | 托管奖励 |
+| risk_status | varchar | index | normal / delayed_settlement / decayed / manual_review |
+| idempotency_key | varchar | unique nullable | 状态变更幂等键 |
+| hire_config_version | varchar |  | 雇佣配置 |
+| reward_config_version | varchar |  | 奖励配置 |
+| created_at | datetime | index | 创建 |
+| settled_at | datetime | index nullable | 结算 |
+
+索引：
+
+- `idx_hire_status(status, created_at)`。
+- `idx_hire_helper(helper_sect_id, helper_player_id, status)`。
+
+`transfer_request_record`
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| transfer_request_id | varchar | PK | 转服申请 |
+| player_id | varchar | index | 玩家 |
+| account_id | varchar | index | 账号 |
+| source_server_id | varchar | index | 来源服务器 |
+| target_server_id | varchar | index | 目标服务器 |
+| era_id | varchar | index | 纪元 |
+| status | varchar | index | draft / submitted / reviewing / rejected / pending_confirm / executed / canceled / rolled_back |
+| dry_run_report | jsonb | not null | 个人影响报告 |
+| asset_mapping_summary | jsonb | nullable | 资产映射摘要 |
+| rank_cooldown_until | datetime | index nullable | 排行冷却 |
+| sect_cleanup_summary | jsonb | nullable | 宗门和外交清理 |
+| payment_asset_check_summary | jsonb | nullable | 付费资产、月卡、订单和保底检查 |
+| risk_summary | jsonb | nullable | 风险摘要 |
+| review_operator_id | varchar | index nullable | 审核 GM |
+| review_reason | text | nullable | 审核原因 |
+| execute_status | varchar | index | dry_run_only / reserved_only / executed |
+| idempotency_key | varchar | unique nullable | 申请或执行幂等键 |
+| transfer_config_version | varchar |  | 转服配置 |
+| created_at | datetime | index | 创建 |
+| reviewed_at | datetime | index nullable | 审核 |
+| executed_at | datetime | index nullable | 执行 |
+
+索引：
+
+- `idx_transfer_player(player_id, status, created_at)`。
+- `idx_transfer_target(target_server_id, status)`。
+- `idx_transfer_execute_status(execute_status)`。
+- `idx_transfer_rank_cooldown(rank_cooldown_until)`。
+
+## 十三、幂等与事务边界
 
 必须具备幂等键的操作：
 
@@ -818,6 +1029,8 @@ P1 合服演练只生成影响报告，不修改真实业务数据。冲突明�
 - 月卡购买。
 - GM 补偿。
 - 合服 dry-run 报告生成和执行预留审计。
+- P2 收藏展示装备、深度外观装备、导师申请 / 审批 / 出师、宗门外交提案 / 审批、跨宗门雇佣创建 / 接取 / 结算。
+- P2 转服申请、取消、dry-run 报告生成、人工审核和执行预留。
 
 事务边界建议：
 
@@ -830,8 +1043,12 @@ P1 合服演练只生成影响报告，不修改真实业务数据。冲突明�
 - 高风险收益进入延迟结算时，原始行动记录、风控记录和延迟结算记录应在同一事务或同一可靠队列链路内完成。
 - 排行结算可先生成快照，再异步发放奖励。
 - 合服 dry-run 只能读取业务表并写入 `merge_dry_run_report`、`gm_operation_log` 和幂等记录，不得修改玩家、宗门、排行、订单、保底、活动和纪元状态。
+- P2 剧情卷轴和纪元史册只写展示记录，不应和奖励结算放在同一强事务中阻塞主流程。
+- P2 收藏和外观装备只更新展示状态，不得修改战斗属性、掉落倍率、贡献倍率和排行分数。
+- P2 导师、外交和雇佣结算必须把奖励托管、风控记录、收益衰减和审计日志纳入同一事务或可靠队列链路。
+- P2 转服执行前必须先写 dry-run 报告、审核记录和 GM 操作日志；真实迁移开放时，资产映射、排行冷却、宗门清理和幂等记录必须在可回滚事务链路中完成。
 
-## 十三、验收场景
+## 十四、验收场景
 
 - 研发能根据本文建立 MVP 关键表、索引和唯一键。
 - 抽卡、订单、奖励领取重复请求不会重复发放。
@@ -842,3 +1059,6 @@ P1 合服演练只生成影响报告，不修改真实业务数据。冲突明�
 - 九大古宝池不能写入付费仙玉成功抽卡记录，预留入口不改变 `gacha_pity_state`。
 - 行为风控和延迟结算有字段级表结构，可追溯脚本点击风险、权益越权、收益暂缓和人工审核结果。
 - 合服 dry-run 有字段级报告表，执行预留只写审计日志，不执行真实合服。
+- P2 章节卷轴、纪元史册、收藏、外观、导师、外交、雇佣和转服都有字段级表结构、主键、核心索引和幂等边界。
+- P2 收藏和外观表不含战力、掉落倍率、贡献倍率和排行加成字段。
+- P2 转服表能追溯 dry-run、审核、资产映射、排行冷却、宗门清理、执行状态和审计记录。

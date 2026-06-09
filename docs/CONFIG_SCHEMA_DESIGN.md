@@ -80,6 +80,13 @@
 | `inner_world_config` | 内天地 | world_level、assignment_rule、output_group |
 | `faction_route_config` | P1 仙魔路线 | route_id、reputation_rule、transfer_cost、cooldown_rule |
 | `merge_dry_run_config` | P1 合服演练 | merge_condition、conflict_rule、compensation_rule、rollback_rule |
+| `story_presentation_config` | P2 剧情演出 | scroll_id、fragment_group、battle_ref_rule、fallback_text |
+| `era_collection_config` | P2 多纪元收藏 | collection_id、collection_type、inherit_rule、duplicate_convert_rule |
+| `appearance_plus_config` | P2 深度外观 | appearance_id、appearance_type、display_slot、inherit_rule |
+| `mentor_rule_config` | P2 导师规则 | mentor_condition、task_group、reward_boundary、anti_abuse_rule |
+| `sect_diplomacy_config` | P2 宗门外交 | diplomacy_type、approval_rule、cooldown_rule、assist_scope |
+| `sect_hire_config` | P2 跨宗门雇佣 | hire_type、allowed_action_scope、reward_escrow_rule、risk_decay_rule |
+| `transfer_rule_config` | P2 受限转服 | stage_limit、asset_mapping_rule、rank_cooldown_rule、review_rule |
 | `payment_product_config` | 付费商品 | product_id、fishpi_point_cost、deliver_rule |
 | `mail_template_config` | 邮件模板 | template_id、title、body、reward_group |
 | `announcement_config` | 公告 | announcement_id、type、content、visible_rule |
@@ -339,7 +346,102 @@
 | rollback_rule | 回滚建议规则 |
 | execute_allowed | P1 固定为 false，不开放真实执行 |
 
-## 八、配置发布流程
+## 八、P2 配置类型
+
+`story_presentation_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| scroll_id | 章节卷轴 ID |
+| chapter_id | 关联章节 |
+| fragment_group | 文本片段组，支持普通片段、选择片段、战报引用片段和结局片段 |
+| unlock_condition | 解锁条件，例如章节任务、探索事件、九塔行动、阵营结局 |
+| battle_ref_rule | 战报引用规则和展示权限 |
+| era_chronicle_rule | 写入纪元史册规则 |
+| fallback_text | 文本缺失或引用失效时的降级文案 |
+| sensitive_filter_rule | 订单、IP / UA、风控、GM 审计等敏感信息过滤规则 |
+
+`era_collection_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| collection_id | 收藏 ID |
+| collection_type | 称号 / 纪念物 / 图鉴 / 史册 / 活动纪念 / 古宝图鉴外观 |
+| source_type | 排行 / 活动 / 纪元结算 / 剧情 / 外观兑换 |
+| inherit_rule | 不继承 / 展示继承 / 图鉴继承 / 纪元博物志继承 |
+| duplicate_convert_rule | 重复收藏转化规则 |
+| blessing_rule | 纪元祝福规则，可为空 |
+| blessing_cap_rule | 祝福限幅和最高档保留规则 |
+| display_slot_rule | 收藏馆、纪元博物志、玩家名片或史册展示位置 |
+| forbidden_effect_rule | 禁止攻击、防御、PVP 伤害、贡献倍率、掉落倍率和排行加成 |
+
+`appearance_plus_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| appearance_id | 深度外观 ID |
+| appearance_type | 动态称号 / 名片布局 / 战报边框 / 洞府摆件 / 宗门驻地装饰 |
+| display_slot | 展示位置 |
+| source_type | 付费仙玉 / 外观券 / 排行奖励 / 活动奖励 / 纪元结算 / 收藏兑换 |
+| inherit_rule | 不继承 / 跨纪元展示继承 / 图鉴继承 |
+| expire_rule | 永久 / 当纪元 / 限时 |
+| preview_template_id | 预览模板 |
+| ownership_rule | 持有、装备、过期和回收规则 |
+| stat_effect_allowed | 固定为 false |
+
+`mentor_rule_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| mentor_rule_id | 导师规则 ID |
+| mentor_condition | 导师资格，例如境界、章节、信誉、风控状态 |
+| apprentice_condition | 徒弟资格和新手保护条件 |
+| apply_limit_rule | 申请数量、同时师徒关系数量和冷却 |
+| task_group | 师徒任务组 |
+| graduation_rule | 出师条件 |
+| reward_boundary | 奖励边界，只允许绑定材料、荣誉、称号、展示外观和少量普通资源 |
+| anti_abuse_rule | 同设备、多账号、固定间隔、异常收益衰减规则 |
+
+`sect_diplomacy_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| diplomacy_rule_id | 外交规则 ID |
+| diplomacy_type | 盟约 / 敌对 / 援助 / 协防 |
+| approval_rule | 宗门职位、票决和自动过期规则 |
+| cooldown_rule | 外交变更冷却 |
+| assist_scope | 可协助玩法范围 |
+| announcement_template_id | 外交公告模板 |
+| pvp_boundary_rule | 不绕过 PVP 匹配、保护和收益衰减 |
+| tower_boundary_rule | 不绕过九塔贡献和延迟结算 |
+
+`sect_hire_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| hire_rule_id | 雇佣规则 ID |
+| hire_type | 探索协助 / 宗门建设 / 九塔补给 / 活动协助 |
+| allowed_action_scope | 可协助行动范围和次数上限 |
+| reward_escrow_rule | 奖励托管、发放和回滚规则 |
+| risk_decay_rule | 同设备、重复目标、异常贡献和刷分衰减规则 |
+| blacklist_rule | 禁止雇佣对象和近期风险限制 |
+| forbidden_asset_rule | 禁止转移付费资产、绑定道具、限定产物、九大古宝本体和唯一战力道具 |
+
+`transfer_rule_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| transfer_rule_id | 转服规则 ID |
+| stage_limit | 服务器阶段限制，最终战前 30 天禁止转服 |
+| target_server_rule | 目标服务器开放、人数、纪元进度和风险限制 |
+| asset_mapping_rule | 钱包、背包、月卡、保底、外观、收藏和日志映射 |
+| rank_cooldown_rule | 转服后排行冷却，默认至少 7 天 |
+| sect_cleanup_rule | 宗门退出、外交清理和补偿建议 |
+| payment_asset_check_rule | 付费资产、月卡、订单和抽卡保底检查 |
+| review_rule | 人工审核、二次确认、回滚建议和 GM 审计规则 |
+| execute_enabled | 默认 false，未专项上线前只允许 dry-run 和执行预留 |
+
+## 九、配置发布流程
 
 1. 策划在草稿环境编辑配置。
 2. 系统校验字段、引用、概率和奖励边界。
@@ -366,8 +468,15 @@
 - `activity_template_config` 是否不支持异步参与，或奖励组包含唯一战力道具。
 - `era_rank_config` 是否让多纪元称号 Buff 叠加滚雪球。
 - `merge_dry_run_config` 是否开放真实执行，或允许 dry-run 修改真实玩家、宗门、订单、排行、保底和纪元数据。
+- `story_presentation_config` 是否引用不存在的章节、战报或文本片段，是否泄露订单、风控、IP / UA 或 GM 审计细节。
+- `era_collection_config` 是否让多纪元祝福叠加，或把重复收藏转化为付费仙玉、九大古宝、唯一战力道具和贡献倍率。
+- `appearance_plus_config` 是否误配置战力、掉落倍率、贡献倍率、排行加成或未持有可装备规则。
+- `mentor_rule_config` 是否允许同设备刷奖励、绕过冷却或发放付费资产。
+- `sect_diplomacy_config` 是否绕过 PVP 匹配、新手保护、九塔贡献结算或宗门权限审批。
+- `sect_hire_config` 是否允许转移付费资产、绑定道具、限定产物、九大古宝本体或刷排行贡献。
+- `transfer_rule_config` 是否开放自由转服、允许最终战前 30 天转服、跳过人工审核、复制可刷资源或取消排行冷却。
 
-## 九、版本追溯要求
+## 十、版本追溯要求
 
 以下记录必须保存配置版本：
 
@@ -391,16 +500,28 @@
 | 内天地派驻 | inner_world_config_version、reward_config_version |
 | 阵营转道 | faction_route_config_version、ruleset_version |
 | 合服 dry-run | merge_config_version、risk_ruleset_version |
+| 章节卷轴 | story_presentation_config_version、story_ruleset_version |
+| 纪元史册 | story_presentation_config_version、era_collection_config_version |
+| 多纪元收藏 | era_collection_config_version、settlement_config_version |
+| 深度外观 | appearance_plus_config_version、ownership_ruleset_version |
+| 导师关系 | mentor_rule_config_version、reward_config_version、risk_ruleset_version |
+| 宗门外交 | sect_diplomacy_config_version、ruleset_version |
+| 跨宗门雇佣 | sect_hire_config_version、reward_config_version、risk_ruleset_version |
+| 转服申请 | transfer_rule_config_version、risk_ruleset_version、settlement_config_version |
 
-## 十、命名和 ID 规范
+## 十一、命名和 ID 规范
 
 - 配置 ID 使用小写英文、数字和下划线，例如 `pill_juling_rank_1`。
 - 中文名用于展示，英文 ID 用于程序引用。
 - 九州 ID 固定为 `ji`、`yan`、`qing`、`xu`、`yang`、`jing`、`yu`、`liang`、`yong`。
 - 怪物和 Boss 名称可参考《山海经》，配置 ID 不使用生僻字拼音缩写。
 - 运营活动 ID 应包含年份和活动类型，例如 `event_2026_spring_festival`。
+- P2 剧情卷轴 ID 使用 `story_scroll_{chapter}_{slug}`，例如 `story_scroll_ch01_xuantie_first_seal`。
+- P2 收藏 ID 使用 `collection_{source}_{slug}`，例如 `collection_era_first_seal`。
+- P2 深度外观 ID 使用 `appearance_plus_{slot}_{slug}`，例如 `appearance_plus_battle_border_moon`。
+- P2 转服规则 ID 使用 `transfer_rule_{era_stage}_{slug}`，例如 `transfer_rule_mid_era_limited`。
 
-## 十一、验收场景
+## 十二、验收场景
 
 - 开发能根据本文拆出核心配置文件和后台配置入口。
 - 所有核心玩法均能通过配置调整数值、奖励和开放章节。
@@ -417,3 +538,6 @@
 - 内天地配置无法配置付费货币、九大古宝本体、限定本命法宝和可交易付费产物。
 - 活动配置全部支持异步参与，排行冲刺奖励不补发。
 - 合服 dry-run 配置只能生成报告和建议，不允许真实执行。
+- P2 剧情演出、收藏、深度外观、导师、宗门外交、跨宗门雇佣和转服都有配置入口。
+- P2 配置发布能拦截战力外观、多纪元 Buff 叠加、社交资产转移、雇佣刷贡献和自由转服风险。
+- P2 转服配置默认只允许 dry-run、报告、审核和执行预留，不默认开放真实自由转服。

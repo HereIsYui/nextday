@@ -472,7 +472,55 @@ P1 接口规则：
 - P1-9 / P1-10 的事件池、推荐路线、丹器推荐、战斗摘要和掉落报告只能增强展示、调参和 QA，不得改变核心结算。
 - WebSocket / SSE 后续即使接入，也只推送提醒和状态变化，P1 核心结算仍以 HTTP 结果为准。
 
-## 十四、验收场景
+## 十四、P2 接口占位与长线增强边界
+
+P2 在 P1 已完成的新手体验、数值校准、九州全域、内天地、阵营、排行、活动和合服 dry-run 之上继续扩展。P2 接口仍以 HTTP REST 为主，WebSocket / SSE 即使后续接入，也只能推送提醒、红点和轻摘要，不能参与剧情解锁、收藏继承、外观装备、社交奖励、转服审核和资产迁移的权威结算。
+
+P2 新增接口分组：
+
+| 分组 | 接口 | 方法 | 说明 |
+| --- | --- | --- | --- |
+| 剧情卷轴 | `/api/story/scrolls` | GET | 章节卷轴列表、解锁进度、最近更新和可回放红点 |
+| 剧情卷轴 | `/api/story/scrolls/{scroll_id}` | GET | 章节卷轴详情、文本片段、选择摘要、战报引用和配置版本 |
+| 剧情卷轴 | `/api/story/battle-narratives/{battle_id}` | GET | 战报叙事摘要、关键回合、胜负原因和原始战报引用 |
+| 纪元史册 | `/api/story/era-chronicle` | GET | 当前服务器纪元史册、排行摘要、阵营结局、九塔状态和活动节点 |
+| 多纪元收藏 | `/api/collection/summary` | GET | 个人收藏馆摘要、历史图鉴、纪元纪念物和展示栏 |
+| 多纪元收藏 | `/api/collection/entries/{collection_id}` | GET | 收藏条目详情、来源记录、继承规则和展示状态 |
+| 多纪元收藏 | `/api/collection/display/equip` | POST | 装备收藏展示项，需幂等键 |
+| 深度外观 | `/api/appearance-plus/catalog` | GET | 动态称号、名片、战报、洞府、宗门驻地外观目录 |
+| 深度外观 | `/api/appearance-plus/owned` | GET | 当前玩家持有、限时、过期和可继承外观 |
+| 深度外观 | `/api/appearance-plus/equip` | POST | 装备或卸下展示外观，需幂等键 |
+| 导师 | `/api/mentor/summary` | GET | 师徒状态、申请、任务、出师进度和冷却 |
+| 导师 | `/api/mentor/apply` | POST | 拜师申请，需幂等键 |
+| 导师 | `/api/mentor/review` | POST | 同意或拒绝拜师申请，需幂等键 |
+| 导师 | `/api/mentor/task/claim` | POST | 领取师徒任务奖励，需幂等键 |
+| 导师 | `/api/mentor/graduate` | POST | 出师结算，需幂等键 |
+| 宗门外交 | `/api/sect/diplomacy/summary` | GET | 宗门外交状态、提案、协防和公告 |
+| 宗门外交 | `/api/sect/diplomacy/propose` | POST | 发起盟约、敌对、援助或协防提案，需幂等键 |
+| 宗门外交 | `/api/sect/diplomacy/review` | POST | 审批外交提案，需幂等键 |
+| 跨宗门雇佣 | `/api/sect/hire/list` | GET | 可接取雇佣委托和协助范围 |
+| 跨宗门雇佣 | `/api/sect/hire/create` | POST | 发布雇佣委托，需幂等键 |
+| 跨宗门雇佣 | `/api/sect/hire/accept` | POST | 接取雇佣委托，需幂等键 |
+| 跨宗门雇佣 | `/api/sect/hire/settle` | POST | 结算雇佣奖励和风控衰减，需幂等键 |
+| 转服 | `/api/transfer/rules` | GET | 玩家可见转服条件、阶段限制、冷却、排行冻结和费用说明 |
+| 转服 | `/api/transfer/request` | POST | 提交转服申请，需幂等键 |
+| 转服 | `/api/transfer/cancel` | POST | 取消未审核转服申请，需幂等键 |
+| 转服 | `/api/transfer/status` | GET | 查询当前玩家转服申请、报告和审核状态 |
+| 转服后台 | `/api/admin/transfer/dry-run` | POST | 生成个人转服影响报告，不修改真实数据 |
+| 转服后台 | `/api/admin/transfer/review` | POST | 人工审核转服申请，需幂等键和 GM 权限 |
+| 转服后台 | `/api/admin/transfer/execute` | POST | 转服执行预留，默认需要二次确认和审计 |
+
+P2 接口规则：
+
+- 所有 P2 状态变更继续使用 `Idempotency-Key`，重复请求必须返回同一记录或明确的已处理状态。
+- 剧情卷轴和纪元史册只能读取公开史册或当前玩家有权查看的个人经历，不得返回订单明细、IP / UA 摘要、后台风控细节和 GM 审计细节。
+- 收藏和深度外观接口只能改变展示状态，不得返回或写入攻击、防御、PVP 伤害、九塔贡献倍率、世界 Boss 贡献倍率、最终魔王贡献倍率和资源掉落倍率。
+- 导师、宗门外交和跨宗门雇佣的奖励必须由服务端按奖励边界结算，不能转移付费仙玉、绑定道具、限定产物、九大古宝本体和唯一战力道具。
+- 转服接口默认先生成 dry-run 影响报告；未通过人工审核、二次确认和阶段校验前，不得迁移玩家资产。
+- 最终战前 30 天转服必须被拒绝；转服后至少 7 天内不能参与部分排行奖励。
+- P2 接口必须返回 `config_version`、`ruleset_version`、`reward_config_version` 或对应的展示配置版本，便于回放和审计。
+
+## 十五、验收场景
 
 - 前端能根据本文完成 MVP 主流程接口对接。
 - 状态变更接口具备幂等键，重复请求不重复发奖。
@@ -487,3 +535,6 @@ P1 接口规则：
 - P1 Web 体验字段只增强展示，不能改变奖励、贡献、抽卡、战斗和风控结论。
 - P1 内天地、阵营、活动和合服 dry-run 接口都有明确路径、幂等规则、配置版本和奖励边界。
 - 合服 dry-run 能输出影响报告，但不写真实合服执行结果。
+- P2 剧情、收藏、外观、社交和转服接口都有明确路径、幂等规则、权限边界、配置版本和审计要求。
+- P2 收藏和深度外观只改变展示，不改变战斗、掉落、贡献、排行和付费奖励公式。
+- P2 转服 dry-run 能输出个人影响报告，未审核前不迁移真实资产。

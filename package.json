@@ -47,7 +47,8 @@
     "test:p2-story": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run build:packages && DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run test:p2-story -w @nextday/api",
     "test:p2-collection": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run build:packages && DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run test:p2-collection -w @nextday/api",
     "test:p2-appearance": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run build:packages && DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run test:p2-appearance -w @nextday/api",
-    "test:p2": "npm run test:p2-story && npm run test:p2-collection && npm run test:p2-appearance",
+    "test:p2-social": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run build:packages && DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run test:p2-social -w @nextday/api",
+    "test:p2": "npm run test:p2-story && npm run test:p2-collection && npm run test:p2-appearance && npm run test:p2-social",
     "lint": "biome check .",
     "typecheck": "npm run build:packages && npm run typecheck --workspaces --if-present",
     "format:check": "biome ci ."

@@ -3,6 +3,7 @@
 import { GameClient } from "@nextday/game-client";
 import { cultivationRouteLabels } from "@nextday/game-rules";
 import type {
+  AcceptSectHireRequest,
   ActivityListResponse,
   ActivitySummaryState,
   AlchemyRecipeListResponse,
@@ -28,18 +29,28 @@ import type {
   ForgeRecipeListResponse,
   GachaPoolListResponse,
   GameOverviewResponse,
+  GraduateMentorRequest,
   HealthStatus,
   InnerWorldSummaryResponse,
   JournalEntryState,
   LoginResponse,
+  MentorRelationState,
+  MentorSummaryResponse,
   MonthlyCardType,
   NewPlayerRouteState,
   PlayerProfileResponse,
+  ProposeSectDiplomacyRequest,
   ProvinceSummary,
   RankListResponse,
   RankType,
   ResourcePointListResponse,
+  ReviewMentorRequest,
+  ReviewSectDiplomacyRequest,
   SectDetailResponse,
+  SectDiplomacySummaryResponse,
+  SectHireListResponse,
+  SectHireState,
+  SectListResponse,
   SkillLoadoutResponse,
   StoryScrollDetailResponse,
   StoryScrollListResponse,
@@ -164,6 +175,10 @@ export default function HomePage() {
   const [towers, setTowers] = useState<TowerListResponse | null>(null);
   const [boss, setBoss] = useState<WorldBossResponse | null>(null);
   const [sect, setSect] = useState<SectDetailResponse | null>(null);
+  const [sectList, setSectList] = useState<SectListResponse | null>(null);
+  const [mentor, setMentor] = useState<MentorSummaryResponse | null>(null);
+  const [diplomacy, setDiplomacy] = useState<SectDiplomacySummaryResponse | null>(null);
+  const [hireList, setHireList] = useState<SectHireListResponse | null>(null);
   const [resourcePoints, setResourcePoints] = useState<ResourcePointListResponse | null>(null);
   const [personalRank, setPersonalRank] = useState<RankListResponse | null>(null);
   const [productionRank, setProductionRank] = useState<RankListResponse | null>(null);
@@ -246,6 +261,20 @@ export default function HomePage() {
     Boolean(activeExplore) && (activeExplore?.can_claim === true || exploreRemainingSeconds <= 0);
   const firstResourcePoint = resourcePoints?.resource_points[0];
   const pvpTarget = personalRank?.entries.find((entry) => entry.target_id !== activePlayerId);
+  const mentorCandidate = personalRank?.entries.find((entry) => entry.target_id !== activePlayerId);
+  const pendingMentorReview = mentor?.pending_as_mentor[0];
+  const activeMentorRelation = mentor?.active_as_apprentice;
+  const pendingMentorApply = mentor?.relations.find(
+    (item) => item.apprentice_player_id === activePlayerId && item.status === "pending",
+  );
+  const diplomacyTargetSect = sectList?.sects.find((item) => item.sect_id !== sect?.sect?.sect_id);
+  const diplomacyReview = diplomacy?.proposals_to_review[0];
+  const openHire = hireList?.open_hires.find(
+    (item) => item.employer_sect_id !== sect?.sect?.sect_id,
+  );
+  const acceptedHire = hireList?.accepted_hires.find((item) => item.status === "accepted");
+  const canProposeDiplomacy = hasSectRoleAtLeast(sect?.sect?.my_role, "elder");
+  const canCreateHire = hasSectRoleAtLeast(sect?.sect?.my_role, "deacon");
   const firstWarehouseDepositItem = bag?.items.find(
     (item) =>
       item.tradeable &&
@@ -706,6 +735,10 @@ export default function HomePage() {
         setTowers(state.towers);
         setBoss(state.boss);
         setSect(state.sect);
+        setSectList(state.sectList);
+        setMentor(state.mentor);
+        setDiplomacy(state.diplomacy);
+        setHireList(state.hireList);
         setResourcePoints(state.resourcePoints);
         setPersonalRank(state.personalRank);
         setProductionRank(state.productionRank);
@@ -813,6 +846,10 @@ export default function HomePage() {
     setTowers(state.towers);
     setBoss(state.boss);
     setSect(state.sect);
+    setSectList(state.sectList);
+    setMentor(state.mentor);
+    setDiplomacy(state.diplomacy);
+    setHireList(state.hireList);
     setResourcePoints(state.resourcePoints);
     setPersonalRank(state.personalRank);
     setProductionRank(state.productionRank);
@@ -1336,6 +1373,208 @@ export default function HomePage() {
       ensureOk(response);
       rememberExperience(response.data.experience);
       await refreshOverview(`取用 ${firstWarehouseItem.name} x1`);
+    });
+  }
+
+  async function handleApplyMentor() {
+    if (!mentorCandidate) {
+      setMessage("暂无可拜访的导师候选");
+      return;
+    }
+
+    await runAction("拜访导师", async () => {
+      const body: { mentor_player_id: string } = { mentor_player_id: mentorCandidate.target_id };
+      const response = await client.applyMentor(body, createIdempotencyKey("web_mentor_apply"));
+      ensureOk(response);
+      rememberExperience(undefined, {
+        summary: `已向 ${response.data.relation.mentor_name} 递交拜师帖，等待对方异步审批。`,
+        tags: ["导师"],
+        title: "拜访导师",
+        tone: "success",
+      });
+      await refreshOverview("拜师申请已送达");
+    });
+  }
+
+  async function handleReviewMentor(relation: MentorRelationState, decision: "accept" | "reject") {
+    const actionLabel = decision === "accept" ? "同意拜师" : "婉拒拜师";
+    await runAction(actionLabel, async () => {
+      const body: ReviewMentorRequest = {
+        decision,
+        mentor_relation_id: relation.mentor_relation_id,
+      };
+      const response = await client.reviewMentor(body, createIdempotencyKey("web_mentor_review"));
+      ensureOk(response);
+      rememberExperience(undefined, {
+        summary:
+          decision === "accept"
+            ? `${response.data.relation.apprentice_name} 已成为门下弟子。`
+            : `已婉拒 ${response.data.relation.apprentice_name} 的拜师帖。`,
+        tags: ["导师"],
+        title: actionLabel,
+        tone: decision === "accept" ? "success" : "neutral",
+      });
+      await refreshOverview(actionLabel);
+    });
+  }
+
+  async function handleClaimMentorTask() {
+    if (!activeMentorRelation) {
+      setMessage("暂无可领取的师徒任务");
+      return;
+    }
+
+    await runAction("领取师徒任务", async () => {
+      const response = await client.claimMentorTask(
+        { mentor_relation_id: activeMentorRelation.mentor_relation_id },
+        createIdempotencyKey("web_mentor_task"),
+      );
+      ensureOk(response);
+      rememberExperience(undefined, {
+        summary: `已完成 ${response.data.relation.mentor_name} 的指点任务，获得少量修行补给。`,
+        tags: ["导师任务"],
+        title: "师徒指点",
+        tone: "success",
+      });
+      await refreshOverview("师徒任务已领取");
+    });
+  }
+
+  async function handleGraduateMentor() {
+    if (!activeMentorRelation) {
+      setMessage("暂无可出师的师徒关系");
+      return;
+    }
+
+    await runAction("出师", async () => {
+      const body: GraduateMentorRequest = {
+        mentor_relation_id: activeMentorRelation.mentor_relation_id,
+      };
+      const response = await client.graduateMentor(
+        body,
+        createIdempotencyKey("web_mentor_graduate"),
+      );
+      ensureOk(response);
+      rememberExperience(undefined, {
+        summary: `已从 ${response.data.relation.mentor_name} 门下出师，记录留入本纪元社交册。`,
+        tags: ["出师"],
+        title: "完成出师",
+        tone: "success",
+      });
+      await refreshOverview("出师完成");
+    });
+  }
+
+  async function handleProposeDiplomacy() {
+    if (!diplomacyTargetSect) {
+      setMessage("暂无可发起外交的目标宗门");
+      return;
+    }
+
+    await runAction("发起盟约", async () => {
+      const body: ProposeSectDiplomacyRequest = {
+        diplomacy_type: "alliance",
+        message: "愿以异步协作为约。",
+        target_sect_id: diplomacyTargetSect.sect_id,
+      };
+      const response = await client.proposeSectDiplomacy(
+        body,
+        createIdempotencyKey("web_diplomacy_propose"),
+      );
+      ensureOk(response);
+      rememberExperience(undefined, {
+        summary: `已向 ${response.data.diplomacy.target_sect_name} 发出盟约提案。`,
+        tags: ["宗门外交"],
+        title: "外交提案",
+        tone: "success",
+      });
+      await refreshOverview("外交提案已发出");
+    });
+  }
+
+  async function handleReviewDiplomacy(decision: "accept" | "reject") {
+    if (!diplomacyReview) {
+      setMessage("暂无待审批外交提案");
+      return;
+    }
+
+    await runAction(decision === "accept" ? "同意盟约" : "拒绝提案", async () => {
+      const body: ReviewSectDiplomacyRequest = {
+        decision,
+        diplomacy_record_id: diplomacyReview.diplomacy_record_id,
+      };
+      const response = await client.reviewSectDiplomacy(
+        body,
+        createIdempotencyKey("web_diplomacy_review"),
+      );
+      ensureOk(response);
+      rememberExperience(undefined, {
+        summary:
+          decision === "accept"
+            ? `已与 ${response.data.diplomacy.source_sect_name} 建立${sectDiplomacyTypeLabel(
+                response.data.diplomacy.diplomacy_type,
+              )}。`
+            : `已回绝 ${response.data.diplomacy.source_sect_name} 的外交提案。`,
+        tags: ["宗门外交"],
+        title: "外交审批",
+        tone: decision === "accept" ? "success" : "neutral",
+      });
+      await refreshOverview("外交状态已更新");
+    });
+  }
+
+  async function handleCreateSectHire() {
+    if (!sect?.sect) {
+      setMessage("请先加入宗门");
+      return;
+    }
+
+    await runAction("发布雇佣", async () => {
+      const body: { hire_type: "explore_support"; message: string } = {
+        hire_type: "explore_support",
+        message: "请协助完成日常探索补给。",
+      };
+      const response = await client.createSectHire(body, createIdempotencyKey("web_hire_create"));
+      ensureOk(response);
+      rememberExperience(undefined, {
+        summary: `已发布${sectHireTypeLabel(response.data.hire.hire_type)}委托，等待其他宗门接取。`,
+        tags: ["宗门雇佣"],
+        title: "发布雇佣",
+        tone: "success",
+      });
+      await refreshOverview("雇佣委托已发布");
+    });
+  }
+
+  async function handleAcceptSectHire(hire: SectHireState) {
+    await runAction("接取雇佣", async () => {
+      const body: AcceptSectHireRequest = { hire_record_id: hire.hire_record_id };
+      const response = await client.acceptSectHire(body, createIdempotencyKey("web_hire_accept"));
+      ensureOk(response);
+      rememberExperience(undefined, {
+        summary: `已接取 ${response.data.hire.employer_sect_name} 的${sectHireTypeLabel(
+          response.data.hire.hire_type,
+        )}委托。`,
+        tags: ["宗门雇佣"],
+        title: "接取雇佣",
+        tone: "success",
+      });
+      await refreshOverview("雇佣委托已接取");
+    });
+  }
+
+  async function handleSettleSectHire(hire: SectHireState) {
+    await runAction("结算雇佣", async () => {
+      const body: { hire_record_id: string } = { hire_record_id: hire.hire_record_id };
+      const response = await client.settleSectHire(body, createIdempotencyKey("web_hire_settle"));
+      ensureOk(response);
+      rememberExperience(undefined, {
+        summary: `${sectHireTypeLabel(response.data.hire.hire_type)}委托已完成，获得普通灵石酬劳。`,
+        tags: ["雇佣完成"],
+        title: "雇佣结算",
+        tone: "success",
+      });
+      await refreshOverview("雇佣已结算");
     });
   }
 
@@ -2795,6 +3034,181 @@ export default function HomePage() {
                     title="PVP 与排行"
                   />
                 </div>
+                <section className="rank-panel" aria-label="高级社交">
+                  <div className="section-title">
+                    <h2>高级社交</h2>
+                    <span>导师、宗门外交与跨宗门雇佣都可异步处理</span>
+                  </div>
+                  <div className="production-grid">
+                    <ActionBox
+                      actions={
+                        <>
+                          {pendingMentorReview ? (
+                            <>
+                              <Button
+                                disabled={busy}
+                                onClick={() => handleReviewMentor(pendingMentorReview, "accept")}
+                              >
+                                同意拜师
+                              </Button>
+                              <Button
+                                disabled={busy}
+                                onClick={() => handleReviewMentor(pendingMentorReview, "reject")}
+                              >
+                                婉拒
+                              </Button>
+                            </>
+                          ) : null}
+                          {activeMentorRelation && !mentorTaskClaimed(activeMentorRelation) ? (
+                            <Button disabled={busy} onClick={handleClaimMentorTask}>
+                              领指点
+                            </Button>
+                          ) : null}
+                          {activeMentorRelation && mentorTaskClaimed(activeMentorRelation) ? (
+                            <Button disabled={busy} onClick={handleGraduateMentor}>
+                              出师
+                            </Button>
+                          ) : null}
+                          {!pendingMentorReview &&
+                          !activeMentorRelation &&
+                          !pendingMentorApply &&
+                          mentorCandidate ? (
+                            <Button disabled={busy} onClick={handleApplyMentor}>
+                              拜访导师
+                            </Button>
+                          ) : null}
+                        </>
+                      }
+                      actionNote={
+                        pendingMentorReview
+                          ? `${pendingMentorReview.apprentice_name} 正等待回应`
+                          : activeMentorRelation
+                            ? `导师 ${activeMentorRelation.mentor_name} · ${mentorRelationStatusLabel(
+                                activeMentorRelation.status,
+                              )}`
+                            : pendingMentorApply
+                              ? `已向 ${pendingMentorApply.mentor_name} 递交拜师帖`
+                              : mentorCandidate
+                                ? undefined
+                                : "暂无可拜访导师，可先完成排行或邀请道友加入"
+                      }
+                      detail={
+                        activeMentorRelation
+                          ? `${activeMentorRelation.mentor_name} 指点中 · ${
+                              mentorTaskClaimed(activeMentorRelation) ? "可出师" : "可领指点"
+                            }`
+                          : pendingMentorApply
+                            ? `等待 ${pendingMentorApply.mentor_name} 审批`
+                            : pendingMentorReview
+                              ? `${pendingMentorReview.apprentice_name} 请求拜师`
+                              : `候选 ${mentorCandidate?.display_name ?? "暂无"}`
+                      }
+                      title="导师"
+                    />
+                    <ActionBox
+                      actions={
+                        <>
+                          {diplomacyReview ? (
+                            <>
+                              <Button
+                                disabled={busy}
+                                onClick={() => handleReviewDiplomacy("accept")}
+                              >
+                                同意提案
+                              </Button>
+                              <Button
+                                disabled={busy}
+                                onClick={() => handleReviewDiplomacy("reject")}
+                              >
+                                回绝
+                              </Button>
+                            </>
+                          ) : null}
+                          {!diplomacyReview && canProposeDiplomacy && diplomacyTargetSect ? (
+                            <Button disabled={busy} onClick={handleProposeDiplomacy}>
+                              发起盟约
+                            </Button>
+                          ) : null}
+                        </>
+                      }
+                      actionNote={
+                        diplomacyReview
+                          ? `${diplomacyReview.source_sect_name} 请求${sectDiplomacyTypeLabel(
+                              diplomacyReview.diplomacy_type,
+                            )}`
+                          : !sect?.sect
+                            ? "未入宗门，暂不可发起外交"
+                            : !canProposeDiplomacy
+                              ? "需要宗主或长老权限"
+                              : diplomacyTargetSect
+                                ? undefined
+                                : "暂无其他宗门目标"
+                      }
+                      detail={
+                        diplomacy?.records[0]
+                          ? `${sectDiplomacyTypeLabel(
+                              diplomacy.records[0].diplomacy_type,
+                            )} · ${sectDiplomacyStatusLabel(diplomacy.records[0].status)}`
+                          : `目标 ${diplomacyTargetSect?.name ?? "暂无"}`
+                      }
+                      title="宗门外交"
+                    />
+                    <ActionBox
+                      actions={
+                        <>
+                          {acceptedHire ? (
+                            <Button
+                              disabled={busy}
+                              onClick={() => handleSettleSectHire(acceptedHire)}
+                            >
+                              结算雇佣
+                            </Button>
+                          ) : null}
+                          {!acceptedHire && openHire ? (
+                            <Button disabled={busy} onClick={() => handleAcceptSectHire(openHire)}>
+                              接取雇佣
+                            </Button>
+                          ) : null}
+                          {!acceptedHire && !openHire && canCreateHire ? (
+                            <Button disabled={busy} onClick={handleCreateSectHire}>
+                              发布雇佣
+                            </Button>
+                          ) : null}
+                        </>
+                      }
+                      actionNote={
+                        acceptedHire
+                          ? `来自 ${acceptedHire.employer_sect_name}，可结算普通酬劳`
+                          : openHire
+                            ? `${openHire.employer_sect_name} 发布了${sectHireTypeLabel(
+                                openHire.hire_type,
+                              )}`
+                            : !sect?.sect
+                              ? "未入宗门，暂不可参与雇佣"
+                              : !canCreateHire
+                                ? "发布雇佣需要执事以上权限"
+                                : "暂无外部委托，可发布一条探索协助"
+                      }
+                      detail={
+                        acceptedHire
+                          ? `${sectHireTypeLabel(acceptedHire.hire_type)} · ${sectHireStatusLabel(
+                              acceptedHire.status,
+                            )}`
+                          : openHire
+                            ? `${sectHireTypeLabel(openHire.hire_type)} · ${sectHireStatusLabel(
+                                openHire.status,
+                              )}`
+                            : `本宗委托 ${hireList?.my_hires.length ?? 0} · 可接 ${
+                                hireList?.open_hires.length ?? 0
+                              }`
+                      }
+                      title="跨宗门雇佣"
+                    />
+                  </div>
+                  <p className="action-note">
+                    社交协作只记录指导、盟约和普通酬劳，不转移付费资产、九大古宝或唯一战力道具。
+                  </p>
+                </section>
                 <section className="faction-panel" aria-label="仙魔散修路线">
                   <div className="section-title">
                     <h2>仙魔散修</h2>
@@ -4675,6 +5089,10 @@ async function loadMultiplayer(client: GameClient) {
     towerResponse,
     bossResponse,
     sectResponse,
+    sectListResponse,
+    mentorResponse,
+    diplomacyResponse,
+    hireResponse,
     resourceResponse,
     rankResponse,
     productionRankResponse,
@@ -4687,6 +5105,10 @@ async function loadMultiplayer(client: GameClient) {
     client.towers(),
     client.worldBoss(),
     client.mySect(),
+    client.sects(),
+    client.mentorSummary(),
+    client.sectDiplomacySummary(),
+    client.sectHireList(),
     client.resourcePoints(),
     client.ranks("personal"),
     client.ranks("production"),
@@ -4700,6 +5122,10 @@ async function loadMultiplayer(client: GameClient) {
   ensureOk(towerResponse);
   ensureOk(bossResponse);
   ensureOk(sectResponse);
+  ensureOk(sectListResponse);
+  ensureOk(mentorResponse);
+  ensureOk(diplomacyResponse);
+  ensureOk(hireResponse);
   ensureOk(resourceResponse);
   ensureOk(rankResponse);
   ensureOk(productionRankResponse);
@@ -4713,6 +5139,10 @@ async function loadMultiplayer(client: GameClient) {
     towers: towerResponse.data,
     boss: bossResponse.data,
     sect: sectResponse.data,
+    sectList: sectListResponse.data,
+    mentor: mentorResponse.data,
+    diplomacy: diplomacyResponse.data,
+    hireList: hireResponse.data,
     resourcePoints: resourceResponse.data,
     personalRank: rankResponse.data,
     productionRank: productionRankResponse.data,
@@ -4899,6 +5329,69 @@ function sourceTypeLabel(sourceType: string): string {
     tower: "九塔",
   };
   return labels[sourceType] ?? "未知来源";
+}
+
+function mentorRelationStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    active: "指点中",
+    dissolved: "已解除",
+    graduated: "已出师",
+    pending: "待回应",
+    rejected: "已婉拒",
+  };
+  return labels[status] ?? "师徒记录";
+}
+
+function sectDiplomacyTypeLabel(type: string): string {
+  const labels: Record<string, string> = {
+    aid: "援助",
+    alliance: "盟约",
+    defense: "协防",
+    hostility: "敌对",
+  };
+  return labels[type] ?? "外交";
+}
+
+function sectDiplomacyStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    active: "已生效",
+    dissolved: "已解除",
+    expired: "已过期",
+    proposed: "待审批",
+    rejected: "已回绝",
+  };
+  return labels[status] ?? "外交记录";
+}
+
+function sectHireTypeLabel(type: string): string {
+  const labels: Record<string, string> = {
+    event_support: "活动协助",
+    explore_support: "探索协助",
+    sect_build: "宗门建设",
+    tower_supply: "九塔补给",
+  };
+  return labels[type] ?? "雇佣";
+}
+
+function sectHireStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    accepted: "已接取",
+    canceled: "已取消",
+    completed: "已完成",
+    open: "待接取",
+    rolled_back: "已回滚",
+    settled: "已结算",
+  };
+  return labels[status] ?? "委托记录";
+}
+
+function mentorTaskClaimed(relation: MentorRelationState): boolean {
+  return relation.task_summary.claimed === true;
+}
+
+function hasSectRoleAtLeast(role: string | null | undefined, minimum: "deacon" | "elder"): boolean {
+  const rank: Record<string, number> = { deacon: 2, disciple: 1, elder: 3, leader: 4 };
+  return (rank[role ?? ""] ?? 0) >= rank[minimum];
 }
 
 function chronicleTypeLabel(type: string): string {

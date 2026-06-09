@@ -1905,6 +1905,158 @@ export interface EquipAppearancePlusResponse {
   display_slots: AppearancePlusDisplaySlotState[];
 }
 
+export type MentorRelationStatus = "pending" | "active" | "graduated" | "dissolved" | "rejected";
+
+export interface MentorRelationState {
+  mentor_relation_id: string;
+  mentor_player_id: string;
+  mentor_name: string;
+  apprentice_player_id: string;
+  apprentice_name: string;
+  era_id: string;
+  status: MentorRelationStatus | string;
+  task_summary: Record<string, unknown>;
+  reward_boundary_summary: Record<string, unknown>;
+  cooldown_until: string | null;
+  risk_summary: Record<string, unknown> | null;
+  mentor_config_version: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MentorSummaryResponse {
+  relations: MentorRelationState[];
+  pending_as_mentor: MentorRelationState[];
+  active_as_apprentice: MentorRelationState | null;
+  rule: Record<string, unknown>;
+}
+
+export interface ApplyMentorRequest {
+  mentor_player_id: string;
+}
+
+export interface ReviewMentorRequest {
+  mentor_relation_id: string;
+  decision: "accept" | "reject";
+}
+
+export interface ClaimMentorTaskRequest {
+  mentor_relation_id: string;
+  task_id?: string;
+}
+
+export interface GraduateMentorRequest {
+  mentor_relation_id: string;
+}
+
+export interface MentorMutationResponse {
+  record_id: string;
+  relation: MentorRelationState;
+  rewards?: RewardBundle;
+}
+
+export type SectDiplomacyStatus = "proposed" | "active" | "rejected" | "expired" | "dissolved";
+
+export interface SectDiplomacyState {
+  diplomacy_record_id: string;
+  source_sect_id: string;
+  source_sect_name: string;
+  target_sect_id: string;
+  target_sect_name: string;
+  era_id: string;
+  diplomacy_type: "alliance" | "hostility" | "aid" | "defense" | string;
+  status: SectDiplomacyStatus | string;
+  proposal_summary: Record<string, unknown>;
+  approval_summary: Record<string, unknown> | null;
+  cooldown_until: string | null;
+  announcement_id: string | null;
+  diplomacy_config_version: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SectDiplomacySummaryResponse {
+  sect_id: string | null;
+  sect_name: string | null;
+  my_role: string | null;
+  records: SectDiplomacyState[];
+  proposals_to_review: SectDiplomacyState[];
+  rule: Record<string, unknown>;
+}
+
+export interface ProposeSectDiplomacyRequest {
+  target_sect_id: string;
+  diplomacy_type: "alliance" | "hostility" | "aid" | "defense";
+  message?: string;
+}
+
+export interface ReviewSectDiplomacyRequest {
+  diplomacy_record_id: string;
+  decision: "accept" | "reject";
+}
+
+export interface SectDiplomacyMutationResponse {
+  record_id: string;
+  diplomacy: SectDiplomacyState;
+}
+
+export type SectHireStatus =
+  | "open"
+  | "accepted"
+  | "completed"
+  | "canceled"
+  | "settled"
+  | "rolled_back";
+
+export interface SectHireState {
+  hire_record_id: string;
+  employer_sect_id: string;
+  employer_sect_name: string;
+  helper_sect_id: string | null;
+  helper_sect_name: string | null;
+  helper_player_id: string | null;
+  helper_player_name: string | null;
+  era_id: string;
+  hire_type: "explore_support" | "sect_build" | "tower_supply" | "event_support" | string;
+  status: SectHireStatus | string;
+  allowed_action_scope: Record<string, unknown>;
+  reward_escrow_summary: Record<string, unknown>;
+  risk_status: RiskStatus | string;
+  settlement_status: SettlementStatus | string;
+  hire_config_version: string;
+  reward_config_version: string;
+  created_at: string;
+  settled_at: string | null;
+}
+
+export interface SectHireListResponse {
+  sect_id: string | null;
+  sect_name: string | null;
+  open_hires: SectHireState[];
+  my_hires: SectHireState[];
+  accepted_hires: SectHireState[];
+  rule: Record<string, unknown>;
+}
+
+export interface CreateSectHireRequest {
+  hire_type: "explore_support" | "sect_build" | "tower_supply" | "event_support";
+  message?: string;
+}
+
+export interface AcceptSectHireRequest {
+  hire_record_id: string;
+}
+
+export interface SettleSectHireRequest {
+  hire_record_id: string;
+}
+
+export interface SectHireMutationResponse {
+  record_id: string;
+  hire: SectHireState;
+  rewards?: RewardBundle;
+}
+
 export interface GameOverviewResponse {
   profile: PlayerProfileResponse;
   cultivation: CultivationStatus | null;

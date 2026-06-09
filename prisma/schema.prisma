@@ -97,6 +97,9 @@ model Player {
   mails                     PlayerMail[]
   storyScrollRecords        StoryScrollRecord[]
   eraCollections            EraCollectionRecord[]
+  mentorRelationsAsMentor   MentorRelationRecord[]    @relation("MentorRelationMentor")
+  mentorRelationsAsApprentice MentorRelationRecord[]  @relation("MentorRelationApprentice")
+  hireHelpRecords           SectHireRecord[]
 
   @@index([accountId])
   @@index([sectId])
@@ -922,6 +925,10 @@ model Sect {
   towerActions   TowerActionRecord[]
   bossChallenges WorldBossChallengeRecord[]
   appearanceOwnerships AppearanceOwnershipRecord[]
+  diplomacySources     SectDiplomacyRecord[] @relation("SectDiplomacySource")
+  diplomacyTargets     SectDiplomacyRecord[] @relation("SectDiplomacyTarget")
+  hiresAsEmployer      SectHireRecord[]      @relation("SectHireEmployer")
+  hiresAsHelper        SectHireRecord[]      @relation("SectHireHelper")
 
   @@index([alignment])
   @@index([level])
@@ -1647,6 +1654,108 @@ model AppearanceOwnershipRecord {
   @@index([equipped])
   @@index([expiresAt])
   @@map("appearance_ownership_record")
+}
+
+model MentorRelationRecord {
+  mentorRelationId     String    @id @map("mentor_relation_id")
+  mentorPlayerId       String    @map("mentor_player_id")
+  apprenticePlayerId   String    @map("apprentice_player_id")
+  eraId                String    @default("era_mvp_001") @map("era_id")
+  status               String    @default("pending")
+  taskSummary          Json      @map("task_summary")
+  rewardBoundarySummary Json    @map("reward_boundary_summary")
+  cooldownUntil        DateTime? @map("cooldown_until")
+  riskSummary          Json?     @map("risk_summary")
+  idempotencyKey       String?   @unique @map("idempotency_key")
+  mentorConfigVersion  String    @map("mentor_config_version")
+  rewardConfigVersion  String    @map("reward_config_version")
+  riskRulesetVersion   String    @map("risk_ruleset_version")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  mentor    Player @relation("MentorRelationMentor", fields: [mentorPlayerId], references: [playerId])
+  apprentice Player @relation("MentorRelationApprentice", fields: [apprenticePlayerId], references: [playerId])
+
+  @@index([mentorPlayerId])
+  @@index([apprenticePlayerId])
+  @@index([eraId])
+  @@index([status])
+  @@index([cooldownUntil])
+  @@index([createdAt])
+  @@index([mentorPlayerId, apprenticePlayerId, status])
+  @@index([apprenticePlayerId, status])
+  @@map("mentor_relation_record")
+}
+
+model SectDiplomacyRecord {
+  diplomacyRecordId       String    @id @map("diplomacy_record_id")
+  sourceSectId            String    @map("source_sect_id")
+  targetSectId            String    @map("target_sect_id")
+  eraId                   String    @default("era_mvp_001") @map("era_id")
+  diplomacyType           String    @map("diplomacy_type")
+  status                  String    @default("proposed")
+  proposalSummary         Json      @map("proposal_summary")
+  approvalSummary         Json?     @map("approval_summary")
+  cooldownUntil           DateTime? @map("cooldown_until")
+  announcementId          String?   @map("announcement_id")
+  idempotencyKey          String?   @unique @map("idempotency_key")
+  diplomacyConfigVersion  String    @map("diplomacy_config_version")
+  rulesetVersion          String    @map("ruleset_version")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+
+  sourceSect Sect @relation("SectDiplomacySource", fields: [sourceSectId], references: [sectId])
+  targetSect Sect @relation("SectDiplomacyTarget", fields: [targetSectId], references: [sectId])
+
+  @@index([sourceSectId])
+  @@index([targetSectId])
+  @@index([eraId])
+  @@index([diplomacyType])
+  @@index([status])
+  @@index([cooldownUntil])
+  @@index([announcementId])
+  @@index([createdAt])
+  @@index([sourceSectId, targetSectId, status])
+  @@index([eraId, diplomacyType, status])
+  @@map("sect_diplomacy_record")
+}
+
+model SectHireRecord {
+  hireRecordId          String    @id @map("hire_record_id")
+  employerSectId        String    @map("employer_sect_id")
+  helperSectId          String?   @map("helper_sect_id")
+  helperPlayerId        String?   @map("helper_player_id")
+  eraId                 String    @default("era_mvp_001") @map("era_id")
+  hireType              String    @map("hire_type")
+  status                String    @default("open")
+  allowedActionScope    Json      @map("allowed_action_scope")
+  rewardEscrowSummary   Json      @map("reward_escrow_summary")
+  riskStatus            String    @default("normal") @map("risk_status")
+  settlementStatus      String    @default("pending") @map("settlement_status")
+  idempotencyKey        String?   @unique @map("idempotency_key")
+  hireConfigVersion     String    @map("hire_config_version")
+  rewardConfigVersion   String    @map("reward_config_version")
+  riskRulesetVersion    String    @map("risk_ruleset_version")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  settledAt             DateTime? @map("settled_at")
+
+  employerSect Sect    @relation("SectHireEmployer", fields: [employerSectId], references: [sectId])
+  helperSect   Sect?   @relation("SectHireHelper", fields: [helperSectId], references: [sectId])
+  helperPlayer Player? @relation(fields: [helperPlayerId], references: [playerId])
+
+  @@index([employerSectId])
+  @@index([helperSectId])
+  @@index([helperPlayerId])
+  @@index([eraId])
+  @@index([hireType])
+  @@index([status])
+  @@index([riskStatus])
+  @@index([settledAt])
+  @@index([createdAt])
+  @@index([status, createdAt])
+  @@index([helperSectId, helperPlayerId, status])
+  @@map("sect_hire_record")
 }
 
 model AuditLog {

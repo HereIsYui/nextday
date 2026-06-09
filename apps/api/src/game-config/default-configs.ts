@@ -82,6 +82,19 @@ import {
 } from "../production/production.constants";
 import { riskConfig, riskConfigVersion, riskRulesetVersion } from "../risk/risk.constants";
 import {
+  diplomacyBoundary,
+  diplomacyConfigVersion,
+  diplomacyRules,
+  hireBoundary,
+  hireConfigVersion,
+  hireRules,
+  mentorConfigVersion,
+  mentorRule,
+  socialRewardConfigVersion,
+  socialRiskRulesetVersion,
+  socialRulesetVersion,
+} from "../social/social.constants";
+import {
   sensitiveStoryTerms,
   storyConfigVersion,
   storyRulesetVersion,
@@ -539,6 +552,44 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
       },
       inheritance_rule: "深度外观只继承展示状态，不继承战力、掉落、贡献或排行倍率。",
       sect_decoration_rule: "宗门驻地装饰只影响宗门展示，不改变宗门产出或仓库规则。",
+    },
+  },
+  mentor_rule: {
+    config_type: "mentor_rule",
+    config_version: mentorConfigVersion,
+    ruleset_version: socialRulesetVersion,
+    reward_config_version: socialRewardConfigVersion,
+    payload: {
+      rule: mentorRule,
+      risk_ruleset_version: socialRiskRulesetVersion,
+      boundary:
+        "导师关系只提供指导、少量绑定材料和荣誉记录，不发付费仙玉、九大古宝或唯一战力道具。",
+    },
+  },
+  sect_diplomacy: {
+    config_type: "sect_diplomacy",
+    config_version: diplomacyConfigVersion,
+    ruleset_version: socialRulesetVersion,
+    reward_config_version: socialRewardConfigVersion,
+    payload: {
+      diplomacy_rules: diplomacyRules,
+      boundary: diplomacyBoundary,
+      settlement_rule:
+        "宗门外交只改变协作关系和公告展示，不绕过 PVP 匹配、新手保护、九塔行动令和贡献衰减。",
+    },
+  },
+  sect_hire: {
+    config_type: "sect_hire",
+    config_version: hireConfigVersion,
+    ruleset_version: socialRulesetVersion,
+    reward_config_version: socialRewardConfigVersion,
+    payload: {
+      hire_rules: hireRules,
+      boundary: hireBoundary,
+      risk_ruleset_version: socialRiskRulesetVersion,
+      forbidden_assets: ["付费仙玉", "绑定道具转移", "限定产物", "九大古宝本体", "唯一战力道具"],
+      contribution_multiplier_allowed: false,
+      rank_score_allowed: false,
     },
   },
   inner_world: {

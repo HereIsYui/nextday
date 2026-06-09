@@ -1,4 +1,5 @@
 import type {
+  AcceptSectHireRequest,
   ActivityDetailResponse,
   ActivityListResponse,
   AdminConfigVersionListResponse,
@@ -20,6 +21,7 @@ import type {
   AppearanceListResponse,
   AppearanceMutationResponse,
   AppearancePlusCatalogResponse,
+  ApplyMentorRequest,
   AuthMeResponse,
   BagSummaryResponse,
   BattleNarrativeResponse,
@@ -30,6 +32,7 @@ import type {
   ClaimActivityRewardRequest,
   ClaimActivityRewardResponse,
   ClaimAppearanceRequest,
+  ClaimMentorTaskRequest,
   ClaimMonthlyDailyRequest,
   ClaimMonthlyDailyResponse,
   ClaimRankTitleRequest,
@@ -47,6 +50,7 @@ import type {
   CreateMergeDryRunResponse,
   CreatePlayerRequest,
   CreatePlayerResponse,
+  CreateSectHireRequest,
   CreateSectRequest,
   CultivationClaimResponse,
   EntitlementOverviewResponse,
@@ -78,6 +82,7 @@ import type {
   GachaHistoryResponse,
   GachaPoolListResponse,
   GameOverviewResponse,
+  GraduateMentorRequest,
   GuestLoginRequest,
   InnerWorldAssignmentListResponse,
   InnerWorldClaimRequest,
@@ -92,6 +97,8 @@ import type {
   JoinSectRequest,
   JournalListResponse,
   LoginResponse,
+  MentorMutationResponse,
+  MentorSummaryResponse,
   MergeDryRunReportResponse,
   MockFishpiLoginRequest,
   PillUseRequest,
@@ -104,6 +111,7 @@ import type {
   PluginStatusCardResponse,
   PluginSubmitPresetRequest,
   PluginSubmitPresetResponse,
+  ProposeSectDiplomacyRequest,
   ProvinceSummary,
   PublishAdminConfigRequest,
   PublishAdminConfigResponse,
@@ -120,12 +128,18 @@ import type {
   ResourcePointListResponse,
   ReviewDelayedSettlementRequest,
   ReviewDelayedSettlementResponse,
+  ReviewMentorRequest,
+  ReviewSectDiplomacyRequest,
   RollbackAdminConfigRequest,
   RollbackAdminConfigResponse,
   SaveConvenienceStrategyRequest,
   SaveConvenienceStrategyResponse,
   SaveSkillLoadoutRequest,
   SectDetailResponse,
+  SectDiplomacyMutationResponse,
+  SectDiplomacySummaryResponse,
+  SectHireListResponse,
+  SectHireMutationResponse,
   SectListResponse,
   SectMutationResponse,
   SectTaskResponse,
@@ -137,6 +151,7 @@ import type {
   SetEquipmentLockRequest,
   SetItemLockRequest,
   SetItemLockResponse,
+  SettleSectHireRequest,
   SkillLoadoutResponse,
   StoryScrollDetailResponse,
   StoryScrollListResponse,
@@ -269,6 +284,111 @@ export class GameClient {
   ): Promise<ApiResponse<EquipAppearancePlusResponse>> {
     return this.post<EquipAppearancePlusResponse, EquipAppearancePlusRequest>(
       "/api/appearance-plus/equip",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  mentorSummary(): Promise<ApiResponse<MentorSummaryResponse>> {
+    return this.get<MentorSummaryResponse>("/api/mentor/summary");
+  }
+
+  applyMentor(
+    body: ApplyMentorRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<MentorMutationResponse>> {
+    return this.post<MentorMutationResponse, ApplyMentorRequest>("/api/mentor/apply", body, {
+      idempotencyKey,
+    });
+  }
+
+  reviewMentor(
+    body: ReviewMentorRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<MentorMutationResponse>> {
+    return this.post<MentorMutationResponse, ReviewMentorRequest>("/api/mentor/review", body, {
+      idempotencyKey,
+    });
+  }
+
+  claimMentorTask(
+    body: ClaimMentorTaskRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<MentorMutationResponse>> {
+    return this.post<MentorMutationResponse, ClaimMentorTaskRequest>(
+      "/api/mentor/task/claim",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  graduateMentor(
+    body: GraduateMentorRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<MentorMutationResponse>> {
+    return this.post<MentorMutationResponse, GraduateMentorRequest>("/api/mentor/graduate", body, {
+      idempotencyKey,
+    });
+  }
+
+  sectDiplomacySummary(): Promise<ApiResponse<SectDiplomacySummaryResponse>> {
+    return this.get<SectDiplomacySummaryResponse>("/api/sect/diplomacy/summary");
+  }
+
+  proposeSectDiplomacy(
+    body: ProposeSectDiplomacyRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<SectDiplomacyMutationResponse>> {
+    return this.post<SectDiplomacyMutationResponse, ProposeSectDiplomacyRequest>(
+      "/api/sect/diplomacy/propose",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  reviewSectDiplomacy(
+    body: ReviewSectDiplomacyRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<SectDiplomacyMutationResponse>> {
+    return this.post<SectDiplomacyMutationResponse, ReviewSectDiplomacyRequest>(
+      "/api/sect/diplomacy/review",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  sectHireList(): Promise<ApiResponse<SectHireListResponse>> {
+    return this.get<SectHireListResponse>("/api/sect/hire/list");
+  }
+
+  createSectHire(
+    body: CreateSectHireRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<SectHireMutationResponse>> {
+    return this.post<SectHireMutationResponse, CreateSectHireRequest>(
+      "/api/sect/hire/create",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  acceptSectHire(
+    body: AcceptSectHireRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<SectHireMutationResponse>> {
+    return this.post<SectHireMutationResponse, AcceptSectHireRequest>(
+      "/api/sect/hire/accept",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  settleSectHire(
+    body: SettleSectHireRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<SectHireMutationResponse>> {
+    return this.post<SectHireMutationResponse, SettleSectHireRequest>(
+      "/api/sect/hire/settle",
       body,
       { idempotencyKey },
     );

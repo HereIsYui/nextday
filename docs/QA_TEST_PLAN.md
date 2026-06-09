@@ -262,7 +262,7 @@ P1 阵营、排行、活动和合服测试：
 
 ## 十一、P2 专项测试
 
-P2 测试按长线增强阶段逐步接入自动化。P2-1 已接入 `npm run test:p2-story`，P2-2 已接入 `npm run test:p2-collection`，P2-3 已接入 `npm run test:p2-appearance`；后续脚本在对应阶段开发时再写入 `package.json`：
+P2 测试按长线增强阶段逐步接入自动化。P2-1 已接入 `npm run test:p2-story`，P2-2 已接入 `npm run test:p2-collection`，P2-3 已接入 `npm run test:p2-appearance`，P2-4 已接入 `npm run test:p2-social`；后续脚本在对应阶段开发时再写入 `package.json`：
 
 | 脚本 | 覆盖范围 | 接入阶段 |
 | --- | --- | --- |
@@ -273,7 +273,7 @@ P2 测试按长线增强阶段逐步接入自动化。P2-1 已接入 `npm run te
 | `npm run test:p2-transfer` | 转服 dry-run、申请审核、资产映射、排行冷却、宗门清理和幂等 | P2-5 |
 | `npm run test:p2` | 串联剧情、收藏、外观、社交和转服全阶段验收 | P2-5 |
 
-当前 `npm run test:p2` 先串联已落地的 `test:p2-story`、`test:p2-collection` 与 `test:p2-appearance`；P2-4 到 P2-5 完成时再逐项追加，最终达到上表总体验收范围。
+当前 `npm run test:p2` 已串联已落地的 `test:p2-story`、`test:p2-collection`、`test:p2-appearance` 与 `test:p2-social`；P2-5 完成时再追加 `test:p2-transfer`，最终达到上表总体验收范围。
 
 P2 剧情与纪元史册验收：
 

@@ -42,7 +42,8 @@
     "test:p1-events": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run build:packages && DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run test:p1-events -w @nextday/api",
     "test:p1-merge": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run build:packages && DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run test:p1-merge -w @nextday/api",
     "test:p1-new-player-experience": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run build:packages && DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run test:p1-new-player-experience -w @nextday/api",
-    "test:p1": "npm run test:p1-simulation && npm run test:p1-web-experience && npm run test:p1-world && npm run test:p1-inner-world && npm run test:p1-faction && npm run test:p1-rank && npm run test:p1-events && npm run test:p1-merge && npm run test:p1-new-player-experience",
+    "test:p1-balance-tuning": "npm run build -w @nextday/config-schema && npm run test:p1-balance-tuning -w @nextday/config-schema",
+    "test:p1": "npm run test:p1-simulation && npm run test:p1-web-experience && npm run test:p1-world && npm run test:p1-inner-world && npm run test:p1-faction && npm run test:p1-rank && npm run test:p1-events && npm run test:p1-merge && npm run test:p1-new-player-experience && npm run test:p1-balance-tuning",
     "lint": "biome check .",
     "typecheck": "npm run build:packages && npm run typecheck --workspaces --if-present",
     "format:check": "biome ci ."

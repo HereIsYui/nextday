@@ -18,6 +18,26 @@
   ],
   "profiles": [
     {
+      "profile_id": "novice_free",
+      "label": "新手免费",
+      "active_minutes_per_day": 25,
+      "daily_completion_rate": 0.82,
+      "daily_action_count": 16,
+      "daily_cultivation_gain": 2200,
+      "daily_spirit_stone_income": 9600,
+      "daily_spirit_stone_sink": 9000,
+      "daily_material_income": 78,
+      "daily_material_sink": 72,
+      "daily_tower_contribution": 62,
+      "daily_pvp_score": 8,
+      "pve_efficiency_bonus": 0,
+      "pvp_effective_strength_bonus": 0,
+      "ancient_treasure_daily_draws": 0,
+      "ancient_page_daily_gain": 0.35,
+      "monthly_point_cost": 0,
+      "era_point_budget": 0
+    },
+    {
       "profile_id": "casual_free",
       "label": "休闲免费",
       "active_minutes_per_day": 15,
@@ -212,5 +232,93 @@
     "min_era_finish_day": 330,
     "max_era_finish_day": 390,
     "max_npc_contribution_ratio": 0.35
+  },
+  "drop_tuning": {
+    "tuning_id": "p1_10_first_7_days_v1",
+    "config_version": "drop_tuning_p1_10_2026_001",
+    "day_range": 7,
+    "required_profile_ids": [
+      "novice_free",
+      "standard_free",
+      "small_monthly",
+      "large_monthly",
+      "vip3",
+      "vip4",
+      "hardcore_free",
+      "whale_light"
+    ],
+    "material_flows": [
+      {
+        "material_id": "low_herb",
+        "name": "凝露草",
+        "category": "alchemy",
+        "daily_base_income": 8.4,
+        "daily_base_sink": 5,
+        "novice_required": 8,
+        "min_day7_balance": 0,
+        "max_day7_balance": 48,
+        "adjustment_step": 4
+      },
+      {
+        "material_id": "pill_dust",
+        "name": "丹尘",
+        "category": "alchemy",
+        "daily_base_income": 3.1,
+        "daily_base_sink": 2,
+        "novice_required": 2,
+        "min_day7_balance": 0,
+        "max_day7_balance": 18,
+        "adjustment_step": 2
+      },
+      {
+        "material_id": "raw_iron",
+        "name": "玄铁砂",
+        "category": "forge",
+        "daily_base_income": 7,
+        "daily_base_sink": 4,
+        "novice_required": 6,
+        "min_day7_balance": 0,
+        "max_day7_balance": 42,
+        "adjustment_step": 4
+      },
+      {
+        "material_id": "tower_sigil",
+        "name": "镇塔符",
+        "category": "tower",
+        "daily_base_income": 3,
+        "daily_base_sink": 2,
+        "novice_required": 1,
+        "min_day7_balance": 0,
+        "max_day7_balance": 18,
+        "adjustment_step": 2
+      },
+      {
+        "material_id": "common_essence",
+        "name": "凡品精粹",
+        "category": "common",
+        "daily_base_income": 5,
+        "daily_base_sink": 3,
+        "novice_required": 4,
+        "min_day7_balance": 0,
+        "max_day7_balance": 30,
+        "adjustment_step": 3
+      }
+    ],
+    "action_token": {
+      "daily_recovery": 24,
+      "novice_30m_required": 5,
+      "day7_core_required": 74,
+      "max_core_minutes_per_day": 30,
+      "minutes_per_action": 2.4
+    },
+    "thresholds": {
+      "max_monthly_day7_cultivation_gap": 0.12,
+      "max_vip_day7_cultivation_gap": 0.08,
+      "max_whale_day7_cultivation_gap": 0.18,
+      "max_day7_realm_target_ratio": 0.72,
+      "min_material_day7_balance": 0,
+      "max_material_day7_balance": 40,
+      "max_action_token_pressure": 0.55
+    }
   }
 }

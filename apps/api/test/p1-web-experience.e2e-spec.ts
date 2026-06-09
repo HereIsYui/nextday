@@ -177,6 +177,10 @@ describe("P1 Web 玩法过程反馈", () => {
       .get("/api/multiplayer/resource-points")
       .set("Authorization", `Bearer ${attacker.token}`)
       .expect(200);
+    await prisma.playerActionState.update({
+      where: { playerId: attacker.playerId },
+      data: { actionPoints: 10 },
+    });
     const pvp = await request(app.getHttpServer())
       .post("/api/multiplayer/pvp/attack")
       .set("Authorization", `Bearer ${attacker.token}`)

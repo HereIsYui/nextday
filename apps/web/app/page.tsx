@@ -117,6 +117,14 @@ interface RecommendedAction {
   onAction: () => void | Promise<void>;
 }
 
+interface MonthlyCardDisplayState {
+  active: boolean;
+  canClaim: boolean;
+  claimButtonLabel: string;
+  openButtonLabel: string;
+  statusLabel: string;
+}
+
 interface JournalEntry {
   id: string;
   title: string;
@@ -1193,7 +1201,7 @@ export default function HomePage() {
       );
       ensureOk(response);
       rememberExperience(undefined, {
-        summary: `服用 ${formatPillItemLabel(selectedPill)}，本次效果 ${response.data.effect_value}，有效倍率 ${Math.round(
+        summary: `服用 ${formatPillItemLabel(selectedPill)}，本次效果 ${response.data.effect_value}，效力约 ${Math.round(
           response.data.effective_rate * 100,
         )}%。`,
         tags: ["丹药", "修为成长"],
@@ -1452,7 +1460,7 @@ export default function HomePage() {
       ensureOk(response);
       rememberExperience(undefined, {
         summary: `${response.data.sect.name} 已立宗，后续可做宗门任务、建设和仓库流转。`,
-        tags: ["宗门", "异步建设"],
+        tags: ["宗门", "建设"],
         title: "创建宗门",
         tone: "success",
       });
@@ -1530,7 +1538,7 @@ export default function HomePage() {
       const response = await client.applyMentor(body, createIdempotencyKey("web_mentor_apply"));
       ensureOk(response);
       rememberExperience(undefined, {
-        summary: `已向 ${response.data.relation.mentor_name} 递交拜师帖，等待对方异步审批。`,
+        summary: `已向 ${response.data.relation.mentor_name} 递交拜师帖，等待对方回应。`,
         tags: ["导师"],
         title: "拜访导师",
         tone: "success",
@@ -1617,7 +1625,7 @@ export default function HomePage() {
     await runAction("发起盟约", async () => {
       const body: ProposeSectDiplomacyRequest = {
         diplomacy_type: "alliance",
-        message: "愿以异步协作为约。",
+        message: "愿以随时协作为约。",
         target_sect_id: diplomacyTargetSect.sect_id,
       };
       const response = await client.proposeSectDiplomacy(
@@ -1819,7 +1827,8 @@ export default function HomePage() {
   }
 
   async function handlePurchaseMonthly(cardType: "small_monthly" | "large_monthly") {
-    await runAction(cardType === "small_monthly" ? "购买小月卡" : "购买大月卡", async () => {
+    const actionLabel = `开通${monthlyCardLabel(cardType)}`;
+    await runAction(actionLabel, async () => {
       const response = await client.purchaseMonthlyCard(
         { card_type: cardType },
         createIdempotencyKey(`web_monthly_${cardType}`),
@@ -1827,7 +1836,7 @@ export default function HomePage() {
       ensureOk(response);
       const cardLabel = monthlyCardLabel(response.data.monthly_card.card_type);
       rememberExperience(undefined, {
-        summary: `${cardLabel} 已生效，月卡只提供便利、赠抽和付费资产记录，不提高战斗倍率。`,
+        summary: `${cardLabel} 已生效，可使用每日权益、赠抽和便利功能。`,
         tags: ["月卡", "权益"],
         title: "月卡生效",
         tone: "success",
@@ -1869,7 +1878,7 @@ export default function HomePage() {
       );
       ensureOk(response);
       rememberExperience(undefined, {
-        summary: `已生成前往 ${response.data.request.target_server_id} 的转服影响报告，等待后台人工审核。`,
+        summary: `已生成前往 ${response.data.request.target_server_id} 的迁移预览，确认后再处理。`,
         tags: ["转服申请"],
         title: "提交转服申请",
         tone: "success",
@@ -2145,7 +2154,7 @@ export default function HomePage() {
       );
       ensureOk(response);
       rememberExperience(undefined, {
-        summary: `VIP${vipLevel} 便利已同步，只影响批量、策略和提醒，不提高奖励倍率。`,
+        summary: `VIP${vipLevel} 便利已同步，可使用对应批量、策略和提醒能力。`,
         tags: ["VIP", "便利"],
         title: "同步便利权益",
         tone: "success",
@@ -2189,7 +2198,7 @@ export default function HomePage() {
       );
       ensureOk(response);
       rememberExperience(undefined, {
-        summary: `托管队列接收 ${response.data.queue.accepted_actions.length} 个行动，服务端按权益档位限制队列。`,
+        summary: `托管队列接收 ${response.data.queue.accepted_actions.length} 个行动，队列长度按当前权益生效。`,
         tags: ["托管队列", queueStatusLabel(response.data.queue.status)],
         title: "创建今日托管",
         tone: "success",
@@ -2208,7 +2217,7 @@ export default function HomePage() {
       ensureOk(response);
       await refreshCommerce();
       rememberExperience(undefined, {
-        summary: `${response.data.appearance.name} 已加入展示收藏，外观不提供战力或贡献倍率。`,
+        summary: `${response.data.appearance.name} 已加入展示收藏，只作展示，不影响战斗与排行。`,
         tags: ["展示外观", "收藏"],
         title: "领取展示外观",
         tone: "success",
@@ -2286,7 +2295,7 @@ export default function HomePage() {
         <section className="onboarding-panel" aria-label="进入游戏">
           <div className="section-title">
             <h2>进入冀州</h2>
-            <span>{token ? "创建角色后开始今日修行" : "先使用开发期游客登录"}</span>
+            <span>{token ? "创建角色后开始今日修行" : "游客登录后开始今日修行"}</span>
           </div>
           <div className="login-actions">
             <Button disabled={busy} onClick={handleGuestLogin}>
@@ -2788,7 +2797,7 @@ export default function HomePage() {
 
                 <details className="event-boundary">
                   <summary>收藏规则</summary>
-                  <span>收藏只继承展示、回看和纪念，不继承攻击、防御、掉落或贡献倍率。</span>
+                  <span>收藏用于展示、回看和纪念，不影响战斗、掉落与排行。</span>
                 </details>
               </section>
             ) : null}
@@ -3227,7 +3236,7 @@ export default function HomePage() {
                 <section className="rank-panel" aria-label="高级社交">
                   <div className="section-title">
                     <h2>高级社交</h2>
-                    <span>导师、宗门外交与跨宗门雇佣都可异步处理</span>
+                    <span>导师、宗门外交与跨宗门雇佣都可随时处理</span>
                   </div>
                   <div className="production-grid">
                     <ActionBox
@@ -3574,26 +3583,30 @@ export default function HomePage() {
                 <div className="production-grid">
                   <ActionBox
                     actions={
-                      overview ? (
+                      commerce ? (
                         <>
-                          <Button
-                            disabled={busy}
-                            onClick={() => handlePurchaseMonthly("small_monthly")}
-                          >
-                            小月卡
-                          </Button>
-                          <Button
-                            disabled={busy}
-                            onClick={() => handlePurchaseMonthly("large_monthly")}
-                          >
-                            大月卡
-                          </Button>
+                          {!smallMonthlyState.active ? (
+                            <Button
+                              disabled={busy}
+                              onClick={() => handlePurchaseMonthly("small_monthly")}
+                            >
+                              {smallMonthlyState.openButtonLabel}
+                            </Button>
+                          ) : null}
+                          {!largeMonthlyState.active ? (
+                            <Button
+                              disabled={busy}
+                              onClick={() => handlePurchaseMonthly("large_monthly")}
+                            >
+                              {largeMonthlyState.openButtonLabel}
+                            </Button>
+                          ) : null}
                           {smallMonthlyState.canClaim ? (
                             <Button
                               disabled={busy}
                               onClick={() => handleClaimMonthly("small_monthly")}
                             >
-                              领小月卡
+                              {smallMonthlyState.claimButtonLabel}
                             </Button>
                           ) : null}
                           {largeMonthlyState.canClaim ? (
@@ -3601,16 +3614,16 @@ export default function HomePage() {
                               disabled={busy}
                               onClick={() => handleClaimMonthly("large_monthly")}
                             >
-                              领大月卡
+                              {largeMonthlyState.claimButtonLabel}
                             </Button>
                           ) : null}
                         </>
                       ) : null
                     }
                     actionNote={
-                      overview
-                        ? `${smallMonthlyState.label} · ${largeMonthlyState.label}`
-                        : "角色状态尚未读取"
+                      commerce
+                        ? `${smallMonthlyState.statusLabel} · ${largeMonthlyState.statusLabel}`
+                        : "月卡状态尚未读取"
                     }
                     detail={`当前 ${commerceTierLabel(commerce?.effective_tier)} · 古宝赠抽 ${
                       commerce?.available_monthly_grants.reduce(
@@ -3705,14 +3718,14 @@ export default function HomePage() {
                         ? `${transferRequestStatusLabel(
                             currentTransferRequest.status,
                           )} · 目标 ${currentTransferRequest.target_server_id}`
-                        : "转服会先生成影响报告，并等待后台人工审核"
+                        : "转服会先生成迁移预览，确认后再处理"
                     }
                     detail={
                       currentTransferRequest
-                        ? `执行 ${transferExecuteStatusLabel(
+                        ? `迁移 ${transferExecuteStatusLabel(
                             currentTransferRequest.execute_status,
-                          )} · 排行冷却 ${
-                            currentTransferRequest.rank_cooldown_until ? "已计算" : "未生成"
+                          )} · 排行保护 ${
+                            currentTransferRequest.rank_cooldown_until ? "已安排" : "未安排"
                           }`
                         : "默认目标 mvp_beta · 不会立即迁移资产"
                     }
@@ -3740,7 +3753,7 @@ export default function HomePage() {
                     }
                     detail={`已拥有 ${
                       appearances?.appearances.filter((appearance) => appearance.owned).length ?? 0
-                    } · 不提供战力`}
+                    } · 只作展示`}
                     title="展示外观"
                   />
                 </div>
@@ -3813,7 +3826,7 @@ export default function HomePage() {
                   </div>
                   <details className="event-boundary">
                     <summary>外观规则</summary>
-                    <span>外观只改变名片、战报、洞府、宗门驻地和史册展示，不提高战力或贡献。</span>
+                    <span>外观用于名片、战报、洞府、宗门驻地和史册展示，不影响战斗与排行。</span>
                   </details>
                 </section>
               </section>
@@ -4567,13 +4580,13 @@ const experienceTagLabels: Record<string, string> = {
   rate_limited: "请求限频",
   reputation_cleared: "声望清除",
   reward_boundary: "奖励说明",
-  reward_unchanged: "奖励未加成",
-  risk_normal: "不触发审核",
+  reward_unchanged: "收益按原规则",
+  risk_normal: "行动正常",
   route_locked: "路线锁定",
   sect_async: "宗门行动",
   sect_conflict_checked: "宗门校验",
-  server_roll: "服务端结算",
-  server_settled: "服务端结算",
+  server_roll: "结果已生成",
+  server_settled: "行动已处理",
   transfer_cooldown: "转道冷却",
   warehouse_audit: "仓库日志",
   warehouse_whitelist: "白名单流通",
@@ -4632,9 +4645,9 @@ function systemExperienceTagLabel(tag: ExperiencePayload["reason_tags"][number])
     permanent_pool: "常驻池规则",
     reward_boundary: "奖励范围规则",
     reward_unchanged: "收益按原规则",
-    risk_normal: "审核规则",
+    risk_normal: "行动规则",
     sect_async: "宗门行动规则",
-    server_roll: "随机结果规则",
+    server_roll: "结果生成规则",
     server_settled: "行动处理规则",
     warehouse_audit: "仓库记录规则",
     warehouse_whitelist: "仓库流通规则",
@@ -5679,7 +5692,8 @@ function playerFacingActivityDescription(activity: ActivitySummaryState): string
       : activity.description
           .replaceAll("当前 MVP 以", "")
           .replaceAll("样板", "活动")
-          .replaceAll("异步", "随时");
+          .replaceAll("异步", "随时")
+          .replaceAll("MVP", "");
   }
   return activity.description.replaceAll("异步", "随时");
 }
@@ -5768,11 +5782,11 @@ function sectHireStatusLabel(status: string): string {
 function transferRequestStatusLabel(status: string): string {
   const labels: Record<string, string> = {
     canceled: "已取消",
-    draft: "报告草稿",
+    draft: "预览草稿",
     executed: "已执行",
     pending_confirm: "待二次确认",
     rejected: "已驳回",
-    reviewing: "审核中",
+    reviewing: "确认中",
     rolled_back: "已回滚",
     submitted: "已提交",
   };
@@ -5781,11 +5795,11 @@ function transferRequestStatusLabel(status: string): string {
 
 function transferExecuteStatusLabel(status: string): string {
   const labels: Record<string, string> = {
-    dry_run_only: "仅生成影响报告",
+    dry_run_only: "仅预览不迁移",
     executed: "已迁移",
-    reserved_only: "执行入口预留",
+    reserved_only: "暂未开放迁移",
   };
-  return labels[status] ?? "执行状态待确认";
+  return labels[status] ?? "状态待确认";
 }
 
 function mentorTaskClaimed(relation: MentorRelationState): boolean {
@@ -5880,18 +5894,38 @@ function commerceTierLabel(tier?: string): string {
 function monthlyCardClaimState(
   commerce: EntitlementOverviewResponse | null,
   cardType: MonthlyCardType,
-): { canClaim: boolean; label: string } {
+): MonthlyCardDisplayState {
   const card = commerce?.monthly_cards.find((item) => item.card_type === cardType);
   const cardLabel = monthlyCardLabel(cardType);
+  const openButtonLabel = `开通${cardLabel}`;
+  const claimButtonLabel = `领取${cardLabel}权益`;
   if (!card?.active) {
-    return { canClaim: false, label: `${cardLabel}未持有` };
+    return {
+      active: false,
+      canClaim: false,
+      claimButtonLabel,
+      openButtonLabel,
+      statusLabel: `${cardLabel}未开通`,
+    };
   }
 
   if (card.last_claim_date === todayDateKey()) {
-    return { canClaim: false, label: `${cardLabel}今日已领` };
+    return {
+      active: true,
+      canClaim: false,
+      claimButtonLabel,
+      openButtonLabel,
+      statusLabel: `${cardLabel}已开通 · 剩余 ${card.remaining_days} 天 · 今日已领`,
+    };
   }
 
-  return { canClaim: true, label: `${cardLabel}今日可领` };
+  return {
+    active: true,
+    canClaim: true,
+    claimButtonLabel,
+    openButtonLabel,
+    statusLabel: `${cardLabel}已开通 · 剩余 ${card.remaining_days} 天 · 今日可领`,
+  };
 }
 
 function todayDateKey(): string {

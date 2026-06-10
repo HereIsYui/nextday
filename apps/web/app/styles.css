@@ -2204,12 +2204,19 @@ details.event-boundary {
   background: transparent;
   border: 0;
   border-radius: 0;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
   padding: 0;
 }
 
 .text-game-shell .section-title {
+  align-items: flex-start;
   border-bottom: 1px solid #dddddd;
+  flex-wrap: wrap;
+  gap: 6px 12px;
   margin-bottom: 8px;
+  min-width: 0;
   padding-bottom: 6px;
 }
 
@@ -2250,7 +2257,9 @@ details.event-boundary {
 
 .text-game-shell .journal-entry-head {
   align-items: baseline;
+  flex-wrap: wrap;
   gap: 8px;
+  justify-content: flex-start;
 }
 
 .text-game-shell .journal-deltas span,
@@ -2261,12 +2270,14 @@ details.event-boundary {
   border: 1px solid #dddddd;
   border-radius: 0;
   color: #222222;
-  display: inline-flex;
+  display: inline-block;
   font-size: 12px;
-  line-height: 20px;
+  line-height: 1.45;
+  max-width: 100%;
   min-height: 20px;
-  padding: 0 6px;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  padding: 2px 6px;
+  white-space: normal;
 }
 
 .text-game-shell .overview-grid {
@@ -2310,15 +2321,43 @@ details.event-boundary {
   min-height: 0;
 }
 
-.text-game-shell .main-grid,
-.text-game-shell .production-grid,
-.text-game-shell .event-grid,
-.text-game-shell .tower-grid,
 .text-game-shell .rank-summary-grid,
 .text-game-shell .skill-option-grid,
 .text-game-shell .skill-priority-list {
   gap: 14px;
   min-width: 0;
+}
+
+.text-game-shell .main-grid {
+  gap: 14px;
+  grid-template-columns: 1fr;
+  min-width: 0;
+}
+
+.text-game-shell .production-grid,
+.text-game-shell .event-grid,
+.text-game-shell .tower-grid,
+.text-game-shell .inner-world-lists,
+.text-game-shell .faction-route-list,
+.text-game-shell .battle-stat-grid {
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  min-width: 0;
+}
+
+.text-game-shell .inner-world-layout,
+.text-game-shell .faction-layout {
+  gap: 14px;
+  grid-template-columns: 1fr;
+  min-width: 0;
+}
+
+.text-game-shell .rank-summary-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
+}
+
+.text-game-shell .production-box .rank-summary-grid {
+  grid-template-columns: 1fr;
 }
 
 .text-game-shell .province,
@@ -2343,6 +2382,22 @@ details.event-boundary {
   border-radius: 0;
   box-shadow: none;
   min-width: 0;
+  padding: 12px;
+}
+
+.text-game-shell .province-head {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.text-game-shell .task-row {
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.text-game-shell .task-row .production-actions {
+  grid-column: 1 / -1;
 }
 
 .text-game-shell .skill-loadout-card {
@@ -2376,14 +2431,17 @@ details.event-boundary {
 }
 
 .text-game-shell .production-actions {
+  --nextday-button-white-space: normal;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 10px;
   min-width: 0;
 }
 
 .text-game-shell .production-actions .nextday-button {
-  flex: 0 0 auto;
+  flex: 0 1 132px;
+  max-width: 100%;
 }
 
 .text-game-shell .empty {

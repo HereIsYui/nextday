@@ -304,6 +304,14 @@ h2 {
   padding: 18px;
 }
 
+.today-main-flow,
+.today-side-flow {
+  align-content: start;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
 .mobile-status-anchors {
   display: none;
 }
@@ -1957,6 +1965,22 @@ details.event-boundary {
   padding: 0;
 }
 
+.text-game-shell .today-main-flow,
+.text-game-shell .today-side-flow {
+  align-content: start;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.text-game-shell .today-main-flow {
+  grid-column: 1;
+}
+
+.text-game-shell .today-side-flow {
+  grid-column: 2;
+}
+
 .text-game-shell .today-hero-copy {
   border-bottom: 1px solid #dddddd;
   grid-column: 1 / -1;
@@ -1974,7 +1998,6 @@ details.event-boundary {
 
 .text-game-shell .mainline-guide {
   border-color: #dddddd;
-  grid-column: 1;
   gap: 10px;
   padding: 10px 0;
 }
@@ -2038,8 +2061,11 @@ details.event-boundary {
 
 .text-game-shell .today-controls {
   align-items: end;
-  grid-column: 1;
-  grid-template-columns: minmax(0, 1fr) 110px minmax(0, 1fr) 92px;
+  grid-template-columns: repeat(2, minmax(150px, 1fr));
+}
+
+.text-game-shell .today-controls label {
+  min-width: 0;
 }
 
 .text-game-shell .today-controls select,
@@ -2050,11 +2076,12 @@ details.event-boundary {
   border-radius: 0;
   font-family: inherit;
   min-height: 36px;
+  min-width: 0;
+  width: 100%;
 }
 
 .text-game-shell .today-action-grid {
   gap: 0;
-  grid-column: 2;
   grid-template-columns: 1fr;
 }
 
@@ -2078,7 +2105,7 @@ details.event-boundary {
 
 .text-game-shell .explore-queue-card,
 .text-game-shell .explore-event-card {
-  grid-column: 2;
+  grid-column: auto;
 }
 
 .text-game-shell .mainline-action-row .nextday-button,

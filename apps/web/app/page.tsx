@@ -2346,86 +2346,90 @@ export default function HomePage() {
                 {firstClaimableActivity ? `${firstClaimableActivity.name} 可领奖` : "活动可推进"}
               </p>
             </div>
-            <MainlineGuideCard guide={mainlineGuide} />
-            <div className="today-controls" aria-label="今日行动选择">
-              <label>
-                <span>探索州域</span>
-                <select
-                  onChange={(event) => handleSelectProvince(event.target.value)}
-                  value={selectedProvince?.province_id ?? ""}
+            <div className="today-main-flow">
+              <MainlineGuideCard guide={mainlineGuide} />
+              <div className="today-controls" aria-label="今日行动选择">
+                <label>
+                  <span>探索州域</span>
+                  <select
+                    onChange={(event) => handleSelectProvince(event.target.value)}
+                    value={selectedProvince?.province_id ?? ""}
+                  >
+                    {unlockedProvinces.map((province) => (
+                      <option key={province.province_id} value={province.province_id}>
+                        {province.name} · {province.tower_name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>探索次数</span>
+                  <select
+                    onChange={(event) => setExploreCount(Number(event.target.value))}
+                    value={exploreCount}
+                  >
+                    <option value={1}>1 次</option>
+                    <option value={3}>3 次</option>
+                    <option value={5}>5 次</option>
+                  </select>
+                </label>
+                <label className="tower-choice">
+                  <span>九塔目标</span>
+                  <select
+                    onChange={(event) => handleSelectTower(event.target.value)}
+                    value={selectedTower?.tower_id ?? ""}
+                  >
+                    {towers?.towers.map((tower) => (
+                      <option
+                        disabled={!isProvinceUnlocked(overview?.provinces, tower.province_id)}
+                        key={tower.tower_id}
+                        value={tower.tower_id}
+                      >
+                        {provinceNameById(overview?.provinces, tower.province_id)} ·{" "}
+                        {tower.tower_name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <Button
+                  className="today-refresh-button"
+                  disabled={busy || !activeProfile?.player}
+                  onClick={() => refreshOverview()}
                 >
-                  {unlockedProvinces.map((province) => (
-                    <option key={province.province_id} value={province.province_id}>
-                      {province.name} · {province.tower_name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>探索次数</span>
-                <select
-                  onChange={(event) => setExploreCount(Number(event.target.value))}
-                  value={exploreCount}
-                >
-                  <option value={1}>1 次</option>
-                  <option value={3}>3 次</option>
-                  <option value={5}>5 次</option>
-                </select>
-              </label>
-              <label className="tower-choice">
-                <span>九塔目标</span>
-                <select
-                  onChange={(event) => handleSelectTower(event.target.value)}
-                  value={selectedTower?.tower_id ?? ""}
-                >
-                  {towers?.towers.map((tower) => (
-                    <option
-                      disabled={!isProvinceUnlocked(overview?.provinces, tower.province_id)}
-                      key={tower.tower_id}
-                      value={tower.tower_id}
-                    >
-                      {provinceNameById(overview?.provinces, tower.province_id)} ·{" "}
-                      {tower.tower_name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <Button
-                className="today-refresh-button"
-                disabled={busy || !activeProfile?.player}
-                onClick={() => refreshOverview()}
-              >
-                刷新状态
-              </Button>
+                  刷新状态
+                </Button>
+              </div>
             </div>
-            <ExploreQueueCard
-              canClaim={canClaimExplore}
-              explore={activeExplore ?? currentExplore}
-              onClaim={handleClaimExplore}
-              remainingSeconds={exploreRemainingSeconds}
-              busy={busy}
-            />
-            <ExploreEventCard
-              busy={busy}
-              event={firstPendingExploreEvent}
-              onResolve={handleResolveExploreEvent}
-            />
-            <div className="today-action-grid">
-              {visibleRecommendedActions.map((action) => (
-                <article className="recommended-action" key={action.id}>
-                  <div>
-                    <strong>{action.title}</strong>
-                    <span>{action.detail}</span>
-                  </div>
-                  {action.actionUnavailableReason ? (
-                    <span className="action-note">{action.actionUnavailableReason}</span>
-                  ) : (
-                    <Button disabled={action.disabled} onClick={action.onAction}>
-                      {action.buttonLabel}
-                    </Button>
-                  )}
-                </article>
-              ))}
+            <div className="today-side-flow">
+              <ExploreQueueCard
+                canClaim={canClaimExplore}
+                explore={activeExplore ?? currentExplore}
+                onClaim={handleClaimExplore}
+                remainingSeconds={exploreRemainingSeconds}
+                busy={busy}
+              />
+              <ExploreEventCard
+                busy={busy}
+                event={firstPendingExploreEvent}
+                onResolve={handleResolveExploreEvent}
+              />
+              <div className="today-action-grid">
+                {visibleRecommendedActions.map((action) => (
+                  <article className="recommended-action" key={action.id}>
+                    <div>
+                      <strong>{action.title}</strong>
+                      <span>{action.detail}</span>
+                    </div>
+                    {action.actionUnavailableReason ? (
+                      <span className="action-note">{action.actionUnavailableReason}</span>
+                    ) : (
+                      <Button disabled={action.disabled} onClick={action.onAction}>
+                        {action.buttonLabel}
+                      </Button>
+                    )}
+                  </article>
+                ))}
+              </div>
             </div>
           </section>
 

@@ -54,6 +54,7 @@ import {
   maxOfflineCultivationHours,
   provinceConfigs,
   provinceExploreSeconds,
+  selectExploreEnemy,
 } from "./game.constants";
 import {
   getCaveReward,
@@ -505,6 +506,8 @@ export class GameService {
             currentPlayer,
             currentProgress,
             province,
+            record.recordId,
+            index,
           );
           battles.push(battle.summary);
           currentPlayer = battle.player;
@@ -998,6 +1001,8 @@ export class GameService {
     player: PlayerWithCore,
     progress: PlayerProgress,
     province: ProvinceSummary,
+    exploreRecordId: string,
+    battleIndex: number,
   ): Promise<{
     summary: BattleSummary;
     player: PlayerWithCore;
@@ -1007,13 +1012,20 @@ export class GameService {
     if (!config) {
       throw new BadRequestException("未知探索目标");
     }
+    const enemy = selectExploreEnemy(province.province_id, exploreRecordId, battleIndex) ?? {
+      enemyId: config.enemyId,
+      enemyName: config.enemyName,
+      enemyPower: config.enemyPower,
+      flavor: config.theme,
+      provinceId: config.provinceId,
+      skillName: "山海妖息",
+    };
 
     const playerPower = player.currentRealm * 120 + player.currentLevel * 45;
-    const result: BattleSummary["result"] = playerPower >= config.enemyPower ? "win" : "lose";
-    const damageDone =
-      result === "win" ? config.enemyPower + player.currentLevel * 12 : playerPower;
+    const result: BattleSummary["result"] = playerPower >= enemy.enemyPower ? "win" : "lose";
+    const damageDone = result === "win" ? enemy.enemyPower + player.currentLevel * 12 : playerPower;
     const damageTaken =
-      result === "win" ? Math.max(8, Math.floor(config.enemyPower / 3)) : config.enemyPower;
+      result === "win" ? Math.max(8, Math.floor(enemy.enemyPower / 3)) : enemy.enemyPower;
     const rewards: RewardBundle =
       result === "win"
         ? {
@@ -1055,11 +1067,12 @@ export class GameService {
     const skillNames = getCombatSkillNames(player.route, loadout);
     const battleLog: BattleRoundLog[] = createBattleRoundLog({
       playerName: player.name,
-      enemyName: config.enemyName,
+      enemyName: enemy.enemyName,
       damageDone,
       damageTaken,
       result,
       activeSkillName: skillNames.activeSkillName,
+      enemySkillName: enemy.skillName,
       treasureSkillName: skillNames.treasureSkillName,
     });
     const battle = await tx.battleLog.create({
@@ -1069,8 +1082,8 @@ export class GameService {
         eraId: defaultEraId,
         battleType: "explore",
         provinceId: province.province_id,
-        enemyId: config.enemyId,
-        enemyName: config.enemyName,
+        enemyId: enemy.enemyId,
+        enemyName: enemy.enemyName,
         result,
         rounds: battleLog.length,
         damageDone,
@@ -1721,6 +1734,7 @@ function createBattleRoundLog(input: {
   damageTaken: number;
   result: BattleSummary["result"];
   activeSkillName: string;
+  enemySkillName: string;
   treasureSkillName: string;
 }): BattleRoundLog[] {
   const enemyRemainingHp = Math.max(0, input.result === "win" ? 0 : input.damageTaken);
@@ -1736,7 +1750,7 @@ function createBattleRoundLog(input: {
     {
       round: 2,
       actor: input.enemyName,
-      skill: "山海妖息",
+      skill: input.enemySkillName,
       damage: input.damageTaken,
       target_hp: Math.max(0, 100 - input.damageTaken),
     },

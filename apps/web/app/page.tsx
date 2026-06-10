@@ -1,7 +1,7 @@
 "use client";
 
 import { GameClient } from "@nextday/game-client";
-import { cultivationRouteLabels } from "@nextday/game-rules";
+import { cultivationRouteLabels, provinceLabels } from "@nextday/game-rules";
 import type {
   AcceptSectHireRequest,
   ActivityListResponse,
@@ -395,6 +395,10 @@ export default function HomePage() {
     canTower: Boolean(selectedTower),
     caveMinutes: overview?.cave?.claimable_minutes ?? 0,
     exploreCount,
+    hasClaimableRewards:
+      completedTasks.length > 0 ||
+      hasPositiveString(overview?.cultivation?.claimable_cultivation ?? "0") ||
+      (overview?.cave?.claimable_minutes ?? 0) > 0,
     province: selectedProvince,
     tower: selectedTower,
     onActivity: firstClaimableActivity
@@ -4795,6 +4799,8 @@ function CultivationJournal({
 
 function BattleReportCard({ battle }: { battle: BattleSummary }) {
   const latestLogs = battle.log.slice(-3);
+  const provinceLabel = battleProvinceLabel(battle.province_id);
+  const rewardSummary = formatBattleRewardSummary(battle.rewards);
 
   return (
     <article className="battle-card">
@@ -4802,12 +4808,17 @@ function BattleReportCard({ battle }: { battle: BattleSummary }) {
         <div>
           <strong>{battle.enemy_name}</strong>
           <span>
-            {battleTypeLabel(battle.battle_type)} · {battle.rounds} 回合
+            {battleTypeLabel(battle.battle_type)} · {provinceLabel} · {battle.rounds} 回合
           </span>
         </div>
         <StatusBadge tone={battle.result === "win" ? "success" : "warning"}>
           {battle.result === "win" ? "胜利" : "失利"}
         </StatusBadge>
+      </div>
+      <div className="mini-stats battle-meta-row">
+        <span>{provinceLabel}</span>
+        <span>{formatShortDate(battle.created_at)}</span>
+        <span>奖励 {rewardSummary}</span>
       </div>
       <div className="battle-stat-grid">
         <span>造成 {battle.damage_done}</span>
@@ -5540,7 +5551,25 @@ function buildDailyGoals(input: {
     });
   }
 
-  return goals.slice(0, 4);
+  return goals
+    .sort((left, right) => dailyGoalPriority(right) - dailyGoalPriority(left))
+    .slice(0, 4);
+}
+
+function dailyGoalPriority(goal: DailyGoal): number {
+  const toneBonus = goal.tone === "success" ? 100 : goal.tone === "warning" ? 30 : 0;
+  const order: Record<string, number> = {
+    tasks: 90,
+    cultivation: 84,
+    cave: 82,
+    ancient_grant: 80,
+    activity: 74,
+    explore: 70,
+    tower: 62,
+    breakthrough: 50,
+  };
+
+  return toneBonus + (order[goal.id] ?? 10);
 }
 
 function buildRecommendedActions(input: {
@@ -5552,6 +5581,7 @@ function buildRecommendedActions(input: {
   canTower: boolean;
   caveMinutes: number;
   exploreCount: number;
+  hasClaimableRewards: boolean;
   province: ProvinceSummary | undefined;
   tower: TowerStateSummary | undefined;
   onActivity: () => void | Promise<void>;
@@ -5565,10 +5595,13 @@ function buildRecommendedActions(input: {
   return [
     {
       buttonLabel: "一键领取",
+      actionUnavailableReason: input.hasClaimableRewards ? undefined : "暂无可一键领取收益",
       detail:
-        input.caveMinutes > 0
-          ? `洞府 ${input.caveMinutes} 分钟产出待收。`
-          : "检查修为、洞府和已完成任务。",
+        input.hasClaimableRewards && input.caveMinutes > 0
+          ? `洞府 ${input.caveMinutes} 分钟产出待收，可顺手收束任务和修为。`
+          : input.hasClaimableRewards
+            ? "修为、洞府或任务已有可领取收益。"
+            : "暂无可领取收益，先推进探索、活动或生产。",
       disabled: input.busy,
       id: "quick_claim",
       onAction: input.onQuickClaim,
@@ -5587,6 +5620,7 @@ function buildRecommendedActions(input: {
     },
     {
       buttonLabel: "洞府收取",
+      actionUnavailableReason: input.caveMinutes > 0 ? undefined : "洞府暂无可收取产出",
       detail: input.caveMinutes > 0 ? "收取洞府产出，补充灵石。" : "暂无高额产出，也可手动检查。",
       disabled: input.busy,
       id: "cave",
@@ -6235,6 +6269,34 @@ function battleTypeLabel(battleType: string): string {
     tower: "九塔战斗",
   };
   return labels[battleType] ?? "战斗";
+}
+
+function battleProvinceLabel(provinceId: string): string {
+  return provinceLabels[provinceId as keyof typeof provinceLabels] ?? "未知州域";
+}
+
+function formatBattleRewardSummary(rewards: BattleSummary["rewards"]): string {
+  const parts: string[] = [];
+  if (hasPositiveString(rewards.cultivation ?? "0")) {
+    parts.push(`修为 ${rewards.cultivation}`);
+  }
+  if (hasPositiveString(rewards.spirit_stone ?? "0")) {
+    parts.push(`灵石 ${rewards.spirit_stone}`);
+  }
+
+  const itemTotals = new Map<string, number>();
+  for (const item of rewards.items ?? []) {
+    itemTotals.set(item.name, (itemTotals.get(item.name) ?? 0) + item.count);
+  }
+  const itemSummary = [...itemTotals.entries()]
+    .slice(0, 2)
+    .map(([name, count]) => `${name} x${count}`)
+    .join("、");
+  if (itemSummary) {
+    parts.push(itemSummary);
+  }
+
+  return parts.slice(0, 3).join("、") || "无入账";
 }
 
 function commerceTierLabel(tier?: string): string {

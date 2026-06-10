@@ -43,7 +43,7 @@ export function buildExploreExperience(input: {
     timeline.push({
       step: timeline.length + 1,
       title: "余下战斗",
-      description: `其余 ${input.battles.length - timeline.length} 场按同一自动战斗规则结算。`,
+      description: `其余 ${input.battles.length - timeline.length} 场已自动结算，可在战报页查看。`,
       tone: "neutral",
     });
   }

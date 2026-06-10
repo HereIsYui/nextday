@@ -1075,6 +1075,15 @@ h2 {
 .battle-card-head > div {
   display: grid;
   gap: 4px;
+  min-width: 0;
+}
+
+.battle-card-head span {
+  overflow-wrap: anywhere;
+}
+
+.battle-meta-row {
+  margin-top: 0;
 }
 
 .battle-stat-grid {
@@ -1087,6 +1096,8 @@ h2 {
   background: #edf1ef;
   border-radius: 8px;
   color: #203233;
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding: 8px 10px;
 }
 

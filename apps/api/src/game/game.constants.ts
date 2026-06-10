@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { RewardBundle } from "@nextday/shared";
 import type { Prisma } from "@prisma/client";
 
@@ -172,6 +172,159 @@ export const provinceConfigs: ProvinceConfig[] = [
     enemyPower: 820,
   },
 ];
+
+export interface ExploreEnemyConfig {
+  provinceId: string;
+  enemyId: string;
+  enemyName: string;
+  enemyPower: number;
+  skillName: string;
+  flavor: string;
+}
+
+export const exploreEnemyPools: Record<string, ExploreEnemyConfig[]> = {
+  ji: createExploreEnemyPool("ji", 90, [
+    ["gudiao", "蛊雕", 0, "裂喉啼", "北境山道盘旋的凶禽。"],
+    ["shanxiao", "山魈", -8, "碎石扑", "玄铁矿坡附近出没的低阶妖影。"],
+    ["tieyu_yaoqin", "铁羽妖禽", 6, "铁羽掠击", "羽翎沾着玄铁尘的妖禽。"],
+    ["xuanbei_wolf", "玄背狼", -4, "群嚎", "常沿旧驿道追逐灵气。"],
+    ["wuyan_lizard", "乌岩蜥", 4, "岩尾扫", "伏在黑石缝中的冷血妖蜥。"],
+    ["ta_shadow", "塔影残魇", 10, "塔影压身", "玄铁塔裂缝里渗出的残念。"],
+    ["lingcao_mantis", "灵草螳", -10, "镰臂斩", "守着低阶灵草的虫妖。"],
+    ["bei_mist_fox", "北雾狐", 2, "雾尾惑心", "借晨雾遮身的小妖狐。"],
+    ["kuangnu", "矿奴残魂", 8, "怨镐击", "旧矿坑中未散的执念。"],
+    ["heishi_boar", "黑石豚", -6, "蛮撞", "拱翻灵田边石埂的山兽。"],
+  ]),
+  yan: createExploreEnemyPool("yan", 180, [
+    ["liwen_ling", "礼纹灵", -8, "礼纹缠身", "旧礼阵中游离的纹灵。"],
+    ["zhen_sha_spirit", "阵砂魄", 2, "砂阵回旋", "阵砂凝成的小型阵魄。"],
+    ["zheng", "狰", 0, "五尾裂风", "兖州山林中的狞兽。"],
+    ["ritual_paper_demon", "祭纸妖", -12, "纸刃翻飞", "废庙祭纸沾灵化妖。"],
+    ["bronze_bell_wight", "铜钟魅", 12, "钟鸣震魄", "礼器残片汇成的魅影。"],
+    ["oath_shadow", "盟誓影", 8, "誓锁", "旧盟约留下的束缚残影。"],
+    ["ink_scale_serpent", "墨鳞蛇", -4, "墨毒噬", "盘在礼书残卷旁的毒蛇。"],
+    ["rite_guard", "礼阵守卫", 15, "礼阵反击", "守护废弃礼阵的机关灵。"],
+    ["feather_scribe", "羽笔妖", -6, "符笔点睛", "宗门旧札中生出的笔灵。"],
+    ["broken_halberd_soul", "断戟魂", 6, "戟影横扫", "兵礼冲突中残留的魂影。"],
+  ]),
+  qing: createExploreEnemyPool("qing", 240, [
+    ["xuangui", "旋龟", 0, "潮甲回震", "潮汐灵脉旁的龟妖。"],
+    ["luoyu_young", "蠃鱼幼妖", -12, "水翼拍击", "浅湾里跃出的鱼妖幼体。"],
+    ["haichao_serpent", "海潮蛇", 8, "潮毒缠绕", "随潮水潜入灵田的蛇妖。"],
+    ["salt_mist_wraith", "盐雾魅", -6, "盐雾蚀骨", "海岱雾气中凝出的魅影。"],
+    ["coral_imp", "珊瑚小妖", 4, "珊刺突袭", "附在碎珊瑚上的小妖。"],
+    ["tide_shell_guard", "潮贝守卫", 14, "贝甲合击", "守着潮汐草的贝甲妖。"],
+    ["blue_scale_ray", "青鳞魟", 10, "青鳞电尾", "水脉中滑行的灵魟。"],
+    ["danfire_crab", "丹火蟹", 18, "丹火钳", "丹火材料旁烘出的蟹妖。"],
+    ["foam_sprite", "浪沫灵", -10, "浪沫迷踪", "浪尖碎沫成形的小灵。"],
+    ["mirror_tide_demon", "镜潮妖", 20, "镜潮返照", "海妖镜像中溢出的妖影。"],
+  ]),
+  xu: createExploreEnemyPool("xu", 300, [
+    ["kui", "夔", 0, "独足震雷", "古战场雷声中现身的独足兽。"],
+    ["battle_soul", "战场残魂", -10, "残刃穿心", "徘徊在旧战壕里的魂影。"],
+    ["blood_crystal_hound", "血晶犬", 8, "血晶啮", "啃食血晶长大的妖犬。"],
+    ["rust_armor", "锈甲傀", -4, "锈甲撞击", "残甲与怨气拼合的傀影。"],
+    ["drum_wraith", "战鼓魅", 12, "鼓震心魄", "破鼓里留存的战意。"],
+    ["spear_shadow", "枪影妖", 6, "枪影贯阵", "残枪映出的妖影。"],
+    ["warhorse_ghost", "铁骑幽骸", 16, "铁蹄踏阵", "旧骑阵未散的幽骸。"],
+    ["blood_moth", "血晶蛾", -8, "血粉迷目", "血晶矿旁扑飞的妖蛾。"],
+    ["banner_spirit", "残旗灵", 4, "旗风乱神", "破碎战旗上附着的灵。"],
+    ["guyang_phantom", "戈阳塔影", 20, "塔戈压阵", "戈阳塔裂隙投下的虚影。"],
+  ]),
+  yang: createExploreEnemyPool("yang", 390, [
+    ["feiyi", "肥遗", 0, "双首火息", "商路外游弋的双首蛇妖。"],
+    ["trade_road_bandit_spirit", "商路劫灵", -10, "劫火飞刃", "劫道怨气化成的灵。"],
+    ["liuguang_moth", "琉光蛾", 6, "琉粉迷光", "琉光塔附近的幻色妖蛾。"],
+    ["spiritwood_ape", "灵木猿", -6, "灵木重拳", "灵木林里蛮力惊人的猿妖。"],
+    ["coin_toad", "商票蟾", 8, "铜舌卷", "吞食商票灵气的蟾妖。"],
+    ["caravan_shadow", "商队影", 12, "驼铃摄魂", "失踪商队留下的影子。"],
+    ["field_rat_demon", "灵田鼠妖", -14, "噬根", "偷啃灵田根脉的小妖。"],
+    ["jade_lantern_wisp", "玉灯鬼火", 10, "灯焰摇魂", "夜市玉灯里蹿出的鬼火。"],
+    ["river_silk_serpent", "水绸蛇", 4, "水绸缚", "河港丝绸灵气凝成的蛇妖。"],
+    ["tax_seal_golem", "税印石傀", 18, "税印镇压", "旧税印与石魄合成的傀。"],
+  ]),
+  jing: createExploreEnemyPool("jing", 430, [
+    ["bashe", "巴蛇幼影", 0, "吞林影", "泽林深处游过的巨蛇幼影。"],
+    ["yaoteng", "妖藤", -8, "藤蔓绞缚", "缠住采药路的低阶妖藤。"],
+    ["wood_mother_seed", "木母孢", 12, "孢雾催眠", "万木秘境外溢的孢子。"],
+    ["marsh_deer_spirit", "泽鹿灵", -12, "鹿角挑灵", "受污染后惊走的泽鹿灵。"],
+    ["mire_croc", "泥沼鳄", 8, "沼尾横扫", "潜伏在泽泥里的鳄妖。"],
+    ["vine_mask", "藤面魅", 4, "藤面惑心", "藤叶拼成的人面魅影。"],
+    ["spirit_plant_guard", "灵植守卫", 14, "灵枝反刺", "守护灵植的木灵守卫。"],
+    ["green_firefly_swarm", "青萤群", -6, "萤火灼息", "成群吞吐灵火的青萤。"],
+    ["root_puppet", "根须傀", 16, "根须裂地", "树根与旧骨缠成的傀影。"],
+    ["wanmu_echo", "万木回声", 20, "林涛压顶", "万木塔深处传来的回声。"],
+  ]),
+  yu: createExploreEnemyPool("yu", 560, [
+    ["kui_niu", "夔牛", 0, "雷蹄震衡", "中州阵眼旁的雷兽。"],
+    ["axis_stone_spirit", "阵眼石灵", -10, "阵眼压身", "天衡石里孕出的石灵。"],
+    ["balance_wraith", "天衡魅", 8, "衡尺裂魂", "失衡阵法里浮出的魅影。"],
+    ["faction_banner_shadow", "阵营旗影", -6, "旗影分光", "仙魔旗帜投下的残影。"],
+    ["central_plains_tiger", "中州虎妖", 12, "虎啸破阵", "盘踞中枢山口的虎妖。"],
+    ["core_eye", "阵核眼", 16, "阵光灼目", "阵眼核心溢出的灵眼。"],
+    ["oath_scale_demon", "誓鳞妖", 4, "誓鳞反噬", "阵营誓约染出的鳞妖。"],
+    ["jade_scale_lion", "玉衡狮", 20, "玉衡咆哮", "镇守天衡旧道的狮兽。"],
+    ["dust_monk", "尘相僧影", -8, "尘印", "旧中州寺观残留的法相。"],
+    ["split_path_shadow", "分道路影", 18, "岔路迷魂", "仙魔分流前的心魔路影。"],
+  ]),
+  liang: createExploreEnemyPool("liang", 690, [
+    ["qiongqi", "穷奇影", 0, "恶风裂甲", "镇岳山脉间游荡的凶影。"],
+    ["mountain_copper_beast", "山铜兽", -10, "铜角撞", "吞食山铜矿渣的妖兽。"],
+    ["earth_vein_worm", "地脉蠕虫", 8, "地脉翻涌", "啃噬地脉节点的虫妖。"],
+    ["stone_giant", "镇岳石巨", 18, "巨掌崩岩", "镇岳塔外苏醒的石巨。"],
+    ["ore_bat", "矿洞蝠", -14, "刺耳回声", "矿洞深处成群的妖蝠。"],
+    ["body_trial_shadow", "炼体试影", 12, "铁骨冲撞", "炼体试炼留下的镜影。"],
+    ["ridge_serpent", "山脊蛇", -4, "盘岭噬", "绕着山脊潜伏的蛇妖。"],
+    ["fault_wraith", "断层魅", 16, "断层撕裂", "山体断层中吹出的魅。"],
+    ["heavy_armor_golem", "重甲岩傀", 22, "岩甲碾压", "防御法宝残片聚成的傀。"],
+    ["quarry_soul", "采石魂", 6, "石凿怨击", "旧采石场不散的执念。"],
+  ]),
+  yong: createExploreEnemyPool("yong", 820, [
+    ["jiuying", "九婴残首", 0, "九息啼火", "太初裂隙中露出的残首。"],
+    ["holy_relic_wraith", "圣遗魅", -10, "圣辉蚀心", "圣遗残卷旁游荡的魅。"],
+    ["taichu_shadow", "太初魔影", 18, "太初暗涌", "太初塔下积聚的魔影。"],
+    ["ancient_city_guard", "古都禁卫", 8, "禁卫横戈", "古都遗址中复醒的守卫。"],
+    ["relic_serpent", "残卷蛇", -6, "卷鳞绞", "盘在残卷堆里的蛇妖。"],
+    ["saint_mark_golem", "圣痕石傀", 16, "圣痕镇落", "圣痕与石魄结成的傀。"],
+    ["final_seal_imp", "封印小魔", -14, "封印反啮", "终局封印边缘钻出的小魔。"],
+    ["sunken_bell_spirit", "沉钟灵", 10, "古钟回响", "古都地底沉钟里的灵。"],
+    ["white_bone_scribe", "白骨书吏", 4, "骨简飞刺", "守着古籍残页的骨影。"],
+    ["ninefold_flame", "九重焰", 22, "九焰压境", "九婴残息聚成的火影。"],
+  ]),
+};
+
+export function selectExploreEnemy(
+  provinceId: string,
+  seed: string,
+  battleIndex: number,
+): ExploreEnemyConfig | undefined {
+  const pool = exploreEnemyPools[provinceId];
+  if (!pool?.length) {
+    return undefined;
+  }
+
+  const startIndex = stableIndex(`${provinceId}:${seed}`, pool.length);
+  return pool[(startIndex + battleIndex) % pool.length];
+}
+
+function createExploreEnemyPool(
+  provinceId: string,
+  basePower: number,
+  seeds: Array<[string, string, number, string, string]>,
+): ExploreEnemyConfig[] {
+  return seeds.map(([id, name, powerOffset, skillName, flavor]) => ({
+    enemyId: `${provinceId}_${id}`,
+    enemyName: name,
+    enemyPower: Math.max(1, basePower + powerOffset),
+    flavor,
+    provinceId,
+    skillName,
+  }));
+}
+
+function stableIndex(seed: string, modulo: number): number {
+  return createHash("sha256").update(seed).digest().readUInt32BE(0) % modulo;
+}
 
 export interface ExploreEventChoiceConfig {
   choiceId: string;

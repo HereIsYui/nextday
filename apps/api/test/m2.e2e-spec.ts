@@ -5,6 +5,7 @@ import { PrismaClient } from "@prisma/client";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AppModule } from "../src/app.module";
+import { exploreEnemyPools } from "../src/game/game.constants";
 import { configureApp } from "../src/platform/configure-app";
 
 describe("M2 核心循环", () => {
@@ -96,10 +97,10 @@ describe("M2 核心循环", () => {
       .post("/api/game/explore")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_m2_explore_${Date.now()}`)
-      .send({ province_id: "ji", count: 3 })
+      .send({ province_id: "ji", count: 5 })
       .expect(201);
 
-    expect(response.body.data.action_state.action_points).toBe(beforeActionPoints - 3);
+    expect(response.body.data.action_state.action_points).toBe(beforeActionPoints - 5);
     expect(response.body.data.status).toBe("pending");
     expect(response.body.data.seconds_per_explore).toBe(20);
     expect(response.body.data.battles).toHaveLength(0);
@@ -116,8 +117,18 @@ describe("M2 核心循环", () => {
       .expect(201);
 
     expect(claimed.body.data.status).toBe("claimed");
-    expect(claimed.body.data.battles).toHaveLength(3);
-    expect(claimed.body.data.battles[0].enemy_name).toBe("蛊雕");
+    expect(claimed.body.data.battles).toHaveLength(5);
+    const jiEnemyNames = new Set(exploreEnemyPools.ji.map((enemy) => enemy.enemyName));
+    const battleEnemyNames = claimed.body.data.battles.map(
+      (battle: { enemy_name: string }) => battle.enemy_name,
+    );
+    expect(battleEnemyNames.every((enemyName: string) => jiEnemyNames.has(enemyName))).toBe(true);
+    expect(new Set(battleEnemyNames).size).toBeGreaterThan(1);
+    const enemySkillNames = claimed.body.data.battles.flatMap(
+      (battle: { enemy_name: string; log: Array<{ actor: string; skill: string }> }) =>
+        battle.log.filter((round) => round.actor === battle.enemy_name).map((round) => round.skill),
+    );
+    expect(enemySkillNames).not.toContain("山海妖息");
     expect(claimed.body.data.battles[0].log.length).toBeGreaterThan(0);
     expect(claimed.body.data.completed_task_ids).toContain("novice_explore_ji");
     expect(claimed.body.data.completed_task_ids).toContain("daily_explore");
@@ -128,8 +139,12 @@ describe("M2 核心循环", () => {
     const provinceProgress = await prisma.playerProvinceProgress.findUnique({
       where: { playerId_provinceId: { playerId, provinceId: "ji" } },
     });
-    expect(battleCount).toBe(3);
-    expect(provinceProgress?.explorationCount).toBe(3);
+    const exploreRecord = await prisma.exploreActionRecord.findUnique({
+      where: { recordId: response.body.data.record_id },
+    });
+    expect(exploreRecord?.battleSnapshot).toEqual(claimed.body.data.battles);
+    expect(battleCount).toBe(5);
+    expect(provinceProgress?.explorationCount).toBe(5);
   });
 
   it("重复探索请求使用同一幂等键时不会重复扣行动令", async () => {

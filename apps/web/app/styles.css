@@ -1535,6 +1535,58 @@ details.event-boundary {
   padding: 8px 10px;
 }
 
+.action-feedback {
+  align-items: center;
+  background: #f7f9f5;
+  border: 1px solid #cbd7d2;
+  border-radius: 8px;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.action-feedback > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.action-feedback strong {
+  color: #10292b;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.action-feedback span {
+  color: #5f6f70;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.action-feedback-success {
+  border-color: #bfdac9;
+}
+
+.action-feedback-error {
+  border-color: #dfb8b8;
+}
+
+.action-feedback-link {
+  background: transparent;
+  border: 0;
+  color: #2f6f5f;
+  cursor: pointer;
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 13px;
+  padding: 0;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
 .empty {
   background: #fbfcfa;
   border: 1px dashed #cbd7d2;
@@ -2214,6 +2266,35 @@ details.event-boundary {
   overflow-wrap: anywhere;
   padding: 0 0 0 10px;
   white-space: normal;
+}
+
+.text-game-shell .action-feedback {
+  align-items: start;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid #111111;
+  border-radius: 0;
+  grid-column: 1 / -1;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 0 0 0 10px;
+}
+
+.text-game-shell .action-feedback strong {
+  color: #111111;
+  font-size: 13px;
+}
+
+.text-game-shell .action-feedback span {
+  color: #555555;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.text-game-shell .action-feedback-link {
+  color: #111111;
+  font-size: 13px;
 }
 
 .text-game-shell .today-layout {

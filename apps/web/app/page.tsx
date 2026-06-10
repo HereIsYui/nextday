@@ -64,7 +64,15 @@ import type {
   WorldBossResponse,
 } from "@nextday/shared";
 import { Button, StatusBadge } from "@nextday/ui";
-import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type FormEvent,
+  type MouseEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 type HealthText = "检测中" | "正常" | "不可用";
 type RouteValue = "qi" | "body";
@@ -145,6 +153,16 @@ interface GrowthTarget {
   actionUnavailableReason?: string;
   disabled?: boolean;
   onAction: () => void | Promise<void>;
+}
+
+type ActionFeedbackStatus = "running" | "success" | "error";
+
+interface ActionFeedbackState {
+  label: string;
+  message: string;
+  sourceId: string;
+  status: ActionFeedbackStatus;
+  updatedAt: number;
 }
 
 type MainlineStepStatus = "done" | "active" | "pending";
@@ -234,6 +252,8 @@ export default function HomePage() {
   const [busy, setBusy] = useState(false);
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
   const [tabFocusPulse, setTabFocusPulse] = useState(false);
+  const [actionFeedback, setActionFeedback] = useState<ActionFeedbackState | null>(null);
+  const actionFeedbackSourceRef = useRef<string | null>(null);
   const tabSurfaceRef = useRef<HTMLElement | null>(null);
 
   const client = useMemo(() => createClient(token ?? undefined), [token]);
@@ -410,6 +430,60 @@ export default function HomePage() {
     onPill: selectedPill ? handleUsePill : handleCraftAlchemy,
     onTower: handleTowerAction,
   });
+
+  function actionFeedbackFor(sourceId: string): ActionFeedbackState | undefined {
+    return actionFeedback?.sourceId === sourceId ? actionFeedback : undefined;
+  }
+
+  function handleActionFeedbackCapture(event: MouseEvent<HTMLElement>) {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+
+    const button = target.closest("button,.nextday-button");
+    const sourceElement = target.closest<HTMLElement>("[data-action-feedback-source]");
+    const sourceId = sourceElement?.dataset.actionFeedbackSource;
+    if (!button || !sourceId) {
+      return;
+    }
+
+    actionFeedbackSourceRef.current = sourceId;
+    window.setTimeout(() => {
+      if (actionFeedbackSourceRef.current === sourceId) {
+        actionFeedbackSourceRef.current = null;
+      }
+    }, 0);
+  }
+
+  function setInlineActionFeedback(
+    sourceId: string,
+    status: ActionFeedbackStatus,
+    label: string,
+    message: string,
+  ) {
+    const nextFeedback: ActionFeedbackState = {
+      label,
+      message,
+      sourceId,
+      status,
+      updatedAt: Date.now(),
+    };
+    setActionFeedback(nextFeedback);
+
+    if (status !== "running") {
+      window.setTimeout(
+        () => {
+          setActionFeedback((current) =>
+            current?.sourceId === sourceId && current.updatedAt === nextFeedback.updatedAt
+              ? null
+              : current,
+          );
+        },
+        status === "success" ? 8000 : 12000,
+      );
+    }
+  }
 
   useEffect(() => {
     let ignore = false;
@@ -1995,6 +2069,11 @@ export default function HomePage() {
     window.scrollTo({ behavior: "smooth", top });
   }
 
+  function handleViewActionFeedbackDetails() {
+    setMessage("已定位修行日志");
+    scrollToSection(".journal-panel");
+  }
+
   async function handleMainlineTask(task: TaskState | undefined) {
     if (!task) {
       handleFocusTask();
@@ -2253,19 +2332,38 @@ export default function HomePage() {
   }
 
   async function runAction(label: string, action: () => Promise<void>) {
+    const feedbackSourceId = actionFeedbackSourceRef.current;
     setBusy(true);
     setMessage(`${label}中`);
+    if (feedbackSourceId) {
+      setInlineActionFeedback(feedbackSourceId, "running", label, `${label}中`);
+    }
     try {
       await action();
+      if (feedbackSourceId) {
+        setInlineActionFeedback(
+          feedbackSourceId,
+          "success",
+          label,
+          actionFeedbackSuccessMessage(label),
+        );
+      }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : `${label}失败`);
+      const errorMessage = error instanceof Error ? error.message : `${label}失败`;
+      setMessage(errorMessage);
+      if (feedbackSourceId) {
+        setInlineActionFeedback(feedbackSourceId, "error", label, errorMessage);
+      }
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <main className={activeProfile?.player ? "shell app-shell text-game-shell" : "shell app-shell"}>
+    <main
+      className={activeProfile?.player ? "shell app-shell text-game-shell" : "shell app-shell"}
+      onClickCapture={handleActionFeedbackCapture}
+    >
       <section className="topbar">
         <div>
           <p className="eyebrow">九州纪元 · 文字修行</p>
@@ -2347,7 +2445,11 @@ export default function HomePage() {
               </p>
             </div>
             <div className="today-main-flow">
-              <MainlineGuideCard guide={mainlineGuide} />
+              <MainlineGuideCard
+                feedback={actionFeedbackFor("mainline-guide")}
+                guide={mainlineGuide}
+                onViewFeedback={handleViewActionFeedbackDetails}
+              />
               <div className="today-controls" aria-label="今日行动选择">
                 <label>
                   <span>探索州域</span>
@@ -2404,31 +2506,46 @@ export default function HomePage() {
               <ExploreQueueCard
                 canClaim={canClaimExplore}
                 explore={activeExplore ?? currentExplore}
+                feedback={actionFeedbackFor("explore-queue")}
                 onClaim={handleClaimExplore}
+                onViewFeedback={handleViewActionFeedbackDetails}
                 remainingSeconds={exploreRemainingSeconds}
                 busy={busy}
               />
               <ExploreEventCard
                 busy={busy}
                 event={firstPendingExploreEvent}
+                feedback={actionFeedbackFor("explore-event")}
                 onResolve={handleResolveExploreEvent}
+                onViewFeedback={handleViewActionFeedbackDetails}
               />
               <div className="today-action-grid">
-                {visibleRecommendedActions.map((action) => (
-                  <article className="recommended-action" key={action.id}>
-                    <div>
-                      <strong>{action.title}</strong>
-                      <span>{action.detail}</span>
-                    </div>
-                    {action.actionUnavailableReason ? (
-                      <span className="action-note">{action.actionUnavailableReason}</span>
-                    ) : (
-                      <Button disabled={action.disabled} onClick={action.onAction}>
-                        {action.buttonLabel}
-                      </Button>
-                    )}
-                  </article>
-                ))}
+                {visibleRecommendedActions.map((action) => {
+                  const feedbackSourceId = `recommended-${action.id}`;
+                  return (
+                    <article
+                      className="recommended-action"
+                      data-action-feedback-source={feedbackSourceId}
+                      key={action.id}
+                    >
+                      <div>
+                        <strong>{action.title}</strong>
+                        <span>{action.detail}</span>
+                      </div>
+                      {action.actionUnavailableReason ? (
+                        <span className="action-note">{action.actionUnavailableReason}</span>
+                      ) : (
+                        <Button disabled={action.disabled} onClick={action.onAction}>
+                          {action.buttonLabel}
+                        </Button>
+                      )}
+                      <ActionFeedbackInline
+                        feedback={actionFeedbackFor(feedbackSourceId)}
+                        onViewDetails={handleViewActionFeedbackDetails}
+                      />
+                    </article>
+                  );
+                })}
               </div>
             </div>
           </section>
@@ -2455,7 +2572,12 @@ export default function HomePage() {
               </div>
               <div className="goal-list">
                 {dailyGoals.map((goal) => (
-                  <DailyGoalCard goal={goal} key={goal.id} />
+                  <DailyGoalCard
+                    feedback={actionFeedbackFor(`daily-goal-${goal.id}`)}
+                    goal={goal}
+                    key={goal.id}
+                    onViewFeedback={handleViewActionFeedbackDetails}
+                  />
                 ))}
               </div>
             </div>
@@ -2466,7 +2588,12 @@ export default function HomePage() {
               </div>
               <div className="growth-target-list">
                 {growthTargets.slice(0, 3).map((target) => (
-                  <GrowthTargetCard key={target.id} target={target} />
+                  <GrowthTargetCard
+                    feedback={actionFeedbackFor(`growth-target-${target.id}`)}
+                    key={target.id}
+                    onViewFeedback={handleViewActionFeedbackDetails}
+                    target={target}
+                  />
                 ))}
               </div>
             </div>
@@ -2578,6 +2705,7 @@ export default function HomePage() {
                         className={`task-row ${
                           focusedTaskId === task.task_id ? "task-row-focused" : ""
                         }`}
+                        data-action-feedback-source={`task-${task.task_id}`}
                         data-task-id={task.task_id}
                         key={task.task_state_id}
                       >
@@ -2597,6 +2725,10 @@ export default function HomePage() {
                             {task.status === "claimed" ? "已领" : "进行中"}
                           </StatusBadge>
                         )}
+                        <ActionFeedbackInline
+                          feedback={actionFeedbackFor(`task-${task.task_id}`)}
+                          onViewDetails={handleViewActionFeedbackDetails}
+                        />
                       </article>
                     ))}
                   </div>
@@ -2716,6 +2848,7 @@ export default function HomePage() {
                     {collection?.collections.map((item) => (
                       <article
                         className={item.owned ? "task-row" : "task-row muted"}
+                        data-action-feedback-source={`collection-${item.collection_id}`}
                         key={item.collection_id}
                       >
                         <div>
@@ -2747,6 +2880,10 @@ export default function HomePage() {
                             )}
                           </div>
                         ) : null}
+                        <ActionFeedbackInline
+                          feedback={actionFeedbackFor(`collection-${item.collection_id}`)}
+                          onViewDetails={handleViewActionFeedbackDetails}
+                        />
                       </article>
                     )) ?? <p className="empty">收藏馆尚未读取。</p>}
                   </div>
@@ -2829,7 +2966,11 @@ export default function HomePage() {
                 </div>
                 <div className="event-grid">
                   {activities?.events.map((activity) => (
-                    <article className="event-card" key={activity.event_instance_id}>
+                    <article
+                      className="event-card"
+                      data-action-feedback-source={`activity-${activity.event_instance_id}`}
+                      key={activity.event_instance_id}
+                    >
                       <div className="province-head">
                         <strong>{activity.name}</strong>
                         <StatusBadge tone={activity.claimable ? "success" : "neutral"}>
@@ -2868,6 +3009,10 @@ export default function HomePage() {
                           {rewardStateLabel(activity.reward_state)}
                         </span>
                       ) : null}
+                      <ActionFeedbackInline
+                        feedback={actionFeedbackFor(`activity-${activity.event_instance_id}`)}
+                        onViewDetails={handleViewActionFeedbackDetails}
+                      />
                     </article>
                   )) ?? <p>活动中心尚未读取</p>}
                 </div>
@@ -2885,7 +3030,10 @@ export default function HomePage() {
                   <span>炼丹、炼器、背包与技能预设</span>
                 </div>
                 <div className="production-grid">
-                  <article className="production-box production-choice">
+                  <article
+                    className="production-box production-choice"
+                    data-action-feedback-source="growth-alchemy"
+                  >
                     <strong>丹方炼制</strong>
                     <span>
                       {selectedAlchemyRecipe
@@ -2938,8 +3086,15 @@ export default function HomePage() {
                         {formatMaterialGaps(selectedAlchemyRecipe.recommendation.material_gaps)}
                       </span>
                     ) : null}
+                    <ActionFeedbackInline
+                      feedback={actionFeedbackFor("growth-alchemy")}
+                      onViewDetails={handleViewActionFeedbackDetails}
+                    />
                   </article>
-                  <article className="production-box production-choice">
+                  <article
+                    className="production-box production-choice"
+                    data-action-feedback-source="growth-pill"
+                  >
                     <strong>服用丹药</strong>
                     <span>
                       {selectedPill
@@ -2971,8 +3126,15 @@ export default function HomePage() {
                         </Button>
                       ) : null}
                     </div>
+                    <ActionFeedbackInline
+                      feedback={actionFeedbackFor("growth-pill")}
+                      onViewDetails={handleViewActionFeedbackDetails}
+                    />
                   </article>
-                  <article className="production-box production-choice">
+                  <article
+                    className="production-box production-choice"
+                    data-action-feedback-source="growth-forge"
+                  >
                     <strong>法宝炼器</strong>
                     <span>
                       {selectedForgeRecipe
@@ -3032,14 +3194,20 @@ export default function HomePage() {
                         {formatMaterialGaps(selectedForgeRecipe.recommendation.material_gaps)}
                       </span>
                     ) : null}
+                    <ActionFeedbackInline
+                      feedback={actionFeedbackFor("growth-forge")}
+                      onViewDetails={handleViewActionFeedbackDetails}
+                    />
                   </article>
                   <SkillLoadoutPanel
                     activeOptions={activeSkillOptions}
                     busy={busy}
+                    feedback={actionFeedbackFor("growth-skills")}
                     onMovePriority={handleMoveSkillPriority}
                     onSave={handleSaveSkillPreset}
                     onSelectTreasure={handleSelectTreasureSkill}
                     onToggleActive={handleToggleActiveSkill}
+                    onViewFeedback={handleViewActionFeedbackDetails}
                     priorityIds={skillPriorityIds}
                     selectedActiveSkillIds={selectedActiveSkillIds}
                     selectedTreasureSkillId={selectedTreasureSkillId}
@@ -3057,7 +3225,10 @@ export default function HomePage() {
                     </span>
                   </div>
                   <div className="inner-world-layout">
-                    <article className="inner-world-summary">
+                    <article
+                      className="inner-world-summary"
+                      data-action-feedback-source="growth-inner-world"
+                    >
                       <strong>{innerWorld?.state.unlocked ? "洞天已开" : "暂未开启"}</strong>
                       <span>
                         派驻 {innerWorld?.state.active_assignment_count ?? 0}/
@@ -3102,6 +3273,10 @@ export default function HomePage() {
                           {innerWorld?.state.unlock_hint ?? "内天地尚未开启"}
                         </span>
                       ) : null}
+                      <ActionFeedbackInline
+                        feedback={actionFeedbackFor("growth-inner-world")}
+                        onViewDetails={handleViewActionFeedbackDetails}
+                      />
                     </article>
                     <div className="inner-world-lists">
                       <div>
@@ -3169,6 +3344,9 @@ export default function HomePage() {
                     }
                     actionNote={selectedTower ? undefined : "九塔状态尚未读取"}
                     detail={`${selectedTower ? `${provinceNameById(overview?.provinces, selectedTower.province_id)} · ${selectedTower.tower_name}` : "未读取"} · 完整度 ${selectedTower?.integrity ?? 0} · 镇封 ${selectedTower?.seal_progress ?? 0}`}
+                    feedback={actionFeedbackFor("multiplayer-tower")}
+                    feedbackSourceId="multiplayer-tower"
+                    onViewFeedback={handleViewActionFeedbackDetails}
                     title="九塔"
                   />
                   <ActionBox
@@ -3181,6 +3359,9 @@ export default function HomePage() {
                     }
                     actionNote={boss ? undefined : "公共 Boss 尚未读取"}
                     detail={`${boss?.boss.name ?? "未读取"} · 阶段 ${boss?.boss.phase ?? 0} · 血量 ${boss?.boss.remaining_hp ?? 0}/${boss?.boss.total_hp ?? 0}`}
+                    feedback={actionFeedbackFor("multiplayer-boss")}
+                    feedbackSourceId="multiplayer-boss"
+                    onViewFeedback={handleViewActionFeedbackDetails}
                     title="公共 Boss"
                   />
                   <ActionBox
@@ -3222,6 +3403,9 @@ export default function HomePage() {
                           } 类`
                         : "未入宗门"
                     }
+                    feedback={actionFeedbackFor("multiplayer-sect")}
+                    feedbackSourceId="multiplayer-sect"
+                    onViewFeedback={handleViewActionFeedbackDetails}
                     title="宗门"
                   />
                   <ActionBox
@@ -3234,6 +3418,9 @@ export default function HomePage() {
                     }
                     actionNote={pvpTarget ? undefined : "暂无可用 PVP 目标"}
                     detail={`资源点 ${firstResourcePoint?.name ?? "未读取"} · 个人榜 ${personalRank?.entries.length ?? 0} 人`}
+                    feedback={actionFeedbackFor("multiplayer-pvp")}
+                    feedbackSourceId="multiplayer-pvp"
+                    onViewFeedback={handleViewActionFeedbackDetails}
                     title="PVP 与排行"
                   />
                 </div>
@@ -3306,6 +3493,9 @@ export default function HomePage() {
                               ? `${pendingMentorReview.apprentice_name} 请求拜师`
                               : `候选 ${mentorCandidate?.display_name ?? "暂无"}`
                       }
+                      feedback={actionFeedbackFor("multiplayer-mentor")}
+                      feedbackSourceId="multiplayer-mentor"
+                      onViewFeedback={handleViewActionFeedbackDetails}
                       title="导师"
                     />
                     <ActionBox
@@ -3354,6 +3544,9 @@ export default function HomePage() {
                             )} · ${sectDiplomacyStatusLabel(diplomacy.records[0].status)}`
                           : `目标 ${diplomacyTargetSect?.name ?? "暂无"}`
                       }
+                      feedback={actionFeedbackFor("multiplayer-diplomacy")}
+                      feedbackSourceId="multiplayer-diplomacy"
+                      onViewFeedback={handleViewActionFeedbackDetails}
                       title="宗门外交"
                     />
                     <ActionBox
@@ -3405,6 +3598,9 @@ export default function HomePage() {
                                 hireList?.open_hires.length ?? 0
                               }`
                       }
+                      feedback={actionFeedbackFor("multiplayer-hire")}
+                      feedbackSourceId="multiplayer-hire"
+                      onViewFeedback={handleViewActionFeedbackDetails}
                       title="跨宗门雇佣"
                     />
                   </div>
@@ -3468,7 +3664,11 @@ export default function HomePage() {
                           faction.state.transfer_available;
 
                         return (
-                          <article className="faction-route-card" key={routeConfig.route_id}>
+                          <article
+                            className="faction-route-card"
+                            data-action-feedback-source={`faction-route-${routeConfig.route_id}`}
+                            key={routeConfig.route_id}
+                          >
                             <div>
                               <strong>{routeConfig.name}</strong>
                               <span>{routeConfig.stance_label}</span>
@@ -3498,6 +3698,10 @@ export default function HomePage() {
                                 {faction?.state.unlocked ? "当前路线不可操作" : "路线系统尚未开启"}
                               </span>
                             ) : null}
+                            <ActionFeedbackInline
+                              feedback={actionFeedbackFor(`faction-route-${routeConfig.route_id}`)}
+                              onViewDetails={handleViewActionFeedbackDetails}
+                            />
                           </article>
                         );
                       })}
@@ -3519,7 +3723,7 @@ export default function HomePage() {
                     <RankMiniPanel rank={innerWorldRank} title="内天地榜" />
                     <RankMiniPanel rank={factionRank} title="阵营榜" />
                   </div>
-                  <div className="title-claim-row">
+                  <div className="title-claim-row" data-action-feedback-source="rank-title">
                     <span>排行称号以荣誉、展示外观和纪元收藏为主。</span>
                     <div className="production-actions">
                       {eraRank?.entries.length ? (
@@ -3549,6 +3753,10 @@ export default function HomePage() {
                     !factionRank?.entries.length ? (
                       <span className="action-note">暂无可领取排行称号</span>
                     ) : null}
+                    <ActionFeedbackInline
+                      feedback={actionFeedbackFor("rank-title")}
+                      onViewDetails={handleViewActionFeedbackDetails}
+                    />
                   </div>
                 </section>
                 <div className="tower-grid" aria-label="九塔全域状态">
@@ -3635,6 +3843,9 @@ export default function HomePage() {
                         0,
                       ) ?? 0
                     }`}
+                    feedback={actionFeedbackFor("market-monthly")}
+                    feedbackSourceId="market-monthly"
+                    onViewFeedback={handleViewActionFeedbackDetails}
                     title="月卡"
                   />
                   <ActionBox
@@ -3659,6 +3870,9 @@ export default function HomePage() {
                         ?.allowed_cost_types.map(gachaCostTypeLabel)
                         .join(" / ") ?? "月卡赠抽 / 残页合成"
                     }`}
+                    feedback={actionFeedbackFor("market-gacha")}
+                    feedbackSourceId="market-gacha"
+                    onViewFeedback={handleViewActionFeedbackDetails}
                     title="九大古宝"
                   />
                   {showDevelopmentActions ? (
@@ -3687,6 +3901,9 @@ export default function HomePage() {
                       detail={`VIP ${commerce?.vip.vip_level ?? 0} · 批量上限 ${
                         commerce?.convenience.batch_sweep_limit ?? 5
                       } · 当前权益 ${commerceTierLabel(commerce?.effective_tier)}`}
+                      feedback={actionFeedbackFor("market-dev")}
+                      feedbackSourceId="market-dev"
+                      onViewFeedback={handleViewActionFeedbackDetails}
                       title="调试：便利权益"
                     />
                   ) : (
@@ -3733,6 +3950,9 @@ export default function HomePage() {
                           }`
                         : "默认目标 mvp_beta · 不会立即迁移资产"
                     }
+                    feedback={actionFeedbackFor("market-transfer")}
+                    feedbackSourceId="market-transfer"
+                    onViewFeedback={handleViewActionFeedbackDetails}
                     title="转服申请"
                   />
                   <ActionBox
@@ -3758,6 +3978,9 @@ export default function HomePage() {
                     detail={`已拥有 ${
                       appearances?.appearances.filter((appearance) => appearance.owned).length ?? 0
                     } · 只作展示`}
+                    feedback={actionFeedbackFor("market-appearance")}
+                    feedbackSourceId="market-appearance"
+                    onViewFeedback={handleViewActionFeedbackDetails}
                     title="展示外观"
                   />
                 </div>
@@ -3788,6 +4011,7 @@ export default function HomePage() {
                     {appearancePlus?.appearances.map((appearance) => (
                       <article
                         className={appearance.owned ? "event-card" : "event-card muted"}
+                        data-action-feedback-source={`appearance-plus-${appearance.appearance_id}`}
                         key={appearance.appearance_id}
                       >
                         <div className="province-head">
@@ -3825,6 +4049,12 @@ export default function HomePage() {
                             {appearance.permission.reason ?? appearance.source_hint}
                           </span>
                         ) : null}
+                        <ActionFeedbackInline
+                          feedback={actionFeedbackFor(
+                            `appearance-plus-${appearance.appearance_id}`,
+                          )}
+                          onViewDetails={handleViewActionFeedbackDetails}
+                        />
                       </article>
                     )) ?? <p className="empty">深度外观目录尚未读取。</p>}
                   </div>
@@ -3994,14 +4224,26 @@ function LedgerExperienceDetails({ experience }: { experience: ExperiencePayload
   );
 }
 
-function MainlineGuideCard({ guide }: { guide: MainlineGuide }) {
+function MainlineGuideCard({
+  feedback,
+  guide,
+  onViewFeedback,
+}: {
+  feedback?: ActionFeedbackState;
+  guide: MainlineGuide;
+  onViewFeedback: () => void;
+}) {
   const currentStep =
     guide.steps.find((step) => step.status === "active") ??
     guide.steps.find((step) => step.status === "pending") ??
     guide.steps.at(-1);
 
   return (
-    <section className="mainline-guide" aria-label="主线目标">
+    <section
+      className="mainline-guide"
+      aria-label="主线目标"
+      data-action-feedback-source="mainline-guide"
+    >
       <div className="mainline-guide-head">
         <div>
           <span>第 {guide.chapterId} 章</span>
@@ -4046,6 +4288,7 @@ function MainlineGuideCard({ guide }: { guide: MainlineGuide }) {
           {guide.primaryLabel}
         </Button>
       </div>
+      <ActionFeedbackInline feedback={feedback} onViewDetails={onViewFeedback} />
     </section>
   );
 }
@@ -4064,9 +4307,22 @@ function MainlineStepCard({ step }: { step: MainlineStep }) {
   );
 }
 
-function DailyGoalCard({ goal }: { goal: DailyGoal }) {
+function DailyGoalCard({
+  feedback,
+  goal,
+  onViewFeedback,
+}: {
+  feedback?: ActionFeedbackState;
+  goal: DailyGoal;
+  onViewFeedback: () => void;
+}) {
+  const feedbackSourceId = `daily-goal-${goal.id}`;
+
   return (
-    <article className={`goal-card tone-${goal.tone}`}>
+    <article
+      className={`goal-card tone-${goal.tone}`}
+      data-action-feedback-source={feedbackSourceId}
+    >
       <div>
         <div className="province-head">
           <strong>{goal.title}</strong>
@@ -4081,13 +4337,24 @@ function DailyGoalCard({ goal }: { goal: DailyGoal }) {
           {goal.actionLabel}
         </Button>
       )}
+      <ActionFeedbackInline feedback={feedback} onViewDetails={onViewFeedback} />
     </article>
   );
 }
 
-function GrowthTargetCard({ target }: { target: GrowthTarget }) {
+function GrowthTargetCard({
+  feedback,
+  onViewFeedback,
+  target,
+}: {
+  feedback?: ActionFeedbackState;
+  onViewFeedback: () => void;
+  target: GrowthTarget;
+}) {
+  const feedbackSourceId = `growth-target-${target.id}`;
+
   return (
-    <article className="growth-target-card">
+    <article className="growth-target-card" data-action-feedback-source={feedbackSourceId}>
       <div>
         <strong>{target.title}</strong>
         <span>{target.detail}</span>
@@ -4099,7 +4366,34 @@ function GrowthTargetCard({ target }: { target: GrowthTarget }) {
           {target.actionLabel}
         </Button>
       )}
+      <ActionFeedbackInline feedback={feedback} onViewDetails={onViewFeedback} />
     </article>
+  );
+}
+
+function ActionFeedbackInline({
+  feedback,
+  onViewDetails,
+}: {
+  feedback?: ActionFeedbackState;
+  onViewDetails: () => void;
+}) {
+  if (!feedback) {
+    return null;
+  }
+
+  return (
+    <div className={`action-feedback action-feedback-${feedback.status}`} aria-live="polite">
+      <div>
+        <strong>{actionFeedbackStatusLabel(feedback.status)}</strong>
+        <span>{feedback.message}</span>
+      </div>
+      {feedback.status !== "running" ? (
+        <button className="action-feedback-link" onClick={onViewDetails} type="button">
+          查看详情
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -4137,10 +4431,12 @@ function ProductionRecommendationView({
 function SkillLoadoutPanel({
   activeOptions,
   busy,
+  feedback,
   onMovePriority,
   onSave,
   onSelectTreasure,
   onToggleActive,
+  onViewFeedback,
   priorityIds,
   selectedActiveSkillIds,
   selectedTreasureSkillId,
@@ -4149,10 +4445,12 @@ function SkillLoadoutPanel({
 }: {
   activeOptions: SkillSummary[];
   busy: boolean;
+  feedback?: ActionFeedbackState;
   onMovePriority: (skillId: string, direction: "up" | "down") => void;
   onSave: () => void | Promise<void>;
   onSelectTreasure: (skillId: string) => void;
   onToggleActive: (skillId: string) => void;
+  onViewFeedback: () => void;
   priorityIds: string[];
   selectedActiveSkillIds: string[];
   selectedTreasureSkillId: string;
@@ -4161,9 +4459,13 @@ function SkillLoadoutPanel({
 }) {
   if (!skills) {
     return (
-      <article className="production-box skill-loadout-card">
+      <article
+        className="production-box skill-loadout-card"
+        data-action-feedback-source="growth-skills"
+      >
         <strong>已掌握技能与预设</strong>
         <span>技能配置尚未读取。</span>
+        <ActionFeedbackInline feedback={feedback} onViewDetails={onViewFeedback} />
       </article>
     );
   }
@@ -4179,7 +4481,10 @@ function SkillLoadoutPanel({
   const canSave = selectedActiveSkillIds.length >= 1 && Boolean(selectedTreasureSkillId);
 
   return (
-    <article className="production-box skill-loadout-card">
+    <article
+      className="production-box skill-loadout-card"
+      data-action-feedback-source="growth-skills"
+    >
       <div className="province-head">
         <div>
           <strong>已掌握技能与预设</strong>
@@ -4276,6 +4581,7 @@ function SkillLoadoutPanel({
           <span className="action-note">至少选择 1 个主动技能和 1 个本命技能</span>
         )}
       </div>
+      <ActionFeedbackInline feedback={feedback} onViewDetails={onViewFeedback} />
     </article>
   );
 }
@@ -4284,23 +4590,28 @@ function ExploreQueueCard({
   busy,
   canClaim,
   explore,
+  feedback,
   onClaim,
+  onViewFeedback,
   remainingSeconds,
 }: {
   busy: boolean;
   canClaim: boolean;
   explore: ExploreResponse | null;
+  feedback?: ActionFeedbackState;
   onClaim: () => void | Promise<void>;
+  onViewFeedback: () => void;
   remainingSeconds: number;
 }) {
   if (!explore) {
     return (
-      <article className="explore-queue-card idle">
+      <article className="explore-queue-card idle" data-action-feedback-source="explore-queue">
         <div>
           <strong>当前探索</strong>
           <span>选择州域和次数后开始探索，战斗与奖励会在完成后领取。</span>
         </div>
         <StatusBadge tone="neutral">空闲</StatusBadge>
+        <ActionFeedbackInline feedback={feedback} onViewDetails={onViewFeedback} />
       </article>
     );
   }
@@ -4309,7 +4620,10 @@ function ExploreQueueCard({
   const isReady = canClaim && !isClaimed;
 
   return (
-    <article className={`explore-queue-card ${isReady ? "ready" : ""}`}>
+    <article
+      className={`explore-queue-card ${isReady ? "ready" : ""}`}
+      data-action-feedback-source="explore-queue"
+    >
       <div>
         <strong>
           {explore.province_name}探索 · {explore.count} 次
@@ -4333,6 +4647,7 @@ function ExploreQueueCard({
       ) : (
         <StatusBadge tone="neutral">{exploreStatusLabel(explore.status)}</StatusBadge>
       )}
+      <ActionFeedbackInline feedback={feedback} onViewDetails={onViewFeedback} />
     </article>
   );
 }
@@ -4340,26 +4655,31 @@ function ExploreQueueCard({
 function ExploreEventCard({
   busy,
   event,
+  feedback,
   onResolve,
+  onViewFeedback,
 }: {
   busy: boolean;
   event: ExploreEventState | undefined;
+  feedback?: ActionFeedbackState;
   onResolve: (event: ExploreEventState, choiceId: string) => void | Promise<void>;
+  onViewFeedback: () => void;
 }) {
   if (!event) {
     return (
-      <article className="explore-event-card idle">
+      <article className="explore-event-card idle" data-action-feedback-source="explore-event">
         <div>
           <strong>探索奇遇</strong>
           <span>完成探索后可能留下可处理的途中见闻。</span>
         </div>
         <StatusBadge tone="neutral">暂无</StatusBadge>
+        <ActionFeedbackInline feedback={feedback} onViewDetails={onViewFeedback} />
       </article>
     );
   }
 
   return (
-    <article className="explore-event-card">
+    <article className="explore-event-card" data-action-feedback-source="explore-event">
       <div className="province-head">
         <div>
           <strong>{event.title}</strong>
@@ -4386,6 +4706,7 @@ function ExploreEventCard({
           </button>
         ))}
       </div>
+      <ActionFeedbackInline feedback={feedback} onViewDetails={onViewFeedback} />
     </article>
   );
 }
@@ -5630,19 +5951,28 @@ function ActionBox({
   actions,
   actionNote,
   detail,
+  feedback,
+  feedbackSourceId,
+  onViewFeedback,
   title,
 }: {
   actions?: ReactNode;
   actionNote?: string;
   detail: string;
+  feedback?: ActionFeedbackState;
+  feedbackSourceId?: string;
+  onViewFeedback?: () => void;
   title: string;
 }) {
   return (
-    <article className="production-box">
+    <article className="production-box" data-action-feedback-source={feedbackSourceId}>
       <strong>{title}</strong>
       <span>{detail}</span>
       <div className="production-actions">{actions}</div>
       {actionNote ? <span className="action-note">{actionNote}</span> : null}
+      {onViewFeedback ? (
+        <ActionFeedbackInline feedback={feedback} onViewDetails={onViewFeedback} />
+      ) : null}
     </article>
   );
 }
@@ -5655,6 +5985,31 @@ function taskTypeLabel(taskType: TaskState["task_type"]): string {
     chapter: "章节",
   };
   return labels[taskType];
+}
+
+function actionFeedbackStatusLabel(status: ActionFeedbackStatus): string {
+  const labels: Record<ActionFeedbackStatus, string> = {
+    error: "未完成",
+    running: "处理中",
+    success: "已完成",
+  };
+  return labels[status];
+}
+
+function actionFeedbackSuccessMessage(label: string): string {
+  if (label.includes("已")) {
+    return label;
+  }
+  if (label.startsWith("开始")) {
+    return `${label}已安排`;
+  }
+  if (label.startsWith("提交")) {
+    return `${label}已提交`;
+  }
+  if (label.startsWith("领取")) {
+    return `${label}完成`;
+  }
+  return `${label}完成`;
 }
 
 function activityStatusLabel(status: string): string {

@@ -12,20 +12,24 @@ const toneStyles = {
 };
 
 export function StatusBadge({ children, tone = "neutral" }: StatusBadgeProps) {
+  const toneStyle = toneStyles[tone];
+
   return (
     <span
       className="nextday-status-badge"
       style={{
-        ...toneStyles[tone],
         alignItems: "center",
-        borderRadius: 999,
+        background: `var(--nextday-badge-bg, ${toneStyle.background})`,
+        border: "var(--nextday-badge-border, 0)",
+        borderRadius: "var(--nextday-badge-radius, 999px)",
+        color: `var(--nextday-badge-color, ${toneStyle.color})`,
         display: "inline-flex",
-        fontSize: 12,
+        fontSize: "var(--nextday-badge-font-size, 12px)",
         justifyContent: "center",
-        lineHeight: "20px",
-        minHeight: 20,
-        padding: "0 8px",
-        whiteSpace: "nowrap",
+        lineHeight: "var(--nextday-badge-line-height, 20px)",
+        minHeight: "var(--nextday-badge-min-height, 20px)",
+        padding: "var(--nextday-badge-padding, 0 8px)",
+        whiteSpace: "var(--nextday-badge-white-space, nowrap)",
       }}
     >
       {children}

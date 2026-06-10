@@ -1819,6 +1819,25 @@ details.event-boundary {
 
 /* 暗室式文字游戏界面：参考 A Dark Room 的窄画布、日志流、资源账本和黑白按钮。 */
 .text-game-shell {
+  --nextday-badge-bg: #ffffff;
+  --nextday-badge-border: 1px solid #111111;
+  --nextday-badge-color: #111111;
+  --nextday-badge-font-size: 12px;
+  --nextday-badge-line-height: 20px;
+  --nextday-badge-min-height: 20px;
+  --nextday-badge-padding: 0 7px;
+  --nextday-badge-radius: 0;
+  --nextday-badge-white-space: nowrap;
+  --nextday-button-bg: #ffffff;
+  --nextday-button-border: 1px solid #111111;
+  --nextday-button-color: #111111;
+  --nextday-button-font-family: inherit;
+  --nextday-button-font-size: 14px;
+  --nextday-button-line-height: 1.2;
+  --nextday-button-min-height: 36px;
+  --nextday-button-padding: 5px 10px;
+  --nextday-button-radius: 0;
+  --nextday-button-white-space: nowrap;
   align-items: flex-start;
   background: #ffffff;
   color: #111111;
@@ -1835,44 +1854,38 @@ details.event-boundary {
   padding-top: 18px;
 }
 
-.text-game-shell button {
+.text-game-shell .nextday-button {
   align-items: center;
-  background: #ffffff !important;
-  border: 1px solid #111111 !important;
-  border-radius: 0 !important;
-  color: #111111 !important;
   display: inline-flex;
-  font-family: inherit !important;
   justify-content: center;
-  line-height: 1.2;
-  min-height: 34px;
-  padding: 5px 10px !important;
-  white-space: nowrap;
+  min-width: 0;
+  text-align: center;
+  text-decoration: none;
 }
 
-.text-game-shell button:hover:not(:disabled),
-.text-game-shell button.active {
+.text-game-shell .nextday-button:hover:not(:disabled),
+.text-game-shell .tab-nav button:hover,
+.text-game-shell .tab-nav button.active,
+.text-game-shell .bottom-nav button:hover,
+.text-game-shell .bottom-nav button.active,
+.text-game-shell .mobile-status-anchors button:hover,
+.text-game-shell .event-choice-grid button:hover:not(:disabled),
+.text-game-shell .skill-option:hover:not(:disabled),
+.text-game-shell .skill-option.selected {
   text-decoration: underline;
 }
 
-.text-game-shell button:disabled {
-  border-color: #aaaaaa !important;
-  color: #999999 !important;
+.text-game-shell .nextday-button:disabled,
+.text-game-shell .event-choice-grid button:disabled,
+.text-game-shell .skill-option:disabled,
+.text-game-shell .mobile-status-anchors button:disabled {
+  border-color: #aaaaaa;
+  color: #999999;
   filter: none;
 }
 
 .text-game-shell .nextday-status-badge {
-  align-items: center;
-  background: #ffffff !important;
-  border: 1px solid #111111;
-  border-radius: 0 !important;
-  color: #111111 !important;
-  display: inline-flex;
-  justify-content: center;
   justify-self: start;
-  line-height: 20px;
-  min-height: 20px;
-  white-space: nowrap;
 }
 
 .text-game-shell .topbar {
@@ -1916,10 +1929,22 @@ details.event-boundary {
 }
 
 .text-game-shell .tab-nav button {
+  background: transparent;
   border: 0 !important;
+  color: #111111;
   flex: 0 0 auto;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.2;
   min-height: 28px;
   padding: 0 !important;
+  white-space: nowrap;
+}
+
+.text-game-shell .tab-nav button.active,
+.text-game-shell .bottom-nav button.active {
+  background: transparent;
+  color: #111111;
 }
 
 .text-game-shell .today-hero {
@@ -2063,7 +2088,7 @@ details.event-boundary {
 .text-game-shell .explore-queue-card .nextday-button {
   align-self: center;
   justify-self: end;
-  min-height: 34px;
+  min-height: 36px;
 }
 
 .text-game-shell .recommended-action {
@@ -2082,9 +2107,17 @@ details.event-boundary {
 
 .text-game-shell .event-choice-grid button {
   align-items: start;
+  background: #ffffff;
+  border: 1px solid #111111;
+  border-radius: 0;
+  color: #111111;
+  cursor: pointer;
   display: grid;
+  font-family: inherit;
+  gap: 4px;
   justify-content: start;
   justify-items: start;
+  line-height: 1.45;
   min-height: 44px;
   min-width: 0;
   overflow-wrap: anywhere;
@@ -2106,14 +2139,34 @@ details.event-boundary {
   white-space: normal;
 }
 
+.text-game-shell .event-choice-grid strong,
+.text-game-shell .skill-option strong {
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.text-game-shell .event-choice-grid span,
+.text-game-shell .skill-option span {
+  color: #555555;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.text-game-shell .event-choice-grid small,
+.text-game-shell .skill-option small {
+  color: #666666;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .text-game-shell .goal-card,
 .text-game-shell .growth-target-card {
   grid-template-columns: minmax(0, 1fr) 100px;
 }
 
-.text-game-shell .recommended-action button,
-.text-game-shell .goal-card button,
-.text-game-shell .growth-target-card button {
+.text-game-shell .recommended-action .nextday-button,
+.text-game-shell .goal-card .nextday-button,
+.text-game-shell .growth-target-card .nextday-button {
   min-width: 0;
   width: 100%;
 }
@@ -2126,10 +2179,14 @@ details.event-boundary {
   border-radius: 0;
   color: #555555;
   display: inline-flex;
+  font-size: 13px;
   justify-self: start;
-  line-height: 1.35;
+  line-height: 1.45;
   min-height: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding: 0 0 0 10px;
+  white-space: normal;
 }
 
 .text-game-shell .today-layout {
@@ -2204,6 +2261,12 @@ details.event-boundary {
   border: 1px solid #dddddd;
   border-radius: 0;
   color: #222222;
+  display: inline-flex;
+  font-size: 12px;
+  line-height: 20px;
+  min-height: 20px;
+  padding: 0 6px;
+  white-space: nowrap;
 }
 
 .text-game-shell .overview-grid {
@@ -2290,6 +2353,7 @@ details.event-boundary {
   align-items: start;
   color: #111111 !important;
   display: grid;
+  font-family: inherit;
   justify-content: start;
   justify-items: start;
   min-height: 0;
@@ -2311,6 +2375,17 @@ details.event-boundary {
   justify-content: end;
 }
 
+.text-game-shell .production-actions {
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  min-width: 0;
+}
+
+.text-game-shell .production-actions .nextday-button {
+  flex: 0 0 auto;
+}
+
 .text-game-shell .empty {
   background: transparent;
   border: 1px dashed #999999;
@@ -2321,6 +2396,17 @@ details.event-boundary {
   border-color: #111111;
   border-radius: 0;
   box-shadow: none;
+}
+
+.text-game-shell .bottom-nav button {
+  background: transparent;
+  border: 0;
+  color: #111111;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.2;
+  min-width: 0;
+  white-space: nowrap;
 }
 
 @media (max-width: 1120px) {
@@ -2505,7 +2591,7 @@ details.event-boundary {
 
   .text-game-shell .nextday-button,
   .text-game-shell .event-choice-grid button,
-  .text-game-shell .task-row button {
+  .text-game-shell .task-row .nextday-button {
     min-height: 44px !important;
   }
 
@@ -2514,9 +2600,9 @@ details.event-boundary {
     padding: 0 6px !important;
   }
 
-  .text-game-shell .recommended-action button,
-  .text-game-shell .goal-card button,
-  .text-game-shell .growth-target-card button,
+  .text-game-shell .recommended-action .nextday-button,
+  .text-game-shell .goal-card .nextday-button,
+  .text-game-shell .growth-target-card .nextday-button,
   .text-game-shell .today-controls > button {
     width: 100%;
   }

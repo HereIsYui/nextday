@@ -64,6 +64,7 @@ import type {
   CreateTransferRequestRequest,
   CreateTransferRequestResponse,
   CultivationClaimResponse,
+  DailyRouteResponse,
   EntitlementOverviewResponse,
   EquipAppearancePlusRequest,
   EquipAppearancePlusResponse,
@@ -411,6 +412,10 @@ export class GameClient {
 
   gameOverview(): Promise<ApiResponse<GameOverviewResponse>> {
     return this.get<GameOverviewResponse>("/api/game/overview");
+  }
+
+  dailyRoute(): Promise<ApiResponse<DailyRouteResponse>> {
+    return this.get<DailyRouteResponse>("/api/game/daily-route");
   }
 
   battles(

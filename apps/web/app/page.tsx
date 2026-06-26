@@ -15,6 +15,7 @@ import type {
   BagSummaryResponse,
   BattleSummary,
   CollectionSummaryResponse,
+  DailyRouteResponse,
   EntitlementOverviewResponse,
   EquipmentListResponse,
   EraChronicleResponse,
@@ -194,6 +195,7 @@ export default function HomePage() {
   const [login, setLogin] = useState<LoginResponse | null>(null);
   const [profile, setProfile] = useState<PlayerProfileResponse | null>(null);
   const [overview, setOverview] = useState<GameOverviewResponse | null>(null);
+  const [dailyRoute, setDailyRoute] = useState<DailyRouteResponse | null>(null);
   const [bag, setBag] = useState<BagSummaryResponse | null>(null);
   const [equipment, setEquipment] = useState<EquipmentListResponse | null>(null);
   const [alchemyRecipes, setAlchemyRecipes] = useState<AlchemyRecipeListResponse | null>(null);
@@ -382,6 +384,7 @@ export default function HomePage() {
     chapterTask: mainlineTask,
     event: firstPendingExploreEvent,
     onClaimExplore: handleClaimExplore,
+    onCave: handleCollectCave,
     onExplore: () => handleExplore(exploreCount),
     onFocusEvent: handleFocusExploreEvent,
     onTask: () => handleMainlineTask(mainlineTask),
@@ -390,7 +393,7 @@ export default function HomePage() {
     overview,
     selectedProvince,
     selectedTower,
-    serverRoute: overview?.new_player_route,
+    serverRoute: dailyRoute ?? overview?.new_player_route,
   });
   const dailyGoals = buildDailyGoals({
     activity: firstClaimableActivity ?? firstActivity,
@@ -745,6 +748,7 @@ export default function HomePage() {
         setLogin(state.login);
         setProfile(state.profile);
         setOverview(state.overview);
+        setDailyRoute(state.dailyRoute);
         setMessage(state.overview ? "核心循环已读取" : "账号已登录，尚未创建角色");
       })
       .catch((error) => {
@@ -993,10 +997,16 @@ export default function HomePage() {
       return;
     }
 
-    const response = await createClient(token).gameOverview();
-    ensureOk(response);
-    setOverview(response.data);
-    setProfile(response.data.profile);
+    const client = createClient(token);
+    const [overviewResponse, dailyRouteResponse] = await Promise.all([
+      client.gameOverview(),
+      client.dailyRoute(),
+    ]);
+    ensureOk(overviewResponse);
+    ensureOk(dailyRouteResponse);
+    setOverview(overviewResponse.data);
+    setDailyRoute(dailyRouteResponse.data);
+    setProfile(overviewResponse.data.profile);
     await refreshProduction();
     await refreshInnerWorld();
     await refreshMultiplayer();
@@ -5375,8 +5385,9 @@ function buildMainlineGuide(input: {
   overview: GameOverviewResponse | null;
   selectedProvince: ProvinceSummary | undefined;
   selectedTower: TowerStateSummary | undefined;
-  serverRoute: NewPlayerRouteState | null | undefined;
+  serverRoute: DailyRouteResponse | NewPlayerRouteState | null | undefined;
   onClaimExplore: () => void | Promise<void>;
+  onCave: () => void | Promise<void>;
   onExplore: () => void | Promise<void>;
   onFocusEvent: () => void;
   onGrowth: () => void | Promise<void>;
@@ -5400,6 +5411,7 @@ function buildMainlineGuide(input: {
       busy: input.busy,
       canClaimExplore: input.canClaimExplore,
       hasActiveExplore: Boolean(input.activeExplore),
+      onCave: input.onCave,
       onClaimExplore: input.onClaimExplore,
       onExplore: input.onExplore,
       onFocusEvent: input.onFocusEvent,
@@ -5492,6 +5504,7 @@ function buildMainlineGuide(input: {
     busy: input.busy,
     canClaimExplore: input.canClaimExplore,
     hasActiveExplore: Boolean(input.activeExplore),
+    onCave: input.onCave,
     onClaimExplore: input.onClaimExplore,
     onExplore: input.onExplore,
     onFocusEvent: input.onFocusEvent,
@@ -5533,6 +5546,7 @@ function mainlinePrimaryAction(input: {
   hasActiveExplore: boolean;
   task: TaskState | undefined;
   onClaimExplore: () => void | Promise<void>;
+  onCave: () => void | Promise<void>;
   onExplore: () => void | Promise<void>;
   onFocusEvent: () => void;
   onGrowth: () => void | Promise<void>;
@@ -5562,7 +5576,11 @@ function mainlinePrimaryAction(input: {
     };
   }
 
-  if (actionKey === "explore" || input.activeStepId === "province_explore") {
+  if (
+    actionKey === "claim_explore" ||
+    actionKey === "explore" ||
+    input.activeStepId === "province_explore"
+  ) {
     if (input.canClaimExplore) {
       return {
         disabled: input.busy,
@@ -5588,6 +5606,15 @@ function mainlinePrimaryAction(input: {
       hint: input.preferredHint ?? "途中见闻会给少量普通奖励，也会写入日志。",
       label: input.preferredLabel ?? "处理探索奇遇",
       onAction: input.onFocusEvent,
+    };
+  }
+
+  if (actionKey === "collect_cave") {
+    return {
+      disabled: input.busy,
+      hint: input.preferredHint ?? "收取洞府产出，补充灵石和普通材料。",
+      label: input.preferredLabel ?? "收取洞府",
+      onAction: input.onCave,
     };
   }
 
@@ -6024,12 +6051,21 @@ async function loadGame(client: GameClient, token: string) {
   if (!meResponse.data.player) {
     const profileResponse = await client.playerProfile();
     ensureOk(profileResponse);
-    return { login, profile: profileResponse.data, overview: null };
+    return { dailyRoute: null, login, profile: profileResponse.data, overview: null };
   }
 
-  const overviewResponse = await client.gameOverview();
+  const [overviewResponse, dailyRouteResponse] = await Promise.all([
+    client.gameOverview(),
+    client.dailyRoute(),
+  ]);
   ensureOk(overviewResponse);
-  return { login, profile: overviewResponse.data.profile, overview: overviewResponse.data };
+  ensureOk(dailyRouteResponse);
+  return {
+    dailyRoute: dailyRouteResponse.data,
+    login,
+    overview: overviewResponse.data,
+    profile: overviewResponse.data.profile,
+  };
 }
 
 async function loadProduction(client: GameClient) {

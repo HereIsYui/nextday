@@ -721,6 +721,27 @@ export interface NewPlayerRouteState {
   config_version: string;
 }
 
+export interface DailyRouteStepState extends NewPlayerRouteStepState {
+  priority: number;
+  source_detail?: string;
+  reason_tags?: string[];
+  target_tab?: string;
+}
+
+export interface DailyRouteResponse {
+  route_id: string;
+  title: string;
+  subtitle: string;
+  progress_percent: number;
+  progress_text: string;
+  primary_step_id: string;
+  primary_action_hint: string;
+  generated_at: string;
+  next_refresh_hint: string;
+  steps: DailyRouteStepState[];
+  config_version: string;
+}
+
 export type InnerWorldCreatureStatus = "idle" | "assigned" | "training";
 export type InnerWorldAssignmentStatus = "active" | "claimable" | "claimed";
 export type InnerWorldSupportType = "spirit_vein" | "tower_supply" | "secret_realm";

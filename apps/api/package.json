@@ -33,7 +33,8 @@
     "test:p2-transfer": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p2-transfer.e2e-spec.ts",
     "test:p3-exploration-depth": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p3-exploration-depth.e2e-spec.ts",
     "test:p3-production-chain": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p3-production-chain.e2e-spec.ts",
-    "test:p3-combat-skill": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p3-combat-skill.e2e-spec.ts"
+    "test:p3-combat-skill": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p3-combat-skill.e2e-spec.ts",
+    "test:p3-web-route": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p3-web-route.e2e-spec.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",

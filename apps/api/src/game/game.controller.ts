@@ -4,6 +4,7 @@ import type {
   BreakthroughResponse,
   CaveCollectResponse,
   CultivationClaimResponse,
+  DailyRouteResponse,
   ExploreClaimRequest,
   ExploreCurrentResponse,
   ExploreEventListResponse,
@@ -29,6 +30,11 @@ export class GameController {
   @Get("overview")
   overview(@Req() request: Request): Promise<GameOverviewResponse> {
     return this.gameService.getOverview(requireAccountId(request));
+  }
+
+  @Get("daily-route")
+  dailyRoute(@Req() request: Request): Promise<DailyRouteResponse> {
+    return this.gameService.getDailyRoute(requireAccountId(request));
   }
 
   @Get("provinces")

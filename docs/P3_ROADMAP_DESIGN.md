@@ -63,7 +63,8 @@ P3 优先扩展现有接口的可选展示字段，不先新增大批新路径�
 - `ProductionRecommendation.material_sources?: MaterialSourceHint[]`：材料来源提示。
 - `SkillLoadoutResponse.available_skills[]`：已掌握、可学习、未解锁原因、学习消耗和克制标签。
 - `SkillLoadoutResponse.preset_suggestions?: SkillPresetSuggestion[]`：按近期战报生成的自动释放顺序建议。
-- `DailyRouteStep.source_detail?: string`：今日路线中每一步的来源说明。
+- `DailyRouteStep.source_detail?: string`：今日路线中每一步的推荐来源和降级说明。
+- `DailyRouteStep.reason_tags?: string[]`：可领取、战报衔接、材料来源等玩家可见理由。
 
 P3 可新增或扩展接口：
 
@@ -136,4 +137,6 @@ P3-2 生产材料链已完成：新增 `material_chain` 配置，丹方 / 器方
 
 P3-3 技能学习与战报建议已完成：新增 `player_skill_record`、技能学习配置、`POST /api/production/skills/learn`、技能掌握状态、未解锁原因、学习消耗、自动预设建议和探索战报反制建议；Web 成长页展示可学习技能、学习按钮、战报建议和反制提示；专项测试接入 `npm run test:p3-combat-skill`，并已加入 `npm run test:p3`。
 
-下一步进入 P3-4 今日路线与 Web 体验收敛，优先把探索、奇遇、生产、九塔、任务领奖整理成可执行路线，并减少首页重复按钮和远距离反馈。
+P3-4 今日路线与 Web 体验已完成主线接入：新增 `GET /api/game/daily-route`，返回 `daily_route_p3_v1`，按可领任务、可领探索、探索奇遇、洞府收取、州域探索、生产成长和九塔行动排序；Web 今日修行主线优先使用服务端路线，每次行动刷新后同步路线；专项测试接入 `npm run test:p3-web-route`，并已加入 `npm run test:p3`。
+
+下一步补 P3-4 插件轻摘要同步，让插件能展示今日路线下一步、最近敌人、主要掉落和待处理奇遇；随后进入 P3-5 数值模拟与回归。

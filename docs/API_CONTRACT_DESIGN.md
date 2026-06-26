@@ -537,6 +537,7 @@ P3 推荐优先复用现有接口并增加可选字段：
 | `SkillLoadoutResponse` | `available_skills[].learned / learnable / unlock_reasons / learn_cost / counter_traits` | 技能掌握状态、学习条件和克制标签 |
 | `SkillLoadoutResponse` | `preset_suggestions?: SkillPresetSuggestion[]` | 按近期战报生成的主动技能、本命技能和自动释放顺序建议 |
 | `DailyRouteStep` | `source_detail?: string` | 今日路线每一步的推荐来源和降级原因 |
+| `DailyRouteStep` | `reason_tags?: string[]` | 可领取、战报衔接、材料来源等玩家可见理由 |
 
 P3 可新增接口分组：
 

@@ -10,6 +10,8 @@ import type {
   CultivationClaimResponse,
   CultivationRoute,
   CultivationStatus,
+  DailyRouteResponse,
+  DailyRouteStepState,
   ExploreClaimRequest,
   ExploreCurrentResponse,
   ExploreEventListResponse,
@@ -111,6 +113,57 @@ export class GameService {
       recent_battles: recentBattles.map((battle) => toBattleSummary(battle)),
       new_player_route: newPlayerRoute,
     };
+  }
+
+  async getDailyRoute(accountId: string): Promise<DailyRouteResponse> {
+    const player = await this.requirePlayer(accountId);
+    await this.ensureM2State(player.playerId);
+    const todayStart = startOfDay();
+    const [
+      actionState,
+      provinces,
+      tasks,
+      cave,
+      activeRecord,
+      pendingEvent,
+      recentBattleCount,
+      alchemyCountToday,
+      towerActionCountToday,
+    ] = await Promise.all([
+      this.refreshActionState(player.playerId),
+      this.getProvinceSummaries(player.playerId),
+      this.getTasksByPlayerId(player.playerId),
+      this.getCaveByPlayerId(player.playerId),
+      this.findActiveExploreRecord(this.prisma, player.playerId),
+      this.prisma.exploreEventRecord.findFirst({
+        where: { playerId: player.playerId, status: "pending" },
+        orderBy: { createdAt: "desc" },
+      }),
+      this.prisma.battleLog.count({
+        where: { playerId: player.playerId, battleType: "explore", createdAt: { gte: todayStart } },
+      }),
+      this.prisma.alchemyRecord.count({
+        where: { playerId: player.playerId, createdAt: { gte: todayStart } },
+      }),
+      this.prisma.towerActionRecord.count({
+        where: { playerId: player.playerId, createdAt: { gte: todayStart } },
+      }),
+    ]);
+    const exploreRecord = activeRecord
+      ? await this.refreshExploreRecordStatus(this.prisma, activeRecord)
+      : null;
+
+    return buildDailyRouteState({
+      actionState,
+      alchemyCountToday,
+      cave,
+      exploreRecord,
+      pendingEvent,
+      provinces,
+      recentBattleCount,
+      tasks,
+      towerActionCountToday,
+    });
   }
 
   async getProvinces(accountId: string): Promise<{ provinces: ProvinceSummary[] }> {
@@ -1891,6 +1944,183 @@ function stringArrayFromJson(value: Prisma.JsonValue): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
     : [];
+}
+
+function buildDailyRouteState(input: {
+  actionState: ActionState;
+  alchemyCountToday: number;
+  cave: ReturnType<typeof toCaveState>;
+  exploreRecord: ExploreActionRecord | null;
+  pendingEvent: ExploreEventRecord | null;
+  provinces: ProvinceSummary[];
+  recentBattleCount: number;
+  tasks: TaskState[];
+  towerActionCountToday: number;
+}): DailyRouteResponse {
+  const claimableTasks = input.tasks.filter((task) => task.status === "completed");
+  const unlockedProvince = input.provinces.find((province) => province.unlocked);
+  const exploreStatus = input.exploreRecord
+    ? normalizeExploreStatus(input.exploreRecord.status)
+    : null;
+  const canClaimExplore = exploreStatus === "completed" && !input.exploreRecord?.claimedAt;
+  const hasRunningExplore = exploreStatus === "pending";
+  const canExplore =
+    Boolean(unlockedProvince) && !input.exploreRecord && input.actionState.action_points > 0;
+  const hasRecentBattle = input.recentBattleCount > 0;
+  const hasProducedToday = input.alchemyCountToday > 0;
+  const hasTowerToday = input.towerActionCountToday > 0;
+
+  const steps: DailyRouteStepState[] = [
+    {
+      action_hint: "task",
+      action_label: claimableTasks.length ? "领取任务" : "查看任务",
+      detail: claimableTasks.length
+        ? `${claimableTasks
+            .map((task) => task.title)
+            .slice(0, 2)
+            .join("、")} 等待领取。`
+        : "任务会记录今日探索、奇遇、生产和九塔进度。",
+      priority: 100,
+      reason_tags: claimableTasks.length ? ["可领取"] : ["路线记录"],
+      source_detail: "来自今日任务与章节任务状态",
+      status: claimableTasks.length ? "active" : "pending",
+      step_id: "claim_task",
+      target_tab: "overview",
+      title: "先领已完成目标",
+    },
+    {
+      action_hint: "claim_explore",
+      action_label: canClaimExplore ? "领取探索" : hasRunningExplore ? "等待探索完成" : "查看探索",
+      detail: canClaimExplore
+        ? `${input.exploreRecord?.provinceName ?? "州域"}探索已完成，领取后会生成战报、掉落和可能的奇遇。`
+        : hasRunningExplore
+          ? `${input.exploreRecord?.provinceName ?? "州域"}探索正在进行，完成后再领取奖励。`
+          : "暂无待领取探索。",
+      priority: canClaimExplore ? 96 : hasRunningExplore ? 60 : 20,
+      reason_tags: canClaimExplore ? ["可领取", "战报"] : hasRunningExplore ? ["进行中"] : [],
+      source_detail: "来自当前探索队列",
+      status: canClaimExplore ? "active" : hasRunningExplore ? "pending" : "done",
+      step_id: "claim_explore",
+      target_tab: "battle",
+      title: canClaimExplore ? "领取探索战报" : "探索队列",
+    },
+    {
+      action_hint: "explore_event",
+      action_label: input.pendingEvent ? "处理奇遇" : "等待奇遇",
+      detail: input.pendingEvent
+        ? `${input.pendingEvent.title}仍待选择，处理后会获得少量普通奖励。`
+        : "领取探索后有机会出现轻选择奇遇。",
+      priority: input.pendingEvent ? 94 : 28,
+      reason_tags: input.pendingEvent ? ["可选择", "普通奖励"] : ["探索后出现"],
+      source_detail: "来自探索事件链",
+      status: input.pendingEvent ? "active" : "pending",
+      step_id: "resolve_explore_event",
+      target_tab: "overview",
+      title: "处理探索奇遇",
+    },
+    {
+      action_hint: "collect_cave",
+      action_label: input.cave.claimable_minutes > 0 ? "收取洞府" : "查看洞府",
+      detail:
+        input.cave.claimable_minutes > 0
+          ? `洞府已有 ${input.cave.claimable_minutes} 分钟产出，可补灵石和普通材料。`
+          : "洞府产出仍在积累，不需要卡点在线。",
+      priority: input.cave.claimable_minutes > 0 ? 86 : 24,
+      reason_tags: input.cave.claimable_minutes > 0 ? ["可收取"] : ["积累中"],
+      source_detail: "来自洞府离线产出",
+      status: input.cave.claimable_minutes > 0 ? "active" : "pending",
+      step_id: "collect_cave",
+      target_tab: "growth",
+      title: "收束洞府产出",
+    },
+    {
+      action_hint: "explore",
+      action_label: canExplore ? "开始探索" : hasRunningExplore ? "探索进行中" : "等待行动令",
+      detail: canExplore
+        ? `${unlockedProvince?.name ?? "已开放州域"}可探索，行动令 ${input.actionState.action_points}/${input.actionState.action_point_cap}。`
+        : hasRunningExplore
+          ? "同一时间只能有一个探索队列，先等待当前探索完成。"
+          : "行动令不足或州域尚未读取，先处理可领取收益。",
+      priority: canExplore ? 82 : 22,
+      reason_tags: canExplore ? ["可行动", "材料来源"] : ["条件不足"],
+      source_detail: "来自行动令和州域开放状态",
+      status: canExplore ? "active" : "pending",
+      step_id: "start_explore",
+      target_tab: "overview",
+      title: "推进州域探索",
+    },
+    {
+      action_hint: "growth",
+      action_label: hasProducedToday ? "查看成长" : "炼丹炼器",
+      detail: hasProducedToday
+        ? "今日已完成生产，可继续服丹、看技能预设或准备九塔。"
+        : hasRecentBattle
+          ? "近期战报和掉落已产生，适合检查丹方、器方和技能预设。"
+          : "完成探索后再根据材料缺口选择炼丹或炼器。",
+      priority: hasRecentBattle && !hasProducedToday ? 76 : hasProducedToday ? 46 : 18,
+      reason_tags: hasRecentBattle ? ["战报衔接"] : ["等待材料"],
+      source_detail: "来自今日战报和生产记录",
+      status:
+        hasRecentBattle && !hasProducedToday ? "active" : hasProducedToday ? "done" : "pending",
+      step_id: "production_growth",
+      target_tab: "growth",
+      title: "补生产与技能",
+    },
+    {
+      action_hint: "multiplayer",
+      action_label: hasTowerToday ? "查看九塔" : "提交九塔",
+      detail: hasTowerToday
+        ? "今日已有九塔贡献，可回看塔状态或准备下一轮。"
+        : "探索和生产后，把行动令投入对应州域九塔，理解自己改变了什么。",
+      priority: hasTowerToday ? 42 : hasRecentBattle || hasProducedToday ? 70 : 16,
+      reason_tags: hasTowerToday ? ["已完成"] : ["全服目标"],
+      source_detail: "来自九塔行动记录和今日战斗状态",
+      status: hasTowerToday ? "done" : hasRecentBattle || hasProducedToday ? "active" : "pending",
+      step_id: "tower_action",
+      target_tab: "multiplayer",
+      title: "九塔留痕",
+    },
+  ];
+  const sortedSteps = steps.sort(
+    (left, right) =>
+      dailyRouteStatusWeight(right.status) - dailyRouteStatusWeight(left.status) ||
+      right.priority - left.priority,
+  );
+  const primaryStep =
+    sortedSteps.find((step) => step.status === "active") ??
+    sortedSteps.find((step) => step.status === "pending") ??
+    sortedSteps[0];
+  const doneCount = sortedSteps.filter((step) => step.status === "done").length;
+
+  return {
+    config_version: "daily_route_p3_v1",
+    generated_at: new Date().toISOString(),
+    next_refresh_hint: "完成任一行动后刷新路线；不需要固定时间在线。",
+    primary_action_hint: primaryStep.action_hint,
+    primary_step_id: primaryStep.step_id,
+    progress_percent: Math.round((doneCount / sortedSteps.length) * 100),
+    progress_text: `${doneCount}/${sortedSteps.length}`,
+    route_id: "daily_practice_p3",
+    steps: sortedSteps,
+    subtitle: "按当前状态把可领取、可处理、可推进的行动排成一条路线。",
+    title: "今日修行路线",
+  };
+}
+
+function dailyRouteStatusWeight(status: NewPlayerRouteStepState["status"]): number {
+  if (status === "active") {
+    return 3;
+  }
+  if (status === "pending") {
+    return 2;
+  }
+  return 1;
+}
+
+function startOfDay(date = new Date()): Date {
+  const copy = new Date(date);
+  copy.setHours(0, 0, 0, 0);
+  return copy;
 }
 
 function normalizeExploreStatus(status: string): ExploreResponse["status"] {

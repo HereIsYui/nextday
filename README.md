@@ -1,5 +1,21 @@
 # 择日飞升
 
+## 本地开发启动
+
+在仓库根目录运行：
+
+```bash
+npm run dev
+```
+
+该命令会先启动本地 PostgreSQL / Redis，再并行启动：
+
+- API 后端：http://localhost:3001
+- Web 前端：http://localhost:3000
+- Admin 后台：http://localhost:3002
+
+如果本地依赖已经启动，只想启动三个应用，可运行 `npm run dev:apps`。如果还需要同时监听鱼排插件构建，可运行 `npm run dev:all`。
+
 ## 文档
 
 - [《择日飞升：九塔封魔》游戏设计文档 v1.18](docs/GAME_DESIGN.md)

@@ -15,7 +15,10 @@
     "apps/fishpi-plugin"
   ],
   "scripts": {
-    "dev": "concurrently -n api,web,admin,plugin \"npm run dev -w @nextday/api\" \"npm run dev -w @nextday/web\" \"npm run dev -w @nextday/admin\" \"npm run dev -w @nextday/fishpi-plugin\"",
+    "dev": "npm run dev:deps && npm run dev:apps",
+    "dev:deps": "docker compose up -d postgres redis",
+    "dev:apps": "npm run build:packages && concurrently -n api,web,admin -c cyan,green,magenta \"npm run dev:serve -w @nextday/api\" \"npm run dev -w @nextday/web\" \"npm run dev -w @nextday/admin\"",
+    "dev:all": "npm run dev:deps && npm run build:packages && concurrently -n api,web,admin,plugin -c cyan,green,magenta,yellow \"npm run dev:serve -w @nextday/api\" \"npm run dev -w @nextday/web\" \"npm run dev -w @nextday/admin\" \"npm run dev:serve -w @nextday/fishpi-plugin\"",
     "build": "npm run build:packages && npm run build -w @nextday/api && npm run build -w @nextday/web && npm run build -w @nextday/admin && npm run build -w @nextday/fishpi-plugin",
     "build:packages": "npm run build -w @nextday/shared && npm run build -w @nextday/config-schema && npm run build -w @nextday/game-rules && npm run build -w @nextday/game-client && npm run build -w @nextday/ui",
     "db:generate": "prisma generate",

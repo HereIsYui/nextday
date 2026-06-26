@@ -6,6 +6,7 @@
   "scripts": {
     "predev": "npm run build:packages --prefix ../..",
     "dev": "DATABASE_URL=${DATABASE_URL:-postgresql://nextday:nextday@localhost:5432/nextday_game} tsx watch src/main.ts",
+    "dev:serve": "DATABASE_URL=${DATABASE_URL:-postgresql://nextday:nextday@localhost:5432/nextday_game} tsx watch src/main.ts",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --fileParallelism=false",

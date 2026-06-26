@@ -5,6 +5,7 @@
   "scripts": {
     "predev": "npm run build:packages --prefix ../..",
     "dev": "vite build --watch",
+    "dev:serve": "vite build --watch",
     "build": "vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

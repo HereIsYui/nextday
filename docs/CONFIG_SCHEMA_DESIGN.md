@@ -533,7 +533,19 @@
 | feedback_rule | 原地反馈、跳转详情和日志写入规则 |
 | boundary_rule | 不绕过行动令、幂等、月卡权益、风控和服务端结算 |
 
-当前落地接口为 `GET /api/game/daily-route`，返回 `daily_route_p3_v1`。本阶段先以内置优先级生成路线，覆盖可领任务、可领探索、探索奇遇、洞府、探索、生产和九塔；后续 P3-5 或运营后台阶段再拆成正式可发布配置。
+当前落地接口为 `GET /api/game/daily-route`，返回 `daily_route_p3_v1`。本阶段先以内置优先级生成路线，覆盖可领任务、可领探索、探索奇遇、洞府、探索、生产和九塔；P3-5 已通过 `npm run test:p3-balance` 回归探索掉落、材料消耗和付费便利边界，后续运营后台阶段再拆成正式可发布配置。
+
+`p3_balance_regression_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| profile_id | 新手、免费、月卡、VIP、重肝等模拟画像 |
+| day_window | 1 / 7 / 30 天回归窗口 |
+| drop_budget_rule | 探索材料总价值、低阶材料囤积和断供阈值 |
+| paid_gap_rule | 月卡 / VIP 只能体现便利节奏，不得配置掉落倍率 |
+| forbidden_reward_rule | 禁止付费仙玉、九大古宝本体、限定法宝、唯一战力道具和奖励倍率 |
+
+当前 P3-5 以测试内置画像完成回归，专项脚本为 `npm run test:p3-balance`；配置后台化时必须沿用上述禁止产物和付费便利边界。
 
 ## 十、配置发布流程
 

@@ -58,15 +58,18 @@ P3 优先扩展现有接口的可选展示字段，不先新增大批新路径�
 - `BattleSummary.enemy_traits?: string[]`：敌人特性，例如高防、快攻、毒伤、护盾。
 - `BattleSummary.loot_highlights?: string[]`：本场重点掉落或材料线索。
 - `BattleSummary.battle_hint?: string`：玩家可读的战斗提示。
+- `BattleSummary.counter_suggestions?: string[]`：根据怪物特性生成的反制建议。
 - `ExploreResponse.linked_event_hint?: string | null`：探索完成后生成奇遇的自然提示。
 - `ProductionRecommendation.material_sources?: MaterialSourceHint[]`：材料来源提示。
+- `SkillLoadoutResponse.available_skills[]`：已掌握、可学习、未解锁原因、学习消耗和克制标签。
+- `SkillLoadoutResponse.preset_suggestions?: SkillPresetSuggestion[]`：按近期战报生成的自动释放顺序建议。
 - `DailyRouteStep.source_detail?: string`：今日路线中每一步的来源说明。
 
 P3 可新增或扩展接口：
 
 - `GET /api/game/battles?province_id=&result=&enemy_trait=&limit=`：战报筛选和回放。
 - `GET /api/production/material-sources?item_id=`：材料来源和缺口提示。
-- `GET /api/production/skills/catalog`：技能学习目录、解锁条件和当前掌握状态。
+- `GET /api/production/skills/loadout`：技能学习目录、当前掌握状态、预设和战报建议。
 - `POST /api/production/skills/learn`：学习技能，需幂等键。
 - `GET /api/game/daily-route`：服务端生成今日路线。
 
@@ -131,4 +134,6 @@ P3-1 探索生态核心已完成：探索胜利掉落从固定凝露草扩展为
 
 P3-2 生产材料链已完成：新增 `material_chain` 配置，丹方 / 器方推荐返回材料来源、预计补齐次数、近期战报衔接、推荐标签、推荐分、用途提示和材料节奏预警；Web 成长页展示材料缺口来源、用途和折叠预警；专项测试接入 `npm run test:p3-production-chain`，并已加入 `npm run test:p3`。
 
-下一步进入 P3-3 技能学习与战报原因升级，优先实现技能学习入口、怪物特性对应的技能预设建议，以及探索 / 九塔 / Boss / PVP 的统一胜负原因说明。
+P3-3 技能学习与战报建议已完成：新增 `player_skill_record`、技能学习配置、`POST /api/production/skills/learn`、技能掌握状态、未解锁原因、学习消耗、自动预设建议和探索战报反制建议；Web 成长页展示可学习技能、学习按钮、战报建议和反制提示；专项测试接入 `npm run test:p3-combat-skill`，并已加入 `npm run test:p3`。
+
+下一步进入 P3-4 今日路线与 Web 体验收敛，优先把探索、奇遇、生产、九塔、任务领奖整理成可执行路线，并减少首页重复按钮和远距离反馈。

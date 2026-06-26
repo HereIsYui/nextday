@@ -618,9 +618,11 @@ export default function HomePage() {
       return;
     }
 
-    const activeOptions = skills.available_skills.filter((skill) => skill.skill_type === "active");
+    const activeOptions = skills.available_skills.filter(
+      (skill) => skill.skill_type === "active" && skill.learned,
+    );
     const treasureOptions = skills.available_skills.filter(
-      (skill) => skill.skill_type === "treasure",
+      (skill) => skill.skill_type === "treasure" && skill.learned,
     );
     const activeOptionIds = new Set(activeOptions.map((skill) => skill.skill_id));
     const activeIds = skills.active_skill_ids
@@ -1354,6 +1356,11 @@ export default function HomePage() {
   }
 
   function handleToggleActiveSkill(skillId: string) {
+    const skill = activeSkillOptions.find((item) => item.skill_id === skillId);
+    if (skill && !skill.learned) {
+      setMessage(skill.learnable ? "请先学习该技能" : (skill.unlock_reasons[0] ?? "技能尚未解锁"));
+      return;
+    }
     const nextActiveSkillIds = selectedActiveSkillIds.includes(skillId)
       ? selectedActiveSkillIds.filter((selectedSkillId) => selectedSkillId !== skillId)
       : selectedActiveSkillIds.length >= 3
@@ -1397,14 +1404,52 @@ export default function HomePage() {
     });
   }
 
+  async function handleLearnSkill(skillId: string) {
+    const skill = skills?.available_skills.find((item) => item.skill_id === skillId);
+    if (!skill) {
+      setMessage("技能配置尚未读取");
+      return;
+    }
+    if (skill.learned) {
+      setMessage(`${skill.name}已掌握`);
+      return;
+    }
+    if (!skill.learnable) {
+      setMessage(skill.unlock_reasons[0] ?? "技能尚未解锁");
+      return;
+    }
+
+    await runAction("学习技能", async () => {
+      const response = await client.learnSkill(
+        { skill_id: skillId },
+        createIdempotencyKey("web_skill_learn"),
+      );
+      ensureOk(response);
+      setBag(response.data.bag);
+      setSkills(response.data.loadout);
+      setProfile((current) => (current ? { ...current, wallet: response.data.wallet } : current));
+      rememberExperience(response.data.experience, {
+        summary: `${response.data.skill.name}已掌握，可加入自动战斗预设。`,
+        tags: ["技能学习", "战斗策略"],
+        title: "学习技能",
+        tone: "success",
+      });
+      setMessage(`${response.data.skill.name}已掌握`);
+    });
+  }
+
   async function handleSaveSkillPreset() {
     if (!skills) {
       setMessage("技能配置尚未读取");
       return;
     }
 
-    const activeOptionIds = new Set(activeSkillOptions.map((skill) => skill.skill_id));
-    const treasureOptionIds = new Set(treasureSkillOptions.map((skill) => skill.skill_id));
+    const activeOptionIds = new Set(
+      activeSkillOptions.filter((skill) => skill.learned).map((skill) => skill.skill_id),
+    );
+    const treasureOptionIds = new Set(
+      treasureSkillOptions.filter((skill) => skill.learned).map((skill) => skill.skill_id),
+    );
     const activeSkills = selectedActiveSkillIds
       .filter((skillId) => activeOptionIds.has(skillId))
       .slice(0, 3);
@@ -3235,6 +3280,7 @@ export default function HomePage() {
                     activeOptions={activeSkillOptions}
                     busy={busy}
                     feedback={actionFeedbackFor("growth-skills")}
+                    onLearn={handleLearnSkill}
                     onMovePriority={handleMoveSkillPriority}
                     onSave={handleSaveSkillPreset}
                     onSelectTreasure={handleSelectTreasureSkill}
@@ -4547,10 +4593,40 @@ function ProductionRecommendationView({
   );
 }
 
+function SkillOptionContent({
+  skill,
+}: {
+  skill: SkillLoadoutResponse["available_skills"][number];
+}) {
+  return (
+    <div className="skill-option-content">
+      <div className="skill-option-head">
+        <strong>{skill.name}</strong>
+        <StatusBadge tone={skill.learned ? "success" : skill.learnable ? "warning" : "neutral"}>
+          {skill.learned ? "已掌握" : skill.learnable ? "可学习" : "未解锁"}
+        </StatusBadge>
+      </div>
+      <span>{skill.description}</span>
+      <small>
+        {skillRouteLabel(skill.route)} · 冷却 {skill.cooldown_rounds} 回合
+      </small>
+      {skill.counter_traits?.length ? <small>应对：{skill.counter_traits.join("、")}</small> : null}
+      {skill.preset_hint ? <small>{skill.preset_hint}</small> : null}
+      {!skill.learned && skill.learn_cost ? (
+        <small>学习消耗：{formatRewardBundleBrief(skill.learn_cost)}</small>
+      ) : null}
+      {!skill.learned && !skill.learnable ? (
+        <small>{skill.unlock_reasons.join("、") || "暂未解锁"}</small>
+      ) : null}
+    </div>
+  );
+}
+
 function SkillLoadoutPanel({
   activeOptions,
   busy,
   feedback,
+  onLearn,
   onMovePriority,
   onSave,
   onSelectTreasure,
@@ -4562,9 +4638,10 @@ function SkillLoadoutPanel({
   skills,
   treasureOptions,
 }: {
-  activeOptions: SkillSummary[];
+  activeOptions: SkillLoadoutResponse["available_skills"];
   busy: boolean;
   feedback?: ActionFeedbackState;
+  onLearn: (skillId: string) => void | Promise<void>;
   onMovePriority: (skillId: string, direction: "up" | "down") => void;
   onSave: () => void | Promise<void>;
   onSelectTreasure: (skillId: string) => void;
@@ -4574,7 +4651,7 @@ function SkillLoadoutPanel({
   selectedActiveSkillIds: string[];
   selectedTreasureSkillId: string;
   skills: SkillLoadoutResponse | null;
-  treasureOptions: SkillSummary[];
+  treasureOptions: SkillLoadoutResponse["available_skills"];
 }) {
   if (!skills) {
     return (
@@ -4596,7 +4673,7 @@ function SkillLoadoutPanel({
   );
   const selectedSkills = selectedSkillIds
     .map((skillId) => skills.available_skills.find((skill) => skill.skill_id === skillId))
-    .filter((skill): skill is SkillSummary => Boolean(skill));
+    .filter((skill): skill is SkillLoadoutResponse["available_skills"][number] => Boolean(skill));
   const canSave = selectedActiveSkillIds.length >= 1 && Boolean(selectedTreasureSkillId);
 
   return (
@@ -4623,21 +4700,27 @@ function SkillLoadoutPanel({
           {activeOptions.map((skill) => {
             const selected = selectedActiveSkillIds.includes(skill.skill_id);
             const disabled = busy || (!selected && selectedActiveSkillIds.length >= 3);
-            return (
+
+            return skill.learned ? (
               <button
                 aria-pressed={selected}
-                className={selected ? "skill-option selected" : "skill-option"}
+                className={["skill-option", selected ? "selected" : ""].filter(Boolean).join(" ")}
                 disabled={disabled}
                 key={skill.skill_id}
                 onClick={() => onToggleActive(skill.skill_id)}
                 type="button"
               >
-                <strong>{skill.name}</strong>
-                <span>{skill.description}</span>
-                <small>
-                  {skillRouteLabel(skill.route)} · 冷却 {skill.cooldown_rounds} 回合
-                </small>
+                <SkillOptionContent skill={skill} />
               </button>
+            ) : (
+              <article className="skill-option locked" key={skill.skill_id}>
+                <SkillOptionContent skill={skill} />
+                {skill.learnable ? (
+                  <Button disabled={busy} onClick={() => onLearn(skill.skill_id)}>
+                    学习
+                  </Button>
+                ) : null}
+              </article>
             );
           })}
         </div>
@@ -4658,6 +4741,24 @@ function SkillLoadoutPanel({
           ))}
         </select>
       </label>
+
+      {skills.preset_suggestions?.length ? (
+        <div className="skill-loadout-section">
+          <span className="skill-loadout-label">战报建议</span>
+          <div className="skill-suggestion-list">
+            {skills.preset_suggestions.map((suggestion) => (
+              <article className="skill-suggestion" key={suggestion.suggestion_id}>
+                <strong>{suggestion.title}</strong>
+                <span>{suggestion.reason}</span>
+                <small>
+                  推荐顺序：
+                  {suggestion.auto_priority.map((skillId) => skillName(skills, skillId)).join("、")}
+                </small>
+              </article>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="skill-loadout-section">
         <span className="skill-loadout-label">自动释放顺序</span>
@@ -4959,6 +5060,13 @@ function BattleReportCard({ battle }: { battle: BattleSummary }) {
         <ul className="battle-reason-list">
           {battle.reason_summary.map((reason) => (
             <li key={reason}>{reason}</li>
+          ))}
+        </ul>
+      ) : null}
+      {battle.counter_suggestions?.length ? (
+        <ul className="battle-reason-list">
+          {battle.counter_suggestions.map((suggestion) => (
+            <li key={suggestion}>建议：{suggestion}</li>
           ))}
         </ul>
       ) : null}
@@ -6643,6 +6751,19 @@ function formatMaterialGaps(
   }
 
   return `缺 ${missing.map((gap) => `${gap.name} ${gap.missing}`).join("、")}`;
+}
+
+function formatRewardBundleBrief(
+  reward: SkillLoadoutResponse["available_skills"][number]["learn_cost"],
+): string {
+  if (!reward) {
+    return "无";
+  }
+  const parts = [
+    reward.spirit_stone ? `灵石 ${reward.spirit_stone}` : null,
+    ...(reward.items?.map((item) => `${item.name} ${item.count}`) ?? []),
+  ].filter(Boolean);
+  return parts.length ? parts.join("、") : "无";
 }
 
 function provinceNameById(

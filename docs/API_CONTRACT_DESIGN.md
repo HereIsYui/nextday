@@ -531,8 +531,11 @@ P3 推荐优先复用现有接口并增加可选字段：
 | `BattleSummary` | `enemy_traits?: string[]` | 敌人特性，例如高防、快攻、毒伤、护盾、灵敏 |
 | `BattleSummary` | `loot_highlights?: string[]` | 本场重点掉落、材料线索或奇遇线索 |
 | `BattleSummary` | `battle_hint?: string` | 玩家可读的战斗提示和下一步建议 |
+| `BattleSummary` | `counter_suggestions?: string[]` | 根据敌人特性生成的反制建议 |
 | `ExploreResponse` | `linked_event_hint?: string \| null` | 探索完成后生成奇遇时的自然提示 |
 | `ProductionRecommendation` | `material_sources?: MaterialSourceHint[]` | 丹方、器方、淬炼材料的来源说明 |
+| `SkillLoadoutResponse` | `available_skills[].learned / learnable / unlock_reasons / learn_cost / counter_traits` | 技能掌握状态、学习条件和克制标签 |
+| `SkillLoadoutResponse` | `preset_suggestions?: SkillPresetSuggestion[]` | 按近期战报生成的主动技能、本命技能和自动释放顺序建议 |
 | `DailyRouteStep` | `source_detail?: string` | 今日路线每一步的推荐来源和降级原因 |
 
 P3 可新增接口分组：
@@ -541,7 +544,7 @@ P3 可新增接口分组：
 | --- | --- | --- | --- |
 | 战报筛选 | `/api/game/battles` | GET | 按州域、胜负、敌人特性、玩法类型分页查询战报 |
 | 材料来源 | `/api/production/material-sources` | GET | 查询材料来源、缺口、推荐州域和预计探索次数 |
-| 技能目录 | `/api/production/skills/catalog` | GET | 返回已掌握、可学习、未解锁技能和学习条件 |
+| 技能目录与预设 | `/api/production/skills/loadout` | GET | 返回已掌握、可学习、未解锁技能、学习条件和预设建议 |
 | 技能学习 | `/api/production/skills/learn` | POST | 学习技能，需幂等键，服务端校验境界、路线和材料 |
 | 今日路线 | `/api/game/daily-route` | GET | 返回服务端生成的今日修行路线、推荐原因和降级说明 |
 

@@ -65,6 +65,7 @@ export class GameConfigService {
 
 const legacyBuiltinConfigVersions: Record<string, string[]> = {
   battle: ["battle_m2_v1"],
+  skill: ["skill_m3_v1"],
   tower: ["tower_m4_v1"],
   world: ["world_m2_v1"],
 };

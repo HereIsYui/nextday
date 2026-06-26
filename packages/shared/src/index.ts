@@ -538,6 +538,7 @@ export interface BattleSummary {
   rewards: RewardBundle;
   log: BattleRoundLog[];
   reason_summary?: string[];
+  counter_suggestions?: string[];
   loot_highlights?: string[];
   battle_hint?: string;
   created_at: string;
@@ -1214,17 +1215,50 @@ export interface SkillSummary {
   description: string;
 }
 
+export interface SkillLearningState extends SkillSummary {
+  learned: boolean;
+  learnable: boolean;
+  unlock_reasons: string[];
+  learn_cost?: RewardBundle;
+  preset_hint?: string;
+  counter_traits?: string[];
+}
+
+export interface SkillPresetSuggestionState {
+  suggestion_id: string;
+  title: string;
+  reason: string;
+  enemy_traits: string[];
+  active_skill_ids: string[];
+  treasure_skill_id: string;
+  auto_priority: string[];
+}
+
 export interface SkillLoadoutResponse {
   active_skill_ids: string[];
   treasure_skill_id: string;
   auto_priority: string[];
-  available_skills: SkillSummary[];
+  available_skills: SkillLearningState[];
+  preset_suggestions?: SkillPresetSuggestionState[];
 }
 
 export interface SaveSkillLoadoutRequest {
   active_skill_ids: string[];
   treasure_skill_id: string;
   auto_priority?: string[];
+}
+
+export interface LearnSkillRequest {
+  skill_id: string;
+}
+
+export interface LearnSkillResponse {
+  record_id: string;
+  skill: SkillLearningState;
+  loadout: SkillLoadoutResponse;
+  wallet: PlayerWalletState;
+  bag: BagSummaryResponse;
+  experience?: ExperiencePayload;
 }
 
 export type TowerActionType = "seal" | "break" | "supply" | "guard";

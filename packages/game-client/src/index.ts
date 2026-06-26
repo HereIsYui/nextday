@@ -107,6 +107,8 @@ import type {
   InnerWorldUpgradeResponse,
   JoinSectRequest,
   JournalListResponse,
+  LearnSkillRequest,
+  LearnSkillResponse,
   LoginResponse,
   MentorMutationResponse,
   MentorSummaryResponse,
@@ -644,6 +646,15 @@ export class GameClient {
 
   skillLoadout(): Promise<ApiResponse<SkillLoadoutResponse>> {
     return this.get<SkillLoadoutResponse>("/api/production/skills/loadout");
+  }
+
+  learnSkill(
+    body: LearnSkillRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<LearnSkillResponse>> {
+    return this.post<LearnSkillResponse, LearnSkillRequest>("/api/production/skills/learn", body, {
+      idempotencyKey,
+    });
   }
 
   saveSkillLoadout(

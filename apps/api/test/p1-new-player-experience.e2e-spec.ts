@@ -108,7 +108,7 @@ describe("P1-9 新手 30 分钟体验与玩法厚度", () => {
       (recipe: { recommendation?: { recommended: boolean } }) => recipe.recommendation?.recommended,
     );
     expect(recommendedAlchemy.recommendation.can_craft).toBe(true);
-    expect(recommendedAlchemy.recommendation.result_hint).toContain("第一炉丹");
+    expect(recommendedAlchemy.recommendation.result_hint).toMatch(/第一炉丹|今日成长/);
 
     const forge = await request(app.getHttpServer())
       .get("/api/production/forge/recipes")

@@ -83,6 +83,8 @@ import {
   materialSourceConfigs,
   pillQualityConfigs,
   skillConfigs,
+  skillLearningConfigVersion,
+  skillLearningConfigs,
 } from "../production/production.constants";
 import { riskConfig, riskConfigVersion, riskRulesetVersion } from "../risk/risk.constants";
 import {
@@ -306,12 +308,14 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
   },
   skill: {
     config_type: "skill",
-    config_version: "skill_m3_v1",
-    ruleset_version: "ruleset_m3_v1",
+    config_version: "skill_p3_v1",
+    ruleset_version: "ruleset_p3_v1",
     reward_config_version: "reward_m3_v1",
     payload: {
+      learning_config_version: skillLearningConfigVersion,
       max_active_skills: 3,
       max_treasure_skills: 1,
+      learning_rules: skillLearningConfigs,
       skills: skillConfigs,
     },
   },

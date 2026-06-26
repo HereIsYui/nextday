@@ -510,6 +510,8 @@
 | preset_hint | 自动释放顺序或本命技能建议 |
 | forbidden_paid_rule | 不允许付费直购战力技能或跳过核心解锁 |
 
+当前落地的配置 envelope 为 `GET /api/config/skill`，payload 包含 `skills`、`learning_config_version` 和 `learning_rules`。`learning_rules` 只允许配置境界、等级、路线、普通材料和灵石学习消耗，不允许配置付费直购战力技能或跳过服务端校验。
+
 `battle_report_filter_config`
 
 | 字段 | 说明 |

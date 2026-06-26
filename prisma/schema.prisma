@@ -76,6 +76,7 @@ model Player {
   equipmentInstances        EquipmentInstance[]
   equipmentOperationRecords EquipmentOperationRecord[]
   skillLoadout              PlayerSkillLoadout?
+  skillRecords              PlayerSkillRecord[]
   sectMembership            SectMember?
   towerActionRecords        TowerActionRecord[]
   bossChallengeRecords      WorldBossChallengeRecord[]
@@ -810,6 +811,27 @@ model PlayerSkillLoadout {
   player Player @relation(fields: [playerId], references: [playerId])
 
   @@map("player_skill_loadout")
+}
+
+model PlayerSkillRecord {
+  recordId       String   @id @map("record_id")
+  playerId       String   @map("player_id")
+  eraId          String   @default("era_mvp_001") @map("era_id")
+  skillId        String   @map("skill_id")
+  sourceType     String   @map("source_type")
+  costSnapshot   Json     @map("cost_snapshot")
+  configVersion  String   @map("config_version")
+  idempotencyKey String?  @map("idempotency_key")
+  learnedAt      DateTime @default(now()) @map("learned_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@unique([playerId, skillId])
+  @@index([playerId])
+  @@index([eraId])
+  @@index([skillId])
+  @@index([learnedAt])
+  @@map("player_skill_record")
 }
 
 model TowerState {

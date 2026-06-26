@@ -17,6 +17,8 @@ import type {
   ForgeCraftRequest,
   ForgeRecipeListResponse,
   ForgeRecipeSummary,
+  LearnSkillRequest,
+  LearnSkillResponse,
   PillQuality,
   PillUseRequest,
   PillUseResponse,
@@ -25,7 +27,10 @@ import type {
   SetEquipmentLockRequest,
   SetItemLockRequest,
   SetItemLockResponse,
+  SkillLearningState,
   SkillLoadoutResponse,
+  SkillPresetSuggestionState,
+  SkillSummary,
 } from "@nextday/shared";
 import type { EquipmentAffix, EquipmentInstance, Player, PlayerItem, Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
@@ -42,15 +47,18 @@ import {
   buildProductionBalanceWarnings,
   forgeRecipes,
   getAvailableSkills,
+  getDefaultLearnedSkillIds,
   getDefaultSkillLoadout,
   getItemMeta,
   getQualityConfig,
+  getSkillLearningConfig,
   hiddenAffixes,
   mainAffixes,
   pillQualityConfigs,
   productionConfigVersion,
   productionRewardConfigVersion,
   skillConfigs,
+  skillLearningConfigVersion,
   subAffixes,
 } from "./production.constants";
 import {
@@ -670,13 +678,99 @@ export class ProductionService {
     return this.getSkillLoadoutByPlayer(player);
   }
 
+  async learnSkill(input: {
+    accountId: string;
+    body: LearnSkillRequest;
+    idempotencyKey: string;
+  }): Promise<LearnSkillResponse> {
+    const player = await this.requirePlayer(input.accountId);
+    const skillId = input.body?.skill_id?.trim();
+    const skill = skillConfigs.find((item) => item.skill_id === skillId);
+    const learningConfig = skill ? getSkillLearningConfig(skill.skill_id) : undefined;
+
+    if (!skill || !learningConfig || !isRouteAvailable(skill.route, player.route)) {
+      throw new BadRequestException("技能不存在或当前路线不可学习");
+    }
+
+    return this.withIdempotency({
+      accountId: input.accountId,
+      endpoint: "POST /api/production/skills/learn",
+      idempotencyKey: input.idempotencyKey,
+      requestBody: { skill_id: skill.skill_id },
+      handler: async (tx) => {
+        const learnedSkillIds = await this.getLearnedSkillIds(tx, player);
+        if (learnedSkillIds.has(skill.skill_id)) {
+          const loadout = await this.getSkillLoadoutByPlayer(player, tx);
+          return {
+            record_id: `skill_learn_existing_${skill.skill_id}`,
+            skill:
+              loadout.available_skills.find((item) => item.skill_id === skill.skill_id) ??
+              skillToLearningState(skill, player, learnedSkillIds),
+            loadout,
+            wallet: await this.getWalletState(tx, player.playerId),
+            bag: await this.getBagByPlayerId(player.playerId, tx),
+          };
+        }
+
+        const unlockReasons = skillUnlockReasons(skill, player, learnedSkillIds);
+        if (unlockReasons.length) {
+          throw new BadRequestException(unlockReasons[0]);
+        }
+
+        await this.consumeProductionCost(tx, player.playerId, learningConfig.cost, {
+          sourceType: "skill_learn",
+          sourceId: skill.skill_id,
+          idempotencyKey: input.idempotencyKey,
+        });
+
+        const record = await tx.playerSkillRecord.create({
+          data: {
+            recordId: `skill_learn_${randomUUID()}`,
+            playerId: player.playerId,
+            eraId: defaultEraId,
+            skillId: skill.skill_id,
+            sourceType: "skill_learning",
+            costSnapshot: learningConfig.cost as unknown as Prisma.InputJsonValue,
+            configVersion: skillLearningConfigVersion,
+            idempotencyKey: input.idempotencyKey,
+          },
+        });
+        await this.writeAudit(tx, {
+          accountId: input.accountId,
+          playerId: player.playerId,
+          action: "skill_learn",
+          targetType: "skill",
+          targetId: skill.skill_id,
+          afterSnapshot: {
+            record_id: record.recordId,
+            skill_id: skill.skill_id,
+            cost: learningConfig.cost,
+          } as unknown as Prisma.InputJsonValue,
+          idempotencyKey: input.idempotencyKey,
+        });
+
+        const loadout = await this.getSkillLoadoutByPlayer(player, tx);
+        return {
+          record_id: record.recordId,
+          skill:
+            loadout.available_skills.find((item) => item.skill_id === skill.skill_id) ??
+            skillToLearningState(skill, player, new Set([...learnedSkillIds, skill.skill_id])),
+          loadout,
+          wallet: await this.getWalletState(tx, player.playerId),
+          bag: await this.getBagByPlayerId(player.playerId, tx),
+        };
+      },
+    });
+  }
+
   async saveSkillLoadout(input: {
     accountId: string;
     body: SaveSkillLoadoutRequest;
     idempotencyKey: string;
   }): Promise<SkillLoadoutResponse> {
     const player = await this.requirePlayer(input.accountId);
-    const normalized = normalizeSkillLoadoutRequest(input.body, player.route);
+    const learnedSkillIds = await this.getLearnedSkillIds(this.prisma, player);
+    const normalized = normalizeSkillLoadoutRequest(input.body, player.route, learnedSkillIds);
 
     return this.withIdempotency({
       accountId: input.accountId,
@@ -704,7 +798,12 @@ export class ProductionService {
             ],
           },
         });
-        const response = skillLoadoutToResponse(player.route, saved);
+        const response = skillLoadoutToResponse(
+          player,
+          saved,
+          learnedSkillIds,
+          await this.getRecentBattleSummaries(player.playerId, tx),
+        );
         await this.writeAudit(tx, {
           accountId: input.accountId,
           playerId: player.playerId,
@@ -801,8 +900,11 @@ export class ProductionService {
     return player;
   }
 
-  private async getRecentBattleSummaries(playerId: string): Promise<BattleSummary[]> {
-    const battles = await this.prisma.battleLog.findMany({
+  private async getRecentBattleSummaries(
+    playerId: string,
+    tx: DbClient = this.prisma,
+  ): Promise<BattleSummary[]> {
+    const battles = await tx.battleLog.findMany({
       where: { playerId, battleType: "explore" },
       orderBy: { createdAt: "desc" },
       take: 8,
@@ -882,14 +984,33 @@ export class ProductionService {
     return equipment;
   }
 
-  private async getSkillLoadoutByPlayer(player: Player): Promise<SkillLoadoutResponse> {
-    const loadout = await this.prisma.playerSkillLoadout.findUnique({
-      where: { playerId: player.playerId },
-    });
+  private async getSkillLoadoutByPlayer(
+    player: Player,
+    tx: DbClient = this.prisma,
+  ): Promise<SkillLoadoutResponse> {
+    const [loadout, learnedSkillIds, recentBattles] = await Promise.all([
+      tx.playerSkillLoadout.findUnique({
+        where: { playerId: player.playerId },
+      }),
+      this.getLearnedSkillIds(tx, player),
+      this.getRecentBattleSummaries(player.playerId, tx),
+    ]);
 
     return loadout
-      ? skillLoadoutToResponse(player.route, loadout)
-      : getDefaultSkillLoadout(player.route as CultivationRoute);
+      ? skillLoadoutToResponse(player, loadout, learnedSkillIds, recentBattles)
+      : defaultSkillLoadoutToResponse(player, learnedSkillIds, recentBattles);
+  }
+
+  private async getLearnedSkillIds(tx: DbClient, player: Player): Promise<Set<string>> {
+    const learned = await tx.playerSkillRecord.findMany({
+      where: { playerId: player.playerId },
+      select: { skillId: true },
+    });
+
+    return new Set([
+      ...getDefaultLearnedSkillIds(player.route as CultivationRoute),
+      ...learned.map((record) => record.skillId),
+    ]);
   }
 
   private async consumeProductionCost(
@@ -1171,6 +1292,7 @@ function normalizeEquipmentLockRequest(body: SetEquipmentLockRequest): SetEquipm
 function normalizeSkillLoadoutRequest(
   body: SaveSkillLoadoutRequest,
   route: string,
+  learnedSkillIds: Set<string>,
 ): SaveSkillLoadoutRequest {
   const availableSkillIds = new Set(
     getAvailableSkills(route as CultivationRoute).map((skill) => skill.skill_id),
@@ -1184,8 +1306,13 @@ function normalizeSkillLoadoutRequest(
 
   for (const skillId of activeSkillIds) {
     const skill = skillConfigs.find((item) => item.skill_id === skillId);
-    if (!skill || skill.skill_type !== "active" || !availableSkillIds.has(skillId)) {
-      throw new BadRequestException("主动技能不属于当前路线");
+    if (
+      !skill ||
+      skill.skill_type !== "active" ||
+      !availableSkillIds.has(skillId) ||
+      !learnedSkillIds.has(skillId)
+    ) {
+      throw new BadRequestException("主动技能未掌握或不属于当前路线");
     }
   }
 
@@ -1193,9 +1320,10 @@ function normalizeSkillLoadoutRequest(
   if (
     !treasureSkill ||
     treasureSkill.skill_type !== "treasure" ||
-    !availableSkillIds.has(treasureSkillId)
+    !availableSkillIds.has(treasureSkillId) ||
+    !learnedSkillIds.has(treasureSkillId)
   ) {
-    throw new BadRequestException("本命法宝技能不合法");
+    throw new BadRequestException("本命法宝技能未掌握或不合法");
   }
 
   const autoPriority = Array.from(
@@ -1638,23 +1766,81 @@ function roll10000(seed: string): number {
 }
 
 function skillLoadoutToResponse(
-  route: string,
+  player: Player,
   loadout: {
     activeSkillIds: Prisma.JsonValue;
     treasureSkillId: string;
     autoPriority: Prisma.JsonValue;
   },
+  learnedSkillIds: Set<string>,
+  recentBattles: BattleSummary[],
 ): SkillLoadoutResponse {
-  const activeSkillIds = normalizeStringArray(loadout.activeSkillIds);
-  const autoPriority = normalizeStringArray(loadout.autoPriority);
+  return buildSkillLoadoutResponse({
+    activeSkillIds: normalizeStringArray(loadout.activeSkillIds),
+    autoPriority: normalizeStringArray(loadout.autoPriority),
+    learnedSkillIds,
+    player,
+    recentBattles,
+    treasureSkillId: loadout.treasureSkillId,
+  });
+}
+
+function defaultSkillLoadoutToResponse(
+  player: Player,
+  learnedSkillIds: Set<string>,
+  recentBattles: BattleSummary[],
+): SkillLoadoutResponse {
+  const fallback = getDefaultSkillLoadout(player.route as CultivationRoute);
+  return buildSkillLoadoutResponse({
+    activeSkillIds: fallback.active_skill_ids,
+    autoPriority: fallback.auto_priority,
+    learnedSkillIds,
+    player,
+    recentBattles,
+    treasureSkillId: fallback.treasure_skill_id,
+  });
+}
+
+function buildSkillLoadoutResponse(input: {
+  player: Player;
+  activeSkillIds: string[];
+  treasureSkillId: string;
+  autoPriority: string[];
+  learnedSkillIds: Set<string>;
+  recentBattles: BattleSummary[];
+}): SkillLoadoutResponse {
+  const availableSkills = getAvailableSkills(input.player.route as CultivationRoute).map((skill) =>
+    skillToLearningState(skill, input.player, input.learnedSkillIds),
+  );
+  const availableSkillMap = new Map(availableSkills.map((skill) => [skill.skill_id, skill]));
+  const activeSkillIds = input.activeSkillIds.filter((skillId) => {
+    const skill = availableSkillMap.get(skillId);
+    return skill?.skill_type === "active" && skill.learned;
+  });
+  const fallbackActiveIds = availableSkills
+    .filter((skill) => skill.skill_type === "active" && skill.learned)
+    .sort((a, b) => a.priority_hint - b.priority_hint)
+    .slice(0, 3)
+    .map((skill) => skill.skill_id);
+  const treasureSkill = availableSkillMap.get(input.treasureSkillId);
+  const treasureSkillId =
+    treasureSkill?.skill_type === "treasure" && treasureSkill.learned
+      ? treasureSkill.skill_id
+      : (availableSkills.find((skill) => skill.skill_type === "treasure" && skill.learned)
+          ?.skill_id ?? "skill_benming_faguang");
+  const nextActiveSkillIds = activeSkillIds.length ? activeSkillIds : fallbackActiveIds;
+  const autoPriority = normalizeSkillPriorityForResponse(
+    input.autoPriority,
+    nextActiveSkillIds,
+    treasureSkillId,
+  );
 
   return {
-    active_skill_ids: activeSkillIds,
-    treasure_skill_id: loadout.treasureSkillId,
-    auto_priority: autoPriority.length
-      ? autoPriority
-      : [loadout.treasureSkillId, ...activeSkillIds],
-    available_skills: getAvailableSkills(route as CultivationRoute),
+    active_skill_ids: nextActiveSkillIds,
+    auto_priority: autoPriority,
+    available_skills: availableSkills,
+    preset_suggestions: buildSkillPresetSuggestions(availableSkills, input.recentBattles),
+    treasure_skill_id: treasureSkillId,
   };
 }
 
@@ -1662,4 +1848,143 @@ function normalizeStringArray(value: Prisma.JsonValue): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
     : [];
+}
+
+function normalizeSkillPriorityForResponse(
+  currentPriorityIds: string[],
+  activeSkillIds: string[],
+  treasureSkillId: string,
+): string[] {
+  const allowedSkillIds = new Set([treasureSkillId, ...activeSkillIds].filter(Boolean));
+  const nextPriorityIds = Array.from(new Set(currentPriorityIds)).filter((skillId) =>
+    allowedSkillIds.has(skillId),
+  );
+
+  if (treasureSkillId && !nextPriorityIds.includes(treasureSkillId)) {
+    nextPriorityIds.unshift(treasureSkillId);
+  }
+  for (const skillId of activeSkillIds) {
+    if (!nextPriorityIds.includes(skillId)) {
+      nextPriorityIds.push(skillId);
+    }
+  }
+  return nextPriorityIds;
+}
+
+function skillToLearningState(
+  skill: SkillSummary,
+  player: Player,
+  learnedSkillIds: Set<string>,
+): SkillLearningState {
+  const learningConfig = getSkillLearningConfig(skill.skill_id);
+  const learned = learnedSkillIds.has(skill.skill_id);
+  const unlockReasons = learned ? [] : skillUnlockReasons(skill, player, learnedSkillIds);
+
+  return {
+    ...skill,
+    counter_traits: learningConfig?.counterTraits ?? [],
+    learn_cost: learned ? undefined : learningConfig?.cost,
+    learnable: !learned && unlockReasons.length === 0,
+    learned,
+    preset_hint: learningConfig?.presetHint,
+    unlock_reasons: unlockReasons,
+  };
+}
+
+function skillUnlockReasons(
+  skill: { skill_id: string; route: CultivationRoute | "all" },
+  player: Player,
+  learnedSkillIds: Set<string>,
+): string[] {
+  if (learnedSkillIds.has(skill.skill_id)) {
+    return [];
+  }
+  if (!isRouteAvailable(skill.route, player.route)) {
+    return ["当前路线不可学习"];
+  }
+  const learningConfig = getSkillLearningConfig(skill.skill_id);
+  if (!learningConfig) {
+    return ["该技能暂未开放学习"];
+  }
+  const reasons: string[] = [];
+  if (player.currentRealm < learningConfig.minRealmId) {
+    reasons.push(`需要达到第 ${learningConfig.minRealmId} 境`);
+  }
+  if (player.currentLevel < learningConfig.minLevel) {
+    reasons.push(`需要达到 ${learningConfig.minLevel} 级`);
+  }
+  return reasons;
+}
+
+function buildSkillPresetSuggestions(
+  skills: SkillLearningState[],
+  recentBattles: BattleSummary[],
+): SkillPresetSuggestionState[] {
+  const learnedActiveSkills = skills.filter(
+    (skill) => skill.skill_type === "active" && skill.learned,
+  );
+  const treasureSkillId =
+    skills.find((skill) => skill.skill_type === "treasure" && skill.learned)?.skill_id ??
+    "skill_benming_faguang";
+  const traits = uniqueStrings(recentBattles.flatMap((battle) => battle.enemy_traits ?? []));
+  const suggestions: SkillPresetSuggestionState[] = [];
+
+  for (const trait of traits.slice(0, 3)) {
+    const matchedLearned = learnedActiveSkills.filter((skill) =>
+      skill.counter_traits?.includes(trait),
+    );
+    const matchedLearnable = skills.find(
+      (skill) =>
+        skill.skill_type === "active" &&
+        !skill.learned &&
+        skill.learnable &&
+        skill.counter_traits?.includes(trait),
+    );
+    const activeSkillIds = [
+      ...matchedLearned.map((skill) => skill.skill_id),
+      ...learnedActiveSkills.map((skill) => skill.skill_id),
+    ].slice(0, 3);
+    if (!activeSkillIds.length) {
+      continue;
+    }
+    suggestions.push({
+      active_skill_ids: activeSkillIds,
+      auto_priority: normalizeSkillPriorityForResponse(
+        activeSkillIds,
+        activeSkillIds,
+        treasureSkillId,
+      ),
+      enemy_traits: [trait],
+      reason: matchedLearned.length
+        ? `最近战报出现${trait}，可把${matchedLearned[0].name}提前。`
+        : matchedLearnable
+          ? `最近战报出现${trait}，学习${matchedLearnable.name}后可补进预设。`
+          : `最近战报出现${trait}，可调整现有技能顺序观察表现。`,
+      suggestion_id: `trait_${trait}`,
+      title: `${trait}应对预设`,
+      treasure_skill_id: treasureSkillId,
+    });
+  }
+
+  if (!suggestions.length && learnedActiveSkills.length) {
+    const activeSkillIds = learnedActiveSkills
+      .sort((a, b) => b.priority_hint - a.priority_hint)
+      .slice(0, 3)
+      .map((skill) => skill.skill_id);
+    suggestions.push({
+      active_skill_ids: activeSkillIds,
+      auto_priority: normalizeSkillPriorityForResponse(
+        activeSkillIds,
+        activeSkillIds,
+        treasureSkillId,
+      ),
+      enemy_traits: [],
+      reason: "暂无明显克制需求，保持基础输出、防护和本命技能顺序即可。",
+      suggestion_id: "default_auto",
+      title: "稳妥自动预设",
+      treasure_skill_id: treasureSkillId,
+    });
+  }
+
+  return suggestions.slice(0, 3);
 }

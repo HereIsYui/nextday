@@ -133,6 +133,7 @@ export function toBattleSummary(battle: BattleLog): BattleSummary {
       rounds: battle.rounds,
       log: battleLog,
     }),
+    counter_suggestions: buildBattleCounterSuggestions(enemyTraits),
     loot_highlights: lootHighlights,
     battle_hint: battleHint,
     created_at: battle.createdAt.toISOString(),
@@ -277,6 +278,24 @@ function buildBattleReasonSummary(input: {
   }
 
   return reasons.slice(0, 4);
+}
+
+function buildBattleCounterSuggestions(enemyTraits: string[] = []): string[] {
+  const suggestions: string[] = [];
+  if (enemyTraits.includes("高防") || enemyTraits.includes("护盾")) {
+    suggestions.push("敌方防护偏厚，优先学习或前置破阵类技能，并考虑炼器补输出词条。");
+  }
+  if (enemyTraits.includes("灵敏") || enemyTraits.includes("快攻")) {
+    suggestions.push("敌方出手较快，可把防护技能提前，或炼器补速度 / 防御词条。");
+  }
+  if (enemyTraits.includes("毒蚀")) {
+    suggestions.push("敌方持续压血明显，服丹提升修为后再探索更稳。");
+  }
+  if (enemyTraits.includes("阵痕") || enemyTraits.includes("术法")) {
+    suggestions.push("敌方带阵法或术法特性，可尝试本命法光前置并学习对应克制技能。");
+  }
+
+  return suggestions.length ? suggestions.slice(0, 3) : ["保持当前自动预设，继续观察后续战报。"];
 }
 
 function buildLootHighlights(provinceId: string, rewards: RewardBundle): string[] {

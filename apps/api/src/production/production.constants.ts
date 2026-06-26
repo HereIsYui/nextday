@@ -15,6 +15,7 @@ import type {
 export const productionConfigVersion = "m3_production_v1";
 export const productionRewardConfigVersion = "reward_m3_v1";
 export const materialChainConfigVersion = "material_chain_p3_v1";
+export const skillLearningConfigVersion = "skill_learning_p3_v1";
 
 export interface ItemMeta {
   itemId: string;
@@ -362,6 +363,24 @@ export const skillConfigs: SkillSummary[] = [
     description: "练气路线关键技，适合手动或高优先级释放。",
   },
   {
+    skill_id: "skill_pozhen_jian",
+    name: "破阵剑诀",
+    route: "qi",
+    skill_type: "active",
+    cooldown_rounds: 3,
+    priority_hint: 45,
+    description: "针对阵痕和高防敌人的进阶剑诀，适合探索塔影类敌人。",
+  },
+  {
+    skill_id: "skill_leihuo_yin",
+    name: "雷火引",
+    route: "qi",
+    skill_type: "active",
+    cooldown_rounds: 5,
+    priority_hint: 55,
+    description: "练气中期爆发术，适合对付护盾和术法敌人。",
+  },
+  {
     skill_id: "skill_lieshi",
     name: "裂石拳",
     route: "body",
@@ -389,6 +408,24 @@ export const skillConfigs: SkillSummary[] = [
     description: "炼体路线关键技，提升爆发上限。",
   },
   {
+    skill_id: "skill_tieshan_kao",
+    name: "铁山靠",
+    route: "body",
+    skill_type: "active",
+    cooldown_rounds: 3,
+    priority_hint: 45,
+    description: "针对快攻和强攻敌人的进阶体术，适合承伤偏高时加入预设。",
+  },
+  {
+    skill_id: "skill_baxue_zhan",
+    name: "霸血斩",
+    route: "body",
+    skill_type: "active",
+    cooldown_rounds: 5,
+    priority_hint: 55,
+    description: "炼体中期爆发技，适合打破高防敌人的持久战。",
+  },
+  {
     skill_id: "skill_benming_faguang",
     name: "本命法光",
     route: "all",
@@ -396,6 +433,132 @@ export const skillConfigs: SkillSummary[] = [
     cooldown_rounds: 5,
     priority_hint: 20,
     description: "默认本命法宝技能，自动战斗会按优先级触发。",
+  },
+];
+
+export interface SkillLearningConfig {
+  skillId: string;
+  defaultLearned?: boolean;
+  minRealmId: number;
+  minLevel: number;
+  cost: RewardBundle;
+  presetHint: string;
+  counterTraits: string[];
+}
+
+export const skillLearningConfigs: SkillLearningConfig[] = [
+  {
+    skillId: "skill_yuhuo",
+    defaultLearned: true,
+    minRealmId: 1,
+    minLevel: 1,
+    cost: {},
+    presetHint: "基础输出技能，适合放在自动顺序中段。",
+    counterTraits: ["均衡", "强攻"],
+  },
+  {
+    skillId: "skill_lingdun",
+    defaultLearned: true,
+    minRealmId: 1,
+    minLevel: 1,
+    cost: {},
+    presetHint: "承伤偏高时优先级上调。",
+    counterTraits: ["快攻", "毒蚀"],
+  },
+  {
+    skillId: "skill_xiaozhoutian",
+    defaultLearned: true,
+    minRealmId: 1,
+    minLevel: 1,
+    cost: {},
+    presetHint: "关键爆发技能，遇到高防敌人时可前置。",
+    counterTraits: ["高防", "护盾"],
+  },
+  {
+    skillId: "skill_pozhen_jian",
+    minRealmId: 1,
+    minLevel: 1,
+    cost: {
+      spirit_stone: "120",
+      items: [{ item_id: "raw_iron", name: "玄铁砂", count: 2, bind_type: "bound" }],
+    },
+    presetHint: "近期战报出现阵痕或高防敌人时推荐学习。",
+    counterTraits: ["阵痕", "高防"],
+  },
+  {
+    skillId: "skill_leihuo_yin",
+    minRealmId: 1,
+    minLevel: 5,
+    cost: {
+      spirit_stone: "260",
+      items: [
+        { item_id: "low_herb", name: "凝露草", count: 3, bind_type: "bound" },
+        { item_id: "raw_iron", name: "玄铁砂", count: 2, bind_type: "bound" },
+      ],
+    },
+    presetHint: "练气中期再学习，适合对付护盾和术法敌人。",
+    counterTraits: ["护盾", "术法"],
+  },
+  {
+    skillId: "skill_lieshi",
+    defaultLearned: true,
+    minRealmId: 1,
+    minLevel: 1,
+    cost: {},
+    presetHint: "基础输出技能，适合放在自动顺序中段。",
+    counterTraits: ["均衡", "强攻"],
+  },
+  {
+    skillId: "skill_jinshen",
+    defaultLearned: true,
+    minRealmId: 1,
+    minLevel: 1,
+    cost: {},
+    presetHint: "承伤偏高时优先级上调。",
+    counterTraits: ["快攻", "毒蚀"],
+  },
+  {
+    skillId: "skill_xuefei",
+    defaultLearned: true,
+    minRealmId: 1,
+    minLevel: 1,
+    cost: {},
+    presetHint: "爆发技能，遇到高防敌人时可前置。",
+    counterTraits: ["高防", "护盾"],
+  },
+  {
+    skillId: "skill_tieshan_kao",
+    minRealmId: 1,
+    minLevel: 1,
+    cost: {
+      spirit_stone: "120",
+      items: [{ item_id: "raw_iron", name: "玄铁砂", count: 2, bind_type: "bound" }],
+    },
+    presetHint: "近期战报承伤偏高或敌人快攻时推荐学习。",
+    counterTraits: ["快攻", "强攻"],
+  },
+  {
+    skillId: "skill_baxue_zhan",
+    minRealmId: 1,
+    minLevel: 5,
+    cost: {
+      spirit_stone: "260",
+      items: [
+        { item_id: "low_herb", name: "凝露草", count: 3, bind_type: "bound" },
+        { item_id: "raw_iron", name: "玄铁砂", count: 2, bind_type: "bound" },
+      ],
+    },
+    presetHint: "炼体中期再学习，适合打破高防敌人的持久战。",
+    counterTraits: ["高防", "护盾"],
+  },
+  {
+    skillId: "skill_benming_faguang",
+    defaultLearned: true,
+    minRealmId: 1,
+    minLevel: 1,
+    cost: {},
+    presetHint: "本命技能默认纳入自动释放顺序。",
+    counterTraits: ["阵痕", "术法"],
   },
 ];
 
@@ -422,6 +585,17 @@ export function getAvailableSkills(route: CultivationRoute): SkillSummary[] {
   return skillConfigs.filter((skill) => skill.route === route || skill.route === "all");
 }
 
+export function getSkillLearningConfig(skillId: string): SkillLearningConfig | undefined {
+  return skillLearningConfigs.find((config) => config.skillId === skillId);
+}
+
+export function getDefaultLearnedSkillIds(route: CultivationRoute): string[] {
+  const availableSkillIds = new Set(getAvailableSkills(route).map((skill) => skill.skill_id));
+  return skillLearningConfigs
+    .filter((config) => config.defaultLearned && availableSkillIds.has(config.skillId))
+    .map((config) => config.skillId);
+}
+
 export function getDefaultSkillLoadout(route: CultivationRoute): SkillLoadoutResponse {
   const activeSkillIds =
     route === "body"
@@ -432,7 +606,18 @@ export function getDefaultSkillLoadout(route: CultivationRoute): SkillLoadoutRes
     active_skill_ids: activeSkillIds,
     treasure_skill_id: "skill_benming_faguang",
     auto_priority: ["skill_benming_faguang", ...activeSkillIds],
-    available_skills: getAvailableSkills(route),
+    available_skills: getAvailableSkills(route).map((skill) => {
+      const learningConfig = getSkillLearningConfig(skill.skill_id);
+      return {
+        ...skill,
+        counter_traits: learningConfig?.counterTraits ?? [],
+        learnable: false,
+        learned: learningConfig?.defaultLearned === true,
+        preset_hint: learningConfig?.presetHint,
+        unlock_reasons: learningConfig?.defaultLearned ? [] : ["需要先在成长页学习"],
+      };
+    }),
+    preset_suggestions: [],
   };
 }
 

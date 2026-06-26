@@ -1268,8 +1268,22 @@ h2 {
   border-color: #c69a4a;
 }
 
+.skill-option.locked {
+  background: #f8f7f2;
+  cursor: default;
+}
+
 .skill-option:disabled:not(.selected) {
   cursor: not-allowed;
+}
+
+.skill-option-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: space-between;
+  width: 100%;
 }
 
 .skill-option strong,
@@ -1285,6 +1299,35 @@ h2 {
 .skill-option span,
 .skill-option small,
 .skill-priority-row span {
+  color: #5f6f70;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.skill-suggestion-list {
+  display: grid;
+  gap: 8px;
+}
+
+.skill-suggestion {
+  background: #f7f9f5;
+  border: 1px solid #dce4df;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+}
+
+.skill-suggestion strong,
+.skill-suggestion span,
+.skill-suggestion small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.skill-suggestion span,
+.skill-suggestion small {
   color: #5f6f70;
   font-size: 13px;
   line-height: 1.45;
@@ -2559,6 +2602,12 @@ details.event-boundary {
 .text-game-shell .skill-option.selected {
   border-color: #111111 !important;
   outline: 1px solid #111111;
+}
+
+.text-game-shell .skill-option.locked,
+.text-game-shell .skill-suggestion {
+  background: transparent;
+  border-color: #dddddd;
 }
 
 .text-game-shell .skill-priority-row {

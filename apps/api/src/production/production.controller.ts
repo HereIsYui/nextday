@@ -12,6 +12,8 @@ import type {
   EquipmentTargetRequest,
   ForgeCraftRequest,
   ForgeRecipeListResponse,
+  LearnSkillRequest,
+  LearnSkillResponse,
   PillUseRequest,
   PillUseResponse,
   SaveSkillLoadoutRequest,
@@ -155,6 +157,18 @@ export class ProductionController {
   @Get("skills/loadout")
   skillLoadout(@Req() request: Request): Promise<SkillLoadoutResponse> {
     return this.productionService.getSkillLoadout(requireAccountId(request));
+  }
+
+  @Post("skills/learn")
+  learnSkill(
+    @Body() body: LearnSkillRequest,
+    @Req() request: Request,
+  ): Promise<LearnSkillResponse> {
+    return this.productionService.learnSkill({
+      accountId: requireAccountId(request),
+      body,
+      idempotencyKey: requireIdempotencyKey(request),
+    });
   }
 
   @Post("skills/loadout")

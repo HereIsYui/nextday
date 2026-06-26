@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import type {
   ActionState,
+  BattleListResponse,
   BattleRoundLog,
   BattleSummary,
   BreakthroughResponse,
@@ -48,6 +49,7 @@ import { getDefaultSkillLoadout, getSkillName } from "../production/production.c
 import {
   type ExploreEventChoiceConfig,
   type ExploreEventConfig,
+  buildExploreBattleHint,
   defaultEraId,
   exploreEventConfigs,
   maxExploreBatch,
@@ -55,6 +57,7 @@ import {
   provinceConfigs,
   provinceExploreSeconds,
   selectExploreEnemy,
+  selectExploreLoot,
 } from "./game.constants";
 import {
   getCaveReward,
@@ -152,6 +155,53 @@ export class GameService {
       })),
       next_cursor:
         entries.length > limit ? (visibleEntries.at(-1)?.createdAt.toISOString() ?? null) : null,
+    };
+  }
+
+  async getBattles(
+    accountId: string,
+    input: {
+      provinceId?: string;
+      result?: string;
+      enemyTrait?: string;
+      battleType?: string;
+      limit?: string;
+      before?: string;
+    },
+  ): Promise<BattleListResponse> {
+    const player = await this.requirePlayer(accountId);
+    const limit = normalizeListLimit(input.limit, 10, 30);
+    const before = normalizeBeforeCursor(input.before);
+    const result = normalizeBattleResultFilter(input.result);
+    const battleType = normalizeOptionalTextFilter(input.battleType);
+    const provinceId = normalizeOptionalTextFilter(input.provinceId);
+    const enemyTrait = normalizeOptionalTextFilter(input.enemyTrait);
+
+    const rows = await this.prisma.battleLog.findMany({
+      where: {
+        playerId: player.playerId,
+        ...(battleType ? { battleType } : {}),
+        ...(provinceId ? { provinceId } : {}),
+        ...(result ? { result } : {}),
+        ...(before ? { createdAt: { lt: before } } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      take: enemyTrait ? Math.max(limit * 4, 30) : limit + 1,
+    });
+    const filtered = rows
+      .map((battle) => toBattleSummary(battle))
+      .filter((battle) => !enemyTrait || battle.enemy_traits?.includes(enemyTrait));
+    const visibleBattles = filtered.slice(0, limit);
+
+    return {
+      battles: visibleBattles,
+      filters: {
+        ...(battleType ? { battle_type: battleType } : {}),
+        ...(enemyTrait ? { enemy_trait: enemyTrait } : {}),
+        ...(provinceId ? { province_id: provinceId } : {}),
+        ...(result ? { result } : {}),
+      },
+      next_cursor: filtered.length > limit ? (visibleBattles.at(-1)?.created_at ?? null) : null,
     };
   }
 
@@ -1019,6 +1069,7 @@ export class GameService {
       flavor: config.theme,
       provinceId: config.provinceId,
       skillName: "山海妖息",
+      traits: ["均衡"],
     };
 
     const playerPower = player.currentRealm * 120 + player.currentLevel * 45;
@@ -1026,12 +1077,18 @@ export class GameService {
     const damageDone = result === "win" ? enemy.enemyPower + player.currentLevel * 12 : playerPower;
     const damageTaken =
       result === "win" ? Math.max(8, Math.floor(enemy.enemyPower / 3)) : enemy.enemyPower;
+    const loot =
+      result === "win"
+        ? selectExploreLoot(province.province_id, exploreRecordId, battleIndex, enemy.enemyId)
+        : null;
     const rewards: RewardBundle =
       result === "win"
         ? {
             cultivation: "40",
             spirit_stone: "35",
-            items: [{ item_id: "low_herb", name: "凝露草", count: 1, bind_type: "bound" }],
+            items: loot
+              ? [{ item_id: loot.itemId, name: loot.name, count: 1, bind_type: "bound" }]
+              : undefined,
           }
         : { cultivation: "10", spirit_stone: "8" };
     const totalCultivation = progress.cultivationValue + BigInt(rewards.cultivation ?? "0");
@@ -1092,9 +1149,20 @@ export class GameService {
         battleLog: battleLog as unknown as Prisma.InputJsonValue,
       },
     });
+    const summary = toBattleSummary(battle);
 
     return {
-      summary: toBattleSummary(battle),
+      summary: {
+        ...summary,
+        battle_hint: buildExploreBattleHint({
+          enemyName: enemy.enemyName,
+          enemyTraits: enemy.traits,
+          loot: loot ?? undefined,
+          result,
+        }),
+        enemy_traits: enemy.traits,
+        loot_highlights: loot ? [`${loot.name} x1 · ${loot.usageHint}`] : [],
+      },
       player: {
         ...player,
         currentLevel: leveled.afterLevel,
@@ -1303,7 +1371,13 @@ export class GameService {
       return existing;
     }
 
-    const config = pickExploreEventConfig(input.record.recordId, input.province.province_id);
+    const linkContext = buildExploreEventLinkContext(input.record.battleSnapshot);
+    const config = pickExploreEventConfig(
+      input.record.recordId,
+      input.province.province_id,
+      linkContext,
+    );
+    const linkHint = formatExploreEventLinkHint(linkContext);
     return tx.exploreEventRecord.create({
       data: {
         eventId: `explore_event_${randomUUID()}`,
@@ -1314,11 +1388,11 @@ export class GameService {
         provinceName: input.province.name,
         eventType: config.eventType,
         title: config.title,
-        description: `${input.province.name}途中，${config.description}`,
+        description: `${input.province.name}途中，${config.description}${linkHint}`,
         choices: config.choices as unknown as Prisma.InputJsonValue,
         status: "pending",
-        configVersion: "p1_7_explore_event_v1",
-        rulesetVersion: "ruleset_p1_7_v1",
+        configVersion: "p3_explore_event_link_v1",
+        rulesetVersion: "ruleset_p3_exploration_v1",
         rewardConfigVersion: "reward_p1_7_v1",
       },
     });
@@ -1523,6 +1597,24 @@ function normalizeExploreEventStatusFilter(input: string | undefined): string | 
   throw new BadRequestException("探索奇遇状态无效");
 }
 
+function normalizeBattleResultFilter(
+  input: string | undefined,
+): BattleSummary["result"] | undefined {
+  if (!input) {
+    return undefined;
+  }
+  if (input === "win" || input === "lose") {
+    return input;
+  }
+
+  throw new BadRequestException("战报结果筛选无效");
+}
+
+function normalizeOptionalTextFilter(input: string | undefined): string | undefined {
+  const value = input?.trim();
+  return value ? value : undefined;
+}
+
 function toExploreResponse(
   record: ExploreActionRecord,
   actionState: ActionState,
@@ -1561,6 +1653,7 @@ function toExploreResponse(
     completed_task_ids: completedTaskIds,
     experience,
     event: event ? toExploreEventState(event) : null,
+    linked_event_hint: event ? `${event.title}已出现，可在今日修行的探索奇遇中处理。` : null,
   };
 }
 
@@ -1635,13 +1728,109 @@ function isExploreEventChoiceConfig(value: unknown): value is ExploreEventChoice
   );
 }
 
-function pickExploreEventConfig(seed: string, provinceId: string): ExploreEventConfig {
+function pickExploreEventConfig(
+  seed: string,
+  provinceId: string,
+  context: ExploreEventLinkContext = { itemIds: [], traits: [] },
+): ExploreEventConfig {
   const candidates = exploreEventConfigs.filter(
     (config) => !config.provinceIds || config.provinceIds.includes(provinceId),
   );
   const eventPool = candidates.length ? candidates : exploreEventConfigs;
-  const sum = Array.from(seed).reduce((value, char) => value + char.charCodeAt(0), 0);
-  return eventPool[sum % eventPool.length] ?? exploreEventConfigs[0];
+  const weightedPool = eventPool.flatMap((config) => {
+    const weight = getExploreEventLinkWeight(config.eventType, context);
+    return Array.from({ length: weight }, () => config);
+  });
+  const sum = Array.from(`${seed}:${context.traits.join(",")}:${context.itemIds.join(",")}`).reduce(
+    (value, char) => value + char.charCodeAt(0),
+    0,
+  );
+  return (
+    weightedPool[sum % weightedPool.length] ??
+    eventPool[sum % eventPool.length] ??
+    exploreEventConfigs[0]
+  );
+}
+
+interface ExploreEventLinkContext {
+  traits: string[];
+  itemIds: string[];
+}
+
+function buildExploreEventLinkContext(value: Prisma.JsonValue): ExploreEventLinkContext {
+  if (!Array.isArray(value)) {
+    return { itemIds: [], traits: [] };
+  }
+
+  const traits = new Set<string>();
+  const itemIds = new Set<string>();
+
+  for (const item of value) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const battle = item as Partial<BattleSummary>;
+    for (const trait of battle.enemy_traits ?? []) {
+      if (typeof trait === "string") {
+        traits.add(trait);
+      }
+    }
+    for (const rewardItem of battle.rewards?.items ?? []) {
+      if (rewardItem.item_id) {
+        itemIds.add(rewardItem.item_id);
+      }
+    }
+  }
+
+  return { itemIds: [...itemIds], traits: [...traits] };
+}
+
+function getExploreEventLinkWeight(eventType: string, context: ExploreEventLinkContext): number {
+  let weight = 1;
+  const itemIds = new Set(context.itemIds);
+  const traits = new Set(context.traits);
+
+  if (
+    eventType === "herb_trace" &&
+    (itemIds.has("low_herb") || itemIds.has("pill_dust") || traits.has("毒蚀"))
+  ) {
+    weight += 3;
+  }
+  if (
+    eventType === "ruin_echo" &&
+    (itemIds.has("raw_iron") ||
+      itemIds.has("artifact_soul") ||
+      itemIds.has("inscription_rune") ||
+      traits.has("高防"))
+  ) {
+    weight += 3;
+  }
+  if (
+    eventType === "tower_rift" &&
+    (itemIds.has("tower_sigil") || itemIds.has("array_sand") || traits.has("阵痕"))
+  ) {
+    weight += 4;
+  }
+  if (
+    eventType === "wandering_caravan" &&
+    (itemIds.has("spirit_wood") || itemIds.has("battle_mark") || traits.has("灵敏"))
+  ) {
+    weight += 2;
+  }
+
+  return weight;
+}
+
+function formatExploreEventLinkHint(context: ExploreEventLinkContext): string {
+  const parts: string[] = [];
+  if (context.traits.length) {
+    parts.push(`受刚才${context.traits.slice(0, 2).join("、")}气息牵引`);
+  }
+  if (context.itemIds.length) {
+    parts.push("与你带回的材料线索相互呼应");
+  }
+
+  return parts.length ? ` ${parts.join("，")}。` : "";
 }
 
 function buildExploreEventExperience(

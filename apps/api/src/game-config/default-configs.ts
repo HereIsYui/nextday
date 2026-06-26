@@ -43,7 +43,7 @@ import {
   factionUnlockRealm,
 } from "../factions/factions.constants";
 import { toFactionRouteConfigState } from "../factions/factions.mappers";
-import { provinceConfigs } from "../game/game.constants";
+import { exploreEnemyPools, exploreLootPools, provinceConfigs } from "../game/game.constants";
 import {
   innerWorldConfigVersion,
   innerWorldCreatureConfigs,
@@ -200,6 +200,63 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
         province_id: province.provinceId,
         power: province.enemyPower,
       })),
+    },
+  },
+  explore_loot_pool: {
+    config_type: "explore_loot_pool",
+    config_version: "explore_loot_pool_p3_v1",
+    ruleset_version: "ruleset_p3_exploration_v1",
+    reward_config_version: "reward_p3_exploration_v1",
+    payload: {
+      budget_rule: "胜利仍只掉落 1 个普通材料，不提高探索总收益预算。",
+      forbidden_rewards: ["paid_jade", "ancient_treasure", "limited_artifact", "unique_power_item"],
+      pools: Object.entries(exploreLootPools).map(([provinceId, pool]) => ({
+        province_id: provinceId,
+        materials: pool.map((item) => ({
+          item_id: item.itemId,
+          name: item.name,
+          source_hint: item.sourceHint,
+          usage_hint: item.usageHint,
+        })),
+      })),
+    },
+  },
+  enemy_trait: {
+    config_type: "enemy_trait",
+    config_version: "enemy_trait_p3_v1",
+    ruleset_version: "ruleset_p3_exploration_v1",
+    reward_config_version: "reward_p3_exploration_v1",
+    payload: {
+      effect_scope: "怪物特性只影响服务端战斗表现、战报解释和技能推荐提示。",
+      enemies: Object.entries(exploreEnemyPools).flatMap(([provinceId, pool]) =>
+        pool.map((enemy) => ({
+          enemy_id: enemy.enemyId,
+          province_id: provinceId,
+          name: enemy.enemyName,
+          skill_name: enemy.skillName,
+          traits: enemy.traits,
+          flavor: enemy.flavor,
+        })),
+      ),
+    },
+  },
+  explore_event_link_rule: {
+    config_type: "explore_event_link_rule",
+    config_version: "explore_event_link_rule_p3_v1",
+    ruleset_version: "ruleset_p3_exploration_v1",
+    reward_config_version: "reward_p1_7_v1",
+    payload: {
+      rule: "探索领取后按最近战斗特性和掉落材料为奇遇事件加权，不改变奇遇奖励边界。",
+      links: [
+        { event_type: "herb_trace", boosted_by: ["low_herb", "pill_dust", "毒蚀"] },
+        {
+          event_type: "ruin_echo",
+          boosted_by: ["raw_iron", "artifact_soul", "inscription_rune", "高防"],
+        },
+        { event_type: "tower_rift", boosted_by: ["tower_sigil", "array_sand", "阵痕"] },
+        { event_type: "wandering_caravan", boosted_by: ["spirit_wood", "battle_mark", "灵敏"] },
+      ],
+      forbidden_rewards: ["paid_jade", "ancient_treasure", "limited_artifact", "unique_power_item"],
     },
   },
   cave: {

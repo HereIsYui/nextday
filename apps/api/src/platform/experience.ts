@@ -31,11 +31,13 @@ export function buildExploreExperience(input: {
     .map((battle, index) => ({
       step: index + 1,
       title: `${battle.enemy_name} · ${battle.result === "win" ? "胜" : "败"}`,
-      description: battle.reason_summary?.length
-        ? `${battle.rounds} 回合，${battle.reason_summary.slice(0, 2).join(" ")}`
-        : battle.log.length > 0
-          ? `${battle.rounds} 回合，${formatBattleLog(battle.log)}`
-          : `${battle.rounds} 回合，造成 ${battle.damage_done}，承受 ${battle.damage_taken}`,
+      description: battle.battle_hint
+        ? battle.battle_hint
+        : battle.reason_summary?.length
+          ? `${battle.rounds} 回合，${battle.reason_summary.slice(0, 2).join(" ")}`
+          : battle.log.length > 0
+            ? `${battle.rounds} 回合，${formatBattleLog(battle.log)}`
+            : `${battle.rounds} 回合，造成 ${battle.damage_done}，承受 ${battle.damage_taken}`,
       tone: battle.result === "win" ? ("success" as const) : ("warning" as const),
     }));
 

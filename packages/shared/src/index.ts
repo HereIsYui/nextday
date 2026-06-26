@@ -530,6 +530,7 @@ export interface BattleSummary {
   province_id: string;
   enemy_id: string;
   enemy_name: string;
+  enemy_traits?: string[];
   result: "win" | "lose";
   rounds: number;
   damage_done: number;
@@ -537,7 +538,20 @@ export interface BattleSummary {
   rewards: RewardBundle;
   log: BattleRoundLog[];
   reason_summary?: string[];
+  loot_highlights?: string[];
+  battle_hint?: string;
   created_at: string;
+}
+
+export interface BattleListResponse {
+  battles: BattleSummary[];
+  next_cursor: string | null;
+  filters: {
+    province_id?: string;
+    result?: "win" | "lose";
+    enemy_trait?: string;
+    battle_type?: string;
+  };
 }
 
 export interface RewardBundle {
@@ -609,6 +623,7 @@ export interface ExploreResponse {
   completed_task_ids: string[];
   experience?: ExperiencePayload;
   event?: ExploreEventState | null;
+  linked_event_hint?: string | null;
 }
 
 export interface ExploreCurrentResponse {

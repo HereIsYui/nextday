@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Inject, Post, Query, Req, UseGuards } from "@nestjs/common";
 import type {
+  BattleListResponse,
   BreakthroughResponse,
   CaveCollectResponse,
   CultivationClaimResponse,
@@ -42,6 +43,26 @@ export class GameController {
     @Req() request: Request,
   ): Promise<JournalListResponse> {
     return this.gameService.getJournal(requireAccountId(request), { before, limit });
+  }
+
+  @Get("battles")
+  battles(
+    @Query("province_id") provinceId: string | undefined,
+    @Query("result") result: string | undefined,
+    @Query("enemy_trait") enemyTrait: string | undefined,
+    @Query("battle_type") battleType: string | undefined,
+    @Query("limit") limit: string | undefined,
+    @Query("before") before: string | undefined,
+    @Req() request: Request,
+  ): Promise<BattleListResponse> {
+    return this.gameService.getBattles(requireAccountId(request), {
+      battleType,
+      before,
+      enemyTrait,
+      limit,
+      provinceId,
+      result,
+    });
   }
 
   @Post("cultivation/claim")

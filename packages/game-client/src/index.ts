@@ -30,6 +30,7 @@ import type {
   ApplyMentorRequest,
   AuthMeResponse,
   BagSummaryResponse,
+  BattleListResponse,
   BattleNarrativeResponse,
   BreakthroughResponse,
   CancelTransferRequestRequest,
@@ -408,6 +409,38 @@ export class GameClient {
 
   gameOverview(): Promise<ApiResponse<GameOverviewResponse>> {
     return this.get<GameOverviewResponse>("/api/game/overview");
+  }
+
+  battles(
+    filters: {
+      province_id?: string;
+      result?: "win" | "lose";
+      enemy_trait?: string;
+      battle_type?: string;
+      limit?: number;
+      before?: string;
+    } = {},
+  ): Promise<ApiResponse<BattleListResponse>> {
+    const params = new URLSearchParams();
+    if (filters.province_id) {
+      params.set("province_id", filters.province_id);
+    }
+    if (filters.result) {
+      params.set("result", filters.result);
+    }
+    if (filters.enemy_trait) {
+      params.set("enemy_trait", filters.enemy_trait);
+    }
+    if (filters.battle_type) {
+      params.set("battle_type", filters.battle_type);
+    }
+    if (filters.limit) {
+      params.set("limit", String(filters.limit));
+    }
+    if (filters.before) {
+      params.set("before", filters.before);
+    }
+    return this.get<BattleListResponse>(`/api/game/battles?${params.toString()}`);
   }
 
   provinces(): Promise<ApiResponse<{ provinces: ProvinceSummary[] }>> {

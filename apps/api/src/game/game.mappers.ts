@@ -14,7 +14,15 @@ import type {
   PlayerTaskState,
   ProvinceState,
 } from "@prisma/client";
-import { maxCaveCollectMinutes, provinceConfigs } from "./game.constants";
+import {
+  type ExploreLootConfig,
+  buildExploreBattleHint,
+  getExploreEnemyTraits,
+  getExploreLootConfig,
+  getExploreLootHint,
+  maxCaveCollectMinutes,
+  provinceConfigs,
+} from "./game.constants";
 
 export function toActionState(state: PlayerActionState): ActionState {
   return {
@@ -90,6 +98,18 @@ export function toCaveState(cave: PlayerCaveState, now = new Date()): CaveState 
 
 export function toBattleSummary(battle: BattleLog): BattleSummary {
   const battleLog = normalizeBattleLog(battle.battleLog);
+  const rewards = normalizeRewardBundle(battle.rewardSnapshot);
+  const enemyTraits = getExploreEnemyTraits(battle.enemyId);
+  const lootHighlights = buildLootHighlights(battle.provinceId ?? "", rewards);
+  const battleHint =
+    battle.battleType === "explore"
+      ? buildExploreBattleHint({
+          enemyName: battle.enemyName,
+          enemyTraits,
+          loot: firstLootFromRewards(battle.provinceId ?? "", rewards),
+          result: battle.result as BattleSummary["result"],
+        })
+      : undefined;
 
   return {
     battle_id: battle.battleId,
@@ -97,19 +117,24 @@ export function toBattleSummary(battle: BattleLog): BattleSummary {
     province_id: battle.provinceId ?? "",
     enemy_id: battle.enemyId,
     enemy_name: battle.enemyName,
+    enemy_traits: enemyTraits,
     result: battle.result as BattleSummary["result"],
     rounds: battle.rounds,
     damage_done: battle.damageDone,
     damage_taken: battle.damageTaken,
-    rewards: normalizeRewardBundle(battle.rewardSnapshot),
+    rewards,
     log: battleLog,
     reason_summary: buildBattleReasonSummary({
       damageDone: battle.damageDone,
       damageTaken: battle.damageTaken,
+      enemyTraits,
+      lootHighlights,
       result: battle.result,
       rounds: battle.rounds,
       log: battleLog,
     }),
+    loot_highlights: lootHighlights,
+    battle_hint: battleHint,
     created_at: battle.createdAt.toISOString(),
   };
 }
@@ -212,6 +237,8 @@ function buildBattleReasonSummary(input: {
   damageDone: number;
   damageTaken: number;
   log: BattleSummary["log"];
+  enemyTraits?: string[];
+  lootHighlights?: string[];
 }): string[] {
   const playerRounds = input.log.filter((item) => item.actor && item.damage > 0);
   const skillNames = uniqueStrings(
@@ -237,11 +264,44 @@ function buildBattleReasonSummary(input: {
     reasons.push(`本场触发 ${skillNames.join("、")}，可在技能预设中调整优先级。`);
   }
 
+  if (input.enemyTraits?.length) {
+    reasons.push(`敌方特性为${input.enemyTraits.join("、")}，可据此调整技能或服丹。`);
+  }
+
+  if (input.lootHighlights?.length) {
+    reasons.push(`材料线索：${input.lootHighlights[0]}`);
+  }
+
   if (input.rounds >= 3) {
     reasons.push("战斗进入三回合以上，下一步可通过服丹或炼器缩短回合。");
   }
 
   return reasons.slice(0, 4);
+}
+
+function buildLootHighlights(provinceId: string, rewards: RewardBundle): string[] {
+  return (rewards.items ?? [])
+    .map((item) => getExploreLootHint(provinceId, item.item_id) ?? `${item.name} x${item.count}`)
+    .slice(0, 3);
+}
+
+function firstLootFromRewards(
+  provinceId: string,
+  rewards: RewardBundle,
+): ExploreLootConfig | undefined {
+  const item = rewards.items?.[0];
+  if (!item) {
+    return undefined;
+  }
+
+  return (
+    getExploreLootConfig(provinceId, item.item_id) ?? {
+      itemId: item.item_id,
+      name: item.name,
+      sourceHint: "本次探索",
+      usageHint: "后续生产和成长",
+    }
+  );
 }
 
 function uniqueStrings(items: string[]): string[] {

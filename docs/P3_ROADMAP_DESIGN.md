@@ -125,4 +125,8 @@ P3 总体验收：
 
 ## 八、当前进度
 
-P3-0 文档与接口预备从本文档开始。完成 `DEVELOPMENT_BACKLOG_DESIGN.md`、`API_CONTRACT_DESIGN.md`、`CONFIG_SCHEMA_DESIGN.md` 和 `QA_TEST_PLAN.md` 同步后，下一步应进入 P3-1 探索生态核心，优先实现州域掉落池、怪物特性和探索奇遇联动。
+P3-0 文档与接口预备已完成：`DEVELOPMENT_BACKLOG_DESIGN.md`、`API_CONTRACT_DESIGN.md`、`CONFIG_SCHEMA_DESIGN.md` 和 `QA_TEST_PLAN.md` 已同步 P3 阶段、接口、配置与测试口径。
+
+P3-1 探索生态核心已完成：探索胜利掉落从固定凝露草扩展为九州普通材料池；每只探索怪物带高防、灵敏、毒蚀、术法、阵痕等特性；探索战报返回 `enemy_traits`、`loot_highlights`、`battle_hint`；探索奇遇会根据最近战斗特性和掉落材料加权生成；Web 战报卡展示特性、掉落线索和战斗提示；专项测试接入 `npm run test:p3-exploration-depth`。
+
+下一步进入 P3-2 生产材料链，优先实现材料来源查询、丹器推荐升级、生产结果用途反馈和材料断供预警。

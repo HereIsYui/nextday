@@ -180,6 +180,14 @@ export interface ExploreEnemyConfig {
   enemyPower: number;
   skillName: string;
   flavor: string;
+  traits: string[];
+}
+
+export interface ExploreLootConfig {
+  itemId: string;
+  name: string;
+  sourceHint: string;
+  usageHint: string;
 }
 
 export const exploreEnemyPools: Record<string, ExploreEnemyConfig[]> = {
@@ -307,6 +315,109 @@ export function selectExploreEnemy(
   return pool[(startIndex + battleIndex) % pool.length];
 }
 
+export const exploreLootPools: Record<string, ExploreLootConfig[]> = {
+  ji: [
+    createExploreLoot("low_herb", "凝露草", "冀州山道的灵草踪迹", "炼制聚灵丹、沸血丹"),
+    createExploreLoot("raw_iron", "玄铁砂", "玄铁塔影下的矿坡", "炼制低阶法宝"),
+    createExploreLoot("pill_dust", "丹尘", "废炉残火旁的粉尘", "补足炼丹失败返还"),
+    createExploreLoot("tower_sigil", "镇塔符", "玄铁塔裂隙边缘", "提交九塔镇封"),
+  ],
+  yan: [
+    createExploreLoot("sect_token", "宗门令", "兖州礼阵残纹", "宗门建设和师门任务"),
+    createExploreLoot("array_sand", "阵砂", "旧礼阵阵眼", "宗门阵法和协防"),
+    createExploreLoot("tower_sigil", "镇塔符", "礼法塔外的誓纹", "提交九塔镇封"),
+    createExploreLoot("pill_dust", "丹尘", "废庙丹炉余灰", "炼丹补材"),
+  ],
+  qing: [
+    createExploreLoot("low_herb", "凝露草", "海岱潮汐草滩", "炼制低阶丹药"),
+    createExploreLoot("pill_dust", "丹尘", "丹火蟹巢旁的火粉", "炼丹补材"),
+    createExploreLoot("battle_mark", "战备符", "潮生塔镜潮余波", "PVP 和战备准备"),
+    createExploreLoot("spirit_wood", "灵木", "海岱水脉旁的灵枝", "内天地和洞府培养"),
+  ],
+  xu: [
+    createExploreLoot("raw_iron", "玄铁砂", "古战场锈甲残片", "炼器和淬炼"),
+    createExploreLoot("battle_mark", "战备符", "旧战旗残纹", "PVP 和战备准备"),
+    createExploreLoot("artifact_soul", "器魂", "断兵残魂", "法宝淬炼和分解循环"),
+    createExploreLoot("tower_sigil", "镇塔符", "戈阳塔影裂隙", "提交九塔镇封"),
+  ],
+  yang: [
+    createExploreLoot("low_herb", "凝露草", "商路灵田边缘", "炼制低阶丹药"),
+    createExploreLoot("spirit_wood", "灵木", "扬州灵木林", "内天地派驻和洞府培养"),
+    createExploreLoot("array_sand", "阵砂", "商队旧阵盘", "宗门阵法和协防"),
+    createExploreLoot("inscription_rune", "铭纹砂", "琉光塔下的铭纹残砂", "法宝铭刻"),
+  ],
+  jing: [
+    createExploreLoot("spirit_wood", "灵木", "荆州泽林深处", "内天地派驻和洞府培养"),
+    createExploreLoot("low_herb", "凝露草", "万木秘境外缘", "炼制低阶丹药"),
+    createExploreLoot("inner_seed", "洞天种子", "万木孢雾凝结处", "内天地生灵培养"),
+    createExploreLoot("pill_dust", "丹尘", "灵植守卫残粉", "炼丹补材"),
+  ],
+  yu: [
+    createExploreLoot("array_sand", "阵砂", "天衡阵眼砂痕", "宗门阵法和协防"),
+    createExploreLoot("battle_mark", "战备符", "中州旗影残纹", "PVP 和阵营战准备"),
+    createExploreLoot("law_dust", "法则尘", "中州阵核余辉", "内天地法则经验"),
+    createExploreLoot("tower_sigil", "镇塔符", "天衡塔衡尺裂痕", "提交九塔镇封"),
+  ],
+  liang: [
+    createExploreLoot("raw_iron", "玄铁砂", "镇岳山脉矿脉", "炼器和淬炼"),
+    createExploreLoot("earth_vein_stone", "地脉石", "梁州地脉断层", "内天地支援和洞府升级"),
+    createExploreLoot("artifact_soul", "器魂", "炼体试影残核", "法宝淬炼和分解循环"),
+    createExploreLoot("inscription_rune", "铭纹砂", "镇岳石巨外壳", "法宝铭刻"),
+  ],
+  yong: [
+    createExploreLoot("taichu_stone", "太初石", "太初塔裂隙", "终局封印和内天地支援"),
+    createExploreLoot("law_dust", "法则尘", "圣遗残境余辉", "内天地法则经验"),
+    createExploreLoot("tower_sigil", "镇塔符", "终局封印边缘", "提交九塔镇封"),
+    createExploreLoot("battle_mark", "战备符", "古都禁卫遗痕", "PVP 和终局战备"),
+  ],
+};
+
+export function selectExploreLoot(
+  provinceId: string,
+  seed: string,
+  battleIndex: number,
+  enemyId: string,
+): ExploreLootConfig {
+  const pool = exploreLootPools[provinceId] ?? exploreLootPools.ji;
+  const index = stableIndex(`${provinceId}:${seed}:${battleIndex}:${enemyId}:loot`, pool.length);
+  return pool[index] ?? pool[0];
+}
+
+export function getExploreEnemyTraits(enemyId: string): string[] {
+  return findExploreEnemy(enemyId)?.traits ?? [];
+}
+
+export function getExploreLootHint(provinceId: string, itemId: string): string | null {
+  const loot = getExploreLootConfig(provinceId, itemId);
+  return loot ? `${loot.name}来自${loot.sourceHint}，可用于${loot.usageHint}。` : null;
+}
+
+export function getExploreLootConfig(
+  provinceId: string,
+  itemId: string,
+): ExploreLootConfig | undefined {
+  const loot = exploreLootPools[provinceId]?.find((item) => item.itemId === itemId);
+  return loot;
+}
+
+export function buildExploreBattleHint(input: {
+  result: "win" | "lose";
+  enemyName: string;
+  enemyTraits: string[];
+  loot?: ExploreLootConfig;
+}): string {
+  const traitText = input.enemyTraits.length ? input.enemyTraits.join("、") : "普通";
+  if (input.result === "lose") {
+    return `${input.enemyName}偏向${traitText}，本次未能压制；可先服丹、炼器或调整技能预设后再来。`;
+  }
+
+  if (input.loot) {
+    return `${input.enemyName}偏向${traitText}，已按自动策略压制；${input.loot.name}可用于${input.loot.usageHint}。`;
+  }
+
+  return `${input.enemyName}偏向${traitText}，已按自动策略压制。`;
+}
+
 function createExploreEnemyPool(
   provinceId: string,
   basePower: number,
@@ -319,7 +430,59 @@ function createExploreEnemyPool(
     flavor,
     provinceId,
     skillName,
+    traits: inferEnemyTraits(id, powerOffset, skillName, flavor),
   }));
+}
+
+function createExploreLoot(
+  itemId: string,
+  name: string,
+  sourceHint: string,
+  usageHint: string,
+): ExploreLootConfig {
+  return { itemId, name, sourceHint, usageHint };
+}
+
+function findExploreEnemy(enemyId: string): ExploreEnemyConfig | undefined {
+  for (const pool of Object.values(exploreEnemyPools)) {
+    const enemy = pool.find((item) => item.enemyId === enemyId);
+    if (enemy) {
+      return enemy;
+    }
+  }
+
+  return undefined;
+}
+
+function inferEnemyTraits(
+  id: string,
+  powerOffset: number,
+  skillName: string,
+  flavor: string,
+): string[] {
+  const traits = new Set<string>();
+  const text = `${id} ${skillName} ${flavor}`;
+
+  if (powerOffset >= 14 || /guard|golem|armor|stone|shell|甲|守卫|石|傀|钟/.test(text)) {
+    traits.add("高防");
+  }
+  if (powerOffset <= -8 || /fox|moth|sprite|bat|imp|影|狐|蛾|灵|魅|小妖/.test(text)) {
+    traits.add("灵敏");
+  }
+  if (/毒|蛇|serpent|雾|孢|dust|wraith|魅/.test(text)) {
+    traits.add("毒蚀");
+  }
+  if (/雷|电|fire|火|焰|潮|水|storm|tide/.test(text)) {
+    traits.add("术法");
+  }
+  if (/塔|阵|seal|衡|誓|法|ritual|array/.test(text)) {
+    traits.add("阵痕");
+  }
+  if (!traits.size) {
+    traits.add(powerOffset >= 6 ? "强攻" : "均衡");
+  }
+
+  return [...traits].slice(0, 2);
 }
 
 function stableIndex(seed: string, modulo: number): number {

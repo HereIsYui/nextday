@@ -253,6 +253,9 @@ export default function HomePage() {
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
   const [tabFocusPulse, setTabFocusPulse] = useState(false);
   const [actionFeedback, setActionFeedback] = useState<ActionFeedbackState | null>(null);
+  const [battleProvinceFilter, setBattleProvinceFilter] = useState("all");
+  const [battleResultFilter, setBattleResultFilter] = useState("all");
+  const [battleTraitFilter, setBattleTraitFilter] = useState("all");
   const actionFeedbackSourceRef = useRef<string | null>(null);
   const tabSurfaceRef = useRef<HTMLElement | null>(null);
 
@@ -297,6 +300,31 @@ export default function HomePage() {
     firstTower;
   const activeExplore =
     currentExplore && currentExplore.status !== "claimed" ? currentExplore : null;
+  const recentBattles = overview?.recent_battles ?? [];
+  const battleTraitOptions = useMemo(
+    () => uniqueStrings(recentBattles.flatMap((battle) => battle.enemy_traits ?? [])),
+    [recentBattles],
+  );
+  const filteredRecentBattles = useMemo(
+    () =>
+      recentBattles.filter((battle) => {
+        if (battleProvinceFilter !== "all" && battle.province_id !== battleProvinceFilter) {
+          return false;
+        }
+        if (battleResultFilter !== "all" && battle.result !== battleResultFilter) {
+          return false;
+        }
+        if (
+          battleTraitFilter !== "all" &&
+          !(battle.enemy_traits ?? []).includes(battleTraitFilter)
+        ) {
+          return false;
+        }
+
+        return true;
+      }),
+    [battleProvinceFilter, battleResultFilter, battleTraitFilter, recentBattles],
+  );
   const exploreRemainingSeconds = activeExplore
     ? Math.max(0, Math.ceil((new Date(activeExplore.completes_at).getTime() - nowMs) / 1000))
     : 0;
@@ -4076,11 +4104,54 @@ export default function HomePage() {
                   <h2>战报</h2>
                   <span>普通探索自动结算</span>
                 </div>
+                <div className="today-controls">
+                  <label>
+                    州域
+                    <select
+                      onChange={(event) => setBattleProvinceFilter(event.target.value)}
+                      value={battleProvinceFilter}
+                    >
+                      <option value="all">全部州域</option>
+                      {overview?.provinces.map((province) => (
+                        <option key={province.province_id} value={province.province_id}>
+                          {province.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    胜负
+                    <select
+                      onChange={(event) => setBattleResultFilter(event.target.value)}
+                      value={battleResultFilter}
+                    >
+                      <option value="all">全部结果</option>
+                      <option value="win">胜利</option>
+                      <option value="lose">失利</option>
+                    </select>
+                  </label>
+                  <label>
+                    特性
+                    <select
+                      onChange={(event) => setBattleTraitFilter(event.target.value)}
+                      value={battleTraitFilter}
+                    >
+                      <option value="all">全部特性</option>
+                      {battleTraitOptions.map((trait) => (
+                        <option key={trait} value={trait}>
+                          {trait}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
                 <div className="battle-list">
-                  {overview?.recent_battles.length ? (
-                    overview.recent_battles.map((battle) => (
+                  {filteredRecentBattles.length ? (
+                    filteredRecentBattles.map((battle) => (
                       <BattleReportCard battle={battle} key={battle.battle_id} />
                     ))
+                  ) : recentBattles.length ? (
+                    <p className="empty">当前筛选下没有战报，调整州域、胜负或特性再看。</p>
                   ) : (
                     <p className="empty">尚无战报，先探索冀州试试。</p>
                   )}
@@ -4820,11 +4891,26 @@ function BattleReportCard({ battle }: { battle: BattleSummary }) {
         <span>{formatShortDate(battle.created_at)}</span>
         <span>奖励 {rewardSummary}</span>
       </div>
+      {battle.enemy_traits?.length ? (
+        <div className="mini-stats battle-meta-row">
+          {battle.enemy_traits.map((trait) => (
+            <span key={`${battle.battle_id}-${trait}`}>特性 {trait}</span>
+          ))}
+        </div>
+      ) : null}
       <div className="battle-stat-grid">
         <span>造成 {battle.damage_done}</span>
         <span>承伤 {battle.damage_taken}</span>
         <span>灵石 {battle.rewards.spirit_stone ?? "0"}</span>
       </div>
+      {battle.battle_hint ? <p className="action-note">{battle.battle_hint}</p> : null}
+      {battle.loot_highlights?.length ? (
+        <ul className="battle-reason-list">
+          {battle.loot_highlights.map((highlight) => (
+            <li key={`${battle.battle_id}-${highlight}`}>{highlight}</li>
+          ))}
+        </ul>
+      ) : null}
       {battle.reason_summary?.length ? (
         <ul className="battle-reason-list">
           {battle.reason_summary.map((reason) => (

@@ -87,6 +87,13 @@
 | `sect_diplomacy_config` | P2 宗门外交 | diplomacy_type、approval_rule、cooldown_rule、assist_scope |
 | `sect_hire_config` | P2 跨宗门雇佣 | hire_type、allowed_action_scope、reward_escrow_rule、risk_decay_rule |
 | `transfer_rule_config` | P2 受限转服 | stage_limit、asset_mapping_rule、rank_cooldown_rule、review_rule |
+| `explore_loot_pool_config` | P3 探索掉落池 | province_id、enemy_tag、material_group、value_budget |
+| `enemy_trait_config` | P3 怪物特性 | trait_id、effect_hint、counter_hint、report_template |
+| `explore_event_link_rule_config` | P3 奇遇联动 | province_id、enemy_trait、material_gap、event_weight |
+| `material_chain_config` | P3 材料链 | item_id、source_rule、usage_rule、gap_hint |
+| `skill_learning_config` | P3 技能学习 | skill_id、unlock_condition、learn_cost、route_limit |
+| `battle_report_filter_config` | P3 战报筛选 | filter_id、scene_scope、summary_rule、fallback_text |
+| `daily_route_config` | P3 今日路线 | route_id、priority_rule、dedupe_rule、mobile_limit |
 | `payment_product_config` | 付费商品 | product_id、fishpi_point_cost、deliver_rule |
 | `mail_template_config` | 邮件模板 | template_id、title、body、reward_group |
 | `announcement_config` | 公告 | announcement_id、type、content、visible_rule |
@@ -441,7 +448,87 @@
 | review_rule | 人工审核、二次确认、回滚建议和 GM 审计规则 |
 | execute_enabled | 默认 false，未专项上线前只允许 dry-run 和执行预留 |
 
-## 九、配置发布流程
+## 九、P3 配置类型
+
+`explore_loot_pool_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| loot_pool_id | 探索掉落池 ID |
+| province_id | 关联州域 |
+| enemy_tag | 可选怪物标签，例如山野、潮汐、古战场、圣迹 |
+| chapter_condition | 章节或境界开放条件 |
+| material_group | 普通材料组和权重 |
+| value_budget | 单次探索材料总价值预算 |
+| forbidden_reward_rule | 禁止付费仙玉、九大古宝本体、限定法宝、唯一战力道具和奖励倍率 |
+
+`enemy_trait_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| trait_id | 怪物特性 ID |
+| trait_name | 中文展示名 |
+| effect_hint | 玩家可见表现，例如高防、快攻、毒伤、护盾 |
+| counter_hint | 克制建议，例如提高破防、调整技能顺序、服用丹药 |
+| report_template | 战报摘要模板 |
+| combat_effect_scope | 只允许影响服务端战斗表现和展示解释 |
+
+`explore_event_link_rule_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| link_rule_id | 奇遇联动规则 ID |
+| province_id | 关联州域，可为空表示全局 |
+| enemy_trait | 触发相关怪物特性 |
+| material_gap_rule | 根据材料缺口提高对应事件权重 |
+| chapter_condition | 章节、任务或新手阶段条件 |
+| event_weight | 事件权重调整 |
+| reward_boundary | 只允许普通修为、灵石、普通材料和任务进度 |
+
+`material_chain_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| item_id | 材料或丹药 / 器物关联道具 ID |
+| source_rule | 来源说明，例如州域、怪物、活动、洞府或生产返还 |
+| usage_rule | 用途说明，例如丹方、器方、淬炼、任务 |
+| gap_hint | 缺口提示模板 |
+| expected_action_count | 预计补齐所需行动次数，用于展示，不作为保底承诺 |
+| priority_rule | 今日路线和生产推荐优先级 |
+
+`skill_learning_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| skill_id | 技能 ID |
+| route_limit | 练气 / 炼体 / 仙魔路线限制 |
+| unlock_condition | 境界、章节、任务、材料和前置技能条件 |
+| learn_cost | 学习消耗 |
+| preset_hint | 自动释放顺序或本命技能建议 |
+| forbidden_paid_rule | 不允许付费直购战力技能或跳过核心解锁 |
+
+`battle_report_filter_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| filter_id | 战报筛选配置 ID |
+| scene_scope | 探索 / 九塔 / Boss / PVP / 阵营 |
+| filter_fields | 州域、胜负、敌人特性、奖励类型、时间 |
+| summary_rule | 战报摘要和奖励合并规则 |
+| fallback_text | 旧战报缺少新字段时的降级文案 |
+
+`daily_route_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| route_id | 今日路线配置 ID |
+| priority_rule | 可领取、可探索、奇遇、生产、九塔、任务领奖的优先级 |
+| dedupe_rule | 同一行动在今日修行、目标和成长中去重 |
+| mobile_limit | 移动端首屏展示数量 |
+| feedback_rule | 原地反馈、跳转详情和日志写入规则 |
+| boundary_rule | 不绕过行动令、幂等、月卡权益、风控和服务端结算 |
+
+## 十、配置发布流程
 
 1. 策划在草稿环境编辑配置。
 2. 系统校验字段、引用、概率和奖励边界。
@@ -475,8 +562,14 @@
 - `sect_diplomacy_config` 是否绕过 PVP 匹配、新手保护、九塔贡献结算或宗门权限审批。
 - `sect_hire_config` 是否允许转移付费资产、绑定道具、限定产物、九大古宝本体或刷排行贡献。
 - `transfer_rule_config` 是否开放自由转服、允许最终战前 30 天转服、跳过人工审核、复制可刷资源或取消排行冷却。
+- `explore_loot_pool_config` 是否让探索掉落总价值超过预算，或误产出付费仙玉、九大古宝本体、限定法宝和唯一战力道具。
+- `enemy_trait_config` 是否让客户端决定战斗胜负，或绕过服务端战斗公式。
+- `explore_event_link_rule_config` 是否通过奇遇联动发放付费产物、唯一战力道具或奖励倍率。
+- `material_chain_config` 是否把预计行动次数写成保底承诺，或绕过材料消耗。
+- `skill_learning_config` 是否允许付费直购战力技能、跳过境界 / 路线限制或伪造已掌握技能。
+- `daily_route_config` 是否绕过行动令、幂等、风控、月卡权益或服务端结算。
 
-## 十、版本追溯要求
+## 十一、版本追溯要求
 
 以下记录必须保存配置版本：
 
@@ -508,8 +601,14 @@
 | 宗门外交 | sect_diplomacy_config_version、ruleset_version |
 | 跨宗门雇佣 | sect_hire_config_version、reward_config_version、risk_ruleset_version |
 | 转服申请 | transfer_rule_config_version、risk_ruleset_version、settlement_config_version |
+| 探索掉落 | explore_loot_pool_config_version、reward_config_version、loot_ruleset_version |
+| 怪物特性战报 | enemy_trait_config_version、combat_config_version、battle_report_filter_config_version |
+| 奇遇联动 | explore_event_link_rule_config_version、explore_loot_pool_config_version、reward_config_version |
+| 材料链推荐 | material_chain_config_version、production_recommendation_config_version |
+| 技能学习 | skill_learning_config_version、combat_config_version、ruleset_version |
+| 今日路线 | daily_route_config_version、web_experience_config_version、ruleset_version |
 
-## 十一、命名和 ID 规范
+## 十二、命名和 ID 规范
 
 - 配置 ID 使用小写英文、数字和下划线，例如 `pill_juling_rank_1`。
 - 中文名用于展示，英文 ID 用于程序引用。
@@ -520,8 +619,12 @@
 - P2 收藏 ID 使用 `collection_{source}_{slug}`，例如 `collection_era_first_seal`。
 - P2 深度外观 ID 使用 `appearance_plus_{slot}_{slug}`，例如 `appearance_plus_battle_border_moon`。
 - P2 转服规则 ID 使用 `transfer_rule_{era_stage}_{slug}`，例如 `transfer_rule_mid_era_limited`。
+- P3 探索掉落池 ID 使用 `explore_loot_{province}_{slug}`，例如 `explore_loot_ji_xuantie_herb`。
+- P3 怪物特性 ID 使用 `enemy_trait_{slug}`，例如 `enemy_trait_shielded`。
+- P3 技能学习规则 ID 使用 `skill_learn_{route}_{slug}`，例如 `skill_learn_qi_fire_sigil`。
+- P3 今日路线 ID 使用 `daily_route_{stage}_{slug}`，例如 `daily_route_newbie_explore_craft`。
 
-## 十二、验收场景
+## 十三、验收场景
 
 - 开发能根据本文拆出核心配置文件和后台配置入口。
 - 所有核心玩法均能通过配置调整数值、奖励和开放章节。
@@ -541,3 +644,5 @@
 - P2 剧情演出、收藏、深度外观、导师、宗门外交、跨宗门雇佣和转服都有配置入口。
 - P2 配置发布能拦截战力外观、多纪元 Buff 叠加、社交资产转移、雇佣刷贡献和自由转服风险。
 - P2 转服配置默认只允许 dry-run、报告、审核和执行预留，不默认开放真实自由转服。
+- P3 探索掉落池、怪物特性、奇遇联动、材料链、技能学习、战报筛选和今日路线都有配置入口。
+- P3 配置发布能拦截付费产物误入探索、技能付费直购战力、客户端决定胜负、今日路线绕过结算和材料链保底承诺。

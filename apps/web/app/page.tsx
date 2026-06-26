@@ -173,6 +173,11 @@ interface MainlineStep {
   title: string;
   detail: string;
   status: MainlineStepStatus;
+  actionHint?: string;
+  actionLabel?: string;
+  reasonTags?: string[];
+  sourceDetail?: string;
+  targetTab?: string;
 }
 
 interface MainlineGuide {
@@ -186,6 +191,31 @@ interface MainlineGuide {
   primaryDisabled?: boolean;
   onPrimary: () => void | Promise<void>;
   steps: MainlineStep[];
+}
+
+interface PracticeFlowStep {
+  id: string;
+  index: number;
+  title: string;
+  detail: string;
+  status: MainlineStepStatus;
+  why: string;
+  nextHint: string;
+  reasonTags: string[];
+  actionLabel: string;
+  actionDisabled?: boolean;
+  feedbackSourceId: string;
+  onAction?: () => void | Promise<void>;
+}
+
+interface PracticeOutcome {
+  title: string;
+  summary: string;
+  tone: ExperienceTone;
+  deltas: string[];
+  tags: string[];
+  recommendations: string[];
+  timeLabel?: string;
 }
 
 export default function HomePage() {
@@ -464,6 +494,40 @@ export default function HomePage() {
     onInnerWorld: () => handleTabChange("growth"),
     onPill: selectedPill ? handleUsePill : handleCraftAlchemy,
     onTower: handleTowerAction,
+  });
+  const practiceFlowSteps = buildPracticeFlowSteps({
+    activeExplore,
+    busy,
+    canClaimExplore,
+    event: firstPendingExploreEvent,
+    exploreCount,
+    exploreRemainingSeconds,
+    firstActivity,
+    firstClaimableActivity,
+    guide: mainlineGuide,
+    mainlineTask,
+    onActivity: firstClaimableActivity
+      ? () => handleClaimActivity(firstClaimableActivity)
+      : firstActivity
+        ? () => handleSubmitActivity(firstActivity)
+        : () => handleTabChange("events"),
+    onCave: handleCollectCave,
+    onClaimExplore: handleClaimExplore,
+    onExplore: () => handleExplore(exploreCount),
+    onFocusEvent: handleFocusExploreEvent,
+    onGrowth: () => handleTabChange("growth"),
+    onTask: () => handleMainlineTask(mainlineTask),
+    onTower: handleTowerAction,
+    selectedAlchemyRecipe,
+    selectedForgeRecipe,
+    selectedPill,
+    selectedProvince,
+    selectedTower,
+  });
+  const practiceOutcome = buildPracticeOutcome({
+    actionFeedback,
+    experience: lastExperience,
+    latestEntry: journalEntries[0],
   });
 
   function actionFeedbackFor(sourceId: string): ActionFeedbackState | undefined {
@@ -2157,8 +2221,8 @@ export default function HomePage() {
   }
 
   function handleViewActionFeedbackDetails() {
-    setMessage("已定位修行日志");
-    scrollToSection(".journal-panel");
+    setMessage("已定位当前结果");
+    scrollToSection(".practice-outcome-panel");
   }
 
   async function handleMainlineTask(task: TaskState | undefined) {
@@ -2523,130 +2587,148 @@ export default function HomePage() {
           </section>
         ) : (
           <>
-            <section className="today-hero" aria-label="今日修行">
-              <div className="today-hero-copy">
-                <p className="eyebrow">今日修行</p>
-                <h2>先收收益，再定路线</h2>
-                <p>
-                  {completedTasks.length} 个任务可领 · 行动令{" "}
-                  {overview?.action_state?.action_points ?? 0} 枚 ·{" "}
-                  {firstClaimableActivity ? `${firstClaimableActivity.name} 可领奖` : "活动可推进"}
-                </p>
-              </div>
-              <div className="today-main-flow">
-                <MainlineGuideCard
-                  feedback={actionFeedbackFor("mainline-guide")}
-                  guide={mainlineGuide}
-                  onViewFeedback={handleViewActionFeedbackDetails}
-                />
-                <div className="today-controls" aria-label="今日行动选择">
-                  <label>
-                    <span>探索州域</span>
-                    <select
-                      onChange={(event) => handleSelectProvince(event.target.value)}
-                      value={selectedProvince?.province_id ?? ""}
-                    >
-                      {unlockedProvinces.map((province) => (
-                        <option key={province.province_id} value={province.province_id}>
-                          {province.name} · {province.tower_name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    <span>探索次数</span>
-                    <select
-                      onChange={(event) => setExploreCount(Number(event.target.value))}
-                      value={exploreCount}
-                    >
-                      <option value={1}>1 次</option>
-                      <option value={3}>3 次</option>
-                      <option value={5}>5 次</option>
-                    </select>
-                  </label>
-                  <label className="tower-choice">
-                    <span>九塔目标</span>
-                    <select
-                      onChange={(event) => handleSelectTower(event.target.value)}
-                      value={selectedTower?.tower_id ?? ""}
-                    >
-                      {towers?.towers.map((tower) => (
-                        <option
-                          disabled={!isProvinceUnlocked(overview?.provinces, tower.province_id)}
-                          key={tower.tower_id}
-                          value={tower.tower_id}
-                        >
-                          {provinceNameById(overview?.provinces, tower.province_id)} ·{" "}
-                          {tower.tower_name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <Button
-                    className="today-refresh-button"
-                    disabled={busy || !activeProfile?.player}
-                    onClick={() => refreshOverview()}
-                  >
-                    刷新状态
-                  </Button>
+            <section className="practice-workbench" aria-label="今日修行流程台">
+              <div className="practice-primary-flow">
+                <div className="practice-head">
+                  <p className="eyebrow">今日修行</p>
+                  <h2>按路线推进今日修行</h2>
+                  <p>
+                    {completedTasks.length} 个任务可领 · 行动令{" "}
+                    {overview?.action_state?.action_points ?? 0} 枚 ·{" "}
+                    {firstClaimableActivity
+                      ? `${firstClaimableActivity.name} 可领奖`
+                      : "活动可推进"}
+                  </p>
                 </div>
-              </div>
-              <div className="today-side-flow">
-                <ExploreQueueCard
-                  canClaim={canClaimExplore}
-                  explore={activeExplore ?? currentExplore}
-                  feedback={actionFeedbackFor("explore-queue")}
-                  onClaim={handleClaimExplore}
-                  onViewFeedback={handleViewActionFeedbackDetails}
-                  remainingSeconds={exploreRemainingSeconds}
-                  busy={busy}
-                />
-                <ExploreEventCard
-                  busy={busy}
-                  event={firstPendingExploreEvent}
-                  feedback={actionFeedbackFor("explore-event")}
-                  onResolve={handleResolveExploreEvent}
-                  onViewFeedback={handleViewActionFeedbackDetails}
-                />
-                <div className="today-action-grid">
-                  {visibleRecommendedActions.map((action) => {
-                    const feedbackSourceId = `recommended-${action.id}`;
-                    return (
-                      <article
-                        className="recommended-action"
-                        data-action-feedback-source={feedbackSourceId}
-                        key={action.id}
+
+                <section className="practice-route-panel" aria-label="今日路线">
+                  <div className="practice-route-head">
+                    <div>
+                      <span>第 {mainlineGuide.chapterId} 章</span>
+                      <strong>{mainlineGuide.title}</strong>
+                      <p>{mainlineGuide.subtitle}</p>
+                    </div>
+                    <div className="mainline-progress-summary">
+                      <strong>{mainlineGuide.progressText}</strong>
+                      <span>路线进度</span>
+                    </div>
+                  </div>
+                  <div aria-hidden="true" className="mainline-progress-bar">
+                    <span style={{ width: `${mainlineGuide.progressPercent}%` }} />
+                  </div>
+                  <div className="practice-flow-list">
+                    {practiceFlowSteps.map((step) => (
+                      <PracticeFlowStepCard
+                        feedback={actionFeedbackFor(step.feedbackSourceId)}
+                        key={step.id}
+                        onViewFeedback={handleViewActionFeedbackDetails}
+                        step={step}
+                      />
+                    ))}
+                  </div>
+                </section>
+
+                <section className="practice-controls-panel" aria-label="行动参数与途中状态">
+                  <div className="section-title">
+                    <h2>行动参数</h2>
+                    <span>路线按钮会使用这里选择的州域、次数和九塔目标</span>
+                  </div>
+                  <div className="today-controls" aria-label="今日行动选择">
+                    <label>
+                      <span>探索州域</span>
+                      <select
+                        onChange={(event) => handleSelectProvince(event.target.value)}
+                        value={selectedProvince?.province_id ?? ""}
                       >
-                        <div>
-                          <strong>{action.title}</strong>
-                          <span>{action.detail}</span>
-                        </div>
-                        {action.actionUnavailableReason ? (
-                          <span className="action-note">{action.actionUnavailableReason}</span>
-                        ) : (
-                          <Button disabled={action.disabled} onClick={action.onAction}>
-                            {action.buttonLabel}
-                          </Button>
-                        )}
-                        <ActionFeedbackInline
-                          feedback={actionFeedbackFor(feedbackSourceId)}
-                          onViewDetails={handleViewActionFeedbackDetails}
-                        />
-                      </article>
-                    );
-                  })}
-                </div>
+                        {unlockedProvinces.map((province) => (
+                          <option key={province.province_id} value={province.province_id}>
+                            {province.name} · {province.tower_name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      <span>探索次数</span>
+                      <select
+                        onChange={(event) => setExploreCount(Number(event.target.value))}
+                        value={exploreCount}
+                      >
+                        <option value={1}>1 次</option>
+                        <option value={3}>3 次</option>
+                        <option value={5}>5 次</option>
+                      </select>
+                    </label>
+                    <label className="tower-choice">
+                      <span>九塔目标</span>
+                      <select
+                        onChange={(event) => handleSelectTower(event.target.value)}
+                        value={selectedTower?.tower_id ?? ""}
+                      >
+                        {towers?.towers.map((tower) => (
+                          <option
+                            disabled={!isProvinceUnlocked(overview?.provinces, tower.province_id)}
+                            key={tower.tower_id}
+                            value={tower.tower_id}
+                          >
+                            {provinceNameById(overview?.provinces, tower.province_id)} ·{" "}
+                            {tower.tower_name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <Button
+                      className="today-refresh-button"
+                      disabled={busy || !activeProfile?.player}
+                      onClick={() => refreshOverview()}
+                    >
+                      整理状态
+                    </Button>
+                  </div>
+                  <div className="practice-state-grid">
+                    <ExploreQueueCard
+                      canClaim={canClaimExplore}
+                      explore={activeExplore ?? currentExplore}
+                      feedback={actionFeedbackFor("explore-queue")}
+                      onClaim={handleClaimExplore}
+                      onViewFeedback={handleViewActionFeedbackDetails}
+                      remainingSeconds={exploreRemainingSeconds}
+                      busy={busy}
+                    />
+                    <ExploreEventCard
+                      busy={busy}
+                      event={firstPendingExploreEvent}
+                      feedback={actionFeedbackFor("explore-event")}
+                      onResolve={handleResolveExploreEvent}
+                      onViewFeedback={handleViewActionFeedbackDetails}
+                    />
+                  </div>
+                </section>
               </div>
+
+              <aside className="practice-context-panel" aria-label="当前结果与资源">
+                <PracticeOutcomePanel outcome={practiceOutcome} />
+                <FlowContextPanel
+                  activeProfile={activeProfile}
+                  firstBattle={recentBattles[0]}
+                  firstPill={selectedPill}
+                  latestEntries={journalEntries.slice(0, 3)}
+                  overview={overview}
+                  selectedAlchemyRecipe={selectedAlchemyRecipe}
+                  selectedForgeRecipe={selectedForgeRecipe}
+                  selectedProvince={selectedProvince}
+                  selectedTower={selectedTower}
+                />
+              </aside>
             </section>
 
-            <section className="today-layout" aria-label="今日目标与成长追踪">
+            <section className="practice-summary-strip" aria-label="目标与成长摘要">
               <div className="today-panel">
                 <div className="section-title">
-                  <h2>今日目标摘要</h2>
-                  <span>主操作集中在上方今日修行</span>
+                  <h2>目标摘要</h2>
+                  <span>主操作已收束到今日路线</span>
                 </div>
                 <div className="goal-list">
-                  {dailyGoals.map((goal) => (
+                  {dailyGoals.slice(0, 3).map((goal) => (
                     <DailyGoalCard
                       feedback={actionFeedbackFor(`daily-goal-${goal.id}`)}
                       goal={goal}
@@ -2658,8 +2740,8 @@ export default function HomePage() {
               </div>
               <div className="today-panel">
                 <div className="section-title">
-                  <h2>成长提示</h2>
-                  <span>查看缺口，进入分区细调</span>
+                  <h2>成长摘要</h2>
+                  <span>缺口和配方细节放在成长分区</span>
                 </div>
                 <div className="growth-target-list">
                   {growthTargets.slice(0, 3).map((target) => (
@@ -2674,46 +2756,16 @@ export default function HomePage() {
               </div>
             </section>
 
-            <CultivationJournal
-              entries={journalEntries}
-              experience={lastExperience}
-              hasMore={Boolean(journalNextCursor)}
-              loadingMore={journalLoadingMore}
-              onLoadMore={handleLoadMoreJournal}
-            />
-
-            <section className="overview-grid" aria-label="修行总览">
-              <MetricCard
-                label="境界"
-                value={`${activeProfile.player.current_realm} 境 ${activeProfile.player.current_level} 层`}
-                detail={overview?.cultivation?.can_breakthrough ? "可突破" : "修行中"}
+            <details className="practice-history">
+              <summary>近期经历与完整结算</summary>
+              <CultivationJournal
+                entries={journalEntries}
+                experience={lastExperience}
+                hasMore={Boolean(journalNextCursor)}
+                loadingMore={journalLoadingMore}
+                onLoadMore={handleLoadMoreJournal}
               />
-              <MetricCard
-                label="修为"
-                value={
-                  overview?.cultivation?.cultivation_value ??
-                  activeProfile.progress?.cultivation_value ??
-                  "0"
-                }
-                detail={`可领 ${overview?.cultivation?.claimable_cultivation ?? "0"}`}
-              />
-              <MetricCard
-                label="行动令"
-                value={`${overview?.action_state?.action_points ?? 0}/${overview?.action_state?.action_point_cap ?? 0}`}
-                detail={`每小时 +${overview?.action_state?.action_point_restore_per_hour ?? 0}`}
-              />
-              <MetricCard
-                label="洞府"
-                value={`${overview?.cave?.claimable_minutes ?? 0} 分钟`}
-                detail={`灵石 ${overview?.cave?.preview_rewards.spirit_stone ?? "0"}`}
-              />
-              <MetricCard
-                label="资产"
-                value={activeProfile.wallet?.spirit_stone ?? "0"}
-                detail={`仙玉 ${activeProfile.wallet?.jade_paid ?? "0"} / ${activeProfile.wallet?.jade_bound ?? "0"}`}
-              />
-              {lastExperience ? <LedgerExperienceDetails experience={lastExperience} /> : null}
-            </section>
+            </details>
 
             <nav className="tab-nav" aria-label="功能分区">
               {navItems.map((item) => (
@@ -4452,6 +4504,243 @@ function LedgerExperienceDetails({ experience }: { experience: ExperiencePayload
   );
 }
 
+function PracticeFlowStepCard({
+  feedback,
+  onViewFeedback,
+  step,
+}: {
+  feedback?: ActionFeedbackState;
+  onViewFeedback: () => void;
+  step: PracticeFlowStep;
+}) {
+  const isExpanded = step.index === 1 && step.status === "active";
+
+  return (
+    <article
+      className={`practice-flow-step status-${step.status} ${isExpanded ? "expanded" : "compact"}`}
+      data-action-feedback-source={step.feedbackSourceId}
+    >
+      <div className="practice-flow-index">{step.index}</div>
+      <div className="practice-flow-body">
+        <div className="practice-flow-title">
+          <div>
+            <strong>{step.title}</strong>
+            <span>{step.detail}</span>
+          </div>
+          <StatusBadge tone={mainlineStepTone(step.status)}>
+            {mainlineStepStatusLabel(step.status)}
+          </StatusBadge>
+        </div>
+        {isExpanded ? <p>{step.why}</p> : null}
+        {isExpanded && step.reasonTags.length ? (
+          <div className="reason-tags">
+            {step.reasonTags.slice(0, 3).map((tag) => (
+              <span className="reason-tag" key={`${step.id}-${tag}`}>
+                {tag}
+              </span>
+            ))}
+          </div>
+        ) : null}
+        <div className="practice-flow-action">
+          <span>{step.nextHint}</span>
+          {isExpanded && step.onAction ? (
+            <Button disabled={step.actionDisabled} onClick={step.onAction}>
+              {step.actionLabel}
+            </Button>
+          ) : null}
+        </div>
+        <ActionFeedbackInline feedback={feedback} onViewDetails={onViewFeedback} />
+      </div>
+    </article>
+  );
+}
+
+function PracticeOutcomePanel({ outcome }: { outcome: PracticeOutcome }) {
+  return (
+    <article className={`practice-outcome-panel tone-${outcome.tone}`} aria-label="当前结果">
+      <div className="province-head">
+        <div>
+          <strong>{outcome.title}</strong>
+          {outcome.timeLabel ? <span>{outcome.timeLabel}</span> : null}
+        </div>
+        <StatusBadge tone={toBadgeTone(outcome.tone)}>
+          {outcome.tone === "success" ? "已记录" : outcome.tone === "warning" ? "需留意" : "当前"}
+        </StatusBadge>
+      </div>
+      <p>{outcome.summary}</p>
+      {outcome.deltas.length ? (
+        <div className="journal-deltas">
+          {outcome.deltas.slice(0, 4).map((delta) => (
+            <span key={delta}>{delta}</span>
+          ))}
+        </div>
+      ) : null}
+      {outcome.tags.length ? (
+        <div className="reason-tags">
+          {outcome.tags.slice(0, 4).map((tag) => (
+            <span className="reason-tag" key={tag}>
+              {tag}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {outcome.recommendations.length ? (
+        <div className="practice-next-list">
+          {outcome.recommendations.slice(0, 2).map((item) => (
+            <span key={item}>{item}</span>
+          ))}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function FlowContextPanel({
+  activeProfile,
+  firstBattle,
+  firstPill,
+  latestEntries,
+  overview,
+  selectedAlchemyRecipe,
+  selectedForgeRecipe,
+  selectedProvince,
+  selectedTower,
+}: {
+  activeProfile: PlayerProfileResponse | null;
+  firstBattle?: BattleSummary;
+  firstPill?: BagSummaryResponse["items"][number];
+  latestEntries: JournalEntry[];
+  overview: GameOverviewResponse | null;
+  selectedAlchemyRecipe?: AlchemyRecipeListResponse["recipes"][number];
+  selectedForgeRecipe?: ForgeRecipeListResponse["recipes"][number];
+  selectedProvince?: ProvinceSummary;
+  selectedTower?: TowerStateSummary;
+}) {
+  return (
+    <div className="flow-context-stack">
+      <section className="flow-resource-panel" aria-label="关键资源">
+        <div className="section-title">
+          <h2>关键资源</h2>
+          <span>决定今日路线能推进到哪里</span>
+        </div>
+        <div className="flow-metric-grid">
+          <MetricCard
+            label="境界"
+            value={
+              activeProfile?.player
+                ? `${activeProfile.player.current_realm} ${activeProfile.player.current_level} 层`
+                : "未入道"
+            }
+            detail={overview?.cultivation?.can_breakthrough ? "可尝试突破" : "继续积累修为"}
+          />
+          <MetricCard
+            label="修为"
+            value={overview?.cultivation?.cultivation_value ?? "0"}
+            detail={`可收 ${overview?.cultivation?.claimable_cultivation ?? "0"}`}
+          />
+          <MetricCard
+            label="行动令"
+            value={`${overview?.action_state?.action_points ?? 0}/${overview?.action_state?.action_point_cap ?? 0}`}
+            detail={`每小时 +${overview?.action_state?.action_point_restore_per_hour ?? 0}`}
+          />
+          <MetricCard
+            label="灵石"
+            value={activeProfile?.wallet?.spirit_stone ?? "0"}
+            detail={`洞府可收 ${overview?.cave?.preview_rewards.spirit_stone ?? "0"}`}
+          />
+        </div>
+      </section>
+
+      <section className="flow-next-panel" aria-label="成长线索">
+        <div className="section-title">
+          <h2>成长线索</h2>
+          <span>探索产出会导向这里</span>
+        </div>
+        <div className="flow-clue-list">
+          <article>
+            <strong>{selectedProvince?.name ?? "州域未定"}</strong>
+            <span>
+              {selectedProvince
+                ? `${selectedProvince.tower_name} · ${selectedProvince.recommended_action}`
+                : "选择州域后开始探索。"}
+            </span>
+          </article>
+          <article>
+            <strong>{selectedAlchemyRecipe?.name ?? "丹方待选"}</strong>
+            <span>
+              {selectedAlchemyRecipe?.recommendation?.can_craft
+                ? selectedAlchemyRecipe.recommendation.result_hint
+                : selectedAlchemyRecipe?.recommendation
+                  ? formatMaterialGaps(selectedAlchemyRecipe.recommendation.material_gaps)
+                  : "探索材料入袋后再看可炼丹方。"}
+            </span>
+          </article>
+          <article>
+            <strong>{selectedForgeRecipe?.name ?? "器方待选"}</strong>
+            <span>
+              {selectedForgeRecipe?.recommendation?.can_craft
+                ? selectedForgeRecipe.recommendation.result_hint
+                : selectedForgeRecipe?.recommendation
+                  ? formatMaterialGaps(selectedForgeRecipe.recommendation.material_gaps)
+                  : "法宝配方会跟随材料缺口变化。"}
+            </span>
+          </article>
+          <article>
+            <strong>{firstPill ? formatPillItemLabel(firstPill) : "暂无可服丹药"}</strong>
+            <span>{firstPill ? "可在成长分区服用。" : "先炼制基础丹药补足修为。"}</span>
+          </article>
+        </div>
+      </section>
+
+      <section className="flow-next-panel" aria-label="最近战斗与九塔">
+        <div className="section-title">
+          <h2>战斗线索</h2>
+          <span>用来决定生产和九塔行动</span>
+        </div>
+        <div className="flow-clue-list">
+          <article>
+            <strong>{firstBattle?.enemy_name ?? "尚无战报"}</strong>
+            <span>
+              {firstBattle
+                ? `${battleProvinceLabel(firstBattle.province_id)} · ${
+                    firstBattle.result === "win" ? "胜利" : "失利"
+                  } · ${formatBattleRewardSummary(firstBattle.rewards)}`
+                : "完成探索后会留下敌人、掉落和反制建议。"}
+            </span>
+          </article>
+          <article>
+            <strong>{selectedTower?.tower_name ?? "九塔待定"}</strong>
+            <span>
+              {selectedTower
+                ? `完整 ${selectedTower.integrity} · 镇封 ${selectedTower.seal_progress} · 魔染 ${selectedTower.corruption}`
+                : "选择州域后会对应九塔目标。"}
+            </span>
+          </article>
+        </div>
+      </section>
+
+      <section className="flow-next-panel" aria-label="近期经历">
+        <div className="section-title">
+          <h2>近期经历</h2>
+          <span>完整记录可在下方展开</span>
+        </div>
+        <div className="flow-journal-brief">
+          {latestEntries.length ? (
+            latestEntries.map((entry) => (
+              <article key={entry.id}>
+                <strong>{entry.title}</strong>
+                <span>{entry.summary}</span>
+              </article>
+            ))
+          ) : (
+            <span className="action-note">完成探索、炼丹或九塔后会留下记录。</span>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function MainlineGuideCard({
   feedback,
   guide,
@@ -5464,6 +5753,325 @@ function selectMainlineTask(tasks: TaskState[]): TaskState | undefined {
   );
 }
 
+function buildPracticeFlowSteps(input: {
+  activeExplore: ExploreResponse | null;
+  busy: boolean;
+  canClaimExplore: boolean;
+  event: ExploreEventState | undefined;
+  exploreCount: number;
+  exploreRemainingSeconds: number;
+  firstActivity: ActivitySummaryState | undefined;
+  firstClaimableActivity: ActivitySummaryState | undefined;
+  guide: MainlineGuide;
+  mainlineTask: TaskState | undefined;
+  onActivity: () => void | Promise<void>;
+  onCave: () => void | Promise<void>;
+  onClaimExplore: () => void | Promise<void>;
+  onExplore: () => void | Promise<void>;
+  onFocusEvent: () => void;
+  onGrowth: () => void | Promise<void>;
+  onTask: () => void | Promise<void>;
+  onTower: () => void | Promise<void>;
+  selectedAlchemyRecipe: AlchemyRecipeListResponse["recipes"][number] | undefined;
+  selectedForgeRecipe: ForgeRecipeListResponse["recipes"][number] | undefined;
+  selectedPill: BagSummaryResponse["items"][number] | undefined;
+  selectedProvince: ProvinceSummary | undefined;
+  selectedTower: TowerStateSummary | undefined;
+}): PracticeFlowStep[] {
+  const orderedSteps = [
+    ...input.guide.steps.filter((step) => step.status === "active"),
+    ...input.guide.steps.filter((step) => step.status === "pending"),
+    ...input.guide.steps.filter((step) => step.status === "done"),
+  ];
+  const uniqueSteps = dedupeMainlineSteps(orderedSteps).slice(0, 5);
+
+  return uniqueSteps.map((step, index) => {
+    const actionHint = step.actionHint ?? step.id;
+    const action = practiceStepAction(actionHint, input);
+    const isActionable = step.status === "active" && Boolean(action.onAction) && !action.disabled;
+
+    return {
+      actionDisabled: input.busy || action.disabled || !isActionable,
+      actionLabel: action.label,
+      detail: step.detail,
+      feedbackSourceId: `practice-flow-${step.id}`,
+      id: step.id,
+      index: index + 1,
+      nextHint: practiceNextHint(actionHint, step, input),
+      onAction: action.onAction,
+      reasonTags: step.reasonTags ?? practiceReasonTags(actionHint, input),
+      status: step.status,
+      title: step.title,
+      why: practiceWhyText(actionHint, step),
+    };
+  });
+}
+
+function dedupeMainlineSteps(steps: MainlineStep[]): MainlineStep[] {
+  const seen = new Set<string>();
+  const result: MainlineStep[] = [];
+  for (const step of steps) {
+    if (seen.has(step.id)) {
+      continue;
+    }
+    seen.add(step.id);
+    result.push(step);
+  }
+  return result;
+}
+
+function practiceStepAction(
+  actionHint: string,
+  input: {
+    activeExplore: ExploreResponse | null;
+    busy: boolean;
+    canClaimExplore: boolean;
+    event: ExploreEventState | undefined;
+    firstActivity: ActivitySummaryState | undefined;
+    firstClaimableActivity: ActivitySummaryState | undefined;
+    mainlineTask: TaskState | undefined;
+    onActivity: () => void | Promise<void>;
+    onCave: () => void | Promise<void>;
+    onClaimExplore: () => void | Promise<void>;
+    onExplore: () => void | Promise<void>;
+    onFocusEvent: () => void;
+    onGrowth: () => void | Promise<void>;
+    onTask: () => void | Promise<void>;
+    onTower: () => void | Promise<void>;
+  },
+): { disabled?: boolean; label: string; onAction?: () => void | Promise<void> } {
+  if (actionHint === "task" || actionHint === "claim_task" || actionHint === "chapter_task") {
+    return {
+      disabled: input.busy,
+      label: input.mainlineTask?.status === "completed" ? "领取章节奖励" : "整理任务",
+      onAction: input.onTask,
+    };
+  }
+  if (actionHint === "claim_explore") {
+    return {
+      disabled: input.busy || !input.canClaimExplore,
+      label: input.canClaimExplore ? "领取探索战报" : "等待探索完成",
+      onAction: input.canClaimExplore ? input.onClaimExplore : undefined,
+    };
+  }
+  if (
+    actionHint === "explore" ||
+    actionHint === "start_explore" ||
+    actionHint === "province_explore"
+  ) {
+    return {
+      disabled: input.busy || Boolean(input.activeExplore),
+      label: input.activeExplore ? "探索进行中" : "开始探索",
+      onAction: input.activeExplore ? undefined : input.onExplore,
+    };
+  }
+  if (actionHint === "explore_event" || actionHint === "resolve_explore_event") {
+    return {
+      disabled: input.busy || !input.event,
+      label: input.event ? "处理奇遇" : "等待途中见闻",
+      onAction: input.event ? input.onFocusEvent : undefined,
+    };
+  }
+  if (actionHint === "collect_cave") {
+    return {
+      disabled: input.busy,
+      label: "收取洞府",
+      onAction: input.onCave,
+    };
+  }
+  if (
+    actionHint === "growth" ||
+    actionHint === "production_growth" ||
+    actionHint === "craft_alchemy"
+  ) {
+    return {
+      disabled: input.busy,
+      label: "进入成长",
+      onAction: input.onGrowth,
+    };
+  }
+  if (actionHint === "activity") {
+    return {
+      disabled: input.busy || !input.firstActivity,
+      label: input.firstClaimableActivity ? "领取活动" : "推进活动",
+      onAction: input.firstActivity ? input.onActivity : undefined,
+    };
+  }
+  if (actionHint === "multiplayer" || actionHint === "tower" || actionHint === "tower_action") {
+    return {
+      disabled: input.busy,
+      label: "镇封九塔",
+      onAction: input.onTower,
+    };
+  }
+
+  return {
+    disabled: input.busy,
+    label: "继续修行",
+  };
+}
+
+function practiceWhyText(actionHint: string, step: MainlineStep): string {
+  if (step.sourceDetail) {
+    return step.sourceDetail;
+  }
+  const labels: Record<string, string> = {
+    chapter_task: "章节任务决定今日路线的第一段目标。",
+    claim_explore: "探索完成后才会结算战报、掉落和途中见闻。",
+    claim_task: "已完成的任务先入袋，后续行动才更清楚。",
+    collect_cave: "洞府产出能补灵石和普通材料。",
+    explore: "探索会带来材料、敌人情报和任务进度。",
+    explore_event: "途中见闻提供轻选择和少量普通奖励。",
+    production_growth: "探索材料会导向丹药、法宝和技能调整。",
+    resolve_explore_event: "途中见闻提供轻选择和少量普通奖励。",
+    start_explore: "探索会带来材料、敌人情报和任务进度。",
+    tower: "九塔贡献会改变本州公共目标。",
+    tower_action: "九塔贡献会改变本州公共目标。",
+  };
+  return labels[actionHint] ?? "这一步会推进今日修行路线。";
+}
+
+function practiceReasonTags(
+  actionHint: string,
+  input: {
+    event: ExploreEventState | undefined;
+    selectedAlchemyRecipe: AlchemyRecipeListResponse["recipes"][number] | undefined;
+    selectedForgeRecipe: ForgeRecipeListResponse["recipes"][number] | undefined;
+    selectedPill: BagSummaryResponse["items"][number] | undefined;
+    selectedProvince: ProvinceSummary | undefined;
+    selectedTower: TowerStateSummary | undefined;
+  },
+): string[] {
+  if (actionHint.includes("explore_event") || actionHint === "resolve_explore_event") {
+    return input.event ? [eventRarityLabel(input.event.rarity), "轻选择"] : ["探索后出现"];
+  }
+  if (actionHint.includes("explore")) {
+    return input.selectedProvince
+      ? [input.selectedProvince.name, input.selectedProvince.tower_name]
+      : ["州域探索"];
+  }
+  if (actionHint.includes("growth") || actionHint.includes("alchemy")) {
+    return [
+      input.selectedAlchemyRecipe?.name,
+      input.selectedForgeRecipe?.name,
+      input.selectedPill ? "可服丹" : undefined,
+    ].filter((item): item is string => Boolean(item));
+  }
+  if (actionHint.includes("tower") || actionHint === "multiplayer") {
+    return input.selectedTower ? [input.selectedTower.tower_name, "全服目标"] : ["九塔"];
+  }
+  return [];
+}
+
+function practiceNextHint(
+  actionHint: string,
+  step: MainlineStep,
+  input: {
+    activeExplore: ExploreResponse | null;
+    canClaimExplore: boolean;
+    event: ExploreEventState | undefined;
+    exploreCount: number;
+    exploreRemainingSeconds: number;
+    firstActivity: ActivitySummaryState | undefined;
+    firstClaimableActivity: ActivitySummaryState | undefined;
+    selectedAlchemyRecipe: AlchemyRecipeListResponse["recipes"][number] | undefined;
+    selectedForgeRecipe: ForgeRecipeListResponse["recipes"][number] | undefined;
+    selectedPill: BagSummaryResponse["items"][number] | undefined;
+    selectedProvince: ProvinceSummary | undefined;
+    selectedTower: TowerStateSummary | undefined;
+  },
+): string {
+  if (step.status === "done") {
+    return "已完成，继续看下一步。";
+  }
+  if (actionHint === "claim_explore") {
+    if (input.canClaimExplore) {
+      return "领取后会生成战报、掉落摘要和可能的奇遇。";
+    }
+    if (input.activeExplore) {
+      return `还需 ${formatRemainingSeconds(input.exploreRemainingSeconds)}，完成后再领取。`;
+    }
+  }
+  if (actionHint.includes("explore") && !actionHint.includes("event")) {
+    return input.selectedProvince
+      ? `将安排 ${input.selectedProvince.name} ${input.exploreCount} 次探索。`
+      : "先选择已开放州域。";
+  }
+  if (actionHint.includes("event")) {
+    return input.event ? "选择后会写入日志，并刷新下一步。" : "领取探索后再处理见闻。";
+  }
+  if (actionHint.includes("growth") || actionHint.includes("alchemy")) {
+    if (input.selectedPill) {
+      return `${formatPillItemLabel(input.selectedPill)} 可作为下一步成长。`;
+    }
+    return input.selectedAlchemyRecipe || input.selectedForgeRecipe
+      ? "成长页会展示材料缺口和推荐用途。"
+      : "先通过探索取得生产材料。";
+  }
+  if (actionHint.includes("tower") || actionHint === "multiplayer") {
+    return input.selectedTower
+      ? `${input.selectedTower.tower_name} 会记录个人贡献和本州变化。`
+      : "九塔状态读取后再提交。";
+  }
+  if (actionHint === "activity") {
+    return input.firstClaimableActivity
+      ? `${input.firstClaimableActivity.name} 已可领取。`
+      : input.firstActivity
+        ? `${input.firstActivity.name} 可继续推进。`
+        : "活动开启后会进入路线。";
+  }
+  return "完成后路线会自动刷新。";
+}
+
+function buildPracticeOutcome(input: {
+  actionFeedback: ActionFeedbackState | null;
+  experience: ExperiencePayload | null;
+  latestEntry: JournalEntry | undefined;
+}): PracticeOutcome {
+  if (input.actionFeedback?.status === "running") {
+    return {
+      deltas: [],
+      recommendations: ["完成后会整理下一步路线"],
+      summary: input.actionFeedback.message,
+      tags: ["处理中"],
+      title: input.actionFeedback.label,
+      tone: "neutral",
+    };
+  }
+  if (input.experience) {
+    return {
+      deltas: input.experience.delta_summary.map(formatDeltaSummary),
+      recommendations: input.experience.next_recommendations.map(
+        (item) => `${item.label}：${item.reason}`,
+      ),
+      summary: input.experience.summary,
+      tags: filterJournalTags(input.experience.reason_tags),
+      title: input.experience.title,
+      tone: resolveExperienceTone(input.experience),
+    };
+  }
+  if (input.latestEntry) {
+    return {
+      deltas: input.latestEntry.deltas,
+      recommendations: input.latestEntry.recommendations,
+      summary: input.latestEntry.summary,
+      tags: input.latestEntry.tags,
+      timeLabel: formatJournalTime(input.latestEntry.createdAt),
+      title: input.latestEntry.title,
+      tone: input.latestEntry.tone,
+    };
+  }
+
+  return {
+    deltas: [],
+    recommendations: ["先按今日路线完成一次探索或收益收束"],
+    summary: "完成行动后，这里会直接显示结果、收益变化和下一步建议。",
+    tags: [],
+    title: "等待今日第一步",
+    tone: "neutral",
+  };
+}
+
 function buildMainlineGuide(input: {
   activeExplore: ExploreResponse | null;
   activeProfile: PlayerProfileResponse | null;
@@ -5485,9 +6093,14 @@ function buildMainlineGuide(input: {
 }): MainlineGuide {
   if (input.serverRoute) {
     const steps = input.serverRoute.steps.map((step) => ({
+      actionHint: step.action_hint,
+      actionLabel: step.action_label,
       detail: step.detail,
       id: step.step_id,
+      reasonTags: "reason_tags" in step ? step.reason_tags : undefined,
+      sourceDetail: "source_detail" in step ? step.source_detail : undefined,
       status: step.status,
+      targetTab: "target_tab" in step ? step.target_tab : undefined,
       title: step.title,
     }));
     const activeStep =
@@ -5555,32 +6168,44 @@ function buildMainlineGuide(input: {
 
   const steps: MainlineStep[] = [
     {
+      actionHint: "task",
+      actionLabel: input.chapterTask?.status === "completed" ? "领取章节奖励" : "查看章节任务",
       detail: input.chapterTask
         ? `${input.chapterTask.progress_value}/${input.chapterTask.target_value} · ${taskStatusLabel(
             input.chapterTask.status,
           )}`
         : "当前章节任务已整理。",
       id: "chapter_task",
+      reasonTags: input.chapterTask?.status === "completed" ? ["可领取"] : ["章节"],
       status: taskStepStatus,
       title: input.chapterTask?.title ?? "章节任务",
     },
     {
+      actionHint: "explore",
+      actionLabel: input.activeExplore ? "等待探索完成" : "开始探索",
       detail: `${mainProvince?.name ?? "冀州"}探索 ${explorationCount}/${explorationTarget}`,
       id: "province_explore",
+      reasonTags: [mainProvince?.name ?? "冀州", "材料来源"],
       status: exploreStepStatus,
       title: "稳住州域",
     },
     {
+      actionHint: "explore_event",
+      actionLabel: hasPendingEvent ? "处理奇遇" : "等待途中见闻",
       detail: hasPendingEvent ? `${input.event?.title} · 等待处理` : "途中见闻会记录到修行日志。",
       id: "explore_event",
+      reasonTags: hasPendingEvent ? ["轻选择"] : ["探索后出现"],
       status: eventStepStatus,
       title: "处理见闻",
     },
     {
+      actionHint: "tower",
+      actionLabel: "镇封九塔",
       detail: input.selectedTower
         ? `${input.selectedTower.tower_name}镇封 ${input.selectedTower.seal_progress}`
         : "九塔状态读取后开放镇封目标。",
       id: "tower",
+      reasonTags: input.selectedTower ? [input.selectedTower.tower_name, "全服目标"] : ["九塔"],
       status: towerStepStatus,
       title: "镇封九塔",
     },

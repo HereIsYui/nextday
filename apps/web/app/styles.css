@@ -2931,3 +2931,372 @@ details.event-boundary {
     display: none !important;
   }
 }
+
+/* P3.6：桌面修行流程台。此处覆盖旧三栏暗室布局，让首页从功能面板改为连续路线。 */
+.text-game-shell {
+  gap: 14px;
+  grid-template-areas:
+    "top"
+    "practice"
+    "summary"
+    "history"
+    "nav"
+    "tabs";
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 1320px;
+}
+
+.text-game-shell .practice-workbench {
+  align-items: start;
+  display: grid;
+  gap: 12px 22px;
+  grid-area: practice;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  min-width: 0;
+}
+
+.text-game-shell .practice-primary-flow {
+  align-content: start;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.text-game-shell .practice-head {
+  align-items: end;
+  border-bottom: 1px solid #111111;
+  display: grid;
+  gap: 2px 16px;
+  grid-area: auto;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+  padding-bottom: 6px;
+}
+
+.text-game-shell .practice-head .eyebrow {
+  grid-column: 1 / -1;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.text-game-shell .practice-head h2 {
+  font-size: 21px;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.text-game-shell .practice-head p:not(.eyebrow) {
+  color: #444444;
+  font-size: 13px;
+  justify-self: end;
+  line-height: 1.35;
+  margin: 0;
+  max-width: 380px;
+  text-align: right;
+}
+
+.text-game-shell .practice-route-panel,
+.text-game-shell .practice-controls-panel,
+.text-game-shell .practice-context-panel,
+.text-game-shell .practice-summary-strip,
+.text-game-shell .practice-history {
+  min-width: 0;
+}
+
+.text-game-shell .practice-route-panel {
+  border: 1px solid #111111;
+  display: grid;
+  gap: 7px;
+  grid-area: auto;
+  padding: 10px;
+}
+
+.text-game-shell .practice-route-head {
+  align-items: start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.text-game-shell .practice-route-head strong {
+  display: block;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.text-game-shell .practice-route-head span,
+.text-game-shell .practice-route-head p {
+  color: #555555;
+  font-size: 12px;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.text-game-shell .practice-flow-list {
+  display: grid;
+  gap: 6px;
+}
+
+.text-game-shell .practice-flow-step {
+  background: #ffffff;
+  border: 1px solid #dddddd;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 30px minmax(0, 1fr);
+  min-width: 0;
+  padding: 8px;
+}
+
+.text-game-shell .practice-flow-step.compact {
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 3px 8px;
+}
+
+.text-game-shell .practice-flow-step.status-active {
+  border-color: #111111;
+}
+
+.text-game-shell .practice-flow-step.status-done {
+  background: #fbfbfa;
+}
+
+.text-game-shell .practice-flow-index {
+  align-items: center;
+  border: 1px solid #111111;
+  display: inline-flex;
+  font-size: 12px;
+  height: 22px;
+  justify-content: center;
+  line-height: 1;
+  width: 22px;
+}
+
+.text-game-shell .practice-flow-body {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.text-game-shell .practice-flow-title {
+  align-items: start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.text-game-shell .practice-flow-step.compact .practice-flow-title {
+  align-items: center;
+}
+
+.text-game-shell .practice-flow-title strong {
+  display: block;
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.text-game-shell .practice-flow-step.compact .practice-flow-title strong {
+  font-size: 13px;
+}
+
+.text-game-shell .practice-flow-step.compact .practice-flow-body {
+  gap: 2px;
+}
+
+.text-game-shell .practice-flow-step.compact .practice-flow-title > div {
+  min-width: 0;
+}
+
+.text-game-shell .practice-flow-step.compact .practice-flow-title span {
+  display: none;
+}
+
+.text-game-shell .practice-flow-title span,
+.text-game-shell .practice-flow-body p,
+.text-game-shell .practice-flow-action span {
+  color: #555555;
+  font-size: 12px;
+  line-height: 1.35;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.text-game-shell .practice-flow-action {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.text-game-shell .practice-flow-step.compact .practice-flow-action {
+  display: none;
+}
+
+.text-game-shell .practice-flow-action .nextday-button {
+  min-width: 116px;
+}
+
+.text-game-shell .practice-context-panel {
+  align-self: start;
+  display: grid;
+  gap: 12px;
+  grid-area: auto;
+  position: sticky;
+  top: 14px;
+}
+
+.text-game-shell .practice-outcome-panel,
+.text-game-shell .flow-resource-panel,
+.text-game-shell .flow-next-panel {
+  border: 1px solid #111111;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.text-game-shell .practice-outcome-panel {
+  border-width: 2px;
+}
+
+.text-game-shell .practice-outcome-panel p {
+  color: #333333;
+  font-size: 14px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.text-game-shell .practice-next-list,
+.text-game-shell .flow-clue-list,
+.text-game-shell .flow-journal-brief,
+.text-game-shell .flow-context-stack {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.text-game-shell .practice-next-list span,
+.text-game-shell .flow-clue-list span,
+.text-game-shell .flow-journal-brief span {
+  color: #555555;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.text-game-shell .flow-clue-list article,
+.text-game-shell .flow-journal-brief article {
+  border-bottom: 1px solid #eeeeee;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding-bottom: 8px;
+}
+
+.text-game-shell .flow-clue-list article:last-child,
+.text-game-shell .flow-journal-brief article:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.text-game-shell .flow-metric-grid {
+  display: grid;
+  gap: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.text-game-shell .flow-metric-grid .metric-card {
+  border-bottom: 1px solid #eeeeee;
+  padding: 8px 0;
+}
+
+.text-game-shell .flow-metric-grid .metric-card:nth-child(odd) {
+  border-right: 1px solid #eeeeee;
+  padding-right: 10px;
+}
+
+.text-game-shell .flow-metric-grid .metric-card:nth-child(even) {
+  padding-left: 10px;
+}
+
+.text-game-shell .practice-controls-panel {
+  border: 1px solid #dddddd;
+  display: grid;
+  gap: 12px;
+  grid-area: auto;
+  padding: 12px;
+}
+
+.text-game-shell .practice-state-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  min-width: 0;
+}
+
+.text-game-shell .practice-state-grid .explore-event-card.idle {
+  display: grid;
+}
+
+.text-game-shell .practice-summary-strip {
+  border-top: 1px solid #111111;
+  display: grid;
+  gap: 18px;
+  grid-area: summary;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  padding-top: 14px;
+}
+
+.text-game-shell .practice-history {
+  border-top: 1px solid #dddddd;
+  grid-area: history;
+  padding-top: 10px;
+}
+
+.text-game-shell .practice-history summary {
+  color: #111111;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.text-game-shell .practice-history .journal-panel {
+  grid-area: auto;
+  margin-top: 12px;
+}
+
+.text-game-shell .practice-history .journal-layout {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.2fr);
+}
+
+.text-game-shell .practice-history .journal-detail {
+  display: block;
+}
+
+.text-game-shell .practice-history .journal-list {
+  max-height: 520px;
+}
+
+.text-game-shell .tab-nav {
+  grid-area: nav;
+}
+
+.text-game-shell .tab-surface {
+  grid-area: tabs;
+}
+
+.text-game-shell .main-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.78fr);
+}
+
+.text-game-shell .production-grid,
+.text-game-shell .event-grid,
+.text-game-shell .tower-grid,
+.text-game-shell .inner-world-lists,
+.text-game-shell .faction-route-list,
+.text-game-shell .battle-stat-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+}

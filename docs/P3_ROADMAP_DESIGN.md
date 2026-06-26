@@ -59,6 +59,9 @@ P3 优先扩展现有接口的可选展示字段，不先新增大批新路径�
 - `BattleSummary.loot_highlights?: string[]`：本场重点掉落或材料线索。
 - `BattleSummary.battle_hint?: string`：玩家可读的战斗提示。
 - `BattleSummary.counter_suggestions?: string[]`：根据怪物特性生成的反制建议。
+- `TowerActionResponse / WorldBossChallengeResponse / PvpBattleResponse.reason_summary?: string[]`：九塔、Boss、PVP 的胜负原因或状态变化摘要。
+- `TowerActionResponse / WorldBossChallengeResponse / PvpBattleResponse.counter_suggestions?: string[]`：九塔、Boss、PVP 的下一步建议。
+- `TowerActionResponse / WorldBossChallengeResponse / PvpBattleResponse.battle_hint?: string`：多人玩法战报的玩家可读提示。
 - `ExploreResponse.linked_event_hint?: string | null`：探索完成后生成奇遇的自然提示。
 - `ProductionRecommendation.material_sources?: MaterialSourceHint[]`：材料来源提示。
 - `SkillLoadoutResponse.available_skills[]`：已掌握、可学习、未解锁原因、学习消耗和克制标签。
@@ -135,7 +138,7 @@ P3-1 探索生态核心已完成：探索胜利掉落从固定凝露草扩展为
 
 P3-2 生产材料链已完成：新增 `material_chain` 配置，丹方 / 器方推荐返回材料来源、预计补齐次数、近期战报衔接、推荐标签、推荐分、用途提示和材料节奏预警；Web 成长页展示材料缺口来源、用途和折叠预警；专项测试接入 `npm run test:p3-production-chain`，并已加入 `npm run test:p3`。
 
-P3-3 技能学习与战报建议已完成：新增 `player_skill_record`、技能学习配置、`POST /api/production/skills/learn`、技能掌握状态、未解锁原因、学习消耗、自动预设建议和探索战报反制建议；Web 成长页展示可学习技能、学习按钮、战报建议和反制提示；专项测试接入 `npm run test:p3-combat-skill`，并已加入 `npm run test:p3`。
+P3-3 技能学习与战报建议已完成：新增 `player_skill_record`、技能学习配置、`POST /api/production/skills/learn`、技能掌握状态、未解锁原因、学习消耗、自动预设建议和探索战报反制建议；九塔、Boss、PVP 返回 `reason_summary`、`counter_suggestions`、`battle_hint`，用于解释贡献变化、关键伤害、战力差和下一步建议；Web 成长页展示可学习技能、学习按钮、战报建议和反制提示；专项测试接入 `npm run test:p3-combat-skill`，并已加入 `npm run test:p3`。
 
 P3-4 今日路线与 Web / 插件体验已完成：新增 `GET /api/game/daily-route`，返回 `daily_route_p3_v1`，按可领任务、可领探索、探索奇遇、洞府收取、州域探索、生产成长和九塔行动排序；Web 今日修行主线优先使用服务端路线，每次行动刷新后同步路线；插件展开态展示今日下一步、最近敌人和主要掉落；专项测试接入 `npm run test:p3-web-route`，并已加入 `npm run test:p3`，M7 插件回归覆盖轻摘要。
 

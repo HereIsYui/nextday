@@ -168,6 +168,64 @@ describe("P3-3 技能学习与战报建议", () => {
       ),
     ).toBe(true);
   });
+
+  it("九塔、Boss 和 PVP 返回结构化战斗原因与下一步建议", async () => {
+    const attacker = await createP3SkillPlayer(app);
+    const defender = await createP3SkillPlayer(app);
+
+    const towers = await request(app.getHttpServer())
+      .get("/api/multiplayer/towers")
+      .set("Authorization", `Bearer ${attacker.token}`)
+      .expect(200);
+    const tower = towers.body.data.towers[0] as { tower_id: string };
+    const towerAction = await request(app.getHttpServer())
+      .post("/api/multiplayer/towers/action")
+      .set("Authorization", `Bearer ${attacker.token}`)
+      .set("Idempotency-Key", `idem_p3_tower_reason_${Date.now()}_${randomSuffix()}`)
+      .send({ tower_id: tower.tower_id, action_type: "seal", count: 1 })
+      .expect(201);
+
+    expect(towerAction.body.data.reason_summary.join("、")).toContain("贡献");
+    expect(towerAction.body.data.counter_suggestions.join("、")).toContain("镇封");
+    expect(towerAction.body.data.battle_hint).toContain("塔");
+
+    const boss = await request(app.getHttpServer())
+      .get("/api/multiplayer/boss")
+      .set("Authorization", `Bearer ${attacker.token}`)
+      .expect(200);
+    const bossChallenge = await request(app.getHttpServer())
+      .post("/api/multiplayer/boss/challenge")
+      .set("Authorization", `Bearer ${attacker.token}`)
+      .set("Idempotency-Key", `idem_p3_boss_reason_${Date.now()}_${randomSuffix()}`)
+      .send({ boss_id: boss.body.data.boss.boss_id })
+      .expect(201);
+
+    expect(bossChallenge.body.data.reason_summary.join("、")).toContain("伤害");
+    expect(bossChallenge.body.data.counter_suggestions.join("、")).toContain("技能预设");
+    expect(bossChallenge.body.data.battle_hint).toContain("Boss");
+
+    const resources = await request(app.getHttpServer())
+      .get("/api/multiplayer/resource-points")
+      .set("Authorization", `Bearer ${attacker.token}`)
+      .expect(200);
+    await prisma.playerActionState.update({
+      where: { playerId: attacker.playerId },
+      data: { actionPoints: 10 },
+    });
+    const pvp = await request(app.getHttpServer())
+      .post("/api/multiplayer/pvp/attack")
+      .set("Authorization", `Bearer ${attacker.token}`)
+      .set("Idempotency-Key", `idem_p3_pvp_reason_${Date.now()}_${randomSuffix()}`)
+      .send({
+        defender_player_id: defender.playerId,
+        resource_point_id: resources.body.data.resource_points[0].resource_point_id,
+      })
+      .expect(201);
+
+    expect(pvp.body.data.reason_summary.join("、")).toContain("战力");
+    expect(pvp.body.data.counter_suggestions.join("、")).toContain("目标");
+    expect(pvp.body.data.battle_hint).toContain("PVP");
+  });
 });
 
 async function createP3SkillPlayer(

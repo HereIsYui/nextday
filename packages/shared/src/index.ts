@@ -1321,6 +1321,9 @@ export interface TowerActionResponse {
   risk_record_id?: string | null;
   settlement_status: SettlementStatus;
   completed_task_ids?: string[];
+  reason_summary?: string[];
+  counter_suggestions?: string[];
+  battle_hint?: string;
   experience?: ExperiencePayload;
 }
 
@@ -1350,6 +1353,9 @@ export interface WorldBossChallengeResponse {
   rewards: RewardBundle;
   action_state: ActionState;
   log: BattleRoundLog[];
+  reason_summary?: string[];
+  counter_suggestions?: string[];
+  battle_hint?: string;
   experience?: ExperiencePayload;
 }
 
@@ -1474,6 +1480,9 @@ export interface PvpBattleResponse {
     log: BattleRoundLog[];
   };
   resource_point: ResourcePointSummary | null;
+  reason_summary?: string[];
+  counter_suggestions?: string[];
+  battle_hint?: string;
   experience?: ExperiencePayload;
 }
 

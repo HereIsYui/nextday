@@ -15,6 +15,7 @@ import type {
   RankTitleRewardState,
   RankType,
   ResourcePointListResponse,
+  ResourcePointSummary,
   RewardBundle,
   SectDetailResponse,
   SectListResponse,
@@ -29,9 +30,11 @@ import type {
   TowerActionResponse,
   TowerActionType,
   TowerListResponse,
+  TowerStateSummary,
   WorldBossChallengeRequest,
   WorldBossChallengeResponse,
   WorldBossResponse,
+  WorldBossStateSummary,
 } from "@nextday/shared";
 import type { Player, PlayerActionState, Prisma, SectMember } from "@prisma/client";
 import { toAppearanceState } from "../commerce/commerce.mappers";
@@ -224,6 +227,14 @@ export class MultiplayerService {
                 })
               : [];
 
+          const towerInsight = buildTowerBattleInsight({
+            towerBefore: toTowerStateSummary(tower),
+            towerAfter: toTowerStateSummary(tower),
+            actionType: body.action_type,
+            contribution,
+            settlementStatus: "delayed",
+          });
+
           return {
             record_id: record.recordId,
             tower: toTowerStateSummary(tower),
@@ -234,6 +245,7 @@ export class MultiplayerService {
             risk_record_id: risk.risk_record_id,
             settlement_status: "delayed",
             completed_task_ids: completedTaskIds,
+            ...towerInsight,
             experience: buildTowerExperience({
               towerBefore: toTowerStateSummary(tower),
               towerAfter: toTowerStateSummary(tower),
@@ -298,6 +310,14 @@ export class MultiplayerService {
               })
             : [];
 
+        const towerInsight = buildTowerBattleInsight({
+          towerBefore: toTowerStateSummary(tower),
+          towerAfter: toTowerStateSummary(updatedTower),
+          actionType: body.action_type,
+          contribution,
+          settlementStatus: "settled",
+        });
+
         return {
           record_id: record.recordId,
           tower: toTowerStateSummary(updatedTower),
@@ -308,6 +328,7 @@ export class MultiplayerService {
           risk_record_id: risk.risk_record_id,
           settlement_status: "settled",
           completed_task_ids: completedTaskIds,
+          ...towerInsight,
           experience: buildTowerExperience({
             towerBefore: toTowerStateSummary(tower),
             towerAfter: toTowerStateSummary(updatedTower),
@@ -407,6 +428,13 @@ export class MultiplayerService {
           },
         });
 
+        const bossInsight = buildBossBattleInsight({
+          bossBefore,
+          bossAfter: toBossStateSummary(boss),
+          damageDone,
+          result: defeated ? "phase_defeated" : "active",
+        });
+
         return {
           record_id: record.recordId,
           boss: toBossStateSummary(boss),
@@ -416,6 +444,7 @@ export class MultiplayerService {
           rewards,
           action_state: actionState,
           log,
+          ...bossInsight,
           experience: buildBossExperience({
             bossBefore,
             bossAfter: toBossStateSummary(boss),
@@ -936,6 +965,16 @@ export class MultiplayerService {
           });
         }
 
+        const pvpInsight = buildPvpBattleInsight({
+          result: win ? "win" : "lose",
+          attackerPower,
+          defenderPower,
+          scoreDelta,
+          settlementStatus,
+          riskStatus: risk.risk_status,
+          resourcePoint: toResourcePointSummary(updatedResourcePoint),
+        });
+
         return {
           record_id: record.recordId,
           result: win ? "win" : "lose",
@@ -953,6 +992,7 @@ export class MultiplayerService {
             log,
           },
           resource_point: toResourcePointSummary(updatedResourcePoint),
+          ...pvpInsight,
           experience: buildPvpExperience({
             result: win ? "win" : "lose",
             attackerPower,
@@ -1971,6 +2011,118 @@ function createSimpleBattleLog(input: {
       target_hp: Math.max(0, 1000 - input.damageTaken),
     },
   ];
+}
+
+function buildTowerBattleInsight(input: {
+  towerBefore: TowerStateSummary;
+  towerAfter: TowerStateSummary;
+  actionType: TowerActionType;
+  contribution: number;
+  settlementStatus: SettlementStatus;
+}): Pick<TowerActionResponse, "reason_summary" | "counter_suggestions" | "battle_hint"> {
+  const actionLabel = towerActionLabel(input.actionType);
+  const integrityDelta = input.towerAfter.integrity - input.towerBefore.integrity;
+  const pressureDelta = input.towerAfter.rift_pressure - input.towerBefore.rift_pressure;
+  const progressText =
+    input.actionType === "break"
+      ? `破封进度推进 ${input.contribution}`
+      : input.actionType === "supply"
+        ? `补给进度推进 ${input.contribution}`
+        : `镇封进度推进 ${input.contribution}`;
+  const stateText =
+    input.settlementStatus === "delayed"
+      ? "本次贡献进入延迟结算，塔状态暂不立即改变。"
+      : `塔体完整度 ${formatSigned(integrityDelta)}，裂隙压力 ${formatSigned(pressureDelta)}。`;
+
+  return {
+    reason_summary: [
+      `${input.towerAfter.tower_name}完成${actionLabel}，贡献 +${input.contribution}。`,
+      progressText,
+      stateText,
+    ],
+    counter_suggestions: [
+      "裂隙压力偏高时优先镇封或守护，塔体受损时优先补给。",
+      "继续探索本州可补充镇塔材料，再回到九塔推进公共目标。",
+    ],
+    battle_hint: `${input.towerAfter.tower_name}本次受${actionLabel}影响，重点看贡献、完整度和裂隙压力变化。`,
+  };
+}
+
+function buildBossBattleInsight(input: {
+  bossBefore: WorldBossStateSummary;
+  bossAfter: WorldBossStateSummary;
+  damageDone: number;
+  result: WorldBossChallengeResponse["result"];
+}): Pick<WorldBossChallengeResponse, "reason_summary" | "counter_suggestions" | "battle_hint"> {
+  const hpDelta = input.bossBefore.remaining_hp - input.bossAfter.remaining_hp;
+  const phaseText =
+    input.result === "phase_defeated"
+      ? `阶段 ${input.bossBefore.phase} 已击破，Boss 进入第 ${input.bossAfter.phase} 阶。`
+      : `本阶段血量减少 ${Math.max(0, hpDelta)}。`;
+
+  return {
+    reason_summary: [
+      `本命法光造成 ${input.damageDone} 点伤害。`,
+      phaseText,
+      "关键回合是玩家先手输出后承受 Boss 反击。",
+    ],
+    counter_suggestions: [
+      "伤害不足时优先炼器、服丹或调整技能预设。",
+      "公共 Boss 与九塔都适合用剩余行动令推进全服目标。",
+    ],
+    battle_hint: `公共 Boss ${input.bossAfter.name} 战报重点看阶段血量、个人伤害和下一轮提升方向。`,
+  };
+}
+
+function buildPvpBattleInsight(input: {
+  result: PvpBattleResponse["result"];
+  attackerPower: number;
+  defenderPower: number;
+  scoreDelta: number;
+  settlementStatus: SettlementStatus;
+  riskStatus: string;
+  resourcePoint: ResourcePointSummary | null;
+}): Pick<PvpBattleResponse, "reason_summary" | "counter_suggestions" | "battle_hint"> {
+  const resultText = input.result === "win" ? "进攻成功" : "进攻受阻";
+  const settlementText =
+    input.settlementStatus === "delayed"
+      ? "收益暂缓结算，需要等待整理。"
+      : `积分变化 +${input.scoreDelta}。`;
+  const gapSuggestion =
+    input.attackerPower >= input.defenderPower
+      ? "若要扩大优势，可继续提升技能释放顺序和法宝词条。"
+      : "战力低于防守镜像时，先补服丹、炼器或调整主动技能。";
+  const riskSuggestion =
+    input.riskStatus === "decayed" || input.settlementStatus === "delayed"
+      ? "重复目标或境界差过大时收益会收敛，建议更换目标或等待冷却。"
+      : "选择战力接近的目标更稳定，失败也不会摧毁核心法宝。";
+
+  return {
+    reason_summary: [
+      `${resultText}：进攻战力 ${input.attackerPower}，防守镜像 ${input.defenderPower}。`,
+      settlementText,
+      input.resourcePoint
+        ? `${input.resourcePoint.name}控制权按本次结果更新。`
+        : "本次未绑定资源点。",
+    ],
+    counter_suggestions: [gapSuggestion, riskSuggestion],
+    battle_hint: "PVP 战报重点看战力差、收益状态和是否需要更换目标。",
+  };
+}
+
+function towerActionLabel(actionType: TowerActionType): string {
+  const labels: Record<TowerActionType, string> = {
+    break: "破封",
+    guard: "守护",
+    seal: "镇封",
+    supply: "补给",
+  };
+
+  return labels[actionType];
+}
+
+function formatSigned(value: number): string {
+  return value > 0 ? `+${value}` : String(value);
 }
 
 function addScore(map: Map<string, bigint>, key: string, score: bigint) {

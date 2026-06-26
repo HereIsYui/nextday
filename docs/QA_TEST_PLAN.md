@@ -328,7 +328,7 @@ P2 转服验收：
 
 ## 十二、P3 专项测试
 
-P3 测试按玩法深度与探索生态阶段逐步接入自动化。P3-1 已接入 `npm run test:p3-exploration-depth`，覆盖探索掉落池、怪物特性、奇遇联动和战报回放；P3-2 已接入 `npm run test:p3-production-chain`，覆盖材料缺口、丹器推荐、生产结果反馈和材料节奏预警；P3-3 已接入 `npm run test:p3-combat-skill`，覆盖技能学习、预设建议、怪物克制和战斗原因；P3-4 已接入 `npm run test:p3-web-route`，覆盖今日路线生成、入口去重和 Web 主线接入，插件轻摘要由 `npm run test:m7` 回归覆盖。P3-5 已接入 `npm run test:p3-balance`，覆盖 1 / 7 / 30 天材料产销、付费便利边界和掉落池禁止产物；`npm run test:p3` 已串联 P3 全阶段回归：
+P3 测试按玩法深度与探索生态阶段逐步接入自动化。P3-1 已接入 `npm run test:p3-exploration-depth`，覆盖探索掉落池、怪物特性、奇遇联动和战报回放；P3-2 已接入 `npm run test:p3-production-chain`，覆盖材料缺口、丹器推荐、生产结果反馈和材料节奏预警；P3-3 已接入 `npm run test:p3-combat-skill`，覆盖技能学习、预设建议、怪物克制、探索反制建议，以及九塔、Boss、PVP 的结构化战斗原因；P3-4 已接入 `npm run test:p3-web-route`，覆盖今日路线生成、入口去重和 Web 主线接入，插件轻摘要由 `npm run test:m7` 回归覆盖。P3-5 已接入 `npm run test:p3-balance`，覆盖 1 / 7 / 30 天材料产销、付费便利边界和掉落池禁止产物；`npm run test:p3` 已串联 P3 全阶段回归：
 
 | 脚本 | 覆盖范围 | 接入阶段 |
 | --- | --- | --- |

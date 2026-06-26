@@ -532,6 +532,9 @@ P3 推荐优先复用现有接口并增加可选字段：
 | `BattleSummary` | `loot_highlights?: string[]` | 本场重点掉落、材料线索或奇遇线索 |
 | `BattleSummary` | `battle_hint?: string` | 玩家可读的战斗提示和下一步建议 |
 | `BattleSummary` | `counter_suggestions?: string[]` | 根据敌人特性生成的反制建议 |
+| `TowerActionResponse` / `WorldBossChallengeResponse` / `PvpBattleResponse` | `reason_summary?: string[]` | 九塔、Boss、PVP 的胜负原因、贡献变化、阶段血量或战力差摘要 |
+| `TowerActionResponse` / `WorldBossChallengeResponse` / `PvpBattleResponse` | `counter_suggestions?: string[]` | 九塔、Boss、PVP 的玩家下一步建议 |
+| `TowerActionResponse` / `WorldBossChallengeResponse` / `PvpBattleResponse` | `battle_hint?: string` | 多人玩法战报的玩家可读提示 |
 | `ExploreResponse` | `linked_event_hint?: string \| null` | 探索完成后生成奇遇时的自然提示 |
 | `ProductionRecommendation` | `material_sources?: MaterialSourceHint[]` | 丹方、器方、淬炼材料的来源说明 |
 | `SkillLoadoutResponse` | `available_skills[].learned / learnable / unlock_reasons / learn_cost / counter_traits` | 技能掌握状态、学习条件和克制标签 |

@@ -2309,6 +2309,7 @@ export interface PluginPanelDigest {
 
 export interface PluginExpandedPanelResponse {
   status: PluginStatusCardResponse;
+  daily_route: DailyRouteResponse | null;
   tasks: PluginPanelTaskState[];
   digests: PluginPanelDigest[];
   cave: CaveState | null;

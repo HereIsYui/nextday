@@ -52,12 +52,13 @@ describe("M7 前端与插件体验接口", () => {
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
     expect(panel.body.data.tasks.length).toBeGreaterThan(0);
+    expect(panel.body.data.daily_route.primary_action_hint).toBeTruthy();
     expect(panel.body.data.provinces.length).toBeGreaterThan(0);
     expect(panel.body.data.towers.length).toBeGreaterThan(0);
     expect(panel.body.data.digests.length).toBeGreaterThan(0);
     expect(
       panel.body.data.digests.map((digest: { digest_id: string }) => digest.digest_id),
-    ).toContain("ancient_treasure");
+    ).toEqual(expect.arrayContaining(["daily_route", "ancient_treasure"]));
   });
 
   it("插件一键领取按单项结算，重复请求不会重复创建幂等结果", async () => {

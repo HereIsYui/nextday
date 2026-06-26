@@ -91,6 +91,7 @@ export class PluginService {
       faction,
       titles,
       activities,
+      dailyRoute,
     ] = await Promise.all([
       this.getStatusCard(accountId),
       this.gameService.getOverview(accountId),
@@ -103,12 +104,15 @@ export class PluginService {
       this.factionsService.getReputation(accountId).catch(() => null),
       this.multiplayerService.getTitleCollection(accountId).catch(() => null),
       this.eventsService.list(accountId).catch(() => null),
+      this.gameService.getDailyRoute(accountId).catch(() => null),
     ]);
 
     return {
       status,
+      daily_route: dailyRoute,
       tasks: overview.tasks.slice(0, 6).map(toPanelTask),
       digests: this.buildPanelDigests({
+        dailyRoute,
         recentBattles: overview.recent_battles,
         towers: towers.towers,
         ancientOwnedCount: treasures.treasures.filter((treasure) => treasure.owned).length,
@@ -261,6 +265,7 @@ export class PluginService {
   }
 
   private buildPanelDigests(input: {
+    dailyRoute: PluginExpandedPanelResponse["daily_route"];
     recentBattles: BattleSummary[];
     towers: PluginExpandedPanelResponse["towers"];
     ancientOwnedCount: number;
@@ -275,6 +280,19 @@ export class PluginService {
     activities: PluginExpandedPanelResponse["activities"];
   }): PluginPanelDigest[] {
     const digests: PluginPanelDigest[] = [];
+    const primaryRouteStep = input.dailyRoute?.steps.find(
+      (step) => step.step_id === input.dailyRoute?.primary_step_id,
+    );
+    if (primaryRouteStep) {
+      digests.push({
+        action_hint: primaryRouteStep.target_tab ?? primaryRouteStep.action_hint,
+        digest_id: "daily_route",
+        summary: `${primaryRouteStep.action_label} · ${primaryRouteStep.detail}`,
+        title: "今日下一步",
+        tone: primaryRouteStep.status === "active" ? "success" : "neutral",
+      });
+    }
+
     const latestBattle = input.recentBattles[0];
     if (latestBattle) {
       digests.push({

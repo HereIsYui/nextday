@@ -1184,7 +1184,27 @@ h2 {
   background: #f4e7d1;
   border-radius: 6px;
   color: #6b4f24;
+  display: grid;
+  gap: 3px;
+  min-width: min(100%, 180px);
   padding: 4px 7px;
+}
+
+.recommendation-gaps strong {
+  color: inherit;
+  font-size: 13px;
+}
+
+.recommendation-gaps small {
+  color: #6f6252;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.production-warning {
+  display: grid;
+  gap: 5px;
 }
 
 .choice-field {

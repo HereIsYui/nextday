@@ -75,8 +75,12 @@ import {
 } from "../multiplayer/multiplayer.constants";
 import {
   alchemyRecipes,
+  buildProductionBalanceWarnings,
   forgeRecipes,
   itemCatalog,
+  materialBalanceProfiles,
+  materialChainConfigVersion,
+  materialSourceConfigs,
   pillQualityConfigs,
   skillConfigs,
 } from "../production/production.constants";
@@ -324,6 +328,23 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
         locked_items_consumable: false,
         expired_items_consumable: false,
       },
+    },
+  },
+  material_chain: {
+    config_type: "material_chain",
+    config_version: materialChainConfigVersion,
+    ruleset_version: "ruleset_p3_v1",
+    reward_config_version: "reward_p3_v1",
+    payload: {
+      sources: materialSourceConfigs,
+      balance_profiles: materialBalanceProfiles,
+      warnings: buildProductionBalanceWarnings(),
+      forbidden_outputs: [
+        "paid_jade",
+        "ancient_treasure",
+        "limited_equipment",
+        "unique_power_item",
+      ],
     },
   },
   tower: {

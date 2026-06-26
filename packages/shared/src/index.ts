@@ -1115,12 +1115,35 @@ export interface ForgeRecipeSummary {
   recommendation?: ProductionRecommendationState;
 }
 
+export interface MaterialSourceState {
+  source_type: "explore" | "cave" | "event" | "decompose" | "task" | "commerce" | "system";
+  source_id: string;
+  name: string;
+  action_label: string;
+  province_id?: string;
+  province_name?: string;
+  estimated_runs?: number;
+  note: string;
+}
+
 export interface MaterialRequirementState {
   item_id: string;
   name: string;
   required: number;
   owned: number;
   missing: number;
+  source_hints?: MaterialSourceState[];
+  shortage_hint?: string;
+}
+
+export interface ProductionBalanceWarningState {
+  item_id: string;
+  name: string;
+  period_days: 1 | 7 | 30;
+  risk_type: "shortage" | "stockpile" | "fast_graduation";
+  severity: "info" | "warning" | "danger";
+  message: string;
+  suggestion: string;
 }
 
 export interface ProductionRecommendationState {
@@ -1130,6 +1153,10 @@ export interface ProductionRecommendationState {
   result_hint: string;
   next_action_hint: string;
   can_craft: boolean;
+  priority_score?: number;
+  recommendation_tags?: string[];
+  usage_hint?: string;
+  balance_warnings?: ProductionBalanceWarningState[];
 }
 
 export interface ForgeRecipeListResponse {

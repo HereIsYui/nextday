@@ -7,6 +7,7 @@ import type {
   AlchemyRecipeSummary,
   AlchemyRecordListResponse,
   BagSummaryResponse,
+  BattleSummary,
   CultivationRoute,
   EquipmentInscribeRequest,
   EquipmentListResponse,
@@ -29,7 +30,7 @@ import type {
 import type { EquipmentAffix, EquipmentInstance, Player, PlayerItem, Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
 import { defaultEraId } from "../game/game.constants";
-import { normalizeRewardBundle } from "../game/game.mappers";
+import { normalizeRewardBundle, toBattleSummary } from "../game/game.mappers";
 import { incrementPlayerTasks } from "../game/task-progress.utils";
 import { writeJournalFromResponse } from "../journal/journal.utils";
 import { buildAlchemyExperience, buildEquipmentExperience } from "../platform/experience";
@@ -37,6 +38,8 @@ import { hashRequestBody } from "../platform/utils/hash";
 import { toPlayerProfileResponse } from "../player/player.mapper";
 import {
   alchemyRecipes,
+  buildMaterialSourceHints,
+  buildProductionBalanceWarnings,
   forgeRecipes,
   getAvailableSkills,
   getDefaultSkillLoadout,
@@ -117,9 +120,10 @@ export class ProductionService {
 
   async getAlchemyRecipes(accountId: string): Promise<AlchemyRecipeListResponse> {
     const player = await this.requirePlayer(accountId);
-    const [bag, wallet] = await Promise.all([
+    const [bag, wallet, recentBattles] = await Promise.all([
       this.getBagByPlayerId(player.playerId),
       this.getWalletState(this.prisma, player.playerId),
+      this.getRecentBattleSummaries(player.playerId),
     ]);
 
     return {
@@ -130,6 +134,7 @@ export class ProductionService {
             bag,
             kind: "alchemy",
             playerRoute: player.route,
+            recentBattles,
             spiritStone: wallet.spirit_stone,
           }),
         ),
@@ -364,9 +369,10 @@ export class ProductionService {
 
   async getForgeRecipes(accountId: string): Promise<ForgeRecipeListResponse> {
     const player = await this.requirePlayer(accountId);
-    const [bag, wallet] = await Promise.all([
+    const [bag, wallet, recentBattles] = await Promise.all([
       this.getBagByPlayerId(player.playerId),
       this.getWalletState(this.prisma, player.playerId),
+      this.getRecentBattleSummaries(player.playerId),
     ]);
 
     return {
@@ -377,6 +383,7 @@ export class ProductionService {
             bag,
             kind: "forge",
             playerRoute: player.route,
+            recentBattles,
             spiritStone: wallet.spirit_stone,
           }),
         ),
@@ -792,6 +799,16 @@ export class ProductionService {
     }
 
     return player;
+  }
+
+  private async getRecentBattleSummaries(playerId: string): Promise<BattleSummary[]> {
+    const battles = await this.prisma.battleLog.findMany({
+      where: { playerId, battleType: "explore" },
+      orderBy: { createdAt: "desc" },
+      take: 8,
+    });
+
+    return battles.map((battle) => toBattleSummary(battle));
   }
 
   private async getProfileByPlayerId(tx: DbClient, playerId: string) {
@@ -1217,18 +1234,22 @@ function withProductionRecommendation<TRecipe extends AlchemyRecipeSummary | For
     bag: BagSummaryResponse;
     kind: "alchemy" | "forge";
     playerRoute: string;
+    recentBattles: BattleSummary[];
     spiritStone: string;
   },
 ): TRecipe {
   const materialGaps = [
     ...recipe.materials.map((material) => {
       const owned = countBagItem(input.bag, material.item_id);
+      const missing = Math.max(0, material.count - owned);
       return {
         item_id: material.item_id,
         name: material.name,
         owned,
         required: material.count,
-        missing: Math.max(0, material.count - owned),
+        missing,
+        shortage_hint: materialShortageHint(material.item_id, missing),
+        source_hints: buildMaterialSourceHints(material.item_id, missing),
       };
     }),
     {
@@ -1237,27 +1258,60 @@ function withProductionRecommendation<TRecipe extends AlchemyRecipeSummary | For
       owned: Number(input.spiritStone),
       required: Number(recipe.spirit_stone_cost),
       missing: Math.max(0, Number(recipe.spirit_stone_cost) - Number(input.spiritStone)),
+      shortage_hint: materialShortageHint(
+        "spirit_stone",
+        Math.max(0, Number(recipe.spirit_stone_cost) - Number(input.spiritStone)),
+      ),
+      source_hints: buildMaterialSourceHints(
+        "spirit_stone",
+        Math.max(0, Number(recipe.spirit_stone_cost) - Number(input.spiritStone)),
+      ),
     },
   ];
   const canCraft = materialGaps.every((item) => item.missing <= 0);
   const routeMatched = recipe.route === "all" || recipe.route === input.playerRoute;
-  const recommended =
-    canCraft &&
-    routeMatched &&
-    (input.kind === "alchemy"
-      ? recipe.route === input.playerRoute || recipe.recipe_id.includes("pojing")
-      : recipe.route === input.playerRoute ||
-        (recipe as ForgeRecipeSummary).rarity === "ancient_craft");
+  const recentContext = buildRecentProductionContext(recipe, input.kind, input.recentBattles);
+  const priorityScore = productionPriorityScore({
+    canCraft,
+    kind: input.kind,
+    recentContext,
+    recipe,
+    routeMatched,
+    playerRoute: input.playerRoute,
+  });
+  const recommended = canCraft && routeMatched && priorityScore >= 60;
+  const recipeItemIds = new Set([
+    ...recipe.materials.map((material) => material.item_id),
+    "spirit_stone",
+  ]);
 
   return {
     ...recipe,
     recommendation: {
       can_craft: canCraft,
+      balance_warnings: buildProductionBalanceWarnings().filter((warning) =>
+        recipeItemIds.has(warning.item_id),
+      ),
       material_gaps: materialGaps,
-      next_action_hint: productionNextActionHint(recipe, input.kind, canCraft),
-      reason: productionRecommendationReason(recipe, input.kind, canCraft, recommended),
+      next_action_hint: productionNextActionHint(recipe, input.kind, canCraft, recentContext),
+      priority_score: priorityScore,
+      reason: productionRecommendationReason({
+        canCraft,
+        kind: input.kind,
+        recommended,
+        recentContext,
+        recipe,
+      }),
+      recommendation_tags: buildProductionRecommendationTags({
+        canCraft,
+        kind: input.kind,
+        recentContext,
+        recommended,
+        routeMatched,
+      }),
       recommended,
       result_hint: productionResultHint(recipe, input.kind),
+      usage_hint: productionUsageHint(recipe, input.kind),
     },
   };
 }
@@ -1268,23 +1322,6 @@ function countBagItem(bag: BagSummaryResponse, itemId: string): number {
     .reduce((sum, item) => sum + Number(item.count), 0);
 }
 
-function productionRecommendationReason(
-  recipe: AlchemyRecipeSummary | ForgeRecipeSummary,
-  kind: "alchemy" | "forge",
-  canCraft: boolean,
-  recommended: boolean,
-): string {
-  if (!canCraft) {
-    return "材料或灵石不足，先探索、处理奇遇或收取洞府。";
-  }
-  if (recommended) {
-    return kind === "alchemy"
-      ? "当前路线可直接炼制，适合推进第一炉丹。"
-      : "当前路线可直接炼制，适合补第一件普通法宝。";
-  }
-  return "可以炼制，但优先级低于当前路线主推荐。";
-}
-
 function productionResultHint(
   recipe: AlchemyRecipeSummary | ForgeRecipeSummary,
   kind: "alchemy" | "forge",
@@ -1292,30 +1329,200 @@ function productionResultHint(
   if (kind === "alchemy") {
     const alchemyRecipe = recipe as AlchemyRecipeSummary;
     return alchemyRecipe.pill_type === "breakthrough"
-      ? `${alchemyRecipe.name}用于突破准备，成功后进入背包，服用仍受同阶递减。`
-      : `${alchemyRecipe.name}提供基础修为成长，适合新手 30 分钟内完成第一炉丹。`;
+      ? `${alchemyRecipe.name}成功后进入背包，可作为突破准备；服用时会显示品质和同阶递减。`
+      : `${alchemyRecipe.name}成功后进入背包，品质会影响修为收益，适合补今日成长。`;
   }
 
   const forgeRecipe = recipe as ForgeRecipeSummary;
-  return `${forgeRecipe.name}会产出${equipmentRarityText(forgeRecipe.rarity)}法宝，炼器不会产出九大古宝。`;
+  return `${forgeRecipe.name}会产出${equipmentRarityText(
+    forgeRecipe.rarity,
+  )}法宝，词条会影响战报中的输出、防护或速度表现。`;
 }
 
 function productionNextActionHint(
   recipe: AlchemyRecipeSummary | ForgeRecipeSummary,
   kind: "alchemy" | "forge",
   canCraft: boolean,
+  recentContext: RecentProductionContext,
 ): string {
   if (!canCraft) {
-    return "先补齐缺口材料，再回到成长页选择所需丹方或配方。";
+    return "先按材料来源补齐缺口，再回到成长页选择所需丹方或配方。";
   }
   if (kind === "alchemy") {
-    return "炼成后去背包选择丹药服用，再回到今日路线推进玄铁塔。";
+    return recentContext.matchedMaterialNames.length
+      ? `最近已获得${recentContext.matchedMaterialNames.join("、")}，炼成后去背包选择丹药服用。`
+      : "炼成后去背包选择丹药服用，再回到今日路线推进玄铁塔。";
   }
 
   const forgeRecipe = recipe as ForgeRecipeSummary;
   return forgeRecipe.rarity === "ancient_craft"
     ? "古器胚用于长期养成，第一件法宝可先选择路线普通配方。"
-    : "炼成后查看战报，观察法宝触发和胜负原因。";
+    : recentContext.traitHints.length
+      ? `${recentContext.traitHints[0]}，炼成后查看战报验证词条表现。`
+      : "炼成后查看战报，观察法宝触发和胜负原因。";
+}
+
+type RecentProductionContext = {
+  matchedMaterialNames: string[];
+  traitHints: string[];
+};
+
+function materialShortageHint(itemId: string, missing: number): string | undefined {
+  if (missing <= 0) {
+    return undefined;
+  }
+
+  const sources = buildMaterialSourceHints(itemId, missing);
+  if (!sources.length) {
+    return `还缺 ${missing} 个，先完成今日任务或探索补齐。`;
+  }
+
+  const primary = sources[0];
+  const estimate = primary.estimated_runs ? `约 ${primary.estimated_runs} 次` : "数次";
+  return `还缺 ${missing} 个，可通过${primary.name}${estimate}补齐。`;
+}
+
+function productionRecommendationReason(input: {
+  recipe: AlchemyRecipeSummary | ForgeRecipeSummary;
+  kind: "alchemy" | "forge";
+  canCraft: boolean;
+  recommended: boolean;
+  recentContext: RecentProductionContext;
+}): string {
+  if (!input.canCraft) {
+    return "材料或灵石不足，先按缺口来源探索、处理奇遇或收取洞府。";
+  }
+  if (input.recommended) {
+    if (input.recentContext.matchedMaterialNames.length) {
+      return `最近探索已经接上${input.recentContext.matchedMaterialNames.join(
+        "、",
+      )}，现在炼制不会浪费材料链。`;
+    }
+    return input.kind === "alchemy"
+      ? "当前路线可直接炼制，适合推进服丹成长。"
+      : "当前路线可直接炼制，适合补一件能影响战报表现的法宝。";
+  }
+  return "可以炼制，但优先级低于当前路线和当前材料缺口。";
+}
+
+function productionUsageHint(
+  recipe: AlchemyRecipeSummary | ForgeRecipeSummary,
+  kind: "alchemy" | "forge",
+): string {
+  if (kind === "alchemy") {
+    const alchemyRecipe = recipe as AlchemyRecipeSummary;
+    return alchemyRecipe.pill_type === "breakthrough"
+      ? "用于突破准备，建议在突破条件接近满足时炼制。"
+      : "用于服丹提升修为，服用后今日路线会继续指向九塔或章节目标。";
+  }
+
+  const forgeRecipe = recipe as ForgeRecipeSummary;
+  return forgeRecipe.rarity === "ancient_craft"
+    ? "用于长期收藏和养成，前期不是必须入口。"
+    : "用于补强自动战斗表现，适合探索承伤偏高或输出不足时炼制。";
+}
+
+function buildRecentProductionContext(
+  recipe: AlchemyRecipeSummary | ForgeRecipeSummary,
+  kind: "alchemy" | "forge",
+  recentBattles: BattleSummary[],
+): RecentProductionContext {
+  const materialIds = new Set(recipe.materials.map((material) => material.item_id));
+  const matchedMaterialNames = uniqueStrings(
+    recentBattles.flatMap((battle) =>
+      (battle.rewards.items ?? [])
+        .filter((item) => materialIds.has(item.item_id))
+        .map((item) => item.name),
+    ),
+  );
+  const traits = uniqueStrings(recentBattles.flatMap((battle) => battle.enemy_traits ?? []));
+  const traitHints = traits
+    .map((trait) => productionTraitHint(trait, kind))
+    .filter((hint): hint is string => Boolean(hint));
+
+  return {
+    matchedMaterialNames,
+    traitHints: uniqueStrings(traitHints),
+  };
+}
+
+function productionTraitHint(trait: string, kind: "alchemy" | "forge"): string | undefined {
+  if (kind === "alchemy") {
+    if (trait === "毒蚀" || trait === "快攻") {
+      return "近期敌人压血较快，服丹提升修为能提高容错";
+    }
+    if (trait === "高防" || trait === "护盾") {
+      return "近期敌人防护较厚，服丹后再挑战更稳";
+    }
+    return undefined;
+  }
+
+  if (trait === "高防" || trait === "护盾" || trait === "阵痕") {
+    return "近期敌人防护较厚，优先补法宝输出或词条";
+  }
+  if (trait === "灵敏" || trait === "快攻") {
+    return "近期敌人出手较快，法宝速度和防护词条更有意义";
+  }
+  return undefined;
+}
+
+function productionPriorityScore(input: {
+  recipe: AlchemyRecipeSummary | ForgeRecipeSummary;
+  kind: "alchemy" | "forge";
+  canCraft: boolean;
+  routeMatched: boolean;
+  playerRoute: string;
+  recentContext: RecentProductionContext;
+}): number {
+  let score = 0;
+  if (input.routeMatched) {
+    score += input.recipe.route === input.playerRoute ? 25 : 12;
+  }
+  if (input.canCraft) {
+    score += 40;
+  } else {
+    score -= 10;
+  }
+  if (input.recentContext.matchedMaterialNames.length) {
+    score += 12;
+  }
+  if (input.recentContext.traitHints.length) {
+    score += input.kind === "forge" ? 12 : 8;
+  }
+  if (
+    input.kind === "alchemy" &&
+    (input.recipe as AlchemyRecipeSummary).pill_type === "cultivation"
+  ) {
+    score += 10;
+  }
+  if (input.kind === "forge" && (input.recipe as ForgeRecipeSummary).rarity === "ordinary") {
+    score += 10;
+  }
+
+  return Math.max(0, Math.min(100, score));
+}
+
+function buildProductionRecommendationTags(input: {
+  kind: "alchemy" | "forge";
+  canCraft: boolean;
+  routeMatched: boolean;
+  recommended: boolean;
+  recentContext: RecentProductionContext;
+}): string[] {
+  const tags = [input.canCraft ? "材料足够" : "材料缺口"];
+  if (input.routeMatched) {
+    tags.push("当前路线");
+  }
+  if (input.recommended) {
+    tags.push(input.kind === "alchemy" ? "推荐炼丹" : "推荐炼器");
+  }
+  if (input.recentContext.matchedMaterialNames.length) {
+    tags.push("近期掉落可衔接");
+  }
+  if (input.recentContext.traitHints.length) {
+    tags.push("战报提示");
+  }
+  return uniqueStrings(tags);
 }
 
 function equipmentRarityText(rarity: string): string {
@@ -1327,6 +1534,10 @@ function equipmentRarityText(rarity: string): string {
     ordinary: "凡品",
   };
   return labels[rarity] ?? rarity;
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean)));
 }
 
 function pickPillQuality(seed: string): PillQuality {

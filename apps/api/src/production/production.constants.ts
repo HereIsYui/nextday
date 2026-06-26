@@ -4,7 +4,9 @@ import type {
   EquipmentRarity,
   ForgeRecipeSummary,
   ItemCategory,
+  MaterialSourceState,
   PillQuality,
+  ProductionBalanceWarningState,
   RewardBundle,
   SkillLoadoutResponse,
   SkillSummary,
@@ -12,6 +14,7 @@ import type {
 
 export const productionConfigVersion = "m3_production_v1";
 export const productionRewardConfigVersion = "reward_m3_v1";
+export const materialChainConfigVersion = "material_chain_p3_v1";
 
 export interface ItemMeta {
   itemId: string;
@@ -46,6 +49,147 @@ export const itemCatalog: ItemMeta[] = [
   { itemId: "pill_juling_1", name: "聚灵丹", category: "pill", tradeable: false },
   { itemId: "pill_feixue_1", name: "沸血丹", category: "pill", tradeable: false },
   { itemId: "pill_pojing_1", name: "破境丹", category: "pill", tradeable: false },
+];
+
+export interface MaterialSourceConfig extends MaterialSourceState {
+  item_id: string;
+  item_name: string;
+  average_per_run?: number;
+}
+
+export const materialSourceConfigs: MaterialSourceConfig[] = [
+  {
+    item_id: "low_herb",
+    item_name: "凝露草",
+    source_type: "explore",
+    source_id: "province_ji",
+    province_id: "ji",
+    province_name: "冀州",
+    name: "冀州山野探索",
+    action_label: "去冀州探索",
+    average_per_run: 0.5,
+    note: "冀州探索会稳定产出低阶灵草，适合补第一炉丹。",
+  },
+  {
+    item_id: "low_herb",
+    item_name: "凝露草",
+    source_type: "cave",
+    source_id: "alchemy_room",
+    name: "洞府丹炉",
+    action_label: "收取洞府",
+    average_per_run: 1,
+    note: "丹炉每隔一段时间会积累灵草，适合离线后补缺口。",
+  },
+  {
+    item_id: "raw_iron",
+    item_name: "玄铁砂",
+    source_type: "explore",
+    source_id: "province_ji",
+    province_id: "ji",
+    province_name: "冀州",
+    name: "玄铁塔影探索",
+    action_label: "去冀州探索",
+    average_per_run: 0.35,
+    note: "冀州怪物和玄铁塔影会掉落玄铁砂，是第一件法宝的主要来源。",
+  },
+  {
+    item_id: "raw_iron",
+    item_name: "玄铁砂",
+    source_type: "cave",
+    source_id: "refinery_room",
+    name: "洞府炼器室",
+    action_label: "收取洞府",
+    average_per_run: 1,
+    note: "炼器室能补少量玄铁砂，适合和探索一起凑齐配方。",
+  },
+  {
+    item_id: "spirit_stone",
+    item_name: "灵石",
+    source_type: "cave",
+    source_id: "spirit_field",
+    name: "洞府灵田",
+    action_label: "收取洞府",
+    average_per_run: 120,
+    note: "灵田是灵石的稳定来源，炼丹炼器前优先查看可收取收益。",
+  },
+  {
+    item_id: "spirit_stone",
+    item_name: "灵石",
+    source_type: "task",
+    source_id: "daily_task",
+    name: "今日任务",
+    action_label: "领取任务",
+    average_per_run: 80,
+    note: "今日任务会补充少量灵石，适合解决低阶生产缺口。",
+  },
+  {
+    item_id: "pill_dust",
+    item_name: "丹尘",
+    source_type: "system",
+    source_id: "alchemy_failure",
+    name: "炼丹失败返还",
+    action_label: "炼丹后查看",
+    average_per_run: 1,
+    note: "丹尘来自炼丹失败返还，不应作为新手强制目标。",
+  },
+  {
+    item_id: "artifact_soul",
+    item_name: "器魂",
+    source_type: "decompose",
+    source_id: "equipment_decompose",
+    name: "法宝分解",
+    action_label: "分解闲置法宝",
+    average_per_run: 1,
+    note: "器魂来自分解闲置法宝，前期优先保留第一件可用法宝。",
+  },
+  {
+    item_id: "inscription_rune",
+    item_name: "铭纹砂",
+    source_type: "event",
+    source_id: "craft_trial",
+    name: "丹器加试",
+    action_label: "参加活动",
+    average_per_run: 1,
+    note: "铭纹砂主要来自活动和后续生产玩法，前期不作为必备材料。",
+  },
+];
+
+export interface MaterialBalanceProfile {
+  item_id: string;
+  item_name: string;
+  daily_supply: number;
+  daily_demand: number;
+  stockpile_threshold: number;
+  graduation_threshold?: number;
+  suggestion: string;
+}
+
+export const materialBalanceProfiles: MaterialBalanceProfile[] = [
+  {
+    item_id: "low_herb",
+    item_name: "凝露草",
+    daily_supply: 9,
+    daily_demand: 6,
+    stockpile_threshold: 18,
+    graduation_threshold: 22,
+    suggestion: "若 7 天囤积过多，可把部分凝露草消耗转到破境丹或活动任务。",
+  },
+  {
+    item_id: "raw_iron",
+    item_name: "玄铁砂",
+    daily_supply: 5,
+    daily_demand: 7,
+    stockpile_threshold: 14,
+    suggestion: "玄铁砂偏紧时，优先提高冀州探索和洞府炼器室提示权重。",
+  },
+  {
+    item_id: "spirit_stone",
+    item_name: "灵石",
+    daily_supply: 420,
+    daily_demand: 310,
+    stockpile_threshold: 800,
+    suggestion: "灵石应保持轻微富余，避免新手被基础生产卡住。",
+  },
 ];
 
 export interface PillQualityConfig {
@@ -290,4 +434,72 @@ export function getDefaultSkillLoadout(route: CultivationRoute): SkillLoadoutRes
     auto_priority: ["skill_benming_faguang", ...activeSkillIds],
     available_skills: getAvailableSkills(route),
   };
+}
+
+export function buildMaterialSourceHints(itemId: string, missing: number): MaterialSourceState[] {
+  return materialSourceConfigs
+    .filter((source) => source.item_id === itemId)
+    .map(
+      ({ average_per_run: averagePerRun, item_id: _itemId, item_name: _itemName, ...source }) => ({
+        ...source,
+        estimated_runs:
+          missing > 0 && averagePerRun && averagePerRun > 0
+            ? Math.max(1, Math.ceil(missing / averagePerRun))
+            : undefined,
+      }),
+    )
+    .slice(0, 3);
+}
+
+export function buildProductionBalanceWarnings(
+  periods: Array<1 | 7 | 30> = [1, 7, 30],
+): ProductionBalanceWarningState[] {
+  const warnings: ProductionBalanceWarningState[] = [];
+
+  for (const profile of materialBalanceProfiles) {
+    for (const periodDays of periods) {
+      const supply = profile.daily_supply * periodDays;
+      const demand = profile.daily_demand * periodDays;
+      const net = supply - demand;
+
+      if (net < 0) {
+        warnings.push({
+          item_id: profile.item_id,
+          name: profile.item_name,
+          period_days: periodDays,
+          risk_type: "shortage",
+          severity: periodDays >= 7 ? "warning" : "info",
+          message: `${periodDays} 天预估缺口 ${Math.abs(net)} 个，可能卡住生产节奏。`,
+          suggestion: profile.suggestion,
+        });
+        continue;
+      }
+
+      if (net >= profile.stockpile_threshold) {
+        warnings.push({
+          item_id: profile.item_id,
+          name: profile.item_name,
+          period_days: periodDays,
+          risk_type: "stockpile",
+          severity: periodDays >= 30 ? "warning" : "info",
+          message: `${periodDays} 天预估富余 ${net} 个，可能形成低阶材料囤积。`,
+          suggestion: profile.suggestion,
+        });
+      }
+
+      if (profile.graduation_threshold && supply >= profile.graduation_threshold) {
+        warnings.push({
+          item_id: profile.item_id,
+          name: profile.item_name,
+          period_days: periodDays,
+          risk_type: "fast_graduation",
+          severity: periodDays === 1 ? "info" : "warning",
+          message: `${periodDays} 天可获得约 ${supply} 个，需观察是否让新手过快跳过低阶目标。`,
+          suggestion: profile.suggestion,
+        });
+      }
+    }
+  }
+
+  return warnings;
 }

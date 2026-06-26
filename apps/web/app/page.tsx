@@ -4475,9 +4475,15 @@ function ActionFeedbackInline({
 function ProductionRecommendationView({
   recommendation,
 }: {
-  recommendation: NonNullable<AlchemyRecipeListResponse["recipes"][number]["recommendation"]>;
+  recommendation: NonNullable<
+    | AlchemyRecipeListResponse["recipes"][number]["recommendation"]
+    | ForgeRecipeListResponse["recipes"][number]["recommendation"]
+  >;
 }) {
   const gaps = recommendation.material_gaps.filter((item) => item.missing > 0);
+  const warnings = (recommendation.balance_warnings ?? []).filter(
+    (warning) => warning.severity !== "info",
+  );
 
   return (
     <div className="production-recommendation">
@@ -4487,17 +4493,55 @@ function ProductionRecommendationView({
           {recommendation.can_craft ? "材料足够" : "材料缺口"}
         </StatusBadge>
       </div>
+      {recommendation.recommendation_tags?.length ? (
+        <div className="reason-tags">
+          {recommendation.recommendation_tags.map((tag) => (
+            <span className="reason-tag" key={tag}>
+              {tag}
+            </span>
+          ))}
+          {typeof recommendation.priority_score === "number" ? (
+            <span className="reason-tag">推荐度 {recommendation.priority_score}</span>
+          ) : null}
+        </div>
+      ) : null}
       <p>{recommendation.reason}</p>
       <span>{recommendation.result_hint}</span>
+      {recommendation.usage_hint ? <span>{recommendation.usage_hint}</span> : null}
       <span>{recommendation.next_action_hint}</span>
       {gaps.length ? (
         <div className="recommendation-gaps">
           {gaps.map((gap) => (
             <span key={gap.item_id}>
-              {gap.name} 缺 {gap.missing}
+              <strong>
+                {gap.name} 缺 {gap.missing}
+              </strong>
+              {gap.shortage_hint ? <small>{gap.shortage_hint}</small> : null}
+              {gap.source_hints?.length ? (
+                <small>
+                  来源：
+                  {gap.source_hints
+                    .map((source) =>
+                      source.estimated_runs
+                        ? `${source.name}约${source.estimated_runs}次`
+                        : source.name,
+                    )
+                    .join("、")}
+                </small>
+              ) : null}
             </span>
           ))}
         </div>
+      ) : null}
+      {warnings.length ? (
+        <details className="event-boundary production-warning">
+          <summary>材料节奏提示</summary>
+          {warnings.slice(0, 2).map((warning) => (
+            <span key={`${warning.item_id}-${warning.period_days}-${warning.risk_type}`}>
+              {warning.name}：{warning.message} {warning.suggestion}
+            </span>
+          ))}
+        </details>
       ) : null}
     </div>
   );

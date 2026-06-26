@@ -495,6 +495,9 @@
 | gap_hint | 缺口提示模板 |
 | expected_action_count | 预计补齐所需行动次数，用于展示，不作为保底承诺 |
 | priority_rule | 今日路线和生产推荐优先级 |
+| balance_profile | 1 / 7 / 30 天产销估算，只输出断供、囤积和过快毕业预警 |
+
+当前落地的配置 envelope 为 `GET /api/config/material_chain`，payload 包含 `sources`、`balance_profiles`、`warnings` 和 `forbidden_outputs`。`warnings` 只用于调参提示，不改变玩家结算。
 
 `skill_learning_config`
 

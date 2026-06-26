@@ -1417,7 +1417,7 @@ export default function HomePage() {
   async function handleLearnSkill(skillId: string) {
     const skill = skills?.available_skills.find((item) => item.skill_id === skillId);
     if (!skill) {
-      setMessage("技能配置尚未读取");
+      setMessage("技能状态同步中");
       return;
     }
     if (skill.learned) {
@@ -1450,7 +1450,7 @@ export default function HomePage() {
 
   async function handleSaveSkillPreset() {
     if (!skills) {
-      setMessage("技能配置尚未读取");
+      setMessage("技能状态同步中");
       return;
     }
 
@@ -1575,7 +1575,7 @@ export default function HomePage() {
   async function handleTowerAction() {
     const tower = selectedTower ?? firstTower;
     if (!tower) {
-      setMessage("九塔状态尚未读取");
+      setMessage("九塔状态同步中");
       return;
     }
 
@@ -1592,7 +1592,7 @@ export default function HomePage() {
 
   async function handleChallengeBoss() {
     if (!boss) {
-      setMessage("公共 Boss 尚未读取");
+      setMessage("公共 Boss 状态同步中");
       return;
     }
 
@@ -2383,7 +2383,7 @@ export default function HomePage() {
       ensureOk(response);
       await refreshCommerce();
       rememberExperience(undefined, {
-        summary: `${response.data.appearance.name} 已加入展示收藏，只作展示，不影响战斗与排行。`,
+        summary: `${response.data.appearance.name} 已加入展示收藏，用于名片、战报和社交展示。`,
         tags: ["展示外观", "收藏"],
         title: "领取展示外观",
         tone: "success",
@@ -2447,1791 +2447,1888 @@ export default function HomePage() {
   }
 
   return (
-    <main
-      className={activeProfile?.player ? "shell app-shell text-game-shell" : "shell app-shell"}
-      onClickCapture={handleActionFeedbackCapture}
-    >
-      <section className="topbar">
-        <div>
-          <p className="eyebrow">九州纪元 · 文字修行</p>
-          <h1>择日飞升</h1>
-          {activeProfile?.player ? (
-            <p className="subline">
-              {activeProfile.player.name} · {cultivationRouteLabels[activeProfile.player.route]} ·
-              第 {activeProfile.progress?.chapter_id ?? 1} 章
-            </p>
-          ) : (
-            <p className="subline">九州文字修仙游戏</p>
-          )}
-        </div>
-        <div className="status-row">
-          <StatusBadge
-            tone={
-              healthText === "正常" ? "success" : healthText === "检测中" ? "neutral" : "warning"
-            }
-          >
-            API {healthText}
-          </StatusBadge>
-          <span className="message">{message}</span>
-        </div>
-      </section>
-
-      {!activeProfile?.player ? (
-        <section className="onboarding-panel" aria-label="进入游戏">
-          <div className="section-title">
-            <h2>进入冀州</h2>
-            <span>{token ? "创建角色后开始今日修行" : "游客登录后开始今日修行"}</span>
-          </div>
-          <div className="login-actions">
-            <Button disabled={busy} onClick={handleGuestLogin}>
-              游客登录
-            </Button>
-            <StatusBadge tone={token ? "success" : "neutral"}>
-              {token ? "已登录" : "未登录"}
-            </StatusBadge>
-          </div>
-          <form className="create-form" onSubmit={handleCreatePlayer}>
-            <label>
-              <span>角色名</span>
-              <input
-                maxLength={16}
-                minLength={2}
-                onChange={(event) => setPlayerName(event.target.value)}
-                value={playerName}
-              />
-            </label>
-            <label>
-              <span>路线</span>
-              <select
-                onChange={(event) => setRoute(event.target.value as RouteValue)}
-                value={route}
-              >
-                <option value="qi">练气</option>
-                <option value="body">炼体</option>
-              </select>
-            </label>
-            {token ? (
-              <Button disabled={busy} type="submit">
-                创建角色
-              </Button>
-            ) : (
-              <span className="action-note">先使用游客登录</span>
-            )}
-          </form>
-        </section>
-      ) : (
-        <>
-          <section className="today-hero" aria-label="今日修行">
-            <div className="today-hero-copy">
-              <p className="eyebrow">今日修行</p>
-              <h2>先收收益，再定路线</h2>
-              <p>
-                {completedTasks.length} 个任务可领 · 行动令{" "}
-                {overview?.action_state?.action_points ?? 0} 枚 ·{" "}
-                {firstClaimableActivity ? `${firstClaimableActivity.name} 可领奖` : "活动可推进"}
+    <>
+      <DesktopOnlyNotice />
+      <main
+        className={activeProfile?.player ? "shell app-shell text-game-shell" : "shell app-shell"}
+        onClickCapture={handleActionFeedbackCapture}
+      >
+        <section className="topbar">
+          <div>
+            <p className="eyebrow">九州纪元 · 文字修行</p>
+            <h1>择日飞升</h1>
+            {activeProfile?.player ? (
+              <p className="subline">
+                {activeProfile.player.name} · {cultivationRouteLabels[activeProfile.player.route]} ·
+                第 {activeProfile.progress?.chapter_id ?? 1} 章
               </p>
-            </div>
-            <div className="today-main-flow">
-              <MainlineGuideCard
-                feedback={actionFeedbackFor("mainline-guide")}
-                guide={mainlineGuide}
-                onViewFeedback={handleViewActionFeedbackDetails}
-              />
-              <div className="today-controls" aria-label="今日行动选择">
-                <label>
-                  <span>探索州域</span>
-                  <select
-                    onChange={(event) => handleSelectProvince(event.target.value)}
-                    value={selectedProvince?.province_id ?? ""}
-                  >
-                    {unlockedProvinces.map((province) => (
-                      <option key={province.province_id} value={province.province_id}>
-                        {province.name} · {province.tower_name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>探索次数</span>
-                  <select
-                    onChange={(event) => setExploreCount(Number(event.target.value))}
-                    value={exploreCount}
-                  >
-                    <option value={1}>1 次</option>
-                    <option value={3}>3 次</option>
-                    <option value={5}>5 次</option>
-                  </select>
-                </label>
-                <label className="tower-choice">
-                  <span>九塔目标</span>
-                  <select
-                    onChange={(event) => handleSelectTower(event.target.value)}
-                    value={selectedTower?.tower_id ?? ""}
-                  >
-                    {towers?.towers.map((tower) => (
-                      <option
-                        disabled={!isProvinceUnlocked(overview?.provinces, tower.province_id)}
-                        key={tower.tower_id}
-                        value={tower.tower_id}
-                      >
-                        {provinceNameById(overview?.provinces, tower.province_id)} ·{" "}
-                        {tower.tower_name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <Button
-                  className="today-refresh-button"
-                  disabled={busy || !activeProfile?.player}
-                  onClick={() => refreshOverview()}
-                >
-                  刷新状态
-                </Button>
-              </div>
-            </div>
-            <div className="today-side-flow">
-              <ExploreQueueCard
-                canClaim={canClaimExplore}
-                explore={activeExplore ?? currentExplore}
-                feedback={actionFeedbackFor("explore-queue")}
-                onClaim={handleClaimExplore}
-                onViewFeedback={handleViewActionFeedbackDetails}
-                remainingSeconds={exploreRemainingSeconds}
-                busy={busy}
-              />
-              <ExploreEventCard
-                busy={busy}
-                event={firstPendingExploreEvent}
-                feedback={actionFeedbackFor("explore-event")}
-                onResolve={handleResolveExploreEvent}
-                onViewFeedback={handleViewActionFeedbackDetails}
-              />
-              <div className="today-action-grid">
-                {visibleRecommendedActions.map((action) => {
-                  const feedbackSourceId = `recommended-${action.id}`;
-                  return (
-                    <article
-                      className="recommended-action"
-                      data-action-feedback-source={feedbackSourceId}
-                      key={action.id}
-                    >
-                      <div>
-                        <strong>{action.title}</strong>
-                        <span>{action.detail}</span>
-                      </div>
-                      {action.actionUnavailableReason ? (
-                        <span className="action-note">{action.actionUnavailableReason}</span>
-                      ) : (
-                        <Button disabled={action.disabled} onClick={action.onAction}>
-                          {action.buttonLabel}
-                        </Button>
-                      )}
-                      <ActionFeedbackInline
-                        feedback={actionFeedbackFor(feedbackSourceId)}
-                        onViewDetails={handleViewActionFeedbackDetails}
-                      />
-                    </article>
-                  );
-                })}
-              </div>
-            </div>
-          </section>
-
-          <section className="mobile-status-anchors" aria-label="移动端状态捷径">
-            <button onClick={() => scrollToSection(".overview-grid")} type="button">
-              <strong>资源账本</strong>
-              <span>
-                灵石 {activeProfile.wallet?.spirit_stone ?? "0"} · 行动令{" "}
-                {overview?.action_state?.action_points ?? 0}
-              </span>
-            </button>
-            <button onClick={() => scrollToSection(".journal-panel")} type="button">
-              <strong>最近日志</strong>
-              <span>{journalEntries[0]?.title ?? "暂无记录，完成一次行动后写入"}</span>
-            </button>
-          </section>
-
-          <section className="today-layout" aria-label="今日目标与成长追踪">
-            <div className="today-panel">
-              <div className="section-title">
-                <h2>今日目标</h2>
-                <span>按收益优先级排列</span>
-              </div>
-              <div className="goal-list">
-                {dailyGoals.map((goal) => (
-                  <DailyGoalCard
-                    feedback={actionFeedbackFor(`daily-goal-${goal.id}`)}
-                    goal={goal}
-                    key={goal.id}
-                    onViewFeedback={handleViewActionFeedbackDetails}
-                  />
-                ))}
-              </div>
-            </div>
-            <div className="today-panel">
-              <div className="section-title">
-                <h2>下一步成长</h2>
-                <span>缺口和入口集中展示</span>
-              </div>
-              <div className="growth-target-list">
-                {growthTargets.slice(0, 3).map((target) => (
-                  <GrowthTargetCard
-                    feedback={actionFeedbackFor(`growth-target-${target.id}`)}
-                    key={target.id}
-                    onViewFeedback={handleViewActionFeedbackDetails}
-                    target={target}
-                  />
-                ))}
-              </div>
-            </div>
-          </section>
-
-          <CultivationJournal
-            entries={journalEntries}
-            experience={lastExperience}
-            hasMore={Boolean(journalNextCursor)}
-            loadingMore={journalLoadingMore}
-            onLoadMore={handleLoadMoreJournal}
-          />
-
-          <section className="overview-grid" aria-label="修行总览">
-            <MetricCard
-              label="境界"
-              value={`${activeProfile.player.current_realm} 境 ${activeProfile.player.current_level} 层`}
-              detail={overview?.cultivation?.can_breakthrough ? "可突破" : "修行中"}
-            />
-            <MetricCard
-              label="修为"
-              value={
-                overview?.cultivation?.cultivation_value ??
-                activeProfile.progress?.cultivation_value ??
-                "0"
+            ) : (
+              <p className="subline">九州文字修仙游戏</p>
+            )}
+          </div>
+          <div className="status-row">
+            <StatusBadge
+              tone={
+                healthText === "正常" ? "success" : healthText === "检测中" ? "neutral" : "warning"
               }
-              detail={`可领 ${overview?.cultivation?.claimable_cultivation ?? "0"}`}
-            />
-            <MetricCard
-              label="行动令"
-              value={`${overview?.action_state?.action_points ?? 0}/${overview?.action_state?.action_point_cap ?? 0}`}
-              detail={`每小时 +${overview?.action_state?.action_point_restore_per_hour ?? 0}`}
-            />
-            <MetricCard
-              label="洞府"
-              value={`${overview?.cave?.claimable_minutes ?? 0} 分钟`}
-              detail={`灵石 ${overview?.cave?.preview_rewards.spirit_stone ?? "0"}`}
-            />
-            <MetricCard
-              label="资产"
-              value={activeProfile.wallet?.spirit_stone ?? "0"}
-              detail={`仙玉 ${activeProfile.wallet?.jade_paid ?? "0"} / ${activeProfile.wallet?.jade_bound ?? "0"}`}
-            />
-            {lastExperience ? <LedgerExperienceDetails experience={lastExperience} /> : null}
+            >
+              API {healthText}
+            </StatusBadge>
+            <span className="message">{message}</span>
+          </div>
+        </section>
+
+        {!activeProfile?.player ? (
+          <section className="onboarding-panel" aria-label="进入游戏">
+            <div className="section-title">
+              <h2>进入冀州</h2>
+              <span>{token ? "创建角色后开始今日修行" : "游客登录后开始今日修行"}</span>
+            </div>
+            <div className="login-actions">
+              <Button disabled={busy} onClick={handleGuestLogin}>
+                游客登录
+              </Button>
+              <StatusBadge tone={token ? "success" : "neutral"}>
+                {token ? "已登录" : "未登录"}
+              </StatusBadge>
+            </div>
+            <form className="create-form" onSubmit={handleCreatePlayer}>
+              <label>
+                <span>角色名</span>
+                <input
+                  maxLength={16}
+                  minLength={2}
+                  onChange={(event) => setPlayerName(event.target.value)}
+                  value={playerName}
+                />
+              </label>
+              <label>
+                <span>路线</span>
+                <select
+                  onChange={(event) => setRoute(event.target.value as RouteValue)}
+                  value={route}
+                >
+                  <option value="qi">练气</option>
+                  <option value="body">炼体</option>
+                </select>
+              </label>
+              {token ? (
+                <Button disabled={busy} type="submit">
+                  创建角色
+                </Button>
+              ) : (
+                <span className="action-note">先使用游客登录</span>
+              )}
+            </form>
           </section>
-
-          <nav className="tab-nav" aria-label="功能分区">
-            {navItems.map((item) => (
-              <button
-                aria-current={activeTab === item.key ? "page" : undefined}
-                className={activeTab === item.key ? "active" : ""}
-                key={item.key}
-                onClick={() => handleTabChange(item.key)}
-                type="button"
-              >
-                {item.label}
-              </button>
-            ))}
-          </nav>
-
-          <section
-            className={`tab-surface ${tabFocusPulse ? "tab-surface-pulse" : ""}`}
-            ref={tabSurfaceRef}
-            tabIndex={-1}
-            aria-live="polite"
-          >
-            {activeTab === "overview" ? (
-              <div className="main-grid">
-                <section className="panel" aria-label="九州地图">
-                  <div className="section-title">
-                    <h2>九州地图</h2>
-                    <span>九州全域 · 按章节解锁</span>
-                  </div>
-                  <div className="province-grid">
-                    {overview?.provinces.map((province) => (
+        ) : (
+          <>
+            <section className="today-hero" aria-label="今日修行">
+              <div className="today-hero-copy">
+                <p className="eyebrow">今日修行</p>
+                <h2>先收收益，再定路线</h2>
+                <p>
+                  {completedTasks.length} 个任务可领 · 行动令{" "}
+                  {overview?.action_state?.action_points ?? 0} 枚 ·{" "}
+                  {firstClaimableActivity ? `${firstClaimableActivity.name} 可领奖` : "活动可推进"}
+                </p>
+              </div>
+              <div className="today-main-flow">
+                <MainlineGuideCard
+                  feedback={actionFeedbackFor("mainline-guide")}
+                  guide={mainlineGuide}
+                  onViewFeedback={handleViewActionFeedbackDetails}
+                />
+                <div className="today-controls" aria-label="今日行动选择">
+                  <label>
+                    <span>探索州域</span>
+                    <select
+                      onChange={(event) => handleSelectProvince(event.target.value)}
+                      value={selectedProvince?.province_id ?? ""}
+                    >
+                      {unlockedProvinces.map((province) => (
+                        <option key={province.province_id} value={province.province_id}>
+                          {province.name} · {province.tower_name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>探索次数</span>
+                    <select
+                      onChange={(event) => setExploreCount(Number(event.target.value))}
+                      value={exploreCount}
+                    >
+                      <option value={1}>1 次</option>
+                      <option value={3}>3 次</option>
+                      <option value={5}>5 次</option>
+                    </select>
+                  </label>
+                  <label className="tower-choice">
+                    <span>九塔目标</span>
+                    <select
+                      onChange={(event) => handleSelectTower(event.target.value)}
+                      value={selectedTower?.tower_id ?? ""}
+                    >
+                      {towers?.towers.map((tower) => (
+                        <option
+                          disabled={!isProvinceUnlocked(overview?.provinces, tower.province_id)}
+                          key={tower.tower_id}
+                          value={tower.tower_id}
+                        >
+                          {provinceNameById(overview?.provinces, tower.province_id)} ·{" "}
+                          {tower.tower_name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <Button
+                    className="today-refresh-button"
+                    disabled={busy || !activeProfile?.player}
+                    onClick={() => refreshOverview()}
+                  >
+                    刷新状态
+                  </Button>
+                </div>
+              </div>
+              <div className="today-side-flow">
+                <ExploreQueueCard
+                  canClaim={canClaimExplore}
+                  explore={activeExplore ?? currentExplore}
+                  feedback={actionFeedbackFor("explore-queue")}
+                  onClaim={handleClaimExplore}
+                  onViewFeedback={handleViewActionFeedbackDetails}
+                  remainingSeconds={exploreRemainingSeconds}
+                  busy={busy}
+                />
+                <ExploreEventCard
+                  busy={busy}
+                  event={firstPendingExploreEvent}
+                  feedback={actionFeedbackFor("explore-event")}
+                  onResolve={handleResolveExploreEvent}
+                  onViewFeedback={handleViewActionFeedbackDetails}
+                />
+                <div className="today-action-grid">
+                  {visibleRecommendedActions.map((action) => {
+                    const feedbackSourceId = `recommended-${action.id}`;
+                    return (
                       <article
-                        className={province.unlocked ? "province" : "province locked"}
-                        key={province.province_id}
-                      >
-                        <div className="province-head">
-                          <strong>{province.name}</strong>
-                          <StatusBadge tone={province.unlocked ? "success" : "neutral"}>
-                            {province.unlocked ? "已开放" : `章节 ${province.chapter_required}`}
-                          </StatusBadge>
-                        </div>
-                        <span>{province.theme}</span>
-                        <span>
-                          {province.tower_name} · {province.recommended_action}
-                        </span>
-                        <p className="province-detail">{province.resources.join(" / ")}</p>
-                        <p className="province-detail">{province.long_term_goal}</p>
-                        <div className="mini-stats">
-                          <span>探索 {province.exploration_count}</span>
-                          <span>魔染 {province.corruption}</span>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                </section>
-
-                <section className="panel" aria-label="今日任务">
-                  <div className="section-title">
-                    <h2>任务</h2>
-                    <span>{completedTasks.length} 个可领取</span>
-                  </div>
-                  <div className="task-list">
-                    {overview?.tasks.slice(0, 7).map((task) => (
-                      <article
-                        className={`task-row ${
-                          focusedTaskId === task.task_id ? "task-row-focused" : ""
-                        }`}
-                        data-action-feedback-source={`task-${task.task_id}`}
-                        data-task-id={task.task_id}
-                        key={task.task_state_id}
+                        className="recommended-action"
+                        data-action-feedback-source={feedbackSourceId}
+                        key={action.id}
                       >
                         <div>
-                          <strong>{task.title}</strong>
-                          <span>
-                            {task.progress_value}/{task.target_value} ·{" "}
-                            {taskTypeLabel(task.task_type)}
-                          </span>
+                          <strong>{action.title}</strong>
+                          <span>{action.detail}</span>
                         </div>
-                        {task.status === "completed" ? (
-                          <Button disabled={busy} onClick={() => handleClaimTask(task)}>
-                            领取
-                          </Button>
+                        {action.actionUnavailableReason ? (
+                          <span className="action-note">{action.actionUnavailableReason}</span>
                         ) : (
-                          <StatusBadge tone={task.status === "claimed" ? "success" : "neutral"}>
-                            {task.status === "claimed" ? "已领" : "进行中"}
-                          </StatusBadge>
+                          <Button disabled={action.disabled} onClick={action.onAction}>
+                            {action.buttonLabel}
+                          </Button>
                         )}
                         <ActionFeedbackInline
-                          feedback={actionFeedbackFor(`task-${task.task_id}`)}
+                          feedback={actionFeedbackFor(feedbackSourceId)}
                           onViewDetails={handleViewActionFeedbackDetails}
                         />
                       </article>
-                    ))}
-                  </div>
-                </section>
-              </div>
-            ) : null}
-
-            {activeTab === "story" ? (
-              <section className="panel" aria-label="章节卷轴">
-                <div className="section-title">
-                  <h2>章节卷轴</h2>
-                  <span>战报、选择与纪元史册回放</span>
+                    );
+                  })}
                 </div>
-                <div className="main-grid">
-                  <div className="task-list">
-                    {storyScrolls?.scrolls.map((scroll) => (
-                      <article
-                        className={`task-row ${
-                          selectedStoryScroll?.scroll_id === scroll.scroll_id
-                            ? "task-row-focused"
-                            : ""
-                        }`}
-                        key={scroll.scroll_id}
-                      >
-                        <div>
-                          <strong>{scroll.title}</strong>
-                          <span>
-                            第 {scroll.chapter_id} 章 · {scroll.latest_fragment} ·{" "}
-                            {scroll.progress_percent}%
-                          </span>
-                        </div>
-                        {scroll.unlock_state === "unlocked" ? (
-                          <Button
-                            disabled={busy}
-                            onClick={() => handleSelectStoryScroll(scroll.scroll_id)}
-                          >
-                            阅读
-                          </Button>
-                        ) : (
-                          <StatusBadge tone="neutral">未解锁</StatusBadge>
-                        )}
-                      </article>
-                    )) ?? <p className="empty">章节卷轴尚未读取。</p>}
-                  </div>
+              </div>
+            </section>
 
-                  <article className="production-box">
-                    <div className="province-head">
-                      <strong>{storyDetail?.scroll.title ?? "未选择卷轴"}</strong>
-                      <StatusBadge
-                        tone={
-                          storyDetail?.scroll.unlock_state === "unlocked" ? "success" : "neutral"
-                        }
-                      >
-                        {storyDetail?.scroll.unlock_state === "unlocked" ? "可回看" : "待解锁"}
-                      </StatusBadge>
+            <section className="today-layout" aria-label="今日目标与成长追踪">
+              <div className="today-panel">
+                <div className="section-title">
+                  <h2>今日目标摘要</h2>
+                  <span>主操作集中在上方今日修行</span>
+                </div>
+                <div className="goal-list">
+                  {dailyGoals.map((goal) => (
+                    <DailyGoalCard
+                      feedback={actionFeedbackFor(`daily-goal-${goal.id}`)}
+                      goal={goal}
+                      key={goal.id}
+                      onViewFeedback={handleViewActionFeedbackDetails}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="today-panel">
+                <div className="section-title">
+                  <h2>成长提示</h2>
+                  <span>查看缺口，进入分区细调</span>
+                </div>
+                <div className="growth-target-list">
+                  {growthTargets.slice(0, 3).map((target) => (
+                    <GrowthTargetCard
+                      feedback={actionFeedbackFor(`growth-target-${target.id}`)}
+                      key={target.id}
+                      onViewFeedback={handleViewActionFeedbackDetails}
+                      target={target}
+                    />
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            <CultivationJournal
+              entries={journalEntries}
+              experience={lastExperience}
+              hasMore={Boolean(journalNextCursor)}
+              loadingMore={journalLoadingMore}
+              onLoadMore={handleLoadMoreJournal}
+            />
+
+            <section className="overview-grid" aria-label="修行总览">
+              <MetricCard
+                label="境界"
+                value={`${activeProfile.player.current_realm} 境 ${activeProfile.player.current_level} 层`}
+                detail={overview?.cultivation?.can_breakthrough ? "可突破" : "修行中"}
+              />
+              <MetricCard
+                label="修为"
+                value={
+                  overview?.cultivation?.cultivation_value ??
+                  activeProfile.progress?.cultivation_value ??
+                  "0"
+                }
+                detail={`可领 ${overview?.cultivation?.claimable_cultivation ?? "0"}`}
+              />
+              <MetricCard
+                label="行动令"
+                value={`${overview?.action_state?.action_points ?? 0}/${overview?.action_state?.action_point_cap ?? 0}`}
+                detail={`每小时 +${overview?.action_state?.action_point_restore_per_hour ?? 0}`}
+              />
+              <MetricCard
+                label="洞府"
+                value={`${overview?.cave?.claimable_minutes ?? 0} 分钟`}
+                detail={`灵石 ${overview?.cave?.preview_rewards.spirit_stone ?? "0"}`}
+              />
+              <MetricCard
+                label="资产"
+                value={activeProfile.wallet?.spirit_stone ?? "0"}
+                detail={`仙玉 ${activeProfile.wallet?.jade_paid ?? "0"} / ${activeProfile.wallet?.jade_bound ?? "0"}`}
+              />
+              {lastExperience ? <LedgerExperienceDetails experience={lastExperience} /> : null}
+            </section>
+
+            <nav className="tab-nav" aria-label="功能分区">
+              {navItems.map((item) => (
+                <button
+                  aria-current={activeTab === item.key ? "page" : undefined}
+                  className={activeTab === item.key ? "active" : ""}
+                  key={item.key}
+                  onClick={() => handleTabChange(item.key)}
+                  type="button"
+                >
+                  {item.label}
+                </button>
+              ))}
+            </nav>
+
+            <section
+              className={`tab-surface ${tabFocusPulse ? "tab-surface-pulse" : ""}`}
+              ref={tabSurfaceRef}
+              tabIndex={-1}
+              aria-live="polite"
+            >
+              {activeTab === "overview" ? (
+                <div className="main-grid">
+                  <section className="panel" aria-label="九州地图">
+                    <div className="section-title">
+                      <h2>九州地图</h2>
+                      <span>九州全域 · 按章节解锁</span>
                     </div>
-                    <p>{storyDetail?.scroll.subtitle ?? "选择一卷，查看已归档的修行片段。"}</p>
-                    <div className="journal-list">
-                      {storyDetail?.scroll.fragments.map((fragment) => (
+                    <div className="province-grid">
+                      {overview?.provinces.map((province) => (
                         <article
-                          className={fragment.unlocked ? "journal-entry" : "journal-entry muted"}
-                          key={fragment.fragment_id}
+                          className={province.unlocked ? "province" : "province locked"}
+                          key={province.province_id}
                         >
-                          <div className="journal-entry-head">
-                            <strong>{fragment.title}</strong>
-                            <StatusBadge tone={fragment.unlocked ? "success" : "neutral"}>
-                              {fragment.unlocked ? "已归档" : "未解锁"}
+                          <div className="province-head">
+                            <strong>{province.name}</strong>
+                            <StatusBadge tone={province.unlocked ? "success" : "neutral"}>
+                              {province.unlocked ? "已开放" : `章节 ${province.chapter_required}`}
                             </StatusBadge>
                           </div>
-                          <p>{fragment.body}</p>
+                          <span>{province.theme}</span>
+                          <span>
+                            {province.tower_name} · {province.recommended_action}
+                          </span>
+                          <p className="province-detail">{province.resources.join(" / ")}</p>
+                          <p className="province-detail">{province.long_term_goal}</p>
+                          <div className="mini-stats">
+                            <span>探索 {province.exploration_count}</span>
+                            <span>魔染 {province.corruption}</span>
+                          </div>
                         </article>
                       ))}
                     </div>
-                    {storyDetail?.scroll.battle_refs.length ? (
-                      <div className="mini-stats">
-                        {storyDetail.scroll.battle_refs.slice(0, 3).map((battle) => (
-                          <span key={battle.battle_id}>
-                            {battle.title} · {battle.summary}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="action-note">暂无可引用战报，完成探索后会自动归档。</span>
-                    )}
-                  </article>
-                </div>
+                  </section>
 
-                <div className="rank-summary-grid">
-                  {eraChronicle?.entries.map((entry) => (
-                    <article className="rank-mini-card" key={entry.chronicle_id}>
-                      <div className="province-head">
-                        <strong>{entry.title}</strong>
-                        <StatusBadge tone="neutral">
-                          {chronicleTypeLabel(entry.chronicle_type)}
-                        </StatusBadge>
-                      </div>
-                      <p>{entry.summary}</p>
-                      <div className="mini-stats">
-                        {entry.highlights.slice(0, 3).map((highlight) => (
-                          <span key={highlight}>{highlight}</span>
-                        ))}
-                      </div>
-                    </article>
-                  )) ?? <p className="empty">纪元史册尚未生成。</p>}
-                </div>
-              </section>
-            ) : null}
-
-            {activeTab === "collection" ? (
-              <section className="panel" aria-label="多纪元收藏">
-                <div className="section-title">
-                  <h2>收藏馆</h2>
-                  <span>跨纪元回看 · 陈列不加战力</span>
-                </div>
-                <div className="main-grid">
-                  <div className="task-list">
-                    {collection?.collections.map((item) => (
-                      <article
-                        className={item.owned ? "task-row" : "task-row muted"}
-                        data-action-feedback-source={`collection-${item.collection_id}`}
-                        key={item.collection_id}
-                      >
-                        <div>
-                          <strong>{item.name}</strong>
-                          <span>
-                            {collectionTypeLabel(item.collection_type)} ·{" "}
-                            {item.owned ? item.public_summary : item.unlock_hint}
-                          </span>
-                        </div>
-                        <StatusBadge tone={item.owned ? "success" : "neutral"}>
-                          {item.owned ? "已归档" : "待归档"}
-                        </StatusBadge>
-                        {item.owned ? (
-                          <div className="production-actions">
-                            {item.display_positions.map((slotId) =>
-                              item.display_slot === slotId ? (
-                                <StatusBadge key={slotId} tone="success">
-                                  {collectionDisplaySlotName(slotId)}
-                                </StatusBadge>
-                              ) : (
-                                <Button
-                                  disabled={busy}
-                                  key={slotId}
-                                  onClick={() => handleEquipCollectionDisplay(item, slotId)}
-                                >
-                                  放入{collectionDisplaySlotName(slotId)}
-                                </Button>
-                              ),
-                            )}
-                          </div>
-                        ) : null}
-                        <ActionFeedbackInline
-                          feedback={actionFeedbackFor(`collection-${item.collection_id}`)}
-                          onViewDetails={handleViewActionFeedbackDetails}
-                        />
-                      </article>
-                    )) ?? <p className="empty">收藏馆尚未读取。</p>}
-                  </div>
-
-                  <article className="production-box">
-                    <div className="province-head">
-                      <strong>展示栏</strong>
-                      <StatusBadge tone="neutral">
-                        {collection?.blessing_summary.effective_percent ?? 0}% /{" "}
-                        {collection?.blessing_summary.cap_percent ?? 1}%
-                      </StatusBadge>
+                  <section className="panel" aria-label="今日任务">
+                    <div className="section-title">
+                      <h2>任务</h2>
+                      <span>{completedTasks.length} 个可领取</span>
                     </div>
-                    <p>{collection?.blessing_summary.stacking_rule ?? "收藏只影响展示。"}</p>
-                    <div className="rank-summary-grid">
-                      {collection?.display_slots.map((slot) => (
-                        <article className="rank-mini-card" key={slot.slot_id}>
-                          <div className="province-head">
-                            <strong>{slot.name}</strong>
-                            <StatusBadge tone={slot.equipped_collection_id ? "success" : "neutral"}>
-                              {slot.equipped_collection_id ? "已陈列" : "空位"}
-                            </StatusBadge>
-                          </div>
-                          <p>{slot.equipped_name ?? "选择已归档收藏后可放入此处。"}</p>
-                          <div className="mini-stats">
+                    <div className="task-list">
+                      {overview?.tasks.slice(0, 7).map((task) => (
+                        <article
+                          className={`task-row ${
+                            focusedTaskId === task.task_id ? "task-row-focused" : ""
+                          }`}
+                          data-action-feedback-source={`task-${task.task_id}`}
+                          data-task-id={task.task_id}
+                          key={task.task_state_id}
+                        >
+                          <div>
+                            <strong>{task.title}</strong>
                             <span>
-                              可放入 {slot.allowed_types.map(collectionTypeLabel).join(" / ")}
+                              {task.progress_value}/{task.target_value} ·{" "}
+                              {taskTypeLabel(task.task_type)}
                             </span>
                           </div>
+                          {task.status === "completed" ? (
+                            <Button disabled={busy} onClick={() => handleClaimTask(task)}>
+                              领取
+                            </Button>
+                          ) : (
+                            <StatusBadge tone={task.status === "claimed" ? "success" : "neutral"}>
+                              {task.status === "claimed" ? "已领" : "进行中"}
+                            </StatusBadge>
+                          )}
+                          <ActionFeedbackInline
+                            feedback={actionFeedbackFor(`task-${task.task_id}`)}
+                            onViewDetails={handleViewActionFeedbackDetails}
+                          />
                         </article>
                       ))}
                     </div>
-                  </article>
+                  </section>
                 </div>
+              ) : null}
 
-                <div className="rank-summary-grid">
-                  {eraMuseum?.featured_collections.map((item) => (
-                    <article className="rank-mini-card" key={item.collection_id}>
-                      <div className="province-head">
-                        <strong>{item.name}</strong>
-                        <StatusBadge tone="success">
-                          {collectionTypeLabel(item.collection_type)}
-                        </StatusBadge>
-                      </div>
-                      <p>{item.public_summary}</p>
-                      <div className="mini-stats">
-                        <span>{item.inherit_rule}</span>
-                        <span>{item.duplicate_convert}</span>
-                      </div>
-                    </article>
-                  )) ?? <p className="empty">博物志尚未生成。</p>}
-                </div>
-
-                <details className="event-boundary">
-                  <summary>收藏规则</summary>
-                  <span>收藏用于展示、回看和纪念，不影响战斗、掉落与排行。</span>
-                </details>
-              </section>
-            ) : null}
-
-            {activeTab === "events" ? (
-              <section className="panel" aria-label="活动中心">
-                <div className="section-title">
-                  <h2>活动</h2>
-                  <span>{activities?.claimable_count ?? 0} 个可领取 · 今日可做</span>
-                </div>
-                <div className="event-hero">
-                  <div>
-                    <strong>
-                      {firstClaimableActivity?.name ?? firstActivity?.name ?? "活动中心"}
-                    </strong>
-                    <span>
-                      {firstClaimableActivity
-                        ? "已有奖励可领取"
-                        : "按自己的节奏推进，达成目标后再领取奖励"}
-                    </span>
-                  </div>
-                  <StatusBadge tone={firstClaimableActivity ? "success" : "neutral"}>
-                    {firstClaimableActivity ? "可领取" : "进行中"}
-                  </StatusBadge>
-                </div>
-                <div className="event-grid">
-                  {activities?.events.map((activity) => (
-                    <article
-                      className="event-card"
-                      data-action-feedback-source={`activity-${activity.event_instance_id}`}
-                      key={activity.event_instance_id}
-                    >
-                      <div className="province-head">
-                        <strong>{activity.name}</strong>
-                        <StatusBadge tone={activity.claimable ? "success" : "neutral"}>
-                          {activity.claimable ? "可领取" : activityStatusLabel(activity.status)}
-                        </StatusBadge>
-                      </div>
-                      <p>{playerFacingActivityDescription(activity)}</p>
-                      <div className="event-progress">
-                        <span>
-                          进度 {activity.progress}/{activity.target_progress}
-                        </span>
-                        <span>奖励 {rewardStateLabel(activity.reward_state)}</span>
-                      </div>
-                      <div className="mini-stats">
-                        <span>
-                          {activityTypeLabel(activity.event_type)} ·{" "}
-                          {activityStatusLabel(activity.status)}
-                        </span>
-                        <span>{activity.async_enabled ? "今日可做" : "限时开启"}</span>
-                        <span>{formatShortDate(activity.settlement_at)} 统一发放</span>
-                      </div>
-                      <div className="production-actions">
-                        {!activity.claimable && activity.progress < activity.target_progress ? (
-                          <Button disabled={busy} onClick={() => handleSubmitActivity(activity)}>
-                            {activity.action_label}
-                          </Button>
-                        ) : null}
-                        {activity.claimable ? (
-                          <Button disabled={busy} onClick={() => handleClaimActivity(activity)}>
-                            领取
-                          </Button>
-                        ) : null}
-                      </div>
-                      {!activity.claimable && activity.progress >= activity.target_progress ? (
-                        <span className="action-note">
-                          {rewardStateLabel(activity.reward_state)}
-                        </span>
-                      ) : null}
-                      <ActionFeedbackInline
-                        feedback={actionFeedbackFor(`activity-${activity.event_instance_id}`)}
-                        onViewDetails={handleViewActionFeedbackDetails}
-                      />
-                    </article>
-                  )) ?? <p>活动中心尚未读取</p>}
-                </div>
-                <details className="event-boundary">
-                  <summary>玩法说明</summary>
-                  <span>活动奖励以绑定材料、荣誉和展示外观为主。</span>
-                </details>
-              </section>
-            ) : null}
-
-            {activeTab === "growth" ? (
-              <section className="panel" aria-label="生产成长">
-                <div className="section-title">
-                  <h2>成长</h2>
-                  <span>炼丹、炼器、背包与技能预设</span>
-                </div>
-                <div className="production-grid">
-                  <article
-                    className="production-box production-choice"
-                    data-action-feedback-source="growth-alchemy"
-                  >
-                    <strong>丹方炼制</strong>
-                    <span>
-                      {selectedAlchemyRecipe
-                        ? `${selectedAlchemyRecipe.name} · 成功率 ${formatRate(
-                            selectedAlchemyRecipe.success_rate,
-                          )} · 灵石 ${selectedAlchemyRecipe.spirit_stone_cost}`
-                        : "暂无可用丹方"}
-                    </span>
-                    {selectedAlchemyRecipe?.recommendation ? (
-                      <ProductionRecommendationView
-                        recommendation={selectedAlchemyRecipe.recommendation}
-                      />
-                    ) : null}
-                    {alchemyRecipes?.recipes.length ? (
-                      <label className="choice-field">
-                        <span>选择丹方</span>
-                        <select
-                          disabled={busy}
-                          onChange={(event) => setSelectedAlchemyRecipeId(event.target.value)}
-                          value={selectedAlchemyRecipe?.recipe_id ?? ""}
-                        >
-                          {alchemyRecipes.recipes.map((recipe) => (
-                            <option key={recipe.recipe_id} value={recipe.recipe_id}>
-                              {recipe.name} ·{" "}
-                              {recipe.route === "all"
-                                ? "通用"
-                                : cultivationRouteLabels[recipe.route]}{" "}
-                              ·{" "}
-                              {recipe.materials
-                                .map((item) => `${item.name}x${item.count}`)
-                                .join("、")}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    ) : (
-                      <span className="action-note">暂无可用丹方</span>
-                    )}
-                    <div className="production-actions">
-                      {(selectedAlchemyRecipe?.recommendation?.can_craft ??
-                      selectedAlchemyRecipe) ? (
-                        <Button disabled={busy} onClick={handleCraftAlchemy}>
-                          炼制所选丹方
-                        </Button>
-                      ) : null}
-                    </div>
-                    {selectedAlchemyRecipe?.recommendation &&
-                    !selectedAlchemyRecipe.recommendation.can_craft ? (
-                      <span className="action-note">
-                        {formatMaterialGaps(selectedAlchemyRecipe.recommendation.material_gaps)}
-                      </span>
-                    ) : null}
-                    <ActionFeedbackInline
-                      feedback={actionFeedbackFor("growth-alchemy")}
-                      onViewDetails={handleViewActionFeedbackDetails}
-                    />
-                  </article>
-                  <article
-                    className="production-box production-choice"
-                    data-action-feedback-source="growth-pill"
-                  >
-                    <strong>服用丹药</strong>
-                    <span>
-                      {selectedPill
-                        ? `${formatPillItemLabel(selectedPill)} · 服用后按同阶递减`
-                        : "背包中暂无可服用丹药"}
-                    </span>
-                    {availablePills.length ? (
-                      <label className="choice-field">
-                        <span>选择丹药</span>
-                        <select
-                          disabled={busy}
-                          onChange={(event) => setSelectedPillItemInstanceId(event.target.value)}
-                          value={selectedPill?.item_instance_id ?? ""}
-                        >
-                          {availablePills.map((item) => (
-                            <option key={item.item_instance_id} value={item.item_instance_id}>
-                              {formatPillItemLabel(item)}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    ) : (
-                      <span className="action-note">暂无可服丹药</span>
-                    )}
-                    <div className="production-actions">
-                      {selectedPill ? (
-                        <Button disabled={busy} onClick={handleUsePill}>
-                          服用所选丹药
-                        </Button>
-                      ) : null}
-                    </div>
-                    <ActionFeedbackInline
-                      feedback={actionFeedbackFor("growth-pill")}
-                      onViewDetails={handleViewActionFeedbackDetails}
-                    />
-                  </article>
-                  <article
-                    className="production-box production-choice"
-                    data-action-feedback-source="growth-forge"
-                  >
-                    <strong>法宝炼器</strong>
-                    <span>
-                      {selectedForgeRecipe
-                        ? `${selectedForgeRecipe.name} · ${equipmentRarityLabel(
-                            selectedForgeRecipe.rarity,
-                          )} · 灵石 ${selectedForgeRecipe.spirit_stone_cost}`
-                        : `已有 ${equipment?.equipments.length ?? 0} 件 · 炼器不产出九大古宝`}
-                    </span>
-                    {selectedForgeRecipe?.recommendation ? (
-                      <ProductionRecommendationView
-                        recommendation={selectedForgeRecipe.recommendation}
-                      />
-                    ) : null}
-                    {forgeRecipes?.recipes.length ? (
-                      <label className="choice-field">
-                        <span>选择配方</span>
-                        <select
-                          disabled={busy}
-                          onChange={(event) => setSelectedForgeRecipeId(event.target.value)}
-                          value={selectedForgeRecipe?.recipe_id ?? ""}
-                        >
-                          {forgeRecipes.recipes.map((recipe) => (
-                            <option key={recipe.recipe_id} value={recipe.recipe_id}>
-                              {recipe.name} ·{" "}
-                              {recipe.route === "all"
-                                ? "通用"
-                                : cultivationRouteLabels[recipe.route]}{" "}
-                              · {equipmentRarityLabel(recipe.rarity)} ·{" "}
-                              {recipe.materials
-                                .map((item) => `${item.name}x${item.count}`)
-                                .join("、")}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    ) : (
-                      <span className="action-note">暂无可用炼器配方</span>
-                    )}
-                    <div className="production-actions">
-                      {(selectedForgeRecipe?.recommendation?.can_craft ?? selectedForgeRecipe) ? (
-                        <Button disabled={busy} onClick={handleCraftForge}>
-                          炼制所选配方
-                        </Button>
-                      ) : null}
-                      {firstEquipment ? (
-                        <Button disabled={busy} onClick={handleRefineEquipment}>
-                          淬炼
-                        </Button>
-                      ) : null}
-                    </div>
-                    {!selectedForgeRecipe && !firstEquipment ? (
-                      <span className="action-note">暂无可炼器配方或可淬炼法宝</span>
-                    ) : null}
-                    {selectedForgeRecipe?.recommendation &&
-                    !selectedForgeRecipe.recommendation.can_craft ? (
-                      <span className="action-note">
-                        {formatMaterialGaps(selectedForgeRecipe.recommendation.material_gaps)}
-                      </span>
-                    ) : null}
-                    <ActionFeedbackInline
-                      feedback={actionFeedbackFor("growth-forge")}
-                      onViewDetails={handleViewActionFeedbackDetails}
-                    />
-                  </article>
-                  <SkillLoadoutPanel
-                    activeOptions={activeSkillOptions}
-                    busy={busy}
-                    feedback={actionFeedbackFor("growth-skills")}
-                    onLearn={handleLearnSkill}
-                    onMovePriority={handleMoveSkillPriority}
-                    onSave={handleSaveSkillPreset}
-                    onSelectTreasure={handleSelectTreasureSkill}
-                    onToggleActive={handleToggleActiveSkill}
-                    onViewFeedback={handleViewActionFeedbackDetails}
-                    priorityIds={skillPriorityIds}
-                    selectedActiveSkillIds={selectedActiveSkillIds}
-                    selectedTreasureSkillId={selectedTreasureSkillId}
-                    skills={skills}
-                    treasureOptions={treasureSkillOptions}
-                  />
-                </div>
-                <section className="inner-world-panel" id="inner-world" aria-label="内天地">
+              {activeTab === "story" ? (
+                <section className="panel" aria-label="章节卷轴">
                   <div className="section-title">
-                    <h2>内天地</h2>
-                    <span>
-                      {innerWorld?.state.unlocked
-                        ? `等级 ${innerWorld.state.world_level} · 法则 ${innerWorld.state.law_exp}/${innerWorld.state.next_law_exp_required}`
-                        : (innerWorld?.state.unlock_hint ?? "化神 / 神躯或第四章后开启")}
-                    </span>
+                    <h2>章节卷轴</h2>
+                    <span>战报、选择与纪元史册回放</span>
                   </div>
-                  <div className="inner-world-layout">
-                    <article
-                      className="inner-world-summary"
-                      data-action-feedback-source="growth-inner-world"
-                    >
-                      <strong>{innerWorld?.state.unlocked ? "洞天已开" : "暂未开启"}</strong>
-                      <span>
-                        派驻 {innerWorld?.state.active_assignment_count ?? 0}/
-                        {innerWorld?.state.assignment_limit ?? 0} · 可收{" "}
-                        {innerWorld?.state.claimable_assignment_count ?? 0}
-                      </span>
-                      <span>
-                        支援 {innerWorld?.state.support_count_today ?? 0}/
-                        {innerWorld?.state.support_limit_daily ?? 0} · 容量{" "}
-                        {innerWorld?.state.creature_capacity ?? 0}
-                      </span>
-                      <div className="production-actions">
-                        {innerWorld?.state.unlocked && firstUnlockedProvince ? (
-                          <Button disabled={busy} onClick={handleInnerWorldDispatch}>
-                            派驻
-                          </Button>
-                        ) : null}
-                        {innerWorld?.state.unlocked &&
-                        (innerWorld?.state.claimable_assignment_count ?? 0) > 0 ? (
-                          <Button disabled={busy} onClick={handleInnerWorldClaim}>
-                            收取
-                          </Button>
-                        ) : null}
-                        {innerWorld?.state.unlocked ? (
-                          <Button disabled={busy} onClick={handleInnerWorldUpgradeWorld}>
-                            升级洞天
-                          </Button>
-                        ) : null}
-                        {innerWorld?.state.unlocked && firstInnerCreature ? (
-                          <Button disabled={busy} onClick={handleInnerWorldUpgradeCreature}>
-                            培养生灵
-                          </Button>
-                        ) : null}
-                        {innerWorld?.state.unlocked && firstUnlockedProvince ? (
-                          <Button disabled={busy} onClick={handleInnerWorldSupport}>
-                            九州支援
-                          </Button>
-                        ) : null}
-                      </div>
-                      {!innerWorld?.state.unlocked ? (
-                        <span className="action-note">
-                          {innerWorld?.state.unlock_hint ?? "内天地尚未开启"}
-                        </span>
-                      ) : null}
-                      <ActionFeedbackInline
-                        feedback={actionFeedbackFor("growth-inner-world")}
-                        onViewDetails={handleViewActionFeedbackDetails}
-                      />
-                    </article>
-                    <div className="inner-world-lists">
-                      <div>
-                        <strong>生灵</strong>
-                        {innerWorld?.creatures.map((creature) => (
-                          <p key={creature.creature_id}>
-                            {creature.name} · {creatureStatusLabel(creature.status)} · 等级{" "}
-                            {creature.level}
-                          </p>
-                        )) ?? <p>未读取生灵</p>}
-                      </div>
-                      <div>
-                        <strong>派驻队列</strong>
-                        {innerWorld?.assignments.length ? (
-                          innerWorld.assignments.slice(0, 4).map((assignment) => (
-                            <p key={assignment.assignment_id}>
-                              {assignment.creature_name} 至 {assignment.province_name} ·{" "}
-                              {assignment.status === "active"
-                                ? formatRemainingSeconds(assignment.remaining_seconds)
-                                : assignmentStatusLabel(assignment.status)}
-                            </p>
-                          ))
-                        ) : (
-                          <p>暂无派驻</p>
-                        )}
-                      </div>
-                      <div>
-                        <strong>最近法则</strong>
-                        {innerWorld?.recent_law_records.length ? (
-                          innerWorld.recent_law_records.slice(0, 3).map((record) => (
-                            <p key={record.law_record_id}>
-                              {sourceTypeLabel(record.source_type)} · 经验{" "}
-                              {record.exp_delta >= 0 ? "+" : ""}
-                              {record.exp_delta}
-                            </p>
-                          ))
-                        ) : (
-                          <p>暂无记录</p>
-                        )}
-                      </div>
-                      <div>
-                        <strong>洞天收获</strong>
-                        <p>洞天主要带回绑定材料和法则经验，适合补足日常养成。</p>
-                      </div>
+                  <div className="main-grid">
+                    <div className="task-list">
+                      {storyScrolls?.scrolls.map((scroll) => (
+                        <article
+                          className={`task-row ${
+                            selectedStoryScroll?.scroll_id === scroll.scroll_id
+                              ? "task-row-focused"
+                              : ""
+                          }`}
+                          key={scroll.scroll_id}
+                        >
+                          <div>
+                            <strong>{scroll.title}</strong>
+                            <span>
+                              第 {scroll.chapter_id} 章 · {scroll.latest_fragment} ·{" "}
+                              {scroll.progress_percent}%
+                            </span>
+                          </div>
+                          {scroll.unlock_state === "unlocked" ? (
+                            <Button
+                              disabled={busy}
+                              onClick={() => handleSelectStoryScroll(scroll.scroll_id)}
+                            >
+                              阅读
+                            </Button>
+                          ) : (
+                            <StatusBadge tone="neutral">未解锁</StatusBadge>
+                          )}
+                        </article>
+                      )) ?? <p className="empty">章节卷轴状态同步中。</p>}
                     </div>
+
+                    <article className="production-box">
+                      <div className="province-head">
+                        <strong>{storyDetail?.scroll.title ?? "未选择卷轴"}</strong>
+                        <StatusBadge
+                          tone={
+                            storyDetail?.scroll.unlock_state === "unlocked" ? "success" : "neutral"
+                          }
+                        >
+                          {storyDetail?.scroll.unlock_state === "unlocked" ? "可回看" : "待解锁"}
+                        </StatusBadge>
+                      </div>
+                      <p>{storyDetail?.scroll.subtitle ?? "选择一卷，查看已归档的修行片段。"}</p>
+                      <div className="journal-list">
+                        {storyDetail?.scroll.fragments.map((fragment) => (
+                          <article
+                            className={fragment.unlocked ? "journal-entry" : "journal-entry muted"}
+                            key={fragment.fragment_id}
+                          >
+                            <div className="journal-entry-head">
+                              <strong>{fragment.title}</strong>
+                              <StatusBadge tone={fragment.unlocked ? "success" : "neutral"}>
+                                {fragment.unlocked ? "已归档" : "未解锁"}
+                              </StatusBadge>
+                            </div>
+                            <p>{fragment.body}</p>
+                          </article>
+                        ))}
+                      </div>
+                      {storyDetail?.scroll.battle_refs.length ? (
+                        <div className="mini-stats">
+                          {storyDetail.scroll.battle_refs.slice(0, 3).map((battle) => (
+                            <span key={battle.battle_id}>
+                              {battle.title} · {battle.summary}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="action-note">暂无可引用战报，完成探索后会自动归档。</span>
+                      )}
+                    </article>
+                  </div>
+
+                  <div className="rank-summary-grid">
+                    {eraChronicle?.entries.map((entry) => (
+                      <article className="rank-mini-card" key={entry.chronicle_id}>
+                        <div className="province-head">
+                          <strong>{entry.title}</strong>
+                          <StatusBadge tone="neutral">
+                            {chronicleTypeLabel(entry.chronicle_type)}
+                          </StatusBadge>
+                        </div>
+                        <p>{entry.summary}</p>
+                        <div className="mini-stats">
+                          {entry.highlights.slice(0, 3).map((highlight) => (
+                            <span key={highlight}>{highlight}</span>
+                          ))}
+                        </div>
+                      </article>
+                    )) ?? <p className="empty">纪元史册尚未生成。</p>}
                   </div>
                 </section>
-              </section>
-            ) : null}
+              ) : null}
 
-            {activeTab === "multiplayer" ? (
-              <section className="panel" aria-label="多人玩法">
-                <div className="section-title">
-                  <h2>多人</h2>
-                  <span>九塔、Boss、宗门、资源点与排行</span>
-                </div>
-                <div className="production-grid">
-                  <ActionBox
-                    actions={
-                      selectedTower ? (
-                        <Button disabled={busy} onClick={handleTowerAction}>
-                          镇封提交
-                        </Button>
-                      ) : null
-                    }
-                    actionNote={selectedTower ? undefined : "九塔状态尚未读取"}
-                    detail={`${selectedTower ? `${provinceNameById(overview?.provinces, selectedTower.province_id)} · ${selectedTower.tower_name}` : "未读取"} · 完整度 ${selectedTower?.integrity ?? 0} · 镇封 ${selectedTower?.seal_progress ?? 0}`}
-                    feedback={actionFeedbackFor("multiplayer-tower")}
-                    feedbackSourceId="multiplayer-tower"
-                    onViewFeedback={handleViewActionFeedbackDetails}
-                    title="九塔"
-                  />
-                  <ActionBox
-                    actions={
-                      boss ? (
-                        <Button disabled={busy} onClick={handleChallengeBoss}>
-                          镜像挑战
-                        </Button>
-                      ) : null
-                    }
-                    actionNote={boss ? undefined : "公共 Boss 尚未读取"}
-                    detail={`${boss?.boss.name ?? "未读取"} · 阶段 ${boss?.boss.phase ?? 0} · 血量 ${boss?.boss.remaining_hp ?? 0}/${boss?.boss.total_hp ?? 0}`}
-                    feedback={actionFeedbackFor("multiplayer-boss")}
-                    feedbackSourceId="multiplayer-boss"
-                    onViewFeedback={handleViewActionFeedbackDetails}
-                    title="公共 Boss"
-                  />
-                  <ActionBox
-                    actions={
-                      <>
-                        {!sect?.sect ? (
-                          <Button disabled={busy} onClick={handleCreateSect}>
-                            创建宗门
-                          </Button>
-                        ) : null}
-                        {sect?.sect ? (
-                          <Button disabled={busy} onClick={handleSectTask}>
-                            宗门任务
-                          </Button>
-                        ) : null}
-                        {sect?.sect && firstWarehouseDepositItem ? (
-                          <Button disabled={busy} onClick={handleSectWarehouseDeposit}>
-                            入库材料
-                          </Button>
-                        ) : null}
-                        {sect?.sect && firstWarehouseItem ? (
-                          <Button disabled={busy} onClick={handleSectWarehouseWithdraw}>
-                            取用材料
-                          </Button>
-                        ) : null}
-                      </>
-                    }
-                    actionNote={
-                      sect?.sect
-                        ? !firstWarehouseDepositItem && !firstWarehouseItem
-                          ? "暂无可流转的宗门仓库材料"
-                          : undefined
-                        : "未入宗门，可先创建宗门"
-                    }
-                    detail={
-                      sect?.sect
-                        ? `${sect.sect.name} · 周贡献 ${sect.sect.my_contribution_weekly} · 仓库 ${
-                            sect.warehouse.length
-                          } 类`
-                        : "未入宗门"
-                    }
-                    feedback={actionFeedbackFor("multiplayer-sect")}
-                    feedbackSourceId="multiplayer-sect"
-                    onViewFeedback={handleViewActionFeedbackDetails}
-                    title="宗门"
-                  />
-                  <ActionBox
-                    actions={
-                      pvpTarget ? (
-                        <Button disabled={busy} onClick={handlePvpAttack}>
-                          发起争夺
-                        </Button>
-                      ) : null
-                    }
-                    actionNote={pvpTarget ? undefined : "暂无可用 PVP 目标"}
-                    detail={`资源点 ${firstResourcePoint?.name ?? "未读取"} · 个人榜 ${personalRank?.entries.length ?? 0} 人`}
-                    feedback={actionFeedbackFor("multiplayer-pvp")}
-                    feedbackSourceId="multiplayer-pvp"
-                    onViewFeedback={handleViewActionFeedbackDetails}
-                    title="PVP 与排行"
-                  />
-                </div>
-                <section className="rank-panel" aria-label="高级社交">
+              {activeTab === "collection" ? (
+                <section className="panel" aria-label="多纪元收藏">
                   <div className="section-title">
-                    <h2>高级社交</h2>
-                    <span>导师、宗门外交与跨宗门雇佣都可随时处理</span>
+                    <h2>收藏馆</h2>
+                    <span>跨纪元回看 · 陈列不加战力</span>
+                  </div>
+                  <div className="main-grid">
+                    <div className="task-list">
+                      {collection?.collections.map((item) => (
+                        <article
+                          className={item.owned ? "task-row" : "task-row muted"}
+                          data-action-feedback-source={`collection-${item.collection_id}`}
+                          key={item.collection_id}
+                        >
+                          <div>
+                            <strong>{item.name}</strong>
+                            <span>
+                              {collectionTypeLabel(item.collection_type)} ·{" "}
+                              {item.owned ? item.public_summary : item.unlock_hint}
+                            </span>
+                          </div>
+                          <StatusBadge tone={item.owned ? "success" : "neutral"}>
+                            {item.owned ? "已归档" : "待归档"}
+                          </StatusBadge>
+                          {item.owned ? (
+                            <div className="production-actions">
+                              {item.display_positions.map((slotId) =>
+                                item.display_slot === slotId ? (
+                                  <StatusBadge key={slotId} tone="success">
+                                    {collectionDisplaySlotName(slotId)}
+                                  </StatusBadge>
+                                ) : (
+                                  <Button
+                                    disabled={busy}
+                                    key={slotId}
+                                    onClick={() => handleEquipCollectionDisplay(item, slotId)}
+                                  >
+                                    放入{collectionDisplaySlotName(slotId)}
+                                  </Button>
+                                ),
+                              )}
+                            </div>
+                          ) : null}
+                          <ActionFeedbackInline
+                            feedback={actionFeedbackFor(`collection-${item.collection_id}`)}
+                            onViewDetails={handleViewActionFeedbackDetails}
+                          />
+                        </article>
+                      )) ?? <p className="empty">收藏馆状态同步中。</p>}
+                    </div>
+
+                    <article className="production-box">
+                      <div className="province-head">
+                        <strong>展示栏</strong>
+                        <StatusBadge tone="neutral">
+                          {collection?.blessing_summary.effective_percent ?? 0}% /{" "}
+                          {collection?.blessing_summary.cap_percent ?? 1}%
+                        </StatusBadge>
+                      </div>
+                      <p>{collection?.blessing_summary.stacking_rule ?? "收藏只影响展示。"}</p>
+                      <div className="rank-summary-grid">
+                        {collection?.display_slots.map((slot) => (
+                          <article className="rank-mini-card" key={slot.slot_id}>
+                            <div className="province-head">
+                              <strong>{slot.name}</strong>
+                              <StatusBadge
+                                tone={slot.equipped_collection_id ? "success" : "neutral"}
+                              >
+                                {slot.equipped_collection_id ? "已陈列" : "空位"}
+                              </StatusBadge>
+                            </div>
+                            <p>{slot.equipped_name ?? "选择已归档收藏后可放入此处。"}</p>
+                            <div className="mini-stats">
+                              <span>
+                                可放入 {slot.allowed_types.map(collectionTypeLabel).join(" / ")}
+                              </span>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    </article>
+                  </div>
+
+                  <div className="rank-summary-grid">
+                    {eraMuseum?.featured_collections.map((item) => (
+                      <article className="rank-mini-card" key={item.collection_id}>
+                        <div className="province-head">
+                          <strong>{item.name}</strong>
+                          <StatusBadge tone="success">
+                            {collectionTypeLabel(item.collection_type)}
+                          </StatusBadge>
+                        </div>
+                        <p>{item.public_summary}</p>
+                        <div className="mini-stats">
+                          <span>{item.inherit_rule}</span>
+                          <span>{item.duplicate_convert}</span>
+                        </div>
+                      </article>
+                    )) ?? <p className="empty">博物志尚未生成。</p>}
+                  </div>
+
+                  <details className="event-boundary">
+                    <summary>收藏规则</summary>
+                    <span>收藏用于展示、回看和纪念，不影响战斗、掉落与排行。</span>
+                  </details>
+                </section>
+              ) : null}
+
+              {activeTab === "events" ? (
+                <section className="panel" aria-label="活动中心">
+                  <div className="section-title">
+                    <h2>活动</h2>
+                    <span>{activities?.claimable_count ?? 0} 个可领取 · 今日可做</span>
+                  </div>
+                  <div className="event-hero">
+                    <div>
+                      <strong>
+                        {firstClaimableActivity?.name ?? firstActivity?.name ?? "活动中心"}
+                      </strong>
+                      <span>
+                        {firstClaimableActivity
+                          ? "已有奖励可领取"
+                          : "按自己的节奏推进，达成目标后再领取奖励"}
+                      </span>
+                    </div>
+                    <StatusBadge tone={firstClaimableActivity ? "success" : "neutral"}>
+                      {firstClaimableActivity ? "可领取" : "进行中"}
+                    </StatusBadge>
+                  </div>
+                  <div className="event-grid">
+                    {activities?.events.map((activity) => (
+                      <article
+                        className="event-card"
+                        data-action-feedback-source={`activity-${activity.event_instance_id}`}
+                        key={activity.event_instance_id}
+                      >
+                        <div className="province-head">
+                          <strong>{activity.name}</strong>
+                          <StatusBadge tone={activity.claimable ? "success" : "neutral"}>
+                            {activity.claimable ? "可领取" : activityStatusLabel(activity.status)}
+                          </StatusBadge>
+                        </div>
+                        <p>{playerFacingActivityDescription(activity)}</p>
+                        <div className="event-progress">
+                          <span>
+                            进度 {activity.progress}/{activity.target_progress}
+                          </span>
+                          <span>奖励 {rewardStateLabel(activity.reward_state)}</span>
+                        </div>
+                        <div className="mini-stats">
+                          <span>
+                            {activityTypeLabel(activity.event_type)} ·{" "}
+                            {activityStatusLabel(activity.status)}
+                          </span>
+                          <span>{activity.async_enabled ? "今日可做" : "限时开启"}</span>
+                          <span>{formatShortDate(activity.settlement_at)} 统一发放</span>
+                        </div>
+                        <div className="production-actions">
+                          {!activity.claimable && activity.progress < activity.target_progress ? (
+                            <Button disabled={busy} onClick={() => handleSubmitActivity(activity)}>
+                              {activity.action_label}
+                            </Button>
+                          ) : null}
+                          {activity.claimable ? (
+                            <Button disabled={busy} onClick={() => handleClaimActivity(activity)}>
+                              领取
+                            </Button>
+                          ) : null}
+                        </div>
+                        {!activity.claimable && activity.progress >= activity.target_progress ? (
+                          <span className="action-note">
+                            {rewardStateLabel(activity.reward_state)}
+                          </span>
+                        ) : null}
+                        <ActionFeedbackInline
+                          feedback={actionFeedbackFor(`activity-${activity.event_instance_id}`)}
+                          onViewDetails={handleViewActionFeedbackDetails}
+                        />
+                      </article>
+                    )) ?? <p>活动中心状态同步中</p>}
+                  </div>
+                  <details className="event-boundary">
+                    <summary>玩法说明</summary>
+                    <span>活动奖励以绑定材料、荣誉和展示外观为主。</span>
+                  </details>
+                </section>
+              ) : null}
+
+              {activeTab === "growth" ? (
+                <section className="panel" aria-label="生产成长">
+                  <div className="section-title">
+                    <h2>成长</h2>
+                    <span>炼丹、炼器、背包与技能预设</span>
+                  </div>
+                  <div className="growth-route-strip" aria-label="推荐养成步骤">
+                    <article>
+                      <strong>1. 丹药</strong>
+                      <span>
+                        {selectedPill
+                          ? `${formatPillItemLabel(selectedPill)} 可服用`
+                          : selectedAlchemyRecipe
+                            ? `先炼 ${selectedAlchemyRecipe.name}`
+                            : "丹方状态同步中"}
+                      </span>
+                    </article>
+                    <article>
+                      <strong>2. 法宝</strong>
+                      <span>
+                        {firstEquipment
+                          ? `${firstEquipment.name} 可继续淬炼`
+                          : selectedForgeRecipe
+                            ? `先炼 ${selectedForgeRecipe.name}`
+                            : "法宝配方状态同步中"}
+                      </span>
+                    </article>
+                    <article>
+                      <strong>3. 技能</strong>
+                      <span>
+                        {skills
+                          ? `主动 ${selectedActiveSkillIds.length}/3 · 本命 ${skillName(
+                              skills,
+                              selectedTreasureSkillId,
+                            )}`
+                          : "技能状态同步中"}
+                      </span>
+                    </article>
+                    <article>
+                      <strong>4. 洞天</strong>
+                      <span>
+                        {innerWorld?.state.unlocked
+                          ? `等级 ${innerWorld.state.world_level} · 派驻 ${innerWorld.state.active_assignment_count}/${innerWorld.state.assignment_limit}`
+                          : (innerWorld?.state.unlock_hint ?? "后续章节开启")}
+                      </span>
+                    </article>
+                  </div>
+                  <div className="production-grid">
+                    <article
+                      className="production-box production-choice"
+                      data-action-feedback-source="growth-alchemy"
+                    >
+                      <strong>丹方炼制</strong>
+                      <span>
+                        {selectedAlchemyRecipe
+                          ? `${selectedAlchemyRecipe.name} · 成功率 ${formatRate(
+                              selectedAlchemyRecipe.success_rate,
+                            )} · 灵石 ${selectedAlchemyRecipe.spirit_stone_cost}`
+                          : "暂无可用丹方"}
+                      </span>
+                      {selectedAlchemyRecipe?.recommendation ? (
+                        <ProductionRecommendationView
+                          recommendation={selectedAlchemyRecipe.recommendation}
+                        />
+                      ) : null}
+                      {alchemyRecipes?.recipes.length ? (
+                        <label className="choice-field">
+                          <span>选择丹方</span>
+                          <select
+                            disabled={busy}
+                            onChange={(event) => setSelectedAlchemyRecipeId(event.target.value)}
+                            value={selectedAlchemyRecipe?.recipe_id ?? ""}
+                          >
+                            {alchemyRecipes.recipes.map((recipe) => (
+                              <option key={recipe.recipe_id} value={recipe.recipe_id}>
+                                {recipe.name} ·{" "}
+                                {recipe.route === "all"
+                                  ? "通用"
+                                  : cultivationRouteLabels[recipe.route]}{" "}
+                                ·{" "}
+                                {recipe.materials
+                                  .map((item) => `${item.name}x${item.count}`)
+                                  .join("、")}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : (
+                        <span className="action-note">暂无可用丹方</span>
+                      )}
+                      <div className="production-actions">
+                        {(selectedAlchemyRecipe?.recommendation?.can_craft ??
+                        selectedAlchemyRecipe) ? (
+                          <Button disabled={busy} onClick={handleCraftAlchemy}>
+                            炼制所选丹方
+                          </Button>
+                        ) : null}
+                      </div>
+                      {selectedAlchemyRecipe?.recommendation &&
+                      !selectedAlchemyRecipe.recommendation.can_craft ? (
+                        <span className="action-note">
+                          {formatMaterialGaps(selectedAlchemyRecipe.recommendation.material_gaps)}
+                        </span>
+                      ) : null}
+                      <ActionFeedbackInline
+                        feedback={actionFeedbackFor("growth-alchemy")}
+                        onViewDetails={handleViewActionFeedbackDetails}
+                      />
+                    </article>
+                    <article
+                      className="production-box production-choice"
+                      data-action-feedback-source="growth-pill"
+                    >
+                      <strong>服用丹药</strong>
+                      <span>
+                        {selectedPill
+                          ? `${formatPillItemLabel(selectedPill)} · 服用后按同阶递减`
+                          : "背包中暂无可服用丹药"}
+                      </span>
+                      {availablePills.length ? (
+                        <label className="choice-field">
+                          <span>选择丹药</span>
+                          <select
+                            disabled={busy}
+                            onChange={(event) => setSelectedPillItemInstanceId(event.target.value)}
+                            value={selectedPill?.item_instance_id ?? ""}
+                          >
+                            {availablePills.map((item) => (
+                              <option key={item.item_instance_id} value={item.item_instance_id}>
+                                {formatPillItemLabel(item)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : (
+                        <span className="action-note">暂无可服丹药</span>
+                      )}
+                      <div className="production-actions">
+                        {selectedPill ? (
+                          <Button disabled={busy} onClick={handleUsePill}>
+                            服用所选丹药
+                          </Button>
+                        ) : null}
+                      </div>
+                      <ActionFeedbackInline
+                        feedback={actionFeedbackFor("growth-pill")}
+                        onViewDetails={handleViewActionFeedbackDetails}
+                      />
+                    </article>
+                    <article
+                      className="production-box production-choice"
+                      data-action-feedback-source="growth-forge"
+                    >
+                      <strong>法宝炼器</strong>
+                      <span>
+                        {selectedForgeRecipe
+                          ? `${selectedForgeRecipe.name} · ${equipmentRarityLabel(
+                              selectedForgeRecipe.rarity,
+                            )} · 灵石 ${selectedForgeRecipe.spirit_stone_cost}`
+                          : `已有 ${equipment?.equipments.length ?? 0} 件 · 产物以普通法宝为主`}
+                      </span>
+                      {selectedForgeRecipe?.recommendation ? (
+                        <ProductionRecommendationView
+                          recommendation={selectedForgeRecipe.recommendation}
+                        />
+                      ) : null}
+                      {forgeRecipes?.recipes.length ? (
+                        <label className="choice-field">
+                          <span>选择配方</span>
+                          <select
+                            disabled={busy}
+                            onChange={(event) => setSelectedForgeRecipeId(event.target.value)}
+                            value={selectedForgeRecipe?.recipe_id ?? ""}
+                          >
+                            {forgeRecipes.recipes.map((recipe) => (
+                              <option key={recipe.recipe_id} value={recipe.recipe_id}>
+                                {recipe.name} ·{" "}
+                                {recipe.route === "all"
+                                  ? "通用"
+                                  : cultivationRouteLabels[recipe.route]}{" "}
+                                · {equipmentRarityLabel(recipe.rarity)} ·{" "}
+                                {recipe.materials
+                                  .map((item) => `${item.name}x${item.count}`)
+                                  .join("、")}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : (
+                        <span className="action-note">暂无可用炼器配方</span>
+                      )}
+                      <div className="production-actions">
+                        {(selectedForgeRecipe?.recommendation?.can_craft ?? selectedForgeRecipe) ? (
+                          <Button disabled={busy} onClick={handleCraftForge}>
+                            炼制所选配方
+                          </Button>
+                        ) : null}
+                        {firstEquipment ? (
+                          <Button disabled={busy} onClick={handleRefineEquipment}>
+                            淬炼
+                          </Button>
+                        ) : null}
+                      </div>
+                      {!selectedForgeRecipe && !firstEquipment ? (
+                        <span className="action-note">暂无可炼器配方或可淬炼法宝</span>
+                      ) : null}
+                      {selectedForgeRecipe?.recommendation &&
+                      !selectedForgeRecipe.recommendation.can_craft ? (
+                        <span className="action-note">
+                          {formatMaterialGaps(selectedForgeRecipe.recommendation.material_gaps)}
+                        </span>
+                      ) : null}
+                      <ActionFeedbackInline
+                        feedback={actionFeedbackFor("growth-forge")}
+                        onViewDetails={handleViewActionFeedbackDetails}
+                      />
+                    </article>
+                    <SkillLoadoutPanel
+                      activeOptions={activeSkillOptions}
+                      busy={busy}
+                      feedback={actionFeedbackFor("growth-skills")}
+                      onLearn={handleLearnSkill}
+                      onMovePriority={handleMoveSkillPriority}
+                      onSave={handleSaveSkillPreset}
+                      onSelectTreasure={handleSelectTreasureSkill}
+                      onToggleActive={handleToggleActiveSkill}
+                      onViewFeedback={handleViewActionFeedbackDetails}
+                      priorityIds={skillPriorityIds}
+                      selectedActiveSkillIds={selectedActiveSkillIds}
+                      selectedTreasureSkillId={selectedTreasureSkillId}
+                      skills={skills}
+                      treasureOptions={treasureSkillOptions}
+                    />
+                  </div>
+                  <section className="inner-world-panel" id="inner-world" aria-label="内天地">
+                    <div className="section-title">
+                      <h2>内天地</h2>
+                      <span>
+                        {innerWorld?.state.unlocked
+                          ? `等级 ${innerWorld.state.world_level} · 法则 ${innerWorld.state.law_exp}/${innerWorld.state.next_law_exp_required}`
+                          : (innerWorld?.state.unlock_hint ?? "化神 / 神躯或第四章后开启")}
+                      </span>
+                    </div>
+                    <div className="inner-world-layout">
+                      <article
+                        className="inner-world-summary"
+                        data-action-feedback-source="growth-inner-world"
+                      >
+                        <strong>{innerWorld?.state.unlocked ? "洞天已开" : "暂未开启"}</strong>
+                        <span>
+                          派驻 {innerWorld?.state.active_assignment_count ?? 0}/
+                          {innerWorld?.state.assignment_limit ?? 0} · 可收{" "}
+                          {innerWorld?.state.claimable_assignment_count ?? 0}
+                        </span>
+                        <span>
+                          支援 {innerWorld?.state.support_count_today ?? 0}/
+                          {innerWorld?.state.support_limit_daily ?? 0} · 容量{" "}
+                          {innerWorld?.state.creature_capacity ?? 0}
+                        </span>
+                        <div className="production-actions">
+                          {innerWorld?.state.unlocked && firstUnlockedProvince ? (
+                            <Button disabled={busy} onClick={handleInnerWorldDispatch}>
+                              派驻
+                            </Button>
+                          ) : null}
+                          {innerWorld?.state.unlocked &&
+                          (innerWorld?.state.claimable_assignment_count ?? 0) > 0 ? (
+                            <Button disabled={busy} onClick={handleInnerWorldClaim}>
+                              收取
+                            </Button>
+                          ) : null}
+                          {innerWorld?.state.unlocked ? (
+                            <Button disabled={busy} onClick={handleInnerWorldUpgradeWorld}>
+                              升级洞天
+                            </Button>
+                          ) : null}
+                          {innerWorld?.state.unlocked && firstInnerCreature ? (
+                            <Button disabled={busy} onClick={handleInnerWorldUpgradeCreature}>
+                              培养生灵
+                            </Button>
+                          ) : null}
+                          {innerWorld?.state.unlocked && firstUnlockedProvince ? (
+                            <Button disabled={busy} onClick={handleInnerWorldSupport}>
+                              九州支援
+                            </Button>
+                          ) : null}
+                        </div>
+                        {!innerWorld?.state.unlocked ? (
+                          <span className="action-note">
+                            {innerWorld?.state.unlock_hint ?? "内天地尚未开启"}
+                          </span>
+                        ) : null}
+                        <ActionFeedbackInline
+                          feedback={actionFeedbackFor("growth-inner-world")}
+                          onViewDetails={handleViewActionFeedbackDetails}
+                        />
+                      </article>
+                      <div className="inner-world-lists">
+                        <div>
+                          <strong>生灵</strong>
+                          {innerWorld?.creatures.map((creature) => (
+                            <p key={creature.creature_id}>
+                              {creature.name} · {creatureStatusLabel(creature.status)} · 等级{" "}
+                              {creature.level}
+                            </p>
+                          )) ?? <p>生灵状态同步中</p>}
+                        </div>
+                        <div>
+                          <strong>派驻队列</strong>
+                          {innerWorld?.assignments.length ? (
+                            innerWorld.assignments.slice(0, 4).map((assignment) => (
+                              <p key={assignment.assignment_id}>
+                                {assignment.creature_name} 至 {assignment.province_name} ·{" "}
+                                {assignment.status === "active"
+                                  ? formatRemainingSeconds(assignment.remaining_seconds)
+                                  : assignmentStatusLabel(assignment.status)}
+                              </p>
+                            ))
+                          ) : (
+                            <p>暂无派驻</p>
+                          )}
+                        </div>
+                        <div>
+                          <strong>最近法则</strong>
+                          {innerWorld?.recent_law_records.length ? (
+                            innerWorld.recent_law_records.slice(0, 3).map((record) => (
+                              <p key={record.law_record_id}>
+                                {sourceTypeLabel(record.source_type)} · 经验{" "}
+                                {record.exp_delta >= 0 ? "+" : ""}
+                                {record.exp_delta}
+                              </p>
+                            ))
+                          ) : (
+                            <p>暂无记录</p>
+                          )}
+                        </div>
+                        <div>
+                          <strong>洞天收获</strong>
+                          <p>洞天主要带回绑定材料和法则经验，适合补足日常养成。</p>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                </section>
+              ) : null}
+
+              {activeTab === "multiplayer" ? (
+                <section className="panel" aria-label="多人玩法">
+                  <div className="section-title">
+                    <h2>多人</h2>
+                    <span>九塔、Boss、宗门、资源点与排行</span>
+                  </div>
+                  <div className="tab-guidance-grid" aria-label="多人玩法摘要">
+                    <article>
+                      <strong>公共目标</strong>
+                      <span>
+                        {selectedTower
+                          ? `${selectedTower.tower_name}镇封 ${selectedTower.seal_progress}`
+                          : "九塔状态同步中"}
+                      </span>
+                    </article>
+                    <article>
+                      <strong>宗门协作</strong>
+                      <span>
+                        {sect?.sect
+                          ? `${sect.sect.name} · 周贡献 ${sect.sect.my_contribution_weekly}`
+                          : "未入宗门"}
+                      </span>
+                    </article>
+                    <article>
+                      <strong>对抗目标</strong>
+                      <span>{pvpTarget ? `可争夺 ${pvpTarget.display_name}` : "暂无可用对手"}</span>
+                    </article>
+                    <article>
+                      <strong>荣誉展示</strong>
+                      <span>排行称号与史册记录集中在本页下方</span>
+                    </article>
                   </div>
                   <div className="production-grid">
                     <ActionBox
                       actions={
+                        selectedTower ? (
+                          <Button disabled={busy} onClick={handleTowerAction}>
+                            镇封提交
+                          </Button>
+                        ) : null
+                      }
+                      actionNote={selectedTower ? undefined : "九塔状态同步中"}
+                      detail={`${selectedTower ? `${provinceNameById(overview?.provinces, selectedTower.province_id)} · ${selectedTower.tower_name}` : "状态同步中"} · 完整度 ${selectedTower?.integrity ?? 0} · 镇封 ${selectedTower?.seal_progress ?? 0}`}
+                      feedback={actionFeedbackFor("multiplayer-tower")}
+                      feedbackSourceId="multiplayer-tower"
+                      onViewFeedback={handleViewActionFeedbackDetails}
+                      title="九塔"
+                    />
+                    <ActionBox
+                      actions={
+                        boss ? (
+                          <Button disabled={busy} onClick={handleChallengeBoss}>
+                            镜像挑战
+                          </Button>
+                        ) : null
+                      }
+                      actionNote={boss ? undefined : "公共 Boss 状态同步中"}
+                      detail={`${boss?.boss.name ?? "状态同步中"} · 阶段 ${boss?.boss.phase ?? 0} · 血量 ${boss?.boss.remaining_hp ?? 0}/${boss?.boss.total_hp ?? 0}`}
+                      feedback={actionFeedbackFor("multiplayer-boss")}
+                      feedbackSourceId="multiplayer-boss"
+                      onViewFeedback={handleViewActionFeedbackDetails}
+                      title="公共 Boss"
+                    />
+                    <ActionBox
+                      actions={
                         <>
-                          {pendingMentorReview ? (
-                            <>
-                              <Button
-                                disabled={busy}
-                                onClick={() => handleReviewMentor(pendingMentorReview, "accept")}
-                              >
-                                同意拜师
-                              </Button>
-                              <Button
-                                disabled={busy}
-                                onClick={() => handleReviewMentor(pendingMentorReview, "reject")}
-                              >
-                                婉拒
-                              </Button>
-                            </>
-                          ) : null}
-                          {activeMentorRelation && !mentorTaskClaimed(activeMentorRelation) ? (
-                            <Button disabled={busy} onClick={handleClaimMentorTask}>
-                              领指点
+                          {!sect?.sect ? (
+                            <Button disabled={busy} onClick={handleCreateSect}>
+                              创建宗门
                             </Button>
                           ) : null}
-                          {activeMentorRelation && mentorTaskClaimed(activeMentorRelation) ? (
-                            <Button disabled={busy} onClick={handleGraduateMentor}>
-                              出师
+                          {sect?.sect ? (
+                            <Button disabled={busy} onClick={handleSectTask}>
+                              宗门任务
                             </Button>
                           ) : null}
-                          {!pendingMentorReview &&
-                          !activeMentorRelation &&
-                          !pendingMentorApply &&
-                          mentorCandidate ? (
-                            <Button disabled={busy} onClick={handleApplyMentor}>
-                              拜访导师
+                          {sect?.sect && firstWarehouseDepositItem ? (
+                            <Button disabled={busy} onClick={handleSectWarehouseDeposit}>
+                              入库材料
+                            </Button>
+                          ) : null}
+                          {sect?.sect && firstWarehouseItem ? (
+                            <Button disabled={busy} onClick={handleSectWarehouseWithdraw}>
+                              取用材料
                             </Button>
                           ) : null}
                         </>
                       }
                       actionNote={
-                        pendingMentorReview
-                          ? `${pendingMentorReview.apprentice_name} 正等待回应`
-                          : activeMentorRelation
-                            ? `导师 ${activeMentorRelation.mentor_name} · ${mentorRelationStatusLabel(
-                                activeMentorRelation.status,
-                              )}`
+                        sect?.sect
+                          ? !firstWarehouseDepositItem && !firstWarehouseItem
+                            ? "暂无可流转的宗门仓库材料"
+                            : undefined
+                          : "未入宗门，可先创建宗门"
+                      }
+                      detail={
+                        sect?.sect
+                          ? `${sect.sect.name} · 周贡献 ${sect.sect.my_contribution_weekly} · 仓库 ${
+                              sect.warehouse.length
+                            } 类`
+                          : "未入宗门"
+                      }
+                      feedback={actionFeedbackFor("multiplayer-sect")}
+                      feedbackSourceId="multiplayer-sect"
+                      onViewFeedback={handleViewActionFeedbackDetails}
+                      title="宗门"
+                    />
+                    <ActionBox
+                      actions={
+                        pvpTarget ? (
+                          <Button disabled={busy} onClick={handlePvpAttack}>
+                            发起争夺
+                          </Button>
+                        ) : null
+                      }
+                      actionNote={pvpTarget ? undefined : "暂无可用 PVP 目标"}
+                      detail={`资源点 ${firstResourcePoint?.name ?? "状态同步中"} · 个人榜 ${personalRank?.entries.length ?? 0} 人`}
+                      feedback={actionFeedbackFor("multiplayer-pvp")}
+                      feedbackSourceId="multiplayer-pvp"
+                      onViewFeedback={handleViewActionFeedbackDetails}
+                      title="PVP 与排行"
+                    />
+                  </div>
+                  <section className="rank-panel" aria-label="高级社交">
+                    <div className="section-title">
+                      <h2>高级社交</h2>
+                      <span>导师、宗门外交与跨宗门雇佣都可随时处理</span>
+                    </div>
+                    <div className="production-grid">
+                      <ActionBox
+                        actions={
+                          <>
+                            {pendingMentorReview ? (
+                              <>
+                                <Button
+                                  disabled={busy}
+                                  onClick={() => handleReviewMentor(pendingMentorReview, "accept")}
+                                >
+                                  同意拜师
+                                </Button>
+                                <Button
+                                  disabled={busy}
+                                  onClick={() => handleReviewMentor(pendingMentorReview, "reject")}
+                                >
+                                  婉拒
+                                </Button>
+                              </>
+                            ) : null}
+                            {activeMentorRelation && !mentorTaskClaimed(activeMentorRelation) ? (
+                              <Button disabled={busy} onClick={handleClaimMentorTask}>
+                                领指点
+                              </Button>
+                            ) : null}
+                            {activeMentorRelation && mentorTaskClaimed(activeMentorRelation) ? (
+                              <Button disabled={busy} onClick={handleGraduateMentor}>
+                                出师
+                              </Button>
+                            ) : null}
+                            {!pendingMentorReview &&
+                            !activeMentorRelation &&
+                            !pendingMentorApply &&
+                            mentorCandidate ? (
+                              <Button disabled={busy} onClick={handleApplyMentor}>
+                                拜访导师
+                              </Button>
+                            ) : null}
+                          </>
+                        }
+                        actionNote={
+                          pendingMentorReview
+                            ? `${pendingMentorReview.apprentice_name} 正等待回应`
+                            : activeMentorRelation
+                              ? `导师 ${activeMentorRelation.mentor_name} · ${mentorRelationStatusLabel(
+                                  activeMentorRelation.status,
+                                )}`
+                              : pendingMentorApply
+                                ? `已向 ${pendingMentorApply.mentor_name} 递交拜师帖`
+                                : mentorCandidate
+                                  ? undefined
+                                  : "暂无可拜访导师，可先完成排行或邀请道友加入"
+                        }
+                        detail={
+                          activeMentorRelation
+                            ? `${activeMentorRelation.mentor_name} 指点中 · ${
+                                mentorTaskClaimed(activeMentorRelation) ? "可出师" : "可领指点"
+                              }`
                             : pendingMentorApply
-                              ? `已向 ${pendingMentorApply.mentor_name} 递交拜师帖`
-                              : mentorCandidate
-                                ? undefined
-                                : "暂无可拜访导师，可先完成排行或邀请道友加入"
-                      }
-                      detail={
-                        activeMentorRelation
-                          ? `${activeMentorRelation.mentor_name} 指点中 · ${
-                              mentorTaskClaimed(activeMentorRelation) ? "可出师" : "可领指点"
-                            }`
-                          : pendingMentorApply
-                            ? `等待 ${pendingMentorApply.mentor_name} 审批`
-                            : pendingMentorReview
-                              ? `${pendingMentorReview.apprentice_name} 请求拜师`
-                              : `候选 ${mentorCandidate?.display_name ?? "暂无"}`
-                      }
-                      feedback={actionFeedbackFor("multiplayer-mentor")}
-                      feedbackSourceId="multiplayer-mentor"
-                      onViewFeedback={handleViewActionFeedbackDetails}
-                      title="导师"
-                    />
-                    <ActionBox
-                      actions={
-                        <>
-                          {diplomacyReview ? (
-                            <>
-                              <Button
-                                disabled={busy}
-                                onClick={() => handleReviewDiplomacy("accept")}
-                              >
-                                同意提案
+                              ? `等待 ${pendingMentorApply.mentor_name} 审批`
+                              : pendingMentorReview
+                                ? `${pendingMentorReview.apprentice_name} 请求拜师`
+                                : `候选 ${mentorCandidate?.display_name ?? "暂无"}`
+                        }
+                        feedback={actionFeedbackFor("multiplayer-mentor")}
+                        feedbackSourceId="multiplayer-mentor"
+                        onViewFeedback={handleViewActionFeedbackDetails}
+                        title="导师"
+                      />
+                      <ActionBox
+                        actions={
+                          <>
+                            {diplomacyReview ? (
+                              <>
+                                <Button
+                                  disabled={busy}
+                                  onClick={() => handleReviewDiplomacy("accept")}
+                                >
+                                  同意提案
+                                </Button>
+                                <Button
+                                  disabled={busy}
+                                  onClick={() => handleReviewDiplomacy("reject")}
+                                >
+                                  回绝
+                                </Button>
+                              </>
+                            ) : null}
+                            {!diplomacyReview && canProposeDiplomacy && diplomacyTargetSect ? (
+                              <Button disabled={busy} onClick={handleProposeDiplomacy}>
+                                发起盟约
                               </Button>
-                              <Button
-                                disabled={busy}
-                                onClick={() => handleReviewDiplomacy("reject")}
-                              >
-                                回绝
-                              </Button>
-                            </>
-                          ) : null}
-                          {!diplomacyReview && canProposeDiplomacy && diplomacyTargetSect ? (
-                            <Button disabled={busy} onClick={handleProposeDiplomacy}>
-                              发起盟约
-                            </Button>
-                          ) : null}
-                        </>
-                      }
-                      actionNote={
-                        diplomacyReview
-                          ? `${diplomacyReview.source_sect_name} 请求${sectDiplomacyTypeLabel(
-                              diplomacyReview.diplomacy_type,
-                            )}`
-                          : !sect?.sect
-                            ? "未入宗门，暂不可发起外交"
-                            : !canProposeDiplomacy
-                              ? "需要宗主或长老权限"
-                              : diplomacyTargetSect
-                                ? undefined
-                                : "暂无其他宗门目标"
-                      }
-                      detail={
-                        diplomacy?.records[0]
-                          ? `${sectDiplomacyTypeLabel(
-                              diplomacy.records[0].diplomacy_type,
-                            )} · ${sectDiplomacyStatusLabel(diplomacy.records[0].status)}`
-                          : `目标 ${diplomacyTargetSect?.name ?? "暂无"}`
-                      }
-                      feedback={actionFeedbackFor("multiplayer-diplomacy")}
-                      feedbackSourceId="multiplayer-diplomacy"
-                      onViewFeedback={handleViewActionFeedbackDetails}
-                      title="宗门外交"
-                    />
-                    <ActionBox
-                      actions={
-                        <>
-                          {acceptedHire ? (
-                            <Button
-                              disabled={busy}
-                              onClick={() => handleSettleSectHire(acceptedHire)}
-                            >
-                              结算雇佣
-                            </Button>
-                          ) : null}
-                          {!acceptedHire && openHire ? (
-                            <Button disabled={busy} onClick={() => handleAcceptSectHire(openHire)}>
-                              接取雇佣
-                            </Button>
-                          ) : null}
-                          {!acceptedHire && !openHire && canCreateHire ? (
-                            <Button disabled={busy} onClick={handleCreateSectHire}>
-                              发布雇佣
-                            </Button>
-                          ) : null}
-                        </>
-                      }
-                      actionNote={
-                        acceptedHire
-                          ? `来自 ${acceptedHire.employer_sect_name}，可结算普通酬劳`
-                          : openHire
-                            ? `${openHire.employer_sect_name} 发布了${sectHireTypeLabel(
-                                openHire.hire_type,
+                            ) : null}
+                          </>
+                        }
+                        actionNote={
+                          diplomacyReview
+                            ? `${diplomacyReview.source_sect_name} 请求${sectDiplomacyTypeLabel(
+                                diplomacyReview.diplomacy_type,
                               )}`
                             : !sect?.sect
-                              ? "未入宗门，暂不可参与雇佣"
-                              : !canCreateHire
-                                ? "发布雇佣需要执事以上权限"
-                                : "暂无外部委托，可发布一条探索协助"
-                      }
-                      detail={
-                        acceptedHire
-                          ? `${sectHireTypeLabel(acceptedHire.hire_type)} · ${sectHireStatusLabel(
-                              acceptedHire.status,
-                            )}`
-                          : openHire
-                            ? `${sectHireTypeLabel(openHire.hire_type)} · ${sectHireStatusLabel(
-                                openHire.status,
-                              )}`
-                            : `本宗委托 ${hireList?.my_hires.length ?? 0} · 可接 ${
-                                hireList?.open_hires.length ?? 0
-                              }`
-                      }
-                      feedback={actionFeedbackFor("multiplayer-hire")}
-                      feedbackSourceId="multiplayer-hire"
-                      onViewFeedback={handleViewActionFeedbackDetails}
-                      title="跨宗门雇佣"
-                    />
-                  </div>
-                  <p className="action-note">
-                    社交协作只记录指导、盟约和普通酬劳，不转移付费资产、九大古宝或唯一战力道具。
-                  </p>
-                </section>
-                <section className="faction-panel" aria-label="仙魔散修路线">
-                  <div className="section-title">
-                    <h2>仙魔散修</h2>
-                    <span>{faction?.state.unlock_hint ?? "化神 / 神躯或第五章后开启"}</span>
-                  </div>
-                  <div className="faction-layout">
-                    <article className="faction-state-card">
-                      <div className="province-head">
-                        <strong>{faction?.state.route_name ?? "未定"}</strong>
-                        <StatusBadge
-                          tone={
-                            faction?.state.sect_conflict
-                              ? "warning"
-                              : faction?.state.unlocked
-                                ? "success"
-                                : "neutral"
-                          }
-                        >
-                          {faction?.state.sect_conflict
-                            ? "宗门冲突"
-                            : faction?.state.unlocked
-                              ? "已开启"
-                              : "未开启"}
-                        </StatusBadge>
-                      </div>
-                      <span>
-                        仙盟 {faction?.state.reputation.immortal ?? 0} · 魔宗{" "}
-                        {faction?.state.reputation.demon ?? 0} · 散修{" "}
-                        {faction?.state.reputation.wanderer ?? 0}
-                      </span>
-                      <span>
-                        称号 {faction?.state.title_name ?? "未定"} · 史册{" "}
-                        {faction?.state.chronicle_title ?? "未定"}
-                      </span>
-                      <p>
-                        {faction?.state.sect_conflict_hint ??
-                          faction?.state.ending_summary ??
-                          "路线奖励以荣誉、展示外观和纪元记录为主。"}
-                      </p>
-                      <div className="mini-stats">
-                        <span>转道 {faction?.state.transfer_available ? "可用" : "冷却/未定"}</span>
-                        <span>次数 {faction?.state.transfer_count ?? 0}</span>
-                      </div>
-                    </article>
-                    <div className="faction-route-list">
-                      {availableFactionRoutes.map((routeConfig) => {
-                        const currentRoute = faction?.state.route;
-                        const canChoose =
-                          faction?.state.unlocked === true && currentRoute === "undecided";
-                        const canTransfer =
-                          faction?.state.unlocked === true &&
-                          currentRoute !== "undecided" &&
-                          currentRoute !== routeConfig.route_id &&
-                          faction.state.transfer_available;
-
-                        return (
-                          <article
-                            className="faction-route-card"
-                            data-action-feedback-source={`faction-route-${routeConfig.route_id}`}
-                            key={routeConfig.route_id}
-                          >
-                            <div>
-                              <strong>{routeConfig.name}</strong>
-                              <span>{routeConfig.stance_label}</span>
-                            </div>
-                            <p>{routeConfig.core_goal}</p>
-                            <span>{routeConfig.weekly_focus.join(" / ")}</span>
-                            <div className="production-actions">
-                              {canChoose ? (
-                                <Button
-                                  disabled={busy}
-                                  onClick={() => handleChooseFactionRoute(routeConfig)}
-                                >
-                                  选择
-                                </Button>
-                              ) : null}
-                              {canTransfer ? (
-                                <Button
-                                  disabled={busy}
-                                  onClick={() => handleTransferFactionRoute(routeConfig)}
-                                >
-                                  转道
-                                </Button>
-                              ) : null}
-                            </div>
-                            {!canChoose && !canTransfer ? (
-                              <span className="action-note">
-                                {faction?.state.unlocked ? "当前路线不可操作" : "路线系统尚未开启"}
-                              </span>
+                              ? "未入宗门，暂不可发起外交"
+                              : !canProposeDiplomacy
+                                ? "需要宗主或长老权限"
+                                : diplomacyTargetSect
+                                  ? undefined
+                                  : "暂无其他宗门目标"
+                        }
+                        detail={
+                          diplomacy?.records[0]
+                            ? `${sectDiplomacyTypeLabel(
+                                diplomacy.records[0].diplomacy_type,
+                              )} · ${sectDiplomacyStatusLabel(diplomacy.records[0].status)}`
+                            : `目标 ${diplomacyTargetSect?.name ?? "暂无"}`
+                        }
+                        feedback={actionFeedbackFor("multiplayer-diplomacy")}
+                        feedbackSourceId="multiplayer-diplomacy"
+                        onViewFeedback={handleViewActionFeedbackDetails}
+                        title="宗门外交"
+                      />
+                      <ActionBox
+                        actions={
+                          <>
+                            {acceptedHire ? (
+                              <Button
+                                disabled={busy}
+                                onClick={() => handleSettleSectHire(acceptedHire)}
+                              >
+                                结算雇佣
+                              </Button>
                             ) : null}
-                            <ActionFeedbackInline
-                              feedback={actionFeedbackFor(`faction-route-${routeConfig.route_id}`)}
-                              onViewDetails={handleViewActionFeedbackDetails}
-                            />
-                          </article>
-                        );
-                      })}
+                            {!acceptedHire && openHire ? (
+                              <Button
+                                disabled={busy}
+                                onClick={() => handleAcceptSectHire(openHire)}
+                              >
+                                接取雇佣
+                              </Button>
+                            ) : null}
+                            {!acceptedHire && !openHire && canCreateHire ? (
+                              <Button disabled={busy} onClick={handleCreateSectHire}>
+                                发布雇佣
+                              </Button>
+                            ) : null}
+                          </>
+                        }
+                        actionNote={
+                          acceptedHire
+                            ? `来自 ${acceptedHire.employer_sect_name}，可结算普通酬劳`
+                            : openHire
+                              ? `${openHire.employer_sect_name} 发布了${sectHireTypeLabel(
+                                  openHire.hire_type,
+                                )}`
+                              : !sect?.sect
+                                ? "未入宗门，暂不可参与雇佣"
+                                : !canCreateHire
+                                  ? "发布雇佣需要执事以上权限"
+                                  : "暂无外部委托，可发布一条探索协助"
+                        }
+                        detail={
+                          acceptedHire
+                            ? `${sectHireTypeLabel(acceptedHire.hire_type)} · ${sectHireStatusLabel(
+                                acceptedHire.status,
+                              )}`
+                            : openHire
+                              ? `${sectHireTypeLabel(openHire.hire_type)} · ${sectHireStatusLabel(
+                                  openHire.status,
+                                )}`
+                              : `本宗委托 ${hireList?.my_hires.length ?? 0} · 可接 ${
+                                  hireList?.open_hires.length ?? 0
+                                }`
+                        }
+                        feedback={actionFeedbackFor("multiplayer-hire")}
+                        feedbackSourceId="multiplayer-hire"
+                        onViewFeedback={handleViewActionFeedbackDetails}
+                        title="跨宗门雇佣"
+                      />
                     </div>
-                  </div>
-                </section>
-                <section className="rank-panel" aria-label="完整排行与称号">
-                  <div className="section-title">
-                    <h2>排行与称号</h2>
-                    <span>
-                      已继承 {titles?.era_blessing.owned_inherited_count ?? 0} 个 · 祝福{" "}
-                      {titles?.era_blessing.effective_percent ?? 0}%/
-                      {titles?.era_blessing.blessing_cap_percent ?? 1}%
-                    </span>
-                  </div>
-                  <div className="rank-summary-grid">
-                    <RankMiniPanel rank={eraRank} title="纪元榜" />
-                    <RankMiniPanel rank={productionRank} title="生产榜" />
-                    <RankMiniPanel rank={innerWorldRank} title="内天地榜" />
-                    <RankMiniPanel rank={factionRank} title="阵营榜" />
-                  </div>
-                  <div className="title-claim-row" data-action-feedback-source="rank-title">
-                    <span>排行称号以荣誉、展示外观和纪元收藏为主。</span>
-                    <div className="production-actions">
-                      {eraRank?.entries.length ? (
-                        <Button disabled={busy} onClick={() => handleClaimRankTitle("era")}>
-                          领纪元称号
-                        </Button>
-                      ) : null}
-                      {productionRank?.entries.length ? (
-                        <Button disabled={busy} onClick={() => handleClaimRankTitle("production")}>
-                          领生产称号
-                        </Button>
-                      ) : null}
-                      {innerWorldRank?.entries.length ? (
-                        <Button disabled={busy} onClick={() => handleClaimRankTitle("inner_world")}>
-                          领洞天称号
-                        </Button>
-                      ) : null}
-                      {factionRank?.entries.length ? (
-                        <Button disabled={busy} onClick={() => handleClaimRankTitle("faction")}>
-                          领阵营称号
-                        </Button>
-                      ) : null}
+                    <p className="action-note">
+                      社交协作只记录指导、盟约和普通酬劳，不转移付费资产、九大古宝或唯一战力道具。
+                    </p>
+                  </section>
+                  <section className="faction-panel" aria-label="仙魔散修路线">
+                    <div className="section-title">
+                      <h2>仙魔散修</h2>
+                      <span>{faction?.state.unlock_hint ?? "化神 / 神躯或第五章后开启"}</span>
                     </div>
-                    {!eraRank?.entries.length &&
-                    !productionRank?.entries.length &&
-                    !innerWorldRank?.entries.length &&
-                    !factionRank?.entries.length ? (
-                      <span className="action-note">暂无可领取排行称号</span>
-                    ) : null}
-                    <ActionFeedbackInline
-                      feedback={actionFeedbackFor("rank-title")}
-                      onViewDetails={handleViewActionFeedbackDetails}
-                    />
-                  </div>
-                </section>
-                <div className="tower-grid" aria-label="九塔全域状态">
-                  {towers?.towers.map((tower) => (
-                    <article className="tower-card" key={tower.tower_id}>
-                      <div className="province-head">
-                        <strong>
-                          {provinceNameById(overview?.provinces, tower.province_id)} ·{" "}
-                          {tower.tower_name}
-                        </strong>
-                        <StatusBadge tone={tower.corruption > 60 ? "warning" : "neutral"}>
-                          阶段 {tower.phase}
-                        </StatusBadge>
-                      </div>
-                      <span>
-                        {tower.boss_name} · {tower.material_name}
-                      </span>
-                      <p>{tower.mechanism}</p>
-                      <div className="mini-stats">
-                        <span>完整 {tower.integrity}</span>
-                        <span>镇封 {tower.seal_progress}</span>
-                        <span>魔染 {tower.corruption}</span>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </section>
-            ) : null}
+                    <div className="faction-layout">
+                      <article className="faction-state-card">
+                        <div className="province-head">
+                          <strong>{faction?.state.route_name ?? "未定"}</strong>
+                          <StatusBadge
+                            tone={
+                              faction?.state.sect_conflict
+                                ? "warning"
+                                : faction?.state.unlocked
+                                  ? "success"
+                                  : "neutral"
+                            }
+                          >
+                            {faction?.state.sect_conflict
+                              ? "宗门冲突"
+                              : faction?.state.unlocked
+                                ? "已开启"
+                                : "未开启"}
+                          </StatusBadge>
+                        </div>
+                        <span>
+                          仙盟 {faction?.state.reputation.immortal ?? 0} · 魔宗{" "}
+                          {faction?.state.reputation.demon ?? 0} · 散修{" "}
+                          {faction?.state.reputation.wanderer ?? 0}
+                        </span>
+                        <span>
+                          称号 {faction?.state.title_name ?? "未定"} · 史册{" "}
+                          {faction?.state.chronicle_title ?? "未定"}
+                        </span>
+                        <p>
+                          {faction?.state.sect_conflict_hint ??
+                            faction?.state.ending_summary ??
+                            "路线奖励以荣誉、展示外观和纪元记录为主。"}
+                        </p>
+                        <div className="mini-stats">
+                          <span>
+                            转道 {faction?.state.transfer_available ? "可用" : "冷却/未定"}
+                          </span>
+                          <span>次数 {faction?.state.transfer_count ?? 0}</span>
+                        </div>
+                      </article>
+                      <div className="faction-route-list">
+                        {availableFactionRoutes.map((routeConfig) => {
+                          const currentRoute = faction?.state.route;
+                          const canChoose =
+                            faction?.state.unlocked === true && currentRoute === "undecided";
+                          const canTransfer =
+                            faction?.state.unlocked === true &&
+                            currentRoute !== "undecided" &&
+                            currentRoute !== routeConfig.route_id &&
+                            faction.state.transfer_available;
 
-            {activeTab === "market" ? (
-              <section className="panel" aria-label="市肆权益">
-                <div className="section-title">
-                  <h2>市肆</h2>
-                  <span>月卡、机缘、便利权益与展示外观</span>
-                </div>
-                <div className="production-grid">
-                  <ActionBox
-                    actions={
-                      commerce ? (
-                        <>
-                          {!smallMonthlyState.active ? (
-                            <Button
-                              disabled={busy}
-                              onClick={() => handlePurchaseMonthly("small_monthly")}
+                          return (
+                            <article
+                              className="faction-route-card"
+                              data-action-feedback-source={`faction-route-${routeConfig.route_id}`}
+                              key={routeConfig.route_id}
                             >
-                              {smallMonthlyState.openButtonLabel}
-                            </Button>
-                          ) : null}
-                          {!largeMonthlyState.active ? (
-                            <Button
-                              disabled={busy}
-                              onClick={() => handlePurchaseMonthly("large_monthly")}
-                            >
-                              {largeMonthlyState.openButtonLabel}
-                            </Button>
-                          ) : null}
-                          {smallMonthlyState.canClaim ? (
-                            <Button
-                              disabled={busy}
-                              onClick={() => handleClaimMonthly("small_monthly")}
-                            >
-                              {smallMonthlyState.claimButtonLabel}
-                            </Button>
-                          ) : null}
-                          {largeMonthlyState.canClaim ? (
-                            <Button
-                              disabled={busy}
-                              onClick={() => handleClaimMonthly("large_monthly")}
-                            >
-                              {largeMonthlyState.claimButtonLabel}
-                            </Button>
-                          ) : null}
-                        </>
-                      ) : null
-                    }
-                    actionNote={
-                      commerce
-                        ? `${smallMonthlyState.statusLabel} · ${largeMonthlyState.statusLabel}`
-                        : "月卡状态尚未读取"
-                    }
-                    detail={`当前 ${commerceTierLabel(commerce?.effective_tier)} · 古宝赠抽 ${
-                      commerce?.available_monthly_grants.reduce(
-                        (sum, grant) => sum + grant.draw_count - grant.used_count,
-                        0,
-                      ) ?? 0
-                    }`}
-                    feedback={actionFeedbackFor("market-monthly")}
-                    feedbackSourceId="market-monthly"
-                    onViewFeedback={handleViewActionFeedbackDetails}
-                    title="月卡"
-                  />
-                  <ActionBox
-                    actions={
-                      <>
-                        {firstAncientGrant ? (
-                          <Button disabled={busy} onClick={handleDrawAncientTreasure}>
-                            赠抽古宝
+                              <div>
+                                <strong>{routeConfig.name}</strong>
+                                <span>{routeConfig.stance_label}</span>
+                              </div>
+                              <p>{routeConfig.core_goal}</p>
+                              <span>{routeConfig.weekly_focus.join(" / ")}</span>
+                              <div className="production-actions">
+                                {canChoose ? (
+                                  <Button
+                                    disabled={busy}
+                                    onClick={() => handleChooseFactionRoute(routeConfig)}
+                                  >
+                                    选择
+                                  </Button>
+                                ) : null}
+                                {canTransfer ? (
+                                  <Button
+                                    disabled={busy}
+                                    onClick={() => handleTransferFactionRoute(routeConfig)}
+                                  >
+                                    转道
+                                  </Button>
+                                ) : null}
+                              </div>
+                              {!canChoose && !canTransfer ? (
+                                <span className="action-note">
+                                  {faction?.state.unlocked
+                                    ? "当前路线不可操作"
+                                    : "路线系统尚未开启"}
+                                </span>
+                              ) : null}
+                              <ActionFeedbackInline
+                                feedback={actionFeedbackFor(
+                                  `faction-route-${routeConfig.route_id}`,
+                                )}
+                                onViewDetails={handleViewActionFeedbackDetails}
+                              />
+                            </article>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </section>
+                  <section className="rank-panel" aria-label="完整排行与称号">
+                    <div className="section-title">
+                      <h2>排行与称号</h2>
+                      <span>
+                        已继承 {titles?.era_blessing.owned_inherited_count ?? 0} 个 · 祝福{" "}
+                        {titles?.era_blessing.effective_percent ?? 0}%/
+                        {titles?.era_blessing.blessing_cap_percent ?? 1}%
+                      </span>
+                    </div>
+                    <div className="rank-summary-grid">
+                      <RankMiniPanel rank={eraRank} title="纪元榜" />
+                      <RankMiniPanel rank={productionRank} title="生产榜" />
+                      <RankMiniPanel rank={innerWorldRank} title="内天地榜" />
+                      <RankMiniPanel rank={factionRank} title="阵营榜" />
+                    </div>
+                    <div className="title-claim-row" data-action-feedback-source="rank-title">
+                      <span>排行称号以荣誉、展示外观和纪元收藏为主。</span>
+                      <div className="production-actions">
+                        {eraRank?.entries.length ? (
+                          <Button disabled={busy} onClick={() => handleClaimRankTitle("era")}>
+                            领纪元称号
                           </Button>
                         ) : null}
-                        {overview ? (
-                          <Button disabled={busy} onClick={handleDrawPermanent}>
-                            常驻机缘
+                        {productionRank?.entries.length ? (
+                          <Button
+                            disabled={busy}
+                            onClick={() => handleClaimRankTitle("production")}
+                          >
+                            领生产称号
                           </Button>
                         ) : null}
-                      </>
-                    }
-                    actionNote={firstAncientGrant ? undefined : "当前无可领取赠抽"}
-                    detail={`已收集 ${ownedTreasureCount}/9 · ${
-                      gachaPools?.pools
-                        .find((pool) => pool.pool_type === "ancient_treasure")
-                        ?.allowed_cost_types.map(gachaCostTypeLabel)
-                        .join(" / ") ?? "月卡赠抽 / 残页合成"
-                    }`}
-                    feedback={actionFeedbackFor("market-gacha")}
-                    feedbackSourceId="market-gacha"
-                    onViewFeedback={handleViewActionFeedbackDetails}
-                    title="九大古宝"
-                  />
-                  {showDevelopmentActions ? (
+                        {innerWorldRank?.entries.length ? (
+                          <Button
+                            disabled={busy}
+                            onClick={() => handleClaimRankTitle("inner_world")}
+                          >
+                            领洞天称号
+                          </Button>
+                        ) : null}
+                        {factionRank?.entries.length ? (
+                          <Button disabled={busy} onClick={() => handleClaimRankTitle("faction")}>
+                            领阵营称号
+                          </Button>
+                        ) : null}
+                      </div>
+                      {!eraRank?.entries.length &&
+                      !productionRank?.entries.length &&
+                      !innerWorldRank?.entries.length &&
+                      !factionRank?.entries.length ? (
+                        <span className="action-note">暂无可领取排行称号</span>
+                      ) : null}
+                      <ActionFeedbackInline
+                        feedback={actionFeedbackFor("rank-title")}
+                        onViewDetails={handleViewActionFeedbackDetails}
+                      />
+                    </div>
+                  </section>
+                  <div className="tower-grid" aria-label="九塔全域状态">
+                    {towers?.towers.map((tower) => (
+                      <article className="tower-card" key={tower.tower_id}>
+                        <div className="province-head">
+                          <strong>
+                            {provinceNameById(overview?.provinces, tower.province_id)} ·{" "}
+                            {tower.tower_name}
+                          </strong>
+                          <StatusBadge tone={tower.corruption > 60 ? "warning" : "neutral"}>
+                            阶段 {tower.phase}
+                          </StatusBadge>
+                        </div>
+                        <span>
+                          {tower.boss_name} · {tower.material_name}
+                        </span>
+                        <p>{tower.mechanism}</p>
+                        <div className="mini-stats">
+                          <span>完整 {tower.integrity}</span>
+                          <span>镇封 {tower.seal_progress}</span>
+                          <span>魔染 {tower.corruption}</span>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
+              {activeTab === "market" ? (
+                <section className="panel" aria-label="市肆权益">
+                  <div className="section-title">
+                    <h2>市肆</h2>
+                    <span>月卡、机缘、便利权益与展示外观</span>
+                  </div>
+                  <div className="tab-guidance-grid" aria-label="市肆摘要">
+                    <article>
+                      <strong>月卡</strong>
+                      <span>
+                        {smallMonthlyState.statusLabel} · {largeMonthlyState.statusLabel}
+                      </span>
+                    </article>
+                    <article>
+                      <strong>古宝机缘</strong>
+                      <span>
+                        已收集 {ownedTreasureCount}/9 · 赠抽{" "}
+                        {commerce?.available_monthly_grants.reduce(
+                          (sum, grant) => sum + grant.draw_count - grant.used_count,
+                          0,
+                        ) ?? 0}
+                      </span>
+                    </article>
+                    <article>
+                      <strong>便利权益</strong>
+                      <span>
+                        当前 {commerceTierLabel(commerce?.effective_tier)} · 批量上限{" "}
+                        {commerce?.convenience.batch_sweep_limit ?? 5}
+                      </span>
+                    </article>
+                  </div>
+                  <div className="production-grid">
                     <ActionBox
                       actions={
-                        overview ? (
+                        commerce ? (
                           <>
-                            <Button disabled={busy} onClick={() => handleSyncVip(3)}>
-                              切换 VIP3
-                            </Button>
-                            <Button disabled={busy} onClick={() => handleSyncVip(4)}>
-                              切换 VIP4
-                            </Button>
-                            <Button disabled={busy} onClick={handleBatchPreview}>
-                              便利预览
-                            </Button>
-                            <Button disabled={busy} onClick={handleAutomationQueue}>
-                              托管队列
-                            </Button>
+                            {!smallMonthlyState.active ? (
+                              <Button
+                                disabled={busy}
+                                onClick={() => handlePurchaseMonthly("small_monthly")}
+                              >
+                                {smallMonthlyState.openButtonLabel}
+                              </Button>
+                            ) : null}
+                            {!largeMonthlyState.active ? (
+                              <Button
+                                disabled={busy}
+                                onClick={() => handlePurchaseMonthly("large_monthly")}
+                              >
+                                {largeMonthlyState.openButtonLabel}
+                              </Button>
+                            ) : null}
+                            {smallMonthlyState.canClaim ? (
+                              <Button
+                                disabled={busy}
+                                onClick={() => handleClaimMonthly("small_monthly")}
+                              >
+                                {smallMonthlyState.claimButtonLabel}
+                              </Button>
+                            ) : null}
+                            {largeMonthlyState.canClaim ? (
+                              <Button
+                                disabled={busy}
+                                onClick={() => handleClaimMonthly("large_monthly")}
+                              >
+                                {largeMonthlyState.claimButtonLabel}
+                              </Button>
+                            ) : null}
                           </>
                         ) : null
                       }
                       actionNote={
-                        overview ? "仅调试环境显示，用于验收权益队列" : "角色状态尚未读取"
+                        commerce
+                          ? `${smallMonthlyState.statusLabel} · ${largeMonthlyState.statusLabel}`
+                          : "月卡状态同步中"
                       }
-                      detail={`VIP ${commerce?.vip.vip_level ?? 0} · 批量上限 ${
-                        commerce?.convenience.batch_sweep_limit ?? 5
-                      } · 当前权益 ${commerceTierLabel(commerce?.effective_tier)}`}
-                      feedback={actionFeedbackFor("market-dev")}
-                      feedbackSourceId="market-dev"
+                      detail={`当前 ${commerceTierLabel(commerce?.effective_tier)} · 古宝赠抽 ${
+                        commerce?.available_monthly_grants.reduce(
+                          (sum, grant) => sum + grant.draw_count - grant.used_count,
+                          0,
+                        ) ?? 0
+                      }`}
+                      feedback={actionFeedbackFor("market-monthly")}
+                      feedbackSourceId="market-monthly"
                       onViewFeedback={handleViewActionFeedbackDetails}
-                      title="调试：便利权益"
+                      title="月卡"
                     />
-                  ) : (
-                    <article className="production-box">
-                      <strong>便利权益</strong>
-                      <span>
-                        VIP {commerce?.vip.vip_level ?? 0} · 批量上限{" "}
-                        {commerce?.convenience.batch_sweep_limit ?? 5} · 当前权益{" "}
-                        {commerceTierLabel(commerce?.effective_tier)}
-                      </span>
-                      <span className="action-note">
-                        月卡或 VIP 状态会自动带来批量扫荡、预设队列等便利。
-                      </span>
-                    </article>
-                  )}
-                  <ActionBox
-                    actions={
-                      currentTransferRequest ? (
-                        currentTransferRequest.status === "submitted" ||
-                        currentTransferRequest.status === "reviewing" ? (
-                          <Button disabled={busy} onClick={handleCancelTransferRequest}>
-                            取消申请
-                          </Button>
-                        ) : null
-                      ) : overview && transferStatus?.current_request === null ? (
-                        <Button disabled={busy} onClick={handleCreateTransferRequest}>
-                          提交申请
-                        </Button>
-                      ) : null
-                    }
-                    actionNote={
-                      currentTransferRequest
-                        ? `${transferRequestStatusLabel(
-                            currentTransferRequest.status,
-                          )} · 目标 ${currentTransferRequest.target_server_id}`
-                        : "转服会先生成迁移预览，确认后再处理"
-                    }
-                    detail={
-                      currentTransferRequest
-                        ? `迁移 ${transferExecuteStatusLabel(
-                            currentTransferRequest.execute_status,
-                          )} · 排行保护 ${
-                            currentTransferRequest.rank_cooldown_until ? "已安排" : "未安排"
-                          }`
-                        : "默认目标 mvp_beta · 不会立即迁移资产"
-                    }
-                    feedback={actionFeedbackFor("market-transfer")}
-                    feedbackSourceId="market-transfer"
-                    onViewFeedback={handleViewActionFeedbackDetails}
-                    title="转服申请"
-                  />
-                  <ActionBox
-                    actions={
-                      <>
-                        {overview ? (
-                          <Button disabled={busy} onClick={handleClaimAppearance}>
-                            领取外观
-                          </Button>
-                        ) : null}
-                        {appearances?.appearances.some((appearance) => appearance.owned) ? (
-                          <Button disabled={busy} onClick={handleEquipAppearance}>
-                            装备外观
-                          </Button>
-                        ) : null}
-                      </>
-                    }
-                    actionNote={
-                      appearances?.appearances.some((appearance) => appearance.owned)
-                        ? undefined
-                        : "暂无可装备外观"
-                    }
-                    detail={`已拥有 ${
-                      appearances?.appearances.filter((appearance) => appearance.owned).length ?? 0
-                    } · 只作展示`}
-                    feedback={actionFeedbackFor("market-appearance")}
-                    feedbackSourceId="market-appearance"
-                    onViewFeedback={handleViewActionFeedbackDetails}
-                    title="展示外观"
-                  />
-                </div>
-                <section className="rank-panel" aria-label="深度外观编辑">
-                  <div className="section-title">
-                    <h2>深度外观</h2>
-                    <span>名片、战报、洞府与宗门驻地预览</span>
-                  </div>
-                  <div className="rank-summary-grid">
-                    {appearancePlus?.display_slots.map((slot) => (
-                      <article className="rank-mini-card" key={slot.slot_id}>
-                        <div className="province-head">
-                          <strong>{slot.name}</strong>
-                          <StatusBadge tone={slot.equipped_appearance_id ? "success" : "neutral"}>
-                            {slot.equipped_appearance_id ? "已装备" : "空位"}
-                          </StatusBadge>
-                        </div>
-                        <p>{slot.equipped_name ?? "选择已拥有外观后可装备到此处。"}</p>
-                        <div className="mini-stats">
-                          <span>
-                            可放入 {slot.allowed_types.map(appearancePlusTypeLabel).join(" / ")}
-                          </span>
-                        </div>
-                      </article>
-                    )) ?? <p className="empty">外观展示栏尚未读取。</p>}
-                  </div>
-                  <div className="event-grid">
-                    {appearancePlus?.appearances.map((appearance) => (
-                      <article
-                        className={appearance.owned ? "event-card" : "event-card muted"}
-                        data-action-feedback-source={`appearance-plus-${appearance.appearance_id}`}
-                        key={appearance.appearance_id}
-                      >
-                        <div className="province-head">
-                          <strong>{appearance.name}</strong>
-                          <StatusBadge tone={appearance.equipped ? "success" : "neutral"}>
-                            {appearance.equipped
-                              ? "已装备"
-                              : appearance.owned
-                                ? "已拥有"
-                                : "待获得"}
-                          </StatusBadge>
-                        </div>
-                        <p>{appearance.preview.subtitle}</p>
-                        <div className="mini-stats">
-                          <span>{appearance.preview.sample_text}</span>
-                          <span>
-                            {appearance.preview.display_positions.join(" / ")} ·{" "}
-                            {appearancePlusTypeLabel(appearance.appearance_type)}
-                          </span>
-                        </div>
-                        <div className="production-actions">
-                          {appearance.owned &&
-                          appearance.permission.can_equip &&
-                          !appearance.equipped ? (
-                            <Button
-                              disabled={busy}
-                              onClick={() => handleEquipAppearancePlus(appearance)}
-                            >
-                              装备到{appearancePlusSlotLabel(appearance.display_slot)}
+                    <ActionBox
+                      actions={
+                        <>
+                          {firstAncientGrant ? (
+                            <Button disabled={busy} onClick={handleDrawAncientTreasure}>
+                              赠抽古宝
                             </Button>
                           ) : null}
-                        </div>
-                        {!appearance.owned || !appearance.permission.can_equip ? (
-                          <span className="action-note">
-                            {appearance.permission.reason ?? appearance.source_hint}
-                          </span>
-                        ) : null}
-                        <ActionFeedbackInline
-                          feedback={actionFeedbackFor(
-                            `appearance-plus-${appearance.appearance_id}`,
-                          )}
-                          onViewDetails={handleViewActionFeedbackDetails}
-                        />
+                          {overview ? (
+                            <Button disabled={busy} onClick={handleDrawPermanent}>
+                              常驻机缘
+                            </Button>
+                          ) : null}
+                        </>
+                      }
+                      actionNote={firstAncientGrant ? undefined : "当前无可领取赠抽"}
+                      detail={`已收集 ${ownedTreasureCount}/9 · ${
+                        gachaPools?.pools
+                          .find((pool) => pool.pool_type === "ancient_treasure")
+                          ?.allowed_cost_types.map(gachaCostTypeLabel)
+                          .join(" / ") ?? "月卡赠抽 / 残页合成"
+                      }`}
+                      feedback={actionFeedbackFor("market-gacha")}
+                      feedbackSourceId="market-gacha"
+                      onViewFeedback={handleViewActionFeedbackDetails}
+                      title="九大古宝"
+                    />
+                    {showDevelopmentActions ? (
+                      <ActionBox
+                        actions={
+                          overview ? (
+                            <>
+                              <Button disabled={busy} onClick={() => handleSyncVip(3)}>
+                                切换 VIP3
+                              </Button>
+                              <Button disabled={busy} onClick={() => handleSyncVip(4)}>
+                                切换 VIP4
+                              </Button>
+                              <Button disabled={busy} onClick={handleBatchPreview}>
+                                便利预览
+                              </Button>
+                              <Button disabled={busy} onClick={handleAutomationQueue}>
+                                托管队列
+                              </Button>
+                            </>
+                          ) : null
+                        }
+                        actionNote={
+                          overview ? "仅开发环境显示，用于验收权益队列" : "角色状态同步中"
+                        }
+                        detail={`VIP ${commerce?.vip.vip_level ?? 0} · 批量上限 ${
+                          commerce?.convenience.batch_sweep_limit ?? 5
+                        } · 当前权益 ${commerceTierLabel(commerce?.effective_tier)}`}
+                        feedback={actionFeedbackFor("market-dev")}
+                        feedbackSourceId="market-dev"
+                        onViewFeedback={handleViewActionFeedbackDetails}
+                        title="开发：便利权益"
+                      />
+                    ) : (
+                      <article className="production-box">
+                        <strong>便利权益</strong>
+                        <span>
+                          VIP {commerce?.vip.vip_level ?? 0} · 批量上限{" "}
+                          {commerce?.convenience.batch_sweep_limit ?? 5} · 当前权益{" "}
+                          {commerceTierLabel(commerce?.effective_tier)}
+                        </span>
+                        <span className="action-note">
+                          月卡或 VIP 状态会自动带来批量扫荡、预设队列等便利。
+                        </span>
                       </article>
-                    )) ?? <p className="empty">深度外观目录尚未读取。</p>}
+                    )}
+                    <ActionBox
+                      actions={
+                        currentTransferRequest ? (
+                          currentTransferRequest.status === "submitted" ||
+                          currentTransferRequest.status === "reviewing" ? (
+                            <Button disabled={busy} onClick={handleCancelTransferRequest}>
+                              取消申请
+                            </Button>
+                          ) : null
+                        ) : overview && transferStatus?.current_request === null ? (
+                          <Button disabled={busy} onClick={handleCreateTransferRequest}>
+                            提交申请
+                          </Button>
+                        ) : null
+                      }
+                      actionNote={
+                        currentTransferRequest
+                          ? `${transferRequestStatusLabel(
+                              currentTransferRequest.status,
+                            )} · 目标 ${currentTransferRequest.target_server_id}`
+                          : "转服会先生成迁移预览，确认后再处理"
+                      }
+                      detail={
+                        currentTransferRequest
+                          ? `迁移 ${transferExecuteStatusLabel(
+                              currentTransferRequest.execute_status,
+                            )} · 排行保护 ${
+                              currentTransferRequest.rank_cooldown_until ? "已安排" : "未安排"
+                            }`
+                          : "默认目标试炼分服 · 提交后先生成迁移预览"
+                      }
+                      feedback={actionFeedbackFor("market-transfer")}
+                      feedbackSourceId="market-transfer"
+                      onViewFeedback={handleViewActionFeedbackDetails}
+                      title="转服申请"
+                    />
+                    <ActionBox
+                      actions={
+                        <>
+                          {overview ? (
+                            <Button disabled={busy} onClick={handleClaimAppearance}>
+                              领取外观
+                            </Button>
+                          ) : null}
+                          {appearances?.appearances.some((appearance) => appearance.owned) ? (
+                            <Button disabled={busy} onClick={handleEquipAppearance}>
+                              装备外观
+                            </Button>
+                          ) : null}
+                        </>
+                      }
+                      actionNote={
+                        appearances?.appearances.some((appearance) => appearance.owned)
+                          ? undefined
+                          : "暂无可装备外观"
+                      }
+                      detail={`已拥有 ${
+                        appearances?.appearances.filter((appearance) => appearance.owned).length ??
+                        0
+                      } · 用于展示`}
+                      feedback={actionFeedbackFor("market-appearance")}
+                      feedbackSourceId="market-appearance"
+                      onViewFeedback={handleViewActionFeedbackDetails}
+                      title="展示外观"
+                    />
                   </div>
-                  <details className="event-boundary">
-                    <summary>外观规则</summary>
-                    <span>外观用于名片、战报、洞府、宗门驻地和史册展示，不影响战斗与排行。</span>
-                  </details>
+                  <section className="rank-panel" aria-label="深度外观编辑">
+                    <div className="section-title">
+                      <h2>深度外观</h2>
+                      <span>名片、战报、洞府与宗门驻地预览</span>
+                    </div>
+                    <div className="rank-summary-grid">
+                      {appearancePlus?.display_slots.map((slot) => (
+                        <article className="rank-mini-card" key={slot.slot_id}>
+                          <div className="province-head">
+                            <strong>{slot.name}</strong>
+                            <StatusBadge tone={slot.equipped_appearance_id ? "success" : "neutral"}>
+                              {slot.equipped_appearance_id ? "已装备" : "空位"}
+                            </StatusBadge>
+                          </div>
+                          <p>{slot.equipped_name ?? "选择已拥有外观后可装备到此处。"}</p>
+                          <div className="mini-stats">
+                            <span>
+                              可放入 {slot.allowed_types.map(appearancePlusTypeLabel).join(" / ")}
+                            </span>
+                          </div>
+                        </article>
+                      )) ?? <p className="empty">外观展示栏状态同步中。</p>}
+                    </div>
+                    <div className="event-grid">
+                      {appearancePlus?.appearances.map((appearance) => (
+                        <article
+                          className={appearance.owned ? "event-card" : "event-card muted"}
+                          data-action-feedback-source={`appearance-plus-${appearance.appearance_id}`}
+                          key={appearance.appearance_id}
+                        >
+                          <div className="province-head">
+                            <strong>{appearance.name}</strong>
+                            <StatusBadge tone={appearance.equipped ? "success" : "neutral"}>
+                              {appearance.equipped
+                                ? "已装备"
+                                : appearance.owned
+                                  ? "已拥有"
+                                  : "待获得"}
+                            </StatusBadge>
+                          </div>
+                          <p>{appearance.preview.subtitle}</p>
+                          <div className="mini-stats">
+                            <span>{appearance.preview.sample_text}</span>
+                            <span>
+                              {appearance.preview.display_positions.join(" / ")} ·{" "}
+                              {appearancePlusTypeLabel(appearance.appearance_type)}
+                            </span>
+                          </div>
+                          <div className="production-actions">
+                            {appearance.owned &&
+                            appearance.permission.can_equip &&
+                            !appearance.equipped ? (
+                              <Button
+                                disabled={busy}
+                                onClick={() => handleEquipAppearancePlus(appearance)}
+                              >
+                                装备到{appearancePlusSlotLabel(appearance.display_slot)}
+                              </Button>
+                            ) : null}
+                          </div>
+                          {!appearance.owned || !appearance.permission.can_equip ? (
+                            <span className="action-note">
+                              {appearance.permission.reason ?? appearance.source_hint}
+                            </span>
+                          ) : null}
+                          <ActionFeedbackInline
+                            feedback={actionFeedbackFor(
+                              `appearance-plus-${appearance.appearance_id}`,
+                            )}
+                            onViewDetails={handleViewActionFeedbackDetails}
+                          />
+                        </article>
+                      )) ?? <p className="empty">深度外观目录状态同步中。</p>}
+                    </div>
+                    <details className="event-boundary">
+                      <summary>外观规则</summary>
+                      <span>外观用于名片、战报、洞府、宗门驻地和史册展示。</span>
+                    </details>
+                  </section>
                 </section>
-              </section>
-            ) : null}
+              ) : null}
 
-            {activeTab === "battle" ? (
-              <section className="panel" aria-label="最近战报">
-                <div className="section-title">
-                  <h2>战报</h2>
-                  <span>普通探索自动结算</span>
-                </div>
-                <div className="today-controls">
-                  <label>
-                    州域
-                    <select
-                      onChange={(event) => setBattleProvinceFilter(event.target.value)}
-                      value={battleProvinceFilter}
-                    >
-                      <option value="all">全部州域</option>
-                      {overview?.provinces.map((province) => (
-                        <option key={province.province_id} value={province.province_id}>
-                          {province.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    胜负
-                    <select
-                      onChange={(event) => setBattleResultFilter(event.target.value)}
-                      value={battleResultFilter}
-                    >
-                      <option value="all">全部结果</option>
-                      <option value="win">胜利</option>
-                      <option value="lose">失利</option>
-                    </select>
-                  </label>
-                  <label>
-                    特性
-                    <select
-                      onChange={(event) => setBattleTraitFilter(event.target.value)}
-                      value={battleTraitFilter}
-                    >
-                      <option value="all">全部特性</option>
-                      {battleTraitOptions.map((trait) => (
-                        <option key={trait} value={trait}>
-                          {trait}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <div className="battle-list">
-                  {filteredRecentBattles.length ? (
-                    filteredRecentBattles.map((battle) => (
-                      <BattleReportCard battle={battle} key={battle.battle_id} />
-                    ))
-                  ) : recentBattles.length ? (
-                    <p className="empty">当前筛选下没有战报，调整州域、胜负或特性再看。</p>
-                  ) : (
-                    <p className="empty">尚无战报，先探索冀州试试。</p>
-                  )}
-                </div>
-              </section>
-            ) : null}
-          </section>
+              {activeTab === "battle" ? (
+                <section className="panel" aria-label="最近战报">
+                  <div className="section-title">
+                    <h2>战报</h2>
+                    <span>普通探索自动结算</span>
+                  </div>
+                  <div className="today-controls">
+                    <label>
+                      州域
+                      <select
+                        onChange={(event) => setBattleProvinceFilter(event.target.value)}
+                        value={battleProvinceFilter}
+                      >
+                        <option value="all">全部州域</option>
+                        {overview?.provinces.map((province) => (
+                          <option key={province.province_id} value={province.province_id}>
+                            {province.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      胜负
+                      <select
+                        onChange={(event) => setBattleResultFilter(event.target.value)}
+                        value={battleResultFilter}
+                      >
+                        <option value="all">全部结果</option>
+                        <option value="win">胜利</option>
+                        <option value="lose">失利</option>
+                      </select>
+                    </label>
+                    <label>
+                      特性
+                      <select
+                        onChange={(event) => setBattleTraitFilter(event.target.value)}
+                        value={battleTraitFilter}
+                      >
+                        <option value="all">全部特性</option>
+                        {battleTraitOptions.map((trait) => (
+                          <option key={trait} value={trait}>
+                            {trait}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <div className="battle-list">
+                    {filteredRecentBattles.length ? (
+                      filteredRecentBattles.map((battle) => (
+                        <BattleReportCard battle={battle} key={battle.battle_id} />
+                      ))
+                    ) : recentBattles.length ? (
+                      <p className="empty">当前筛选下没有战报，调整州域、胜负或特性再看。</p>
+                    ) : (
+                      <p className="empty">尚无战报，先探索冀州试试。</p>
+                    )}
+                  </div>
+                </section>
+              ) : null}
+            </section>
+          </>
+        )}
+      </main>
+    </>
+  );
+}
 
-          <nav className="bottom-nav" aria-label="移动端功能分区">
-            {navItems.map((item) => (
-              <button
-                aria-current={activeTab === item.key ? "page" : undefined}
-                className={activeTab === item.key ? "active" : ""}
-                key={item.key}
-                onClick={() => handleTabChange(item.key)}
-                type="button"
-              >
-                {item.label}
-              </button>
-            ))}
-          </nav>
-        </>
-      )}
-    </main>
+function DesktopOnlyNotice() {
+  return (
+    <section className="desktop-only-notice" aria-label="桌面端提示">
+      <div>
+        <p className="eyebrow">桌面端体验</p>
+        <h1>请使用 1280px 以上宽度游玩</h1>
+        <p>当前 Web 正在优先打磨桌面版文字修行界面。移动端会在玩法和桌面布局稳定后单独设计。</p>
+      </div>
+    </section>
   );
 }
 
@@ -4461,13 +4558,9 @@ function DailyGoalCard({
         </div>
         <p>{goal.detail}</p>
       </div>
-      {goal.actionUnavailableReason ? (
-        <span className="action-note">{goal.actionUnavailableReason}</span>
-      ) : (
-        <Button disabled={goal.disabled} onClick={goal.onAction}>
-          {goal.actionLabel}
-        </Button>
-      )}
+      <span className="action-note">
+        {goal.actionUnavailableReason ?? `请从今日修行处理：${goal.actionLabel}`}
+      </span>
       <ActionFeedbackInline feedback={feedback} onViewDetails={onViewFeedback} />
     </article>
   );
@@ -4490,13 +4583,9 @@ function GrowthTargetCard({
         <strong>{target.title}</strong>
         <span>{target.detail}</span>
       </div>
-      {target.actionUnavailableReason ? (
-        <span className="action-note">{target.actionUnavailableReason}</span>
-      ) : (
-        <Button disabled={target.disabled} onClick={target.onAction}>
-          {target.actionLabel}
-        </Button>
-      )}
+      <span className="action-note">
+        {target.actionUnavailableReason ?? `进入成长分区处理：${target.actionLabel}`}
+      </span>
       <ActionFeedbackInline feedback={feedback} onViewDetails={onViewFeedback} />
     </article>
   );
@@ -4670,7 +4759,7 @@ function SkillLoadoutPanel({
         data-action-feedback-source="growth-skills"
       >
         <strong>已掌握技能与预设</strong>
-        <span>技能配置尚未读取。</span>
+        <span>技能状态同步中。</span>
         <ActionFeedbackInline feedback={feedback} onViewDetails={onViewFeedback} />
       </article>
     );
@@ -5137,7 +5226,7 @@ const systemBoundaryJournalLabelFragments = [
   "掷骰",
   "绑定产出",
   "无付费产出",
-  "不产出九大古宝",
+  "古宝不在此处出现",
   "常驻机缘",
   "失败不毁号",
   "白名单流通",
@@ -5158,7 +5247,7 @@ const experienceTagLabels: Record<string, string> = {
   loss_not_destroy: "失败不毁号",
   manual_review: "人工审核",
   mirror_boss: "镜像挑战",
-  no_ancient_treasure: "不产出九大古宝",
+  no_ancient_treasure: "古宝不在此处出现",
   no_paid_output: "无付费产出",
   permanent_pool: "常驻机缘",
   rate_limited: "请求限频",
@@ -5701,7 +5790,7 @@ function buildDailyGoals(input: {
   const goals: DailyGoal[] = [
     {
       actionLabel: input.claimableTasks.length ? "查看任务" : "去探索",
-      actionUnavailableReason: input.overview ? undefined : "角色状态尚未读取",
+      actionUnavailableReason: input.overview ? undefined : "角色状态同步中",
       detail: input.claimableTasks.length
         ? `${input.claimableTasks
             .map((task) => task.title)
@@ -5731,7 +5820,7 @@ function buildDailyGoals(input: {
     {
       actionLabel: "批量探索",
       actionUnavailableReason: !input.overview
-        ? "角色状态尚未读取"
+        ? "角色状态同步中"
         : actionPoints <= 0
           ? "行动令不足"
           : undefined,
@@ -5748,7 +5837,7 @@ function buildDailyGoals(input: {
     },
     {
       actionLabel: input.canBreakthrough ? "尝试突破" : "去探索",
-      actionUnavailableReason: input.overview ? undefined : "角色状态尚未读取",
+      actionUnavailableReason: input.overview ? undefined : "角色状态同步中",
       detail: input.canBreakthrough
         ? "当前修为满足突破条件，可以推进境界。"
         : "继续探索、服丹和领取修为来补足下一层需求。",
@@ -5761,27 +5850,27 @@ function buildDailyGoals(input: {
     },
     {
       actionLabel: "镇封提交",
-      actionUnavailableReason: input.firstTower ? undefined : "九塔状态尚未读取",
+      actionUnavailableReason: input.firstTower ? undefined : "九塔状态同步中",
       detail: input.firstTower
         ? `${input.firstTower.tower_name} 完整度 ${input.firstTower.integrity}，镇封 ${input.firstTower.seal_progress}。`
         : "九塔状态读取后可随时提交镇封行动。",
       disabled: input.busy,
       id: "tower",
       onAction: input.onTower,
-      status: input.firstTower ? "可提交" : "未读取",
+      status: input.firstTower ? "可提交" : "同步中",
       title: "九塔贡献",
       tone: input.firstTower ? "success" : "neutral",
     },
     {
       actionLabel: input.activity?.claimable ? "领取活动" : "推进活动",
-      actionUnavailableReason: input.activity ? undefined : "活动中心尚未读取",
+      actionUnavailableReason: input.activity ? undefined : "活动中心状态同步中",
       detail: input.activity
         ? `${input.activity.name} 进度 ${input.activity.progress}/${input.activity.target_progress}。`
         : "活动中心会显示可参与目标。",
       disabled: input.busy,
       id: "activity",
       onAction: input.onActivity,
-      status: input.activity?.claimable ? "可领取" : input.activity ? "进行中" : "未读取",
+      status: input.activity?.claimable ? "可领取" : input.activity ? "进行中" : "同步中",
       title: "活动奖励",
       tone: input.activity?.claimable ? "success" : input.activity ? "neutral" : "warning",
     },
@@ -5806,7 +5895,7 @@ function buildDailyGoals(input: {
     goals.splice(2, 0, {
       actionLabel: "一键领取",
       detail: `洞府已有 ${caveMinutes} 分钟产出，可和任务收益一起收束。`,
-      actionUnavailableReason: input.overview ? undefined : "角色状态尚未读取",
+      actionUnavailableReason: input.overview ? undefined : "角色状态同步中",
       disabled: input.busy,
       id: "cave",
       onAction: input.onCave,
@@ -5894,7 +5983,7 @@ function buildRecommendedActions(input: {
     },
     {
       buttonLabel: "镇封一次",
-      actionUnavailableReason: input.canTower ? undefined : "九塔状态尚未读取",
+      actionUnavailableReason: input.canTower ? undefined : "九塔状态同步中",
       detail: input.tower
         ? `${input.tower.tower_name} · 魔染 ${input.tower.corruption}`
         : "读取九塔后提交贡献。",
@@ -5905,7 +5994,7 @@ function buildRecommendedActions(input: {
     },
     {
       buttonLabel: input.activity?.claimable ? "领取" : "推进",
-      actionUnavailableReason: input.activity ? undefined : "活动中心尚未读取",
+      actionUnavailableReason: input.activity ? undefined : "活动中心状态同步中",
       detail: input.activity ? input.activity.name : "活动读取后显示可执行目标。",
       disabled: input.busy,
       id: "activity",
@@ -5951,7 +6040,7 @@ function buildGrowthTargets(input: {
   return [
     {
       actionLabel: canBreakthrough ? "突破" : "去探索",
-      actionUnavailableReason: input.overview ? undefined : "角色状态尚未读取",
+      actionUnavailableReason: input.overview ? undefined : "角色状态同步中",
       detail: input.overview?.cultivation
         ? `当前 ${input.overview.cultivation.cultivation_value}/${input.overview.cultivation.current_level_required}`
         : "创建角色后显示修为缺口。",
@@ -5962,7 +6051,7 @@ function buildGrowthTargets(input: {
     },
     {
       actionLabel: input.firstPill ? "服丹" : "炼丹",
-      actionUnavailableReason: input.overview ? undefined : "角色状态尚未读取",
+      actionUnavailableReason: input.overview ? undefined : "角色状态同步中",
       detail: input.firstPill
         ? `${formatPillItemLabel(input.firstPill)} 可服用。`
         : "暂无可服丹药，先炼制基础丹药。",
@@ -5973,7 +6062,7 @@ function buildGrowthTargets(input: {
     },
     {
       actionLabel: "炼器",
-      actionUnavailableReason: input.overview ? undefined : "角色状态尚未读取",
+      actionUnavailableReason: input.overview ? undefined : "角色状态同步中",
       detail: input.firstEquipment
         ? `${input.firstEquipment.name} 可继续淬炼或铭刻。`
         : "先炼制第一件普通法宝。",
@@ -5984,7 +6073,7 @@ function buildGrowthTargets(input: {
     },
     {
       actionLabel: "镇封",
-      actionUnavailableReason: input.firstTower ? undefined : "九塔状态尚未读取",
+      actionUnavailableReason: input.firstTower ? undefined : "九塔状态同步中",
       detail: input.firstTower
         ? `${input.firstTower.tower_name} 当前完整度 ${input.firstTower.integrity}。`
         : "九塔读取后显示贡献入口。",
@@ -5995,7 +6084,7 @@ function buildGrowthTargets(input: {
     },
     {
       actionLabel: input.activity?.claimable ? "领奖" : "推进",
-      actionUnavailableReason: input.activity ? undefined : "活动中心尚未读取",
+      actionUnavailableReason: input.activity ? undefined : "活动中心状态同步中",
       detail: input.activity
         ? `${input.activity.name} ${input.activity.progress}/${input.activity.target_progress}`
         : "活动中心读取后显示奖励进度。",
@@ -6006,7 +6095,7 @@ function buildGrowthTargets(input: {
     },
     {
       actionLabel: input.innerWorld?.state.unlocked ? "查看洞天" : "查看条件",
-      actionUnavailableReason: input.overview ? undefined : "角色状态尚未读取",
+      actionUnavailableReason: input.overview ? undefined : "角色状态同步中",
       detail: input.innerWorld?.state.unlocked
         ? `内天地 ${input.innerWorld.state.world_level} 级，派驻 ${input.innerWorld.state.active_assignment_count}/${input.innerWorld.state.assignment_limit}。`
         : (input.innerWorld?.state.unlock_hint ?? "内天地后续章节开启。"),
@@ -6328,7 +6417,7 @@ function activityStatusLabel(status: string): string {
     rolled_back: "已回滚",
     settling: "结算中",
   };
-  return labels[status] ?? "未知状态";
+  return labels[status] ?? "状态同步中";
 }
 
 function activityTypeLabel(type: string): string {
@@ -6373,7 +6462,7 @@ function rewardStateLabel(state: string): string {
     rolled_back: "已回滚",
     unsettled: "未结算",
   };
-  return labels[state] ?? "未知奖励状态";
+  return labels[state] ?? "奖励状态同步中";
 }
 
 function sourceTypeLabel(sourceType: string): string {
@@ -6389,7 +6478,7 @@ function sourceTypeLabel(sourceType: string): string {
     sect: "宗门",
     tower: "九塔",
   };
-  return labels[sourceType] ?? "未知来源";
+  return labels[sourceType] ?? "修行记录";
 }
 
 function mentorRelationStatusLabel(status: string): string {
@@ -6546,7 +6635,7 @@ function battleTypeLabel(battleType: string): string {
 }
 
 function battleProvinceLabel(provinceId: string): string {
-  return provinceLabels[provinceId as keyof typeof provinceLabels] ?? "未知州域";
+  return provinceLabels[provinceId as keyof typeof provinceLabels] ?? "州域同步中";
 }
 
 function formatBattleRewardSummary(rewards: BattleSummary["rewards"]): string {
@@ -6583,7 +6672,7 @@ function commerceTierLabel(tier?: string): string {
     vip3: "VIP3",
     vip4: "VIP4",
   };
-  return tier ? (labels[tier] ?? "未知档位") : "免费";
+  return tier ? (labels[tier] ?? "权益同步中") : "免费";
 }
 
 function monthlyCardClaimState(
@@ -6643,7 +6732,7 @@ function gachaCostTypeLabel(costType: string): string {
     paid_jade: "付费仙玉",
     reserved_paid_jade: "仙玉抽取预留",
   };
-  return labels[costType] ?? "未知消耗";
+  return labels[costType] ?? "消耗同步中";
 }
 
 function equipmentRarityLabel(rarity: string): string {
@@ -6665,7 +6754,7 @@ function queueStatusLabel(status: string): string {
     rejected: "已拒绝",
     running: "执行中",
   };
-  return labels[status] ?? "未知队列状态";
+  return labels[status] ?? "队列同步中";
 }
 
 function assignmentStatusLabel(status: string): string {
@@ -6674,7 +6763,7 @@ function assignmentStatusLabel(status: string): string {
     claimable: "可收取",
     claimed: "已收取",
   };
-  return labels[status] ?? "未知派驻状态";
+  return labels[status] ?? "派驻同步中";
 }
 
 function pillQualityLabel(quality?: PillQuality | null): string {
@@ -6744,7 +6833,7 @@ function creatureStatusLabel(status: string): string {
     assigned: "派驻中",
     training: "培养中",
   };
-  return labels[status] ?? "未知状态";
+  return labels[status] ?? "状态同步中";
 }
 
 function factionTransferTaskId(routeId: string): string {

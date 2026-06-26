@@ -41,6 +41,38 @@ button:disabled {
   padding: 22px 20px 44px;
 }
 
+.desktop-only-notice {
+  align-items: center;
+  background: #ffffff;
+  color: #111111;
+  display: none;
+  font-family: "Times New Roman", "Songti SC", SimSun, serif;
+  min-height: 100dvh;
+  padding: 28px;
+}
+
+.desktop-only-notice > div {
+  border: 1px solid #111111;
+  display: grid;
+  gap: 10px;
+  margin: 0 auto;
+  max-width: 560px;
+  padding: 22px;
+}
+
+.desktop-only-notice h1 {
+  font-size: 28px;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.desktop-only-notice p {
+  color: #555555;
+  font-size: 15px;
+  line-height: 1.7;
+  margin: 0;
+}
+
 .app-shell {
   display: grid;
   gap: 18px;
@@ -1976,15 +2008,15 @@ details.event-boundary {
   background: #ffffff;
   color: #111111;
   font-family: "Times New Roman", "Songti SC", SimSun, serif;
-  gap: 16px 22px;
+  gap: 16px 20px;
   grid-template-areas:
     "log top ledger"
     "log today ledger"
     "log nav ledger"
     "log tabs ledger"
     "log goals ledger";
-  grid-template-columns: 190px minmax(0, 680px) 210px;
-  max-width: 1120px;
+  grid-template-columns: 200px minmax(760px, 1fr) 220px;
+  max-width: 1280px;
   padding-top: 18px;
 }
 
@@ -2087,7 +2119,7 @@ details.event-boundary {
   border-radius: 0;
   gap: 14px;
   grid-area: today;
-  grid-template-columns: minmax(0, 1fr) minmax(240px, 0.86fr);
+  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
   padding: 0;
 }
 
@@ -2314,7 +2346,7 @@ details.event-boundary {
 
 .text-game-shell .goal-card,
 .text-game-shell .growth-target-card {
-  grid-template-columns: minmax(0, 1fr) 100px;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 0.45fr);
 }
 
 .text-game-shell .recommended-action .nextday-button,
@@ -2505,14 +2537,16 @@ details.event-boundary {
 
 .text-game-shell .rank-summary-grid,
 .text-game-shell .skill-option-grid,
-.text-game-shell .skill-priority-list {
+.text-game-shell .skill-priority-list,
+.text-game-shell .growth-route-strip,
+.text-game-shell .tab-guidance-grid {
   gap: 14px;
   min-width: 0;
 }
 
 .text-game-shell .main-grid {
   gap: 14px;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
   min-width: 0;
 }
 
@@ -2523,23 +2557,53 @@ details.event-boundary {
 .text-game-shell .faction-route-list,
 .text-game-shell .battle-stat-grid {
   gap: 14px;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
   min-width: 0;
 }
 
 .text-game-shell .inner-world-layout,
 .text-game-shell .faction-layout {
   gap: 14px;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(240px, 0.85fr) minmax(0, 1.15fr);
   min-width: 0;
 }
 
 .text-game-shell .rank-summary-grid {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
 }
 
 .text-game-shell .production-box .rank-summary-grid {
   grid-template-columns: 1fr;
+}
+
+.text-game-shell .growth-route-strip,
+.text-game-shell .tab-guidance-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+}
+
+.text-game-shell .growth-route-strip article,
+.text-game-shell .tab-guidance-grid article {
+  border: 1px solid #dddddd;
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.text-game-shell .growth-route-strip strong,
+.text-game-shell .tab-guidance-grid strong {
+  color: #111111;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.text-game-shell .growth-route-strip span,
+.text-game-shell .tab-guidance-grid span {
+  color: #555555;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .text-game-shell .province,
@@ -2851,5 +2915,19 @@ details.event-boundary {
   .text-game-shell .growth-target-card .nextday-button,
   .text-game-shell .today-controls > button {
     width: 100%;
+  }
+}
+
+@media (max-width: 1279px) {
+  body {
+    background: #ffffff;
+  }
+
+  .desktop-only-notice {
+    display: grid;
+  }
+
+  .shell.app-shell {
+    display: none !important;
   }
 }

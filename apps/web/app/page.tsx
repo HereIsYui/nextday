@@ -104,6 +104,30 @@ const navItems: Array<{ key: ActiveTab; label: string }> = [
   { key: "battle", label: "战报" },
 ];
 
+interface DetailNavGroup {
+  title: string;
+  items: Array<{ key: ActiveTab; label: string }>;
+}
+
+const detailNavGroups: DetailNavGroup[] = [
+  {
+    title: "世界",
+    items: navItems.filter((item) => ["overview", "story", "collection"].includes(item.key)),
+  },
+  {
+    title: "修行",
+    items: navItems.filter((item) => ["growth", "battle"].includes(item.key)),
+  },
+  {
+    title: "协作",
+    items: navItems.filter((item) => ["events", "multiplayer"].includes(item.key)),
+  },
+  {
+    title: "经营",
+    items: navItems.filter((item) => item.key === "market"),
+  },
+];
+
 interface DailyGoal {
   id: string;
   title: string;
@@ -196,6 +220,7 @@ interface MainlineGuide {
 interface PracticeFlowStep {
   id: string;
   index: number;
+  actionHint: string;
   title: string;
   detail: string;
   status: MainlineStepStatus;
@@ -529,6 +554,8 @@ export default function HomePage() {
     experience: lastExperience,
     latestEntry: journalEntries[0],
   });
+  const practiceFocusStep = practiceFlowSteps[0];
+  const practicePreviewSteps = practiceFlowSteps.slice(1, 4);
 
   function actionFeedbackFor(sourceId: string): ActionFeedbackState | undefined {
     return actionFeedback?.sourceId === sourceId ? actionFeedback : undefined;
@@ -2591,7 +2618,7 @@ export default function HomePage() {
               <div className="practice-primary-flow">
                 <div className="practice-head">
                   <p className="eyebrow">今日修行</p>
-                  <h2>按路线推进今日修行</h2>
+                  <h2>今日只做这一步</h2>
                   <p>
                     {completedTasks.length} 个任务可领 · 行动令{" "}
                     {overview?.action_state?.action_points ?? 0} 枚 ·{" "}
@@ -2601,160 +2628,107 @@ export default function HomePage() {
                   </p>
                 </div>
 
-                <section className="practice-route-panel" aria-label="今日路线">
-                  <div className="practice-route-head">
-                    <div>
-                      <span>第 {mainlineGuide.chapterId} 章</span>
-                      <strong>{mainlineGuide.title}</strong>
-                      <p>{mainlineGuide.subtitle}</p>
-                    </div>
-                    <div className="mainline-progress-summary">
-                      <strong>{mainlineGuide.progressText}</strong>
-                      <span>路线进度</span>
-                    </div>
-                  </div>
-                  <div aria-hidden="true" className="mainline-progress-bar">
-                    <span style={{ width: `${mainlineGuide.progressPercent}%` }} />
-                  </div>
-                  <div className="practice-flow-list">
-                    {practiceFlowSteps.map((step) => (
-                      <PracticeFlowStepCard
-                        feedback={actionFeedbackFor(step.feedbackSourceId)}
-                        key={step.id}
-                        onViewFeedback={handleViewActionFeedbackDetails}
-                        step={step}
-                      />
-                    ))}
-                  </div>
-                </section>
-
-                <section className="practice-controls-panel" aria-label="行动参数与途中状态">
-                  <div className="section-title">
-                    <h2>行动参数</h2>
-                    <span>路线按钮会使用这里选择的州域、次数和九塔目标</span>
-                  </div>
-                  <div className="today-controls" aria-label="今日行动选择">
-                    <label>
-                      <span>探索州域</span>
-                      <select
-                        onChange={(event) => handleSelectProvince(event.target.value)}
-                        value={selectedProvince?.province_id ?? ""}
-                      >
-                        {unlockedProvinces.map((province) => (
-                          <option key={province.province_id} value={province.province_id}>
-                            {province.name} · {province.tower_name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      <span>探索次数</span>
-                      <select
-                        onChange={(event) => setExploreCount(Number(event.target.value))}
-                        value={exploreCount}
-                      >
-                        <option value={1}>1 次</option>
-                        <option value={3}>3 次</option>
-                        <option value={5}>5 次</option>
-                      </select>
-                    </label>
-                    <label className="tower-choice">
-                      <span>九塔目标</span>
-                      <select
-                        onChange={(event) => handleSelectTower(event.target.value)}
-                        value={selectedTower?.tower_id ?? ""}
-                      >
-                        {towers?.towers.map((tower) => (
-                          <option
-                            disabled={!isProvinceUnlocked(overview?.provinces, tower.province_id)}
-                            key={tower.tower_id}
-                            value={tower.tower_id}
-                          >
-                            {provinceNameById(overview?.provinces, tower.province_id)} ·{" "}
-                            {tower.tower_name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <Button
-                      className="today-refresh-button"
-                      disabled={busy || !activeProfile?.player}
-                      onClick={() => refreshOverview()}
-                    >
-                      整理状态
-                    </Button>
-                  </div>
-                  <div className="practice-state-grid">
-                    <ExploreQueueCard
-                      canClaim={canClaimExplore}
-                      explore={activeExplore ?? currentExplore}
-                      feedback={actionFeedbackFor("explore-queue")}
-                      onClaim={handleClaimExplore}
-                      onViewFeedback={handleViewActionFeedbackDetails}
-                      remainingSeconds={exploreRemainingSeconds}
-                      busy={busy}
-                    />
-                    <ExploreEventCard
-                      busy={busy}
-                      event={firstPendingExploreEvent}
-                      feedback={actionFeedbackFor("explore-event")}
-                      onResolve={handleResolveExploreEvent}
-                      onViewFeedback={handleViewActionFeedbackDetails}
-                    />
-                  </div>
-                </section>
+                <PracticeFocusStage
+                  chapterId={mainlineGuide.chapterId}
+                  feedback={
+                    practiceFocusStep
+                      ? actionFeedbackFor(practiceFocusStep.feedbackSourceId)
+                      : undefined
+                  }
+                  onViewFeedback={handleViewActionFeedbackDetails}
+                  previewSteps={practicePreviewSteps}
+                  progressPercent={mainlineGuide.progressPercent}
+                  progressText={mainlineGuide.progressText}
+                  routeSubtitle={mainlineGuide.subtitle}
+                  routeTitle={mainlineGuide.title}
+                  step={practiceFocusStep}
+                >
+                  <PracticeStepControls
+                    alchemyRecipes={alchemyRecipes}
+                    availablePills={availablePills}
+                    busy={busy}
+                    exploreCount={exploreCount}
+                    forgeRecipes={forgeRecipes}
+                    onSelectAlchemyRecipe={setSelectedAlchemyRecipeId}
+                    onSelectForgeRecipe={setSelectedForgeRecipeId}
+                    onSelectPill={setSelectedPillItemInstanceId}
+                    onSelectProvince={handleSelectProvince}
+                    onSelectTower={handleSelectTower}
+                    overview={overview}
+                    selectedAlchemyRecipe={selectedAlchemyRecipe}
+                    selectedForgeRecipe={selectedForgeRecipe}
+                    selectedPill={selectedPill}
+                    selectedProvince={selectedProvince}
+                    selectedTower={selectedTower}
+                    setExploreCount={setExploreCount}
+                    step={practiceFocusStep}
+                    towers={towers}
+                    unlockedProvinces={unlockedProvinces}
+                  />
+                </PracticeFocusStage>
               </div>
 
               <aside className="practice-context-panel" aria-label="当前结果与资源">
                 <PracticeOutcomePanel outcome={practiceOutcome} />
-                <FlowContextPanel
-                  activeProfile={activeProfile}
-                  firstBattle={recentBattles[0]}
-                  firstPill={selectedPill}
-                  latestEntries={journalEntries.slice(0, 3)}
-                  overview={overview}
-                  selectedAlchemyRecipe={selectedAlchemyRecipe}
-                  selectedForgeRecipe={selectedForgeRecipe}
-                  selectedProvince={selectedProvince}
-                  selectedTower={selectedTower}
-                />
+                <FlowContextPanel activeProfile={activeProfile} overview={overview} />
+                <section className="practice-side-status" aria-label="途中状态">
+                  <ExploreQueueCard
+                    canClaim={canClaimExplore}
+                    explore={activeExplore ?? currentExplore}
+                    feedback={actionFeedbackFor("explore-queue")}
+                    onClaim={handleClaimExplore}
+                    onViewFeedback={handleViewActionFeedbackDetails}
+                    remainingSeconds={exploreRemainingSeconds}
+                    busy={busy}
+                  />
+                  <ExploreEventCard
+                    busy={busy}
+                    event={firstPendingExploreEvent}
+                    feedback={actionFeedbackFor("explore-event")}
+                    onResolve={handleResolveExploreEvent}
+                    onViewFeedback={handleViewActionFeedbackDetails}
+                  />
+                </section>
               </aside>
             </section>
 
-            <section className="practice-summary-strip" aria-label="目标与成长摘要">
-              <div className="today-panel">
-                <div className="section-title">
-                  <h2>目标摘要</h2>
-                  <span>主操作已收束到今日路线</span>
+            <details className="practice-reference">
+              <summary>今日参考：目标与成长</summary>
+              <div className="practice-reference-grid">
+                <div className="today-panel">
+                  <div className="section-title">
+                    <h2>目标参考</h2>
+                    <span>主操作请优先看上方当前步骤</span>
+                  </div>
+                  <div className="goal-list">
+                    {dailyGoals.slice(0, 3).map((goal) => (
+                      <DailyGoalCard
+                        feedback={actionFeedbackFor(`daily-goal-${goal.id}`)}
+                        goal={goal}
+                        key={goal.id}
+                        onViewFeedback={handleViewActionFeedbackDetails}
+                      />
+                    ))}
+                  </div>
                 </div>
-                <div className="goal-list">
-                  {dailyGoals.slice(0, 3).map((goal) => (
-                    <DailyGoalCard
-                      feedback={actionFeedbackFor(`daily-goal-${goal.id}`)}
-                      goal={goal}
-                      key={goal.id}
-                      onViewFeedback={handleViewActionFeedbackDetails}
-                    />
-                  ))}
+                <div className="today-panel">
+                  <div className="section-title">
+                    <h2>成长参考</h2>
+                    <span>缺口和配方细节放在成长分区</span>
+                  </div>
+                  <div className="growth-target-list">
+                    {growthTargets.slice(0, 3).map((target) => (
+                      <GrowthTargetCard
+                        feedback={actionFeedbackFor(`growth-target-${target.id}`)}
+                        key={target.id}
+                        onViewFeedback={handleViewActionFeedbackDetails}
+                        target={target}
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
-              <div className="today-panel">
-                <div className="section-title">
-                  <h2>成长摘要</h2>
-                  <span>缺口和配方细节放在成长分区</span>
-                </div>
-                <div className="growth-target-list">
-                  {growthTargets.slice(0, 3).map((target) => (
-                    <GrowthTargetCard
-                      feedback={actionFeedbackFor(`growth-target-${target.id}`)}
-                      key={target.id}
-                      onViewFeedback={handleViewActionFeedbackDetails}
-                      target={target}
-                    />
-                  ))}
-                </div>
-              </div>
-            </section>
+            </details>
 
             <details className="practice-history">
               <summary>近期经历与完整结算</summary>
@@ -2767,17 +2741,24 @@ export default function HomePage() {
               />
             </details>
 
-            <nav className="tab-nav" aria-label="功能分区">
-              {navItems.map((item) => (
-                <button
-                  aria-current={activeTab === item.key ? "page" : undefined}
-                  className={activeTab === item.key ? "active" : ""}
-                  key={item.key}
-                  onClick={() => handleTabChange(item.key)}
-                  type="button"
-                >
-                  {item.label}
-                </button>
+            <nav className="tab-nav detail-nav" aria-label="详情分区">
+              {detailNavGroups.map((group) => (
+                <div className="detail-nav-group" key={group.title}>
+                  <span>{group.title}</span>
+                  <div>
+                    {group.items.map((item) => (
+                      <button
+                        aria-current={activeTab === item.key ? "page" : undefined}
+                        className={activeTab === item.key ? "active" : ""}
+                        key={item.key}
+                        onClick={() => handleTabChange(item.key)}
+                        type="button"
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               ))}
             </nav>
 
@@ -4504,55 +4485,328 @@ function LedgerExperienceDetails({ experience }: { experience: ExperiencePayload
   );
 }
 
-function PracticeFlowStepCard({
+function PracticeFocusStage({
+  chapterId,
+  children,
   feedback,
   onViewFeedback,
+  previewSteps,
+  progressPercent,
+  progressText,
+  routeSubtitle,
+  routeTitle,
   step,
 }: {
+  chapterId: number;
+  children?: ReactNode;
   feedback?: ActionFeedbackState;
   onViewFeedback: () => void;
-  step: PracticeFlowStep;
+  previewSteps: PracticeFlowStep[];
+  progressPercent: number;
+  progressText: string;
+  routeSubtitle: string;
+  routeTitle: string;
+  step?: PracticeFlowStep;
 }) {
-  const isExpanded = step.index === 1 && step.status === "active";
-
   return (
-    <article
-      className={`practice-flow-step status-${step.status} ${isExpanded ? "expanded" : "compact"}`}
-      data-action-feedback-source={step.feedbackSourceId}
+    <section
+      aria-label="当前主行动"
+      className="practice-focus-stage"
+      data-action-feedback-source={step?.feedbackSourceId}
     >
-      <div className="practice-flow-index">{step.index}</div>
-      <div className="practice-flow-body">
-        <div className="practice-flow-title">
-          <div>
-            <strong>{step.title}</strong>
-            <span>{step.detail}</span>
-          </div>
-          <StatusBadge tone={mainlineStepTone(step.status)}>
-            {mainlineStepStatusLabel(step.status)}
-          </StatusBadge>
+      <div className="practice-focus-head">
+        <div>
+          <span>第 {chapterId} 章 · 当前路线</span>
+          <strong>{routeTitle}</strong>
+          <p>{routeSubtitle}</p>
         </div>
-        {isExpanded ? <p>{step.why}</p> : null}
-        {isExpanded && step.reasonTags.length ? (
-          <div className="reason-tags">
-            {step.reasonTags.slice(0, 3).map((tag) => (
-              <span className="reason-tag" key={`${step.id}-${tag}`}>
-                {tag}
-              </span>
+        <div className="mainline-progress-summary">
+          <strong>{progressText}</strong>
+          <span>路线进度</span>
+        </div>
+      </div>
+      <div aria-hidden="true" className="mainline-progress-bar">
+        <span style={{ width: `${progressPercent}%` }} />
+      </div>
+
+      {step ? (
+        <article className={`practice-focus-card status-${step.status}`}>
+          <div className="practice-focus-index">{step.index}</div>
+          <div>
+            <div className="practice-focus-title">
+              <div>
+                <span>现在先做</span>
+                <h3>{step.title}</h3>
+              </div>
+              <StatusBadge tone={mainlineStepTone(step.status)}>
+                {mainlineStepStatusLabel(step.status)}
+              </StatusBadge>
+            </div>
+            <p>{step.detail}</p>
+            <div className="practice-focus-why">
+              <strong>为什么做</strong>
+              <span>{step.why}</span>
+            </div>
+            {step.reasonTags.length ? (
+              <div className="reason-tags">
+                {step.reasonTags.slice(0, 3).map((tag) => (
+                  <span className="reason-tag" key={`${step.id}-${tag}`}>
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            {children ? <div className="practice-focus-controls">{children}</div> : null}
+            <div className="practice-focus-action">
+              <span>{step.nextHint}</span>
+              {step.onAction ? (
+                <Button disabled={step.actionDisabled} onClick={step.onAction}>
+                  {step.actionLabel}
+                </Button>
+              ) : (
+                <span className="action-note">{step.actionLabel}</span>
+              )}
+            </div>
+            <ActionFeedbackInline feedback={feedback} onViewDetails={onViewFeedback} />
+          </div>
+        </article>
+      ) : (
+        <article className="practice-focus-card status-pending">
+          <div className="practice-focus-index">1</div>
+          <div>
+            <div className="practice-focus-title">
+              <div>
+                <span>当前状态</span>
+                <h3>等待路线同步</h3>
+              </div>
+              <StatusBadge tone="neutral">同步中</StatusBadge>
+            </div>
+            <p>路线读取后会显示今日第一步。</p>
+          </div>
+        </article>
+      )}
+
+      {previewSteps.length ? (
+        <div className="practice-route-preview" aria-label="后续路线">
+          <span>接下来</span>
+          <div>
+            {previewSteps.map((preview) => (
+              <article
+                className={`practice-preview-step status-${preview.status}`}
+                key={preview.id}
+              >
+                <strong>
+                  {preview.index}. {preview.title}
+                </strong>
+                <StatusBadge tone={mainlineStepTone(preview.status)}>
+                  {mainlineStepStatusLabel(preview.status)}
+                </StatusBadge>
+              </article>
             ))}
           </div>
-        ) : null}
-        <div className="practice-flow-action">
-          <span>{step.nextHint}</span>
-          {isExpanded && step.onAction ? (
-            <Button disabled={step.actionDisabled} onClick={step.onAction}>
-              {step.actionLabel}
-            </Button>
-          ) : null}
         </div>
-        <ActionFeedbackInline feedback={feedback} onViewDetails={onViewFeedback} />
-      </div>
-    </article>
+      ) : null}
+    </section>
   );
+}
+
+function PracticeStepControls({
+  alchemyRecipes,
+  availablePills,
+  busy,
+  exploreCount,
+  forgeRecipes,
+  onSelectAlchemyRecipe,
+  onSelectForgeRecipe,
+  onSelectPill,
+  onSelectProvince,
+  onSelectTower,
+  overview,
+  selectedAlchemyRecipe,
+  selectedForgeRecipe,
+  selectedPill,
+  selectedProvince,
+  selectedTower,
+  setExploreCount,
+  step,
+  towers,
+  unlockedProvinces,
+}: {
+  alchemyRecipes: AlchemyRecipeListResponse | null;
+  availablePills: BagSummaryResponse["items"];
+  busy: boolean;
+  exploreCount: number;
+  forgeRecipes: ForgeRecipeListResponse | null;
+  onSelectAlchemyRecipe: (recipeId: string) => void;
+  onSelectForgeRecipe: (recipeId: string) => void;
+  onSelectPill: (itemInstanceId: string) => void;
+  onSelectProvince: (provinceId: string) => void;
+  onSelectTower: (towerId: string) => void;
+  overview: GameOverviewResponse | null;
+  selectedAlchemyRecipe?: AlchemyRecipeListResponse["recipes"][number];
+  selectedForgeRecipe?: ForgeRecipeListResponse["recipes"][number];
+  selectedPill?: BagSummaryResponse["items"][number];
+  selectedProvince?: ProvinceSummary;
+  selectedTower?: TowerStateSummary;
+  setExploreCount: (count: number) => void;
+  step?: PracticeFlowStep;
+  towers: TowerListResponse | null;
+  unlockedProvinces: ProvinceSummary[];
+}) {
+  const mode = practiceControlMode(step?.actionHint);
+
+  if (mode === "explore") {
+    return (
+      <div className="practice-step-controls">
+        <label>
+          <span>探索州域</span>
+          <select
+            disabled={busy}
+            onChange={(event) => onSelectProvince(event.target.value)}
+            value={selectedProvince?.province_id ?? ""}
+          >
+            {unlockedProvinces.map((province) => (
+              <option key={province.province_id} value={province.province_id}>
+                {province.name} · {province.tower_name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>探索次数</span>
+          <select
+            disabled={busy}
+            onChange={(event) => setExploreCount(Number(event.target.value))}
+            value={exploreCount}
+          >
+            <option value={1}>1 次</option>
+            <option value={3}>3 次</option>
+            <option value={5}>5 次</option>
+          </select>
+        </label>
+      </div>
+    );
+  }
+
+  if (mode === "tower") {
+    return (
+      <div className="practice-step-controls">
+        <label>
+          <span>九塔目标</span>
+          <select
+            disabled={busy}
+            onChange={(event) => onSelectTower(event.target.value)}
+            value={selectedTower?.tower_id ?? ""}
+          >
+            {towers?.towers.map((tower) => (
+              <option
+                disabled={!isProvinceUnlocked(overview?.provinces, tower.province_id)}
+                key={tower.tower_id}
+                value={tower.tower_id}
+              >
+                {provinceNameById(overview?.provinces, tower.province_id)} · {tower.tower_name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+    );
+  }
+
+  if (mode === "growth") {
+    return (
+      <div className="practice-step-controls growth">
+        <label>
+          <span>丹方</span>
+          <select
+            disabled={busy || !alchemyRecipes?.recipes.length}
+            onChange={(event) => onSelectAlchemyRecipe(event.target.value)}
+            value={selectedAlchemyRecipe?.recipe_id ?? ""}
+          >
+            {alchemyRecipes?.recipes.map((recipe) => (
+              <option key={recipe.recipe_id} value={recipe.recipe_id}>
+                {recipe.name} · 灵石 {recipe.spirit_stone_cost}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>器方</span>
+          <select
+            disabled={busy || !forgeRecipes?.recipes.length}
+            onChange={(event) => onSelectForgeRecipe(event.target.value)}
+            value={selectedForgeRecipe?.recipe_id ?? ""}
+          >
+            {forgeRecipes?.recipes.map((recipe) => (
+              <option key={recipe.recipe_id} value={recipe.recipe_id}>
+                {recipe.name} · {equipmentRarityLabel(recipe.rarity)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>丹药</span>
+          <select
+            disabled={busy || availablePills.length === 0}
+            onChange={(event) => onSelectPill(event.target.value)}
+            value={selectedPill?.item_instance_id ?? ""}
+          >
+            {availablePills.length ? (
+              availablePills.map((item) => (
+                <option key={item.item_instance_id} value={item.item_instance_id}>
+                  {formatPillItemLabel(item)}
+                </option>
+              ))
+            ) : (
+              <option value="">暂无可服丹药</option>
+            )}
+          </select>
+        </label>
+      </div>
+    );
+  }
+
+  if (mode === "event") {
+    return <span className="action-note">奇遇选择会在右侧“途中状态”中出现。</span>;
+  }
+
+  if (mode === "claim_explore") {
+    return <span className="action-note">探索完成后，右侧会显示可领取状态和途中见闻。</span>;
+  }
+
+  return null;
+}
+
+function practiceControlMode(
+  actionHint: string | undefined,
+): "claim_explore" | "event" | "explore" | "growth" | "none" | "tower" {
+  if (!actionHint) {
+    return "none";
+  }
+  if (actionHint === "claim_explore") {
+    return "claim_explore";
+  }
+  if (actionHint === "explore_event" || actionHint === "resolve_explore_event") {
+    return "event";
+  }
+  if (
+    actionHint === "explore" ||
+    actionHint === "start_explore" ||
+    actionHint === "province_explore"
+  ) {
+    return "explore";
+  }
+  if (
+    actionHint === "growth" ||
+    actionHint === "production_growth" ||
+    actionHint === "craft_alchemy"
+  ) {
+    return "growth";
+  }
+  if (actionHint === "multiplayer" || actionHint === "tower" || actionHint === "tower_action") {
+    return "tower";
+  }
+  return "none";
 }
 
 function PracticeOutcomePanel({ outcome }: { outcome: PracticeOutcome }) {
@@ -4597,24 +4851,10 @@ function PracticeOutcomePanel({ outcome }: { outcome: PracticeOutcome }) {
 
 function FlowContextPanel({
   activeProfile,
-  firstBattle,
-  firstPill,
-  latestEntries,
   overview,
-  selectedAlchemyRecipe,
-  selectedForgeRecipe,
-  selectedProvince,
-  selectedTower,
 }: {
   activeProfile: PlayerProfileResponse | null;
-  firstBattle?: BattleSummary;
-  firstPill?: BagSummaryResponse["items"][number];
-  latestEntries: JournalEntry[];
   overview: GameOverviewResponse | null;
-  selectedAlchemyRecipe?: AlchemyRecipeListResponse["recipes"][number];
-  selectedForgeRecipe?: ForgeRecipeListResponse["recipes"][number];
-  selectedProvince?: ProvinceSummary;
-  selectedTower?: TowerStateSummary;
 }) {
   return (
     <div className="flow-context-stack">
@@ -4648,93 +4888,6 @@ function FlowContextPanel({
             value={activeProfile?.wallet?.spirit_stone ?? "0"}
             detail={`洞府可收 ${overview?.cave?.preview_rewards.spirit_stone ?? "0"}`}
           />
-        </div>
-      </section>
-
-      <section className="flow-next-panel" aria-label="成长线索">
-        <div className="section-title">
-          <h2>成长线索</h2>
-          <span>探索产出会导向这里</span>
-        </div>
-        <div className="flow-clue-list">
-          <article>
-            <strong>{selectedProvince?.name ?? "州域未定"}</strong>
-            <span>
-              {selectedProvince
-                ? `${selectedProvince.tower_name} · ${selectedProvince.recommended_action}`
-                : "选择州域后开始探索。"}
-            </span>
-          </article>
-          <article>
-            <strong>{selectedAlchemyRecipe?.name ?? "丹方待选"}</strong>
-            <span>
-              {selectedAlchemyRecipe?.recommendation?.can_craft
-                ? selectedAlchemyRecipe.recommendation.result_hint
-                : selectedAlchemyRecipe?.recommendation
-                  ? formatMaterialGaps(selectedAlchemyRecipe.recommendation.material_gaps)
-                  : "探索材料入袋后再看可炼丹方。"}
-            </span>
-          </article>
-          <article>
-            <strong>{selectedForgeRecipe?.name ?? "器方待选"}</strong>
-            <span>
-              {selectedForgeRecipe?.recommendation?.can_craft
-                ? selectedForgeRecipe.recommendation.result_hint
-                : selectedForgeRecipe?.recommendation
-                  ? formatMaterialGaps(selectedForgeRecipe.recommendation.material_gaps)
-                  : "法宝配方会跟随材料缺口变化。"}
-            </span>
-          </article>
-          <article>
-            <strong>{firstPill ? formatPillItemLabel(firstPill) : "暂无可服丹药"}</strong>
-            <span>{firstPill ? "可在成长分区服用。" : "先炼制基础丹药补足修为。"}</span>
-          </article>
-        </div>
-      </section>
-
-      <section className="flow-next-panel" aria-label="最近战斗与九塔">
-        <div className="section-title">
-          <h2>战斗线索</h2>
-          <span>用来决定生产和九塔行动</span>
-        </div>
-        <div className="flow-clue-list">
-          <article>
-            <strong>{firstBattle?.enemy_name ?? "尚无战报"}</strong>
-            <span>
-              {firstBattle
-                ? `${battleProvinceLabel(firstBattle.province_id)} · ${
-                    firstBattle.result === "win" ? "胜利" : "失利"
-                  } · ${formatBattleRewardSummary(firstBattle.rewards)}`
-                : "完成探索后会留下敌人、掉落和反制建议。"}
-            </span>
-          </article>
-          <article>
-            <strong>{selectedTower?.tower_name ?? "九塔待定"}</strong>
-            <span>
-              {selectedTower
-                ? `完整 ${selectedTower.integrity} · 镇封 ${selectedTower.seal_progress} · 魔染 ${selectedTower.corruption}`
-                : "选择州域后会对应九塔目标。"}
-            </span>
-          </article>
-        </div>
-      </section>
-
-      <section className="flow-next-panel" aria-label="近期经历">
-        <div className="section-title">
-          <h2>近期经历</h2>
-          <span>完整记录可在下方展开</span>
-        </div>
-        <div className="flow-journal-brief">
-          {latestEntries.length ? (
-            latestEntries.map((entry) => (
-              <article key={entry.id}>
-                <strong>{entry.title}</strong>
-                <span>{entry.summary}</span>
-              </article>
-            ))
-          ) : (
-            <span className="action-note">完成探索、炼丹或九塔后会留下记录。</span>
-          )}
         </div>
       </section>
     </div>
@@ -5791,6 +5944,7 @@ function buildPracticeFlowSteps(input: {
     const isActionable = step.status === "active" && Boolean(action.onAction) && !action.disabled;
 
     return {
+      actionHint,
       actionDisabled: input.busy || action.disabled || !isActionable,
       actionLabel: action.label,
       detail: step.detail,

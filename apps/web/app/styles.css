@@ -3300,3 +3300,268 @@ details.event-boundary {
 .text-game-shell .battle-stat-grid {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
 }
+
+/* P3.7：强主线收敛。首屏只保留一个当前主行动，其余内容降级为详情。 */
+.text-game-shell {
+  grid-template-areas:
+    "top"
+    "practice"
+    "reference"
+    "history"
+    "nav"
+    "tabs";
+}
+
+.text-game-shell .practice-workbench {
+  gap: 16px 20px;
+  grid-template-columns: minmax(760px, 1fr) 340px;
+}
+
+.text-game-shell .practice-head {
+  padding-bottom: 8px;
+}
+
+.text-game-shell .practice-head h2 {
+  font-size: 22px;
+}
+
+.text-game-shell .practice-focus-stage {
+  border: 2px solid #111111;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.text-game-shell .practice-focus-head {
+  align-items: start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+}
+
+.text-game-shell .practice-focus-head strong {
+  display: block;
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.text-game-shell .practice-focus-head span,
+.text-game-shell .practice-focus-head p {
+  color: #555555;
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.text-game-shell .practice-focus-card {
+  background: #fbfbfa;
+  border: 1px solid #111111;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 42px minmax(0, 1fr);
+  min-width: 0;
+  padding: 14px;
+}
+
+.text-game-shell .practice-focus-index {
+  align-items: center;
+  border: 1px solid #111111;
+  display: inline-flex;
+  font-size: 18px;
+  font-weight: 700;
+  height: 34px;
+  justify-content: center;
+  line-height: 1;
+  width: 34px;
+}
+
+.text-game-shell .practice-focus-title {
+  align-items: start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.text-game-shell .practice-focus-title h3 {
+  font-size: 28px;
+  line-height: 1.15;
+  margin: 0;
+}
+
+.text-game-shell .practice-focus-title span,
+.text-game-shell .practice-focus-card p,
+.text-game-shell .practice-focus-why span,
+.text-game-shell .practice-focus-action span {
+  color: #444444;
+  font-size: 14px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.text-game-shell .practice-focus-why {
+  border-left: 2px solid #111111;
+  display: grid;
+  gap: 3px;
+  margin-top: 8px;
+  padding-left: 10px;
+}
+
+.text-game-shell .practice-focus-why strong {
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.text-game-shell .practice-focus-controls {
+  border-top: 1px solid #dddddd;
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.text-game-shell .practice-step-controls {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.text-game-shell .practice-step-controls.growth {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.text-game-shell .practice-step-controls label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.text-game-shell .practice-step-controls label span {
+  color: #555555;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.text-game-shell .practice-step-controls select {
+  min-width: 0;
+  width: 100%;
+}
+
+.text-game-shell .practice-focus-action {
+  align-items: center;
+  border-top: 1px solid #dddddd;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.text-game-shell .practice-focus-action .nextday-button {
+  min-width: 140px;
+}
+
+.text-game-shell .practice-route-preview {
+  display: grid;
+  gap: 8px;
+}
+
+.text-game-shell .practice-route-preview > span {
+  color: #555555;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.text-game-shell .practice-route-preview > div {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.text-game-shell .practice-preview-step {
+  align-items: center;
+  border: 1px solid #dddddd;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+  padding: 8px;
+}
+
+.text-game-shell .practice-preview-step strong {
+  font-size: 13px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.text-game-shell .practice-context-panel {
+  gap: 10px;
+}
+
+.text-game-shell .flow-resource-panel {
+  border-color: #dddddd;
+}
+
+.text-game-shell .practice-side-status {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.text-game-shell .practice-reference {
+  border-top: 1px solid #dddddd;
+  grid-area: reference;
+  min-width: 0;
+  padding-top: 10px;
+}
+
+.text-game-shell .practice-reference summary {
+  color: #111111;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.text-game-shell .practice-reference-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  margin-top: 12px;
+  min-width: 0;
+}
+
+.text-game-shell .detail-nav {
+  align-items: stretch;
+  border-bottom: 1px solid #111111;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding-bottom: 10px;
+}
+
+.text-game-shell .detail-nav-group {
+  border-left: 1px solid #dddddd;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding-left: 10px;
+}
+
+.text-game-shell .detail-nav-group > span {
+  color: #555555;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.text-game-shell .detail-nav-group > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.text-game-shell .detail-nav button {
+  min-height: 32px;
+  padding: 6px 10px;
+}

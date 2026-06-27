@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { createInitialTaskRows } from "./game.constants";
 
@@ -13,19 +12,10 @@ const p19FirstChapterRequiredTasks = [
 ];
 
 export async function ensureInitialPlayerTasks(tx: TaskDbClient, playerId: string) {
-  for (const task of createInitialTaskRows(playerId)) {
-    await tx.playerTaskState.upsert({
-      where: {
-        playerId_taskId_resetKey: {
-          playerId,
-          taskId: task.taskId,
-          resetKey: task.resetKey ?? "permanent",
-        },
-      },
-      create: { ...task, taskStateId: task.taskStateId ?? `task_state_${randomUUID()}` },
-      update: {},
-    });
-  }
+  await tx.playerTaskState.createMany({
+    data: createInitialTaskRows(playerId),
+    skipDuplicates: true,
+  });
 }
 
 export async function incrementPlayerTasks(

@@ -698,6 +698,7 @@ export interface CaveCollectResponse {
 }
 
 export type NewPlayerRouteStepStatus = "done" | "active" | "pending";
+export type RouteStepViewState = "ready" | "waiting" | "blocked" | "jump" | "done";
 
 export interface NewPlayerRouteStepState {
   step_id: string;
@@ -726,6 +727,9 @@ export interface DailyRouteStepState extends NewPlayerRouteStepState {
   source_detail?: string;
   reason_tags?: string[];
   target_tab?: string;
+  view_state?: RouteStepViewState;
+  state_label?: string;
+  state_detail?: string;
 }
 
 export interface DailyRouteResponse {

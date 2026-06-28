@@ -36,6 +36,7 @@
     "test:p3-production-chain": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p3-production-chain.e2e-spec.ts",
     "test:p3-combat-skill": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p3-combat-skill.e2e-spec.ts",
     "test:p3-web-route": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p3-web-route.e2e-spec.ts",
+    "test:p3-web-desktop": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p3-web-desktop.e2e-spec.ts",
     "test:p3-balance": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/p3-balance.e2e-spec.ts"
   },
   "dependencies": {

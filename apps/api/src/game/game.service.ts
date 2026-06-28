@@ -27,6 +27,7 @@ import type {
   ResolveExploreEventRequest,
   ResolveExploreEventResponse,
   RewardBundle,
+  RouteStepViewState,
   TaskClaimResponse,
   TaskState,
   TaskSummaryResponse,
@@ -1994,11 +1995,16 @@ function buildDailyRouteState(input: {
         : "任务会记录今日探索、奇遇、生产和九塔进度。",
       priority: 100,
       reason_tags: claimableTasks.length ? ["可领取"] : ["路线记录"],
+      state_detail: claimableTasks.length
+        ? "先领取已完成任务，收益入账后路线会继续向下推进。"
+        : "当前没有可领取任务，查看任务进度不会阻塞今日路线。",
+      state_label: claimableTasks.length ? "可领取" : "查看进度",
       source_detail: "来自今日任务与章节任务状态",
       status: claimableTasks.length ? "active" : "pending",
       step_id: "claim_task",
       target_tab: "overview",
       title: "先领已完成目标",
+      view_state: claimableTasks.length ? "ready" : "jump",
     },
     {
       action_hint: "claim_explore",
@@ -2010,11 +2016,18 @@ function buildDailyRouteState(input: {
           : "暂无待领取探索。",
       priority: canClaimExplore ? 96 : hasRunningExplore ? 60 : 20,
       reason_tags: canClaimExplore ? ["可领取", "战报"] : hasRunningExplore ? ["进行中"] : [],
+      state_detail: canClaimExplore
+        ? "领取后会写入战报、掉落、修行日志和可能的探索奇遇。"
+        : hasRunningExplore
+          ? "探索正在路上，倒计时结束后回到这里领取结果。"
+          : "当前没有待领取探索，可从州域探索开始下一轮。",
+      state_label: canClaimExplore ? "可领取" : hasRunningExplore ? "等待完成" : "已收束",
       source_detail: "来自当前探索队列",
       status: canClaimExplore ? "active" : hasRunningExplore ? "pending" : "done",
       step_id: "claim_explore",
       target_tab: "battle",
       title: canClaimExplore ? "领取探索战报" : "探索队列",
+      view_state: canClaimExplore ? "ready" : hasRunningExplore ? "waiting" : "done",
     },
     {
       action_hint: "explore_event",
@@ -2024,11 +2037,16 @@ function buildDailyRouteState(input: {
         : "领取探索后有机会出现轻选择奇遇。",
       priority: input.pendingEvent ? 94 : 28,
       reason_tags: input.pendingEvent ? ["可选择", "普通奖励"] : ["探索后出现"],
+      state_detail: input.pendingEvent
+        ? "选择处理方式后会给少量普通奖励，并刷新今日下一步。"
+        : "没有待处理奇遇时，这一步只作为探索后的提醒。",
+      state_label: input.pendingEvent ? "可处理" : "探索后出现",
       source_detail: "来自探索事件链",
       status: input.pendingEvent ? "active" : "pending",
       step_id: "resolve_explore_event",
       target_tab: "overview",
       title: "处理探索奇遇",
+      view_state: input.pendingEvent ? "ready" : "jump",
     },
     {
       action_hint: "collect_cave",
@@ -2039,11 +2057,17 @@ function buildDailyRouteState(input: {
           : "洞府产出仍在积累，不需要卡点在线。",
       priority: input.cave.claimable_minutes > 0 ? 86 : 24,
       reason_tags: input.cave.claimable_minutes > 0 ? ["可收取"] : ["积累中"],
+      state_detail:
+        input.cave.claimable_minutes > 0
+          ? "收取后可补充灵石和普通材料。"
+          : "洞府还在积累，不需要停在页面等待。",
+      state_label: input.cave.claimable_minutes > 0 ? "可收取" : "积累中",
       source_detail: "来自洞府离线产出",
       status: input.cave.claimable_minutes > 0 ? "active" : "pending",
       step_id: "collect_cave",
       target_tab: "growth",
       title: "收束洞府产出",
+      view_state: input.cave.claimable_minutes > 0 ? "ready" : "jump",
     },
     {
       action_hint: "explore",
@@ -2055,11 +2079,18 @@ function buildDailyRouteState(input: {
           : "行动令不足或州域尚未读取，先处理可领取收益。",
       priority: canExplore ? 82 : 22,
       reason_tags: canExplore ? ["可行动", "材料来源"] : ["条件不足"],
+      state_detail: canExplore
+        ? "开始探索会扣行动令，完成后手动领取战报和奖励。"
+        : hasRunningExplore
+          ? "当前探索完成前不能开启第二条队列。"
+          : "行动令不足或州域未开放时，先处理可领取收益和任务进度。",
+      state_label: canExplore ? "可出发" : hasRunningExplore ? "队列进行中" : "缺条件",
       source_detail: "来自行动令和州域开放状态",
       status: canExplore ? "active" : "pending",
       step_id: "start_explore",
       target_tab: "overview",
       title: "推进州域探索",
+      view_state: canExplore ? "ready" : hasRunningExplore ? "waiting" : "blocked",
     },
     {
       action_hint: "growth",
@@ -2071,12 +2102,22 @@ function buildDailyRouteState(input: {
           : "完成探索后再根据材料缺口选择炼丹或炼器。",
       priority: hasRecentBattle && !hasProducedToday ? 76 : hasProducedToday ? 46 : 18,
       reason_tags: hasRecentBattle ? ["战报衔接"] : ["等待材料"],
+      state_detail:
+        hasRecentBattle && !hasProducedToday
+          ? "战报和掉落已产生，适合查看丹方、器方和技能预设。"
+          : hasProducedToday
+            ? "今日生产已完成，可继续服丹、看技能或准备九塔。"
+            : "还没有足够战报线索时，先完成探索获取材料。",
+      state_label:
+        hasRecentBattle && !hasProducedToday ? "可成长" : hasProducedToday ? "已完成" : "等材料",
       source_detail: "来自今日战报和生产记录",
       status:
         hasRecentBattle && !hasProducedToday ? "active" : hasProducedToday ? "done" : "pending",
       step_id: "production_growth",
       target_tab: "growth",
       title: "补生产与技能",
+      view_state:
+        hasRecentBattle && !hasProducedToday ? "ready" : hasProducedToday ? "done" : "jump",
     },
     {
       action_hint: "multiplayer",
@@ -2086,21 +2127,34 @@ function buildDailyRouteState(input: {
         : "探索和生产后，把行动令投入对应州域九塔，理解自己改变了什么。",
       priority: hasTowerToday ? 42 : hasRecentBattle || hasProducedToday ? 70 : 16,
       reason_tags: hasTowerToday ? ["已完成"] : ["全服目标"],
+      state_detail: hasTowerToday
+        ? "今日已有九塔贡献，可回看本州塔状态。"
+        : hasRecentBattle || hasProducedToday
+          ? "探索或生产后可以提交一次九塔镇封，留下公共目标贡献。"
+          : "先完成探索或成长后再提交九塔，更容易理解贡献来源。",
+      state_label: hasTowerToday
+        ? "已贡献"
+        : hasRecentBattle || hasProducedToday
+          ? "可提交"
+          : "稍后",
       source_detail: "来自九塔行动记录和今日战斗状态",
       status: hasTowerToday ? "done" : hasRecentBattle || hasProducedToday ? "active" : "pending",
       step_id: "tower_action",
       target_tab: "multiplayer",
       title: "九塔留痕",
+      view_state: hasTowerToday ? "done" : hasRecentBattle || hasProducedToday ? "ready" : "jump",
     },
   ];
   const sortedSteps = steps.sort(
     (left, right) =>
-      dailyRouteStatusWeight(right.status) - dailyRouteStatusWeight(left.status) ||
+      dailyRouteViewStateWeight(right.view_state) - dailyRouteViewStateWeight(left.view_state) ||
       right.priority - left.priority,
   );
   const primaryStep =
-    sortedSteps.find((step) => step.status === "active") ??
-    sortedSteps.find((step) => step.status === "pending") ??
+    sortedSteps.find((step) => step.view_state === "ready") ??
+    sortedSteps.find((step) => step.view_state === "waiting") ??
+    sortedSteps.find((step) => step.view_state === "jump") ??
+    sortedSteps.find((step) => step.view_state === "blocked") ??
     sortedSteps[0];
   const doneCount = sortedSteps.filter((step) => step.status === "done").length;
 
@@ -2119,14 +2173,15 @@ function buildDailyRouteState(input: {
   };
 }
 
-function dailyRouteStatusWeight(status: NewPlayerRouteStepState["status"]): number {
-  if (status === "active") {
-    return 3;
-  }
-  if (status === "pending") {
-    return 2;
-  }
-  return 1;
+function dailyRouteViewStateWeight(state: RouteStepViewState | undefined): number {
+  const weights: Record<RouteStepViewState, number> = {
+    blocked: 2,
+    done: 1,
+    jump: 3,
+    ready: 5,
+    waiting: 4,
+  };
+  return state ? weights[state] : 1;
 }
 
 function getActiveTaskResetKeys(): string[] {

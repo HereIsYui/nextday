@@ -3379,6 +3379,20 @@ details.event-boundary {
   padding: 8px;
 }
 
+.text-game-shell .practice-focus-card.view-waiting,
+.text-game-shell .practice-preview-step.view-waiting,
+.text-game-shell .mainline-step.view-waiting,
+.text-game-shell .mainline-current-step.view-waiting {
+  border-style: dashed;
+}
+
+.text-game-shell .practice-focus-card.view-blocked,
+.text-game-shell .practice-preview-step.view-blocked,
+.text-game-shell .mainline-step.view-blocked,
+.text-game-shell .mainline-current-step.view-blocked {
+  background: #f7f3ed;
+}
+
 .text-game-shell .practice-focus-index {
   align-items: center;
   border: 1px solid #111111;
@@ -3406,12 +3420,19 @@ details.event-boundary {
 
 .text-game-shell .practice-focus-title span,
 .text-game-shell .practice-focus-card p,
+.text-game-shell .practice-state-detail,
 .text-game-shell .practice-focus-why span,
 .text-game-shell .practice-focus-action span {
   color: #444444;
   font-size: 13px;
   line-height: 1.45;
   margin: 0;
+}
+
+.text-game-shell .practice-state-detail {
+  background: #f3f5f0;
+  border-left: 2px solid #111111;
+  padding: 6px 8px;
 }
 
 .text-game-shell .practice-focus-why {

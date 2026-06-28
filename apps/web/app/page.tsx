@@ -48,6 +48,7 @@ import type {
   ResourcePointListResponse,
   ReviewMentorRequest,
   ReviewSectDiplomacyRequest,
+  RouteStepViewState,
   SectDetailResponse,
   SectDiplomacySummaryResponse,
   SectHireListResponse,
@@ -264,9 +265,12 @@ interface MainlineStep {
   title: string;
   detail: string;
   status: MainlineStepStatus;
+  viewState: RouteStepViewState;
   actionHint?: string;
   actionLabel?: string;
   reasonTags?: string[];
+  stateDetail?: string;
+  stateLabel?: string;
   sourceDetail?: string;
   targetTab?: string;
 }
@@ -291,12 +295,15 @@ interface PracticeFlowStep {
   title: string;
   detail: string;
   status: MainlineStepStatus;
+  viewState: RouteStepViewState;
   why: string;
   nextHint: string;
   reasonTags: string[];
   actionLabel: string;
   actionDisabled?: boolean;
   feedbackSourceId: string;
+  stateDetail?: string;
+  stateLabel?: string;
   onAction?: () => void | Promise<void>;
 }
 
@@ -619,11 +626,14 @@ export default function HomePage() {
         : () => handleTabChange("events"),
     onCave: handleCollectCave,
     onClaimExplore: handleClaimExplore,
+    onBattle: () => handleFeatureChange("battle"),
     onExplore: () => handleExplore(exploreCount),
     onFocusEvent: handleFocusExploreEvent,
     onGrowth: () => handleTabChange("growth"),
     onTask: () => handleMainlineTask(firstClaimableTask ?? mainlineTask),
     onTower: handleTowerAction,
+    onTowerDetail: () => handleFeatureChange("tower"),
+    onWorld: () => handleFeatureChange("world"),
     selectedAlchemyRecipe,
     selectedForgeRecipe,
     selectedPill,
@@ -4791,7 +4801,7 @@ function PracticeFocusStage({
       </div>
 
       {step ? (
-        <article className={`practice-focus-card status-${step.status}`}>
+        <article className={`practice-focus-card status-${step.status} view-${step.viewState}`}>
           <div className="practice-focus-index">{step.index}</div>
           <div>
             <div className="practice-focus-title">
@@ -4799,11 +4809,12 @@ function PracticeFocusStage({
                 <span>现在先做</span>
                 <h3>{step.title}</h3>
               </div>
-              <StatusBadge tone={mainlineStepTone(step.status)}>
-                {mainlineStepStatusLabel(step.status)}
+              <StatusBadge tone={routeStepViewTone(step.viewState)}>
+                {step.stateLabel ?? routeStepViewStateLabel(step.viewState)}
               </StatusBadge>
             </div>
             <p>{step.detail}</p>
+            {step.stateDetail ? <p className="practice-state-detail">{step.stateDetail}</p> : null}
             <div className="practice-focus-why">
               <strong>为什么做</strong>
               <span>{step.why}</span>
@@ -4853,14 +4864,14 @@ function PracticeFocusStage({
           <div>
             {previewSteps.map((preview) => (
               <article
-                className={`practice-preview-step status-${preview.status}`}
+                className={`practice-preview-step status-${preview.status} view-${preview.viewState}`}
                 key={preview.id}
               >
                 <strong>
                   {preview.index}. {preview.title}
                 </strong>
-                <StatusBadge tone={mainlineStepTone(preview.status)}>
-                  {mainlineStepStatusLabel(preview.status)}
+                <StatusBadge tone={routeStepViewTone(preview.viewState)}>
+                  {routeStepViewStateLabel(preview.viewState)}
                 </StatusBadge>
               </article>
             ))}
@@ -5165,8 +5176,9 @@ function MainlineGuideCard({
   onViewFeedback: () => void;
 }) {
   const currentStep =
-    guide.steps.find((step) => step.status === "active") ??
-    guide.steps.find((step) => step.status === "pending") ??
+    guide.steps.find((step) => step.viewState === "ready") ??
+    guide.steps.find((step) => step.viewState === "waiting") ??
+    guide.steps.find((step) => step.viewState === "jump") ??
     guide.steps.at(-1);
 
   return (
@@ -5190,13 +5202,15 @@ function MainlineGuideCard({
         <span style={{ width: `${guide.progressPercent}%` }} />
       </div>
       {currentStep ? (
-        <article className={`mainline-current-step status-${currentStep.status}`}>
+        <article
+          className={`mainline-current-step status-${currentStep.status} view-${currentStep.viewState}`}
+        >
           <div>
             <strong>{currentStep.title}</strong>
             <span>{currentStep.detail}</span>
           </div>
-          <StatusBadge tone={mainlineStepTone(currentStep.status)}>
-            {mainlineStepStatusLabel(currentStep.status)}
+          <StatusBadge tone={routeStepViewTone(currentStep.viewState)}>
+            {currentStep.stateLabel ?? routeStepViewStateLabel(currentStep.viewState)}
           </StatusBadge>
         </article>
       ) : null}
@@ -5226,13 +5240,13 @@ function MainlineGuideCard({
 
 function MainlineStepCard({ step }: { step: MainlineStep }) {
   return (
-    <article className={`mainline-step status-${step.status}`}>
+    <article className={`mainline-step status-${step.status} view-${step.viewState}`}>
       <div>
         <strong>{step.title}</strong>
         <span>{step.detail}</span>
       </div>
-      <StatusBadge tone={mainlineStepTone(step.status)}>
-        {mainlineStepStatusLabel(step.status)}
+      <StatusBadge tone={routeStepViewTone(step.viewState)}>
+        {step.stateLabel ?? routeStepViewStateLabel(step.viewState)}
       </StatusBadge>
     </article>
   );
@@ -6229,11 +6243,14 @@ function buildPracticeFlowSteps(input: {
   onActivity: () => void | Promise<void>;
   onCave: () => void | Promise<void>;
   onClaimExplore: () => void | Promise<void>;
+  onBattle: () => void | Promise<void>;
   onExplore: () => void | Promise<void>;
   onFocusEvent: () => void;
   onGrowth: () => void | Promise<void>;
   onTask: () => void | Promise<void>;
   onTower: () => void | Promise<void>;
+  onTowerDetail: () => void | Promise<void>;
+  onWorld: () => void | Promise<void>;
   selectedAlchemyRecipe: AlchemyRecipeListResponse["recipes"][number] | undefined;
   selectedForgeRecipe: ForgeRecipeListResponse["recipes"][number] | undefined;
   selectedPill: BagSummaryResponse["items"][number] | undefined;
@@ -6249,8 +6266,9 @@ function buildPracticeFlowSteps(input: {
 
   return uniqueSteps.map((step, index) => {
     const actionHint = step.actionHint ?? step.id;
-    const action = practiceStepAction(actionHint, input);
-    const isActionable = step.status === "active" && Boolean(action.onAction) && !action.disabled;
+    const action = practiceStepAction(step, input);
+    const isActionable =
+      routeStepCanAct(step.viewState) && Boolean(action.onAction) && !action.disabled;
 
     return {
       actionHint,
@@ -6263,8 +6281,11 @@ function buildPracticeFlowSteps(input: {
       nextHint: practiceNextHint(actionHint, step, input),
       onAction: action.onAction,
       reasonTags: step.reasonTags ?? practiceReasonTags(actionHint, input),
+      stateDetail: step.stateDetail,
+      stateLabel: step.stateLabel,
       status: step.status,
       title: step.title,
+      viewState: step.viewState,
       why: practiceWhyText(actionHint, step),
     };
   });
@@ -6284,7 +6305,7 @@ function dedupeMainlineSteps(steps: MainlineStep[]): MainlineStep[] {
 }
 
 function practiceStepAction(
-  actionHint: string,
+  step: MainlineStep,
   input: {
     activeExplore: ExploreResponse | null;
     busy: boolean;
@@ -6295,6 +6316,7 @@ function practiceStepAction(
     firstClaimableActivity: ActivitySummaryState | undefined;
     mainlineTask: TaskState | undefined;
     onActivity: () => void | Promise<void>;
+    onBattle: () => void | Promise<void>;
     onCave: () => void | Promise<void>;
     onClaimExplore: () => void | Promise<void>;
     onExplore: () => void | Promise<void>;
@@ -6302,27 +6324,38 @@ function practiceStepAction(
     onGrowth: () => void | Promise<void>;
     onTask: () => void | Promise<void>;
     onTower: () => void | Promise<void>;
+    onTowerDetail: () => void | Promise<void>;
+    onWorld: () => void | Promise<void>;
   },
 ): { disabled?: boolean; label: string; onAction?: () => void | Promise<void> } {
+  const actionHint = step.actionHint ?? step.id;
+  const label = step.actionLabel ?? "继续修行";
+
   if (actionHint === "task" || actionHint === "claim_task" || actionHint === "chapter_task") {
     const claimableTask =
       input.claimableTask ??
       (input.mainlineTask?.status === "completed" ? input.mainlineTask : undefined);
     return {
       disabled: input.busy,
-      label: claimableTask
-        ? claimableTask.task_type === "chapter"
-          ? "领取章节奖励"
-          : "领取任务奖励"
-        : "查看任务进度",
+      label:
+        step.actionLabel ??
+        (claimableTask
+          ? claimableTask.task_type === "chapter"
+            ? "领取章节奖励"
+            : "领取任务奖励"
+          : "查看任务进度"),
       onAction: input.onTask,
     };
   }
   if (actionHint === "claim_explore") {
     return {
-      disabled: input.busy || !input.canClaimExplore,
-      label: input.canClaimExplore ? "领取探索战报" : "等待探索完成",
-      onAction: input.canClaimExplore ? input.onClaimExplore : undefined,
+      disabled: input.busy || (!input.canClaimExplore && step.viewState !== "jump"),
+      label,
+      onAction: input.canClaimExplore
+        ? input.onClaimExplore
+        : step.viewState === "jump"
+          ? input.onBattle
+          : undefined,
     };
   }
   if (
@@ -6332,22 +6365,28 @@ function practiceStepAction(
   ) {
     return {
       disabled: input.busy || Boolean(input.activeExplore),
-      label: input.activeExplore ? "探索进行中" : "开始探索",
-      onAction: input.activeExplore ? undefined : input.onExplore,
+      label,
+      onAction: input.activeExplore
+        ? undefined
+        : step.viewState === "blocked"
+          ? undefined
+          : step.viewState === "jump"
+            ? input.onWorld
+            : input.onExplore,
     };
   }
   if (actionHint === "explore_event" || actionHint === "resolve_explore_event") {
     return {
       disabled: input.busy || !input.event,
-      label: input.event ? "处理奇遇" : "等待途中见闻",
+      label,
       onAction: input.event ? input.onFocusEvent : undefined,
     };
   }
   if (actionHint === "collect_cave") {
     return {
       disabled: input.busy,
-      label: "收取洞府",
-      onAction: input.onCave,
+      label,
+      onAction: step.viewState === "ready" ? input.onCave : input.onGrowth,
     };
   }
   if (
@@ -6357,22 +6396,22 @@ function practiceStepAction(
   ) {
     return {
       disabled: input.busy,
-      label: "进入成长",
+      label,
       onAction: input.onGrowth,
     };
   }
   if (actionHint === "activity") {
     return {
       disabled: input.busy || !input.firstActivity,
-      label: input.firstClaimableActivity ? "领取活动" : "推进活动",
+      label: step.actionLabel ?? (input.firstClaimableActivity ? "领取活动" : "推进活动"),
       onAction: input.firstActivity ? input.onActivity : undefined,
     };
   }
   if (actionHint === "multiplayer" || actionHint === "tower" || actionHint === "tower_action") {
     return {
       disabled: input.busy,
-      label: "镇封九塔",
-      onAction: input.onTower,
+      label,
+      onAction: step.viewState === "ready" ? input.onTower : input.onTowerDetail,
     };
   }
 
@@ -6563,24 +6602,32 @@ function buildMainlineGuide(input: {
   onTower: () => void | Promise<void>;
 }): MainlineGuide {
   if (input.serverRoute) {
-    const steps = input.serverRoute.steps.map((step) => ({
-      actionHint: step.action_hint,
-      actionLabel: step.action_label,
-      detail: step.detail,
-      id: step.step_id,
-      reasonTags: "reason_tags" in step ? step.reason_tags : undefined,
-      sourceDetail: "source_detail" in step ? step.source_detail : undefined,
-      status: step.status,
-      targetTab: "target_tab" in step ? step.target_tab : undefined,
-      title: step.title,
-    }));
+    const steps = input.serverRoute.steps.map((step): MainlineStep => {
+      const viewState = routeStepViewStateFromServerStep(step, input);
+      return {
+        actionHint: step.action_hint,
+        actionLabel: step.action_label,
+        detail: step.detail,
+        id: step.step_id,
+        reasonTags: "reason_tags" in step ? step.reason_tags : undefined,
+        sourceDetail: "source_detail" in step ? step.source_detail : undefined,
+        stateDetail: "state_detail" in step ? step.state_detail : undefined,
+        stateLabel: "state_label" in step ? step.state_label : undefined,
+        status: step.status,
+        targetTab: "target_tab" in step ? step.target_tab : undefined,
+        title: step.title,
+        viewState,
+      };
+    });
     const activeStep =
-      input.serverRoute.steps.find((step) => step.step_id === input.serverRoute?.primary_step_id) ??
-      input.serverRoute.steps.find((step) => step.status === "active") ??
-      input.serverRoute.steps.at(-1);
+      steps.find((step) => step.id === input.serverRoute?.primary_step_id) ??
+      steps.find((step) => step.viewState === "ready") ??
+      steps.find((step) => step.viewState === "waiting") ??
+      steps.find((step) => step.viewState === "jump") ??
+      steps.at(-1);
     const primary = mainlinePrimaryAction({
-      actionHint: activeStep?.action_hint ?? input.serverRoute.primary_action_hint,
-      activeStepId: activeStep?.step_id,
+      actionHint: activeStep?.actionHint ?? input.serverRoute.primary_action_hint,
+      activeStepId: activeStep?.id,
       busy: input.busy,
       canClaimExplore: input.canClaimExplore,
       hasActiveExplore: Boolean(input.activeExplore),
@@ -6591,9 +6638,10 @@ function buildMainlineGuide(input: {
       onGrowth: input.onGrowth,
       onTask: input.onTask,
       onTower: input.onTower,
-      preferredHint: activeStep?.detail,
-      preferredLabel: activeStep?.action_label,
+      preferredHint: activeStep?.stateDetail ?? activeStep?.detail,
+      preferredLabel: activeStep?.actionLabel,
       task: input.chapterTask,
+      viewState: activeStep?.viewState,
     });
 
     return {
@@ -6648,8 +6696,19 @@ function buildMainlineGuide(input: {
         : "当前章节任务已整理。",
       id: "chapter_task",
       reasonTags: input.chapterTask?.status === "completed" ? ["可领取"] : ["章节"],
+      stateDetail:
+        input.chapterTask?.status === "completed"
+          ? "章节目标已达成，领取后继续下一段路线。"
+          : "没有可领取章节奖励时，可查看任务差哪一步。",
+      stateLabel: input.chapterTask?.status === "completed" ? "可领取" : "查看进度",
       status: taskStepStatus,
       title: input.chapterTask?.title ?? "章节任务",
+      viewState:
+        taskStepStatus === "done"
+          ? "done"
+          : input.chapterTask?.status === "completed"
+            ? "ready"
+            : "jump",
     },
     {
       actionHint: "explore",
@@ -6657,8 +6716,13 @@ function buildMainlineGuide(input: {
       detail: `${mainProvince?.name ?? "冀州"}探索 ${explorationCount}/${explorationTarget}`,
       id: "province_explore",
       reasonTags: [mainProvince?.name ?? "冀州", "材料来源"],
+      stateDetail: input.activeExplore
+        ? "探索已经安排，等待完成后领取战报和材料。"
+        : "开始探索会消耗行动令，并在完成后生成可领取结果。",
+      stateLabel: input.activeExplore ? "等待完成" : "可出发",
       status: exploreStepStatus,
       title: "稳住州域",
+      viewState: exploreStepStatus === "done" ? "done" : input.activeExplore ? "waiting" : "ready",
     },
     {
       actionHint: "explore_event",
@@ -6666,8 +6730,13 @@ function buildMainlineGuide(input: {
       detail: hasPendingEvent ? `${input.event?.title} · 等待处理` : "途中见闻会记录到修行日志。",
       id: "explore_event",
       reasonTags: hasPendingEvent ? ["轻选择"] : ["探索后出现"],
+      stateDetail: hasPendingEvent
+        ? "选择一种处理方式后，奇遇奖励会入账并刷新路线。"
+        : "领取探索后才会出现途中见闻。",
+      stateLabel: hasPendingEvent ? "可处理" : "探索后出现",
       status: eventStepStatus,
       title: "处理见闻",
+      viewState: hasPendingEvent ? "ready" : eventStepStatus === "done" ? "done" : "jump",
     },
     {
       actionHint: "tower",
@@ -6677,8 +6746,15 @@ function buildMainlineGuide(input: {
         : "九塔状态读取后开放镇封目标。",
       id: "tower",
       reasonTags: input.selectedTower ? [input.selectedTower.tower_name, "全服目标"] : ["九塔"],
+      stateDetail:
+        towerStepStatus === "active"
+          ? "提交一次九塔镇封，记录你对当前州域公共目标的贡献。"
+          : "完成探索和成长后再来镇封九塔。",
+      stateLabel: towerStepStatus === "active" ? "可提交" : "稍后",
       status: towerStepStatus,
       title: "镇封九塔",
+      viewState:
+        towerStepStatus === "done" ? "done" : towerStepStatus === "active" ? "ready" : "jump",
     },
   ];
   const activeStep = steps.find((step) => step.status === "active") ?? steps.at(-1);
@@ -6697,6 +6773,7 @@ function buildMainlineGuide(input: {
     onTask: input.onTask,
     onTower: input.onTower,
     task: input.chapterTask,
+    viewState: activeStep?.viewState,
   });
 
   return {
@@ -6723,6 +6800,70 @@ function mainlineTaskStatus(task: TaskState | undefined): MainlineStepStatus {
   return "active";
 }
 
+function routeStepViewStateFromServerStep(
+  step: DailyRouteResponse["steps"][number] | NewPlayerRouteState["steps"][number],
+  input: {
+    activeExplore: ExploreResponse | null;
+    canClaimExplore: boolean;
+    event: ExploreEventState | undefined;
+    overview: GameOverviewResponse | null;
+  },
+): RouteStepViewState {
+  if ("view_state" in step && step.view_state) {
+    return step.view_state;
+  }
+  if (step.status === "done") {
+    return "done";
+  }
+  if (step.action_hint === "claim_explore") {
+    return input.canClaimExplore ? "ready" : input.activeExplore ? "waiting" : "jump";
+  }
+  if (step.action_hint === "explore" || step.action_hint === "start_explore") {
+    if (input.activeExplore) {
+      return "waiting";
+    }
+    if ((input.overview?.action_state?.action_points ?? 0) <= 0) {
+      return "blocked";
+    }
+    return step.status === "active" ? "ready" : "jump";
+  }
+  if (step.action_hint === "explore_event" || step.action_hint === "resolve_explore_event") {
+    return input.event ? "ready" : "jump";
+  }
+  if (step.action_hint === "task" || step.action_hint === "claim_task") {
+    return step.status === "active" ? "ready" : "jump";
+  }
+  if (step.status === "active") {
+    return "ready";
+  }
+  return "jump";
+}
+
+function routeStepCanAct(viewState: RouteStepViewState): boolean {
+  return viewState === "ready" || viewState === "jump";
+}
+
+function routeStepViewTone(viewState: RouteStepViewState): "neutral" | "success" | "warning" {
+  if (viewState === "ready" || viewState === "done") {
+    return "success";
+  }
+  if (viewState === "blocked") {
+    return "warning";
+  }
+  return "neutral";
+}
+
+function routeStepViewStateLabel(viewState: RouteStepViewState): string {
+  const labels: Record<RouteStepViewState, string> = {
+    blocked: "缺条件",
+    done: "完成",
+    jump: "查看进度",
+    ready: "可执行",
+    waiting: "等待中",
+  };
+  return labels[viewState];
+}
+
 function mainlinePrimaryAction(input: {
   actionHint?: string;
   activeStepId: string | undefined;
@@ -6739,6 +6880,7 @@ function mainlinePrimaryAction(input: {
   onTower: () => void | Promise<void>;
   preferredHint?: string;
   preferredLabel?: string;
+  viewState?: RouteStepViewState;
 }): {
   disabled?: boolean;
   hint: string;
@@ -6746,9 +6888,10 @@ function mainlinePrimaryAction(input: {
   onAction: () => void | Promise<void>;
 } {
   const actionKey = input.actionHint ?? input.activeStepId;
+  const isInformational = input.viewState === "waiting" || input.viewState === "blocked";
   if (actionKey === "task" || input.activeStepId === "chapter_task") {
     return {
-      disabled: input.busy,
+      disabled: input.busy || isInformational,
       hint:
         input.preferredHint ??
         (input.task?.status === "completed"
@@ -6776,7 +6919,7 @@ function mainlinePrimaryAction(input: {
     }
 
     return {
-      disabled: input.busy || input.hasActiveExplore,
+      disabled: input.busy || input.hasActiveExplore || isInformational,
       hint:
         input.preferredHint ??
         (input.hasActiveExplore ? "探索队列正在进行，稍后领取结果。" : "安排一次州域探索。"),
@@ -6787,7 +6930,7 @@ function mainlinePrimaryAction(input: {
 
   if (actionKey === "explore_event" || input.activeStepId === "explore_event") {
     return {
-      disabled: input.busy,
+      disabled: input.busy || isInformational,
       hint: input.preferredHint ?? "途中见闻会给少量普通奖励，也会写入日志。",
       label: input.preferredLabel ?? "处理探索奇遇",
       onAction: input.onFocusEvent,
@@ -6796,7 +6939,7 @@ function mainlinePrimaryAction(input: {
 
   if (actionKey === "collect_cave") {
     return {
-      disabled: input.busy,
+      disabled: input.busy || isInformational,
       hint: input.preferredHint ?? "收取洞府产出，补充灵石和普通材料。",
       label: input.preferredLabel ?? "收取洞府",
       onAction: input.onCave,
@@ -6805,7 +6948,7 @@ function mainlinePrimaryAction(input: {
 
   if (actionKey === "growth" || input.activeStepId === "craft_alchemy") {
     return {
-      disabled: input.busy,
+      disabled: input.busy || isInformational,
       hint: input.preferredHint ?? "进入成长页查看推荐丹方和材料缺口。",
       label: input.preferredLabel ?? "去炼丹",
       onAction: input.onGrowth,
@@ -6814,7 +6957,7 @@ function mainlinePrimaryAction(input: {
 
   if (actionKey === "multiplayer" || input.activeStepId === "tower") {
     return {
-      disabled: input.busy,
+      disabled: input.busy || isInformational,
       hint: input.preferredHint ?? "镇封九塔会推动本州公共目标。",
       label: input.preferredLabel ?? "镇封九塔",
       onAction: input.onTower,
@@ -6822,7 +6965,7 @@ function mainlinePrimaryAction(input: {
   }
 
   return {
-    disabled: input.busy,
+    disabled: input.busy || isInformational,
     hint: "今日主线已整理完，继续完成日课和生产成长。",
     label: "查看今日目标",
     onAction: input.onTask,
@@ -6839,19 +6982,6 @@ function chapterTitleById(chapterId: number): string {
     6: "镇岳太初",
   };
   return titles[chapterId] ?? "九州续章";
-}
-
-function mainlineStepTone(status: MainlineStepStatus): "neutral" | "success" | "warning" {
-  return status === "done" ? "success" : status === "active" ? "warning" : "neutral";
-}
-
-function mainlineStepStatusLabel(status: MainlineStepStatus): string {
-  const labels: Record<MainlineStepStatus, string> = {
-    active: "当前",
-    done: "完成",
-    pending: "稍后",
-  };
-  return labels[status];
 }
 
 function taskStatusLabel(status: TaskState["status"]): string {

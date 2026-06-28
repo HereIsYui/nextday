@@ -251,6 +251,7 @@ interface GrowthTarget {
 type ActionFeedbackStatus = "running" | "success" | "error";
 
 interface ActionFeedbackState {
+  hasExperience?: boolean;
   label: string;
   message: string;
   sourceId: string;
@@ -385,10 +386,12 @@ export default function HomePage() {
   const [featureWorkbenchOpen, setFeatureWorkbenchOpen] = useState(false);
   const [tabFocusPulse, setTabFocusPulse] = useState(false);
   const [actionFeedback, setActionFeedback] = useState<ActionFeedbackState | null>(null);
+  const [mainActionFeedback, setMainActionFeedback] = useState<ActionFeedbackState | null>(null);
   const [battleProvinceFilter, setBattleProvinceFilter] = useState("all");
   const [battleResultFilter, setBattleResultFilter] = useState("all");
   const [battleTraitFilter, setBattleTraitFilter] = useState("all");
   const actionFeedbackSourceRef = useRef<string | null>(null);
+  const actionProducedExperienceRef = useRef(false);
   const practiceFlowRef = useRef<HTMLElement | null>(null);
   const practiceWorkbenchRef = useRef<HTMLElement | null>(null);
   const tabSurfaceRef = useRef<HTMLElement | null>(null);
@@ -644,6 +647,7 @@ export default function HomePage() {
     actionFeedback,
     experience: lastExperience,
     latestEntry: journalEntries[0],
+    persistentFeedback: mainActionFeedback,
   });
   const practiceFocusStep = practiceFlowSteps[0];
   const practicePreviewSteps = practiceFlowSteps.slice(1, 4);
@@ -678,8 +682,10 @@ export default function HomePage() {
     status: ActionFeedbackStatus,
     label: string,
     message: string,
+    hasExperience = false,
   ) {
     const nextFeedback: ActionFeedbackState = {
+      hasExperience,
       label,
       message,
       sourceId,
@@ -2469,6 +2475,7 @@ export default function HomePage() {
     },
   ) {
     if (experience) {
+      actionProducedExperienceRef.current = true;
       setLastExperience(experience);
       appendJournal({
         deltas: experience.delta_summary.map(formatDeltaSummary).slice(0, 4),
@@ -2622,24 +2629,50 @@ export default function HomePage() {
 
   async function runAction(label: string, action: () => Promise<void>) {
     const feedbackSourceId = actionFeedbackSourceRef.current;
+    const mainFeedbackSourceId = feedbackSourceId ?? "practice-main-action";
+    actionProducedExperienceRef.current = false;
     setBusy(true);
     setMessage(`${label}中`);
+    setMainActionFeedback({
+      label,
+      message: `${label}中`,
+      sourceId: mainFeedbackSourceId,
+      status: "running",
+      updatedAt: Date.now(),
+    });
     if (feedbackSourceId) {
       setInlineActionFeedback(feedbackSourceId, "running", label, `${label}中`);
     }
     try {
       await action();
+      const successFeedback: ActionFeedbackState = {
+        hasExperience: actionProducedExperienceRef.current,
+        label,
+        message: actionFeedbackSuccessMessage(label),
+        sourceId: mainFeedbackSourceId,
+        status: "success",
+        updatedAt: Date.now(),
+      };
+      setMainActionFeedback(successFeedback);
       if (feedbackSourceId) {
         setInlineActionFeedback(
           feedbackSourceId,
           "success",
           label,
           actionFeedbackSuccessMessage(label),
+          actionProducedExperienceRef.current,
         );
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : `${label}失败`;
       setMessage(errorMessage);
+      setMainActionFeedback({
+        label,
+        message: errorMessage,
+        sourceId: mainFeedbackSourceId,
+        status: "error",
+        updatedAt: Date.now(),
+      });
       if (feedbackSourceId) {
         setInlineActionFeedback(feedbackSourceId, "error", label, errorMessage);
       }
@@ -2750,6 +2783,7 @@ export default function HomePage() {
                     practiceFocusStep
                       ? (actionFeedbackFor(practiceFocusStep.feedbackSourceId) ??
                         actionFeedback ??
+                        mainActionFeedback ??
                         undefined)
                       : undefined
                   }
@@ -6537,15 +6571,39 @@ function buildPracticeOutcome(input: {
   actionFeedback: ActionFeedbackState | null;
   experience: ExperiencePayload | null;
   latestEntry: JournalEntry | undefined;
+  persistentFeedback: ActionFeedbackState | null;
 }): PracticeOutcome {
-  if (input.actionFeedback?.status === "running") {
+  const activeFeedback = input.actionFeedback ?? input.persistentFeedback;
+  if (activeFeedback?.status === "running") {
     return {
       deltas: [],
       recommendations: ["完成后会整理下一步路线"],
-      summary: input.actionFeedback.message,
+      summary: activeFeedback.message,
       tags: ["处理中"],
-      title: input.actionFeedback.label,
+      title: activeFeedback.label,
       tone: "neutral",
+    };
+  }
+  if (activeFeedback?.status === "error") {
+    return {
+      deltas: [],
+      recommendations: ["按提示调整条件后重试，或先处理其他可执行路线"],
+      summary: activeFeedback.message,
+      tags: ["未完成"],
+      timeLabel: formatJournalTime(new Date(activeFeedback.updatedAt).toISOString()),
+      title: activeFeedback.label,
+      tone: "warning",
+    };
+  }
+  if (activeFeedback?.status === "success" && !activeFeedback.hasExperience) {
+    return {
+      deltas: [],
+      recommendations: ["路线已刷新，可继续查看当前主行动"],
+      summary: activeFeedback.message,
+      tags: ["已完成"],
+      timeLabel: formatJournalTime(new Date(activeFeedback.updatedAt).toISOString()),
+      title: activeFeedback.label,
+      tone: "success",
     };
   }
   if (input.experience) {
@@ -6558,6 +6616,17 @@ function buildPracticeOutcome(input: {
       tags: filterJournalTags(input.experience.reason_tags),
       title: input.experience.title,
       tone: resolveExperienceTone(input.experience),
+    };
+  }
+  if (activeFeedback?.status === "success") {
+    return {
+      deltas: [],
+      recommendations: ["路线已刷新，可继续查看当前主行动"],
+      summary: activeFeedback.message,
+      tags: ["已完成"],
+      timeLabel: formatJournalTime(new Date(activeFeedback.updatedAt).toISOString()),
+      title: activeFeedback.label,
+      tone: "success",
     };
   }
   if (input.latestEntry) {

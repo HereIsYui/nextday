@@ -3727,11 +3727,78 @@ details.event-boundary {
   align-items: start;
   border-top: 2px solid #111111;
   display: grid;
-  gap: 18px;
+  gap: 0;
   grid-area: feature;
-  grid-template-columns: 270px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
-  padding-top: 14px;
+  padding-top: 10px;
+}
+
+.text-game-shell .feature-workbench.is-open {
+  gap: 18px;
+  grid-template-columns: 270px minmax(0, 1fr);
+}
+
+.text-game-shell .feature-workbench-summary {
+  align-items: center;
+  background: transparent;
+  border: 1px solid #111111;
+  color: #111111;
+  cursor: pointer;
+  display: grid;
+  font-family: inherit;
+  gap: 12px;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+  padding: 10px 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.text-game-shell .feature-workbench-summary > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.text-game-shell .feature-workbench-summary span {
+  color: #666666;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.text-game-shell .feature-workbench-summary strong {
+  color: #111111;
+  font-size: 17px;
+  line-height: 1.25;
+}
+
+.text-game-shell .feature-workbench-summary p {
+  color: #555555;
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.text-game-shell .feature-workbench-summary-action {
+  border: 1px solid #111111;
+  color: #111111;
+  display: inline-flex;
+  font-size: 13px;
+  line-height: 1.2;
+  padding: 7px 10px;
+  white-space: nowrap;
+}
+
+.text-game-shell .feature-workbench-summary:hover .feature-workbench-summary-action {
+  background: #111111;
+  color: #ffffff;
+}
+
+.text-game-shell .feature-workbench.is-collapsed .feature-launcher,
+.text-game-shell .feature-workbench.is-collapsed .tab-surface {
+  display: none;
 }
 
 .text-game-shell .feature-workbench .feature-launcher {

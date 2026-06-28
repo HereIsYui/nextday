@@ -375,6 +375,7 @@ export default function HomePage() {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
+  const [featureWorkbenchOpen, setFeatureWorkbenchOpen] = useState(false);
   const [tabFocusPulse, setTabFocusPulse] = useState(false);
   const [actionFeedback, setActionFeedback] = useState<ActionFeedbackState | null>(null);
   const [battleProvinceFilter, setBattleProvinceFilter] = useState("all");
@@ -728,8 +729,10 @@ export default function HomePage() {
     const tab = params.get("tab");
     if (isActiveFeature(feature)) {
       setActiveFeature(feature);
+      setFeatureWorkbenchOpen(true);
     } else if (isActiveTab(tab)) {
       setActiveFeature(defaultFeatureForTab(tab));
+      setFeatureWorkbenchOpen(true);
     }
   }, []);
 
@@ -2301,6 +2304,7 @@ export default function HomePage() {
   function handleFeatureChange(feature: ActiveFeature, options: { focus?: boolean } = {}) {
     const shouldFocus = options.focus ?? true;
     setActiveFeature(feature);
+    setFeatureWorkbenchOpen(true);
     setFocusedTaskId(null);
     setMessage(`已打开${activeFeatureLabel(feature)}`);
 
@@ -2364,6 +2368,7 @@ export default function HomePage() {
 
   function handleFocusTask(task?: TaskState) {
     setActiveFeature("tasks");
+    setFeatureWorkbenchOpen(true);
     setFocusedTaskId(task?.task_id ?? null);
     setMessage(task ? `已定位任务：${task.title}` : "已切换到任务列表");
     window.setTimeout(() => {
@@ -2797,9 +2802,24 @@ export default function HomePage() {
 
             <section
               aria-label="修行事务工作台"
-              className="feature-workbench"
+              className={`feature-workbench ${featureWorkbenchOpen ? "is-open" : "is-collapsed"}`}
               ref={practiceWorkbenchRef}
             >
+              <button
+                aria-expanded={featureWorkbenchOpen}
+                className="feature-workbench-summary"
+                onClick={() => setFeatureWorkbenchOpen((current) => !current)}
+                type="button"
+              >
+                <div>
+                  <span>事务详情</span>
+                  <strong>当前：{activeFeatureName}</strong>
+                  <p>需要查看地图、成长、多人、市肆、收藏或战报时再展开。</p>
+                </div>
+                <span className="feature-workbench-summary-action">
+                  {featureWorkbenchOpen ? "收起详情" : "展开详情"}
+                </span>
+              </button>
               <nav className="feature-launcher" aria-label="功能入口">
                 <div className="feature-launcher-head">
                   <p className="eyebrow">功能入口</p>

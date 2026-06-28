@@ -3306,10 +3306,9 @@ details.event-boundary {
   grid-template-areas:
     "top"
     "practice"
+    "feature"
     "reference"
-    "history"
-    "nav"
-    "tabs";
+    "history";
 }
 
 .text-game-shell .practice-workbench {
@@ -3328,22 +3327,24 @@ details.event-boundary {
 .text-game-shell .practice-focus-stage {
   border: 2px solid #111111;
   display: grid;
-  gap: 12px;
+  gap: 8px;
+  max-height: 360px;
   min-width: 0;
-  padding: 14px;
+  overflow: auto;
+  padding: 10px;
 }
 
 .text-game-shell .practice-focus-head {
   align-items: start;
   display: grid;
-  gap: 12px;
+  gap: 8px;
   grid-template-columns: minmax(0, 1fr) auto;
   min-width: 0;
 }
 
 .text-game-shell .practice-focus-head strong {
   display: block;
-  font-size: 20px;
+  font-size: 18px;
   line-height: 1.25;
 }
 
@@ -3359,10 +3360,10 @@ details.event-boundary {
   background: #fbfbfa;
   border: 1px solid #111111;
   display: grid;
-  gap: 12px;
+  gap: 10px;
   grid-template-columns: 42px minmax(0, 1fr);
   min-width: 0;
-  padding: 14px;
+  padding: 10px;
 }
 
 .text-game-shell .practice-focus-index {
@@ -3385,7 +3386,7 @@ details.event-boundary {
 }
 
 .text-game-shell .practice-focus-title h3 {
-  font-size: 28px;
+  font-size: 24px;
   line-height: 1.15;
   margin: 0;
 }
@@ -3415,8 +3416,8 @@ details.event-boundary {
 
 .text-game-shell .practice-focus-controls {
   border-top: 1px solid #dddddd;
-  margin-top: 10px;
-  padding-top: 10px;
+  margin-top: 8px;
+  padding-top: 8px;
 }
 
 .text-game-shell .practice-step-controls {
@@ -3451,10 +3452,10 @@ details.event-boundary {
   align-items: center;
   border-top: 1px solid #dddddd;
   display: grid;
-  gap: 12px;
+  gap: 10px;
   grid-template-columns: minmax(0, 1fr) auto;
-  margin-top: 12px;
-  padding-top: 12px;
+  margin-top: 8px;
+  padding-top: 8px;
 }
 
 .text-game-shell .practice-focus-action .nextday-button {
@@ -3498,6 +3499,8 @@ details.event-boundary {
 
 .text-game-shell .practice-context-panel {
   gap: 10px;
+  max-height: 360px;
+  overflow: auto;
 }
 
 .text-game-shell .flow-resource-panel {
@@ -3679,4 +3682,96 @@ details.event-boundary {
 .text-game-shell .tab-surface > .single-feature-layout,
 .text-game-shell .tab-surface > .panel {
   max-width: 100%;
+}
+
+/* P3.9：修行事务工作台。入口与内容同屏，避免点击功能后继续向下找反馈。 */
+.text-game-shell .feature-workbench {
+  align-items: start;
+  border-top: 2px solid #111111;
+  display: grid;
+  gap: 18px;
+  grid-area: feature;
+  grid-template-columns: 270px minmax(0, 1fr);
+  min-width: 0;
+  padding-top: 14px;
+}
+
+.text-game-shell .feature-workbench .feature-launcher {
+  align-content: start;
+  align-self: start;
+  border-bottom: 0;
+  border-right: 1px solid #111111;
+  display: grid;
+  gap: 12px;
+  grid-area: auto;
+  max-height: calc(100dvh - 40px);
+  min-width: 0;
+  overflow: auto;
+  padding: 0 14px 0 0;
+  position: sticky;
+  top: 12px;
+}
+
+.text-game-shell .feature-workbench .feature-launcher-head {
+  align-items: start;
+  display: grid;
+  gap: 3px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.text-game-shell .feature-workbench .feature-launcher-head .eyebrow {
+  grid-column: auto;
+}
+
+.text-game-shell .feature-workbench .feature-launcher-head h2 {
+  font-size: 18px;
+}
+
+.text-game-shell .feature-workbench .feature-launcher-head span {
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.text-game-shell .feature-workbench .feature-launcher-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.text-game-shell .feature-workbench .feature-nav-group {
+  border-left: 0;
+  border-top: 1px solid #dddddd;
+  gap: 6px;
+  padding: 8px 0 0;
+}
+
+.text-game-shell .feature-workbench .feature-nav-group:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.text-game-shell .feature-workbench .feature-nav-group > div {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.text-game-shell .feature-workbench .feature-nav-group button {
+  min-height: 38px;
+  padding: 6px 8px;
+}
+
+.text-game-shell .feature-workbench .feature-nav-group button strong {
+  font-size: 14px;
+}
+
+.text-game-shell .feature-workbench .feature-nav-group button span {
+  font-size: 12px;
+}
+
+.text-game-shell .feature-workbench .tab-surface {
+  align-content: start;
+  border-left: 0;
+  grid-area: auto;
+  min-height: 420px;
+  min-width: 0;
 }

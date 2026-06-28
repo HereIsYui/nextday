@@ -381,6 +381,7 @@ export default function HomePage() {
   const [battleResultFilter, setBattleResultFilter] = useState("all");
   const [battleTraitFilter, setBattleTraitFilter] = useState("all");
   const actionFeedbackSourceRef = useRef<string | null>(null);
+  const practiceFlowRef = useRef<HTMLElement | null>(null);
   const practiceWorkbenchRef = useRef<HTMLElement | null>(null);
   const tabSurfaceRef = useRef<HTMLElement | null>(null);
 
@@ -503,6 +504,8 @@ export default function HomePage() {
   const firstUnlockedProvince =
     selectedProvince ?? overview?.provinces.find((province) => province.unlocked);
   const activeFeatureNavGroup = getFeatureNavGroup(activeFeature);
+  const activeFeatureName = activeFeatureLabel(activeFeature);
+  const activeFeatureHint = activeFeatureSummary(activeFeature);
   const availableFactionRoutes =
     faction?.routes.filter((item) => item.route_id !== "undecided") ?? [];
   const mainlineTask = selectMainlineTask(overview?.tasks ?? []);
@@ -2313,6 +2316,14 @@ export default function HomePage() {
     }, 0);
   }
 
+  function handleReturnToPractice() {
+    window.setTimeout(() => {
+      scrollElementToTop(practiceFlowRef.current);
+      practiceFlowRef.current?.focus({ preventScroll: true });
+      setMessage("已回到今日路线");
+    }, 0);
+  }
+
   function handleTabChange(tab: ActiveTab, options: { focus?: boolean } = {}) {
     handleFeatureChange(defaultFeatureForTab(tab), options);
   }
@@ -2699,7 +2710,12 @@ export default function HomePage() {
           </section>
         ) : (
           <>
-            <section className="practice-workbench" aria-label="今日修行流程台">
+            <section
+              className="practice-workbench"
+              aria-label="今日修行流程台"
+              ref={practiceFlowRef}
+              tabIndex={-1}
+            >
               <div className="practice-primary-flow">
                 <div className="practice-head">
                   <p className="eyebrow">今日修行</p>
@@ -2717,7 +2733,9 @@ export default function HomePage() {
                   chapterId={mainlineGuide.chapterId}
                   feedback={
                     practiceFocusStep
-                      ? actionFeedbackFor(practiceFocusStep.feedbackSourceId)
+                      ? (actionFeedbackFor(practiceFocusStep.feedbackSourceId) ??
+                        actionFeedback ??
+                        undefined)
                       : undefined
                   }
                   onViewFeedback={handleViewActionFeedbackDetails}
@@ -2829,6 +2847,16 @@ export default function HomePage() {
                 tabIndex={-1}
                 aria-live="polite"
               >
+                <div className="feature-context-bar">
+                  <div>
+                    <span>{activeFeatureNavGroup.title} · 当前详情</span>
+                    <strong>{activeFeatureName}</strong>
+                    <p>{activeFeatureHint}</p>
+                  </div>
+                  <button onClick={handleReturnToPractice} type="button">
+                    回到今日路线
+                  </button>
+                </div>
                 {activeFeature === "world" || activeFeature === "tasks" ? (
                   <div className="single-feature-layout">
                     {activeFeature === "world" ? (

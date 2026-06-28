@@ -96,6 +96,38 @@ describe("P1-9 新手 30 分钟体验与玩法厚度", () => {
     expect(overview.body.data.new_player_route.primary_action_hint).toBe("explore_event");
   });
 
+  it("章节任务未完成时不会把章节奖励标成可领取", async () => {
+    const { token, playerId } = await createP19Player(app, prisma);
+    await prisma.playerTaskState.updateMany({
+      where: {
+        playerId,
+        taskId: {
+          in: [
+            "novice_explore_ji",
+            "novice_resolve_event",
+            "novice_craft_alchemy",
+            "novice_tower_xuantie",
+          ],
+        },
+      },
+      data: { progressValue: 1, status: "completed" },
+    });
+    await prisma.playerTaskState.updateMany({
+      where: { playerId, taskId: "chapter_first_30_minutes" },
+      data: { progressValue: 0, status: "in_progress" },
+    });
+
+    const overview = await request(app.getHttpServer())
+      .get("/api/game/overview")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    const chapterRouteStep = overview.body.data.new_player_route.steps.find(
+      (step: { step_id: string }) => step.step_id === "claim_chapter_reward",
+    );
+    expect(chapterRouteStep.status).toBe("pending");
+    expect(chapterRouteStep.action_label).toBe("查看章节任务");
+  });
+
   it("生产接口返回推荐、材料缺口和结果说明", async () => {
     const { token, playerId } = await createP19Player(app, prisma);
     await grantStarterMaterials(prisma, playerId);

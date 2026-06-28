@@ -1317,13 +1317,17 @@ export class GameService {
       },
       {
         action_hint: "task",
-        action_label: hasClaimedChapterReward ? "查看下一章" : "领取章节奖励",
+        action_label: hasClaimedChapterReward
+          ? "查看下一章"
+          : canClaimChapterReward
+            ? "领取章节奖励"
+            : "查看章节任务",
         detail: hasClaimedChapterReward
           ? "冀州初定章节奖励已领取，下一步可补洞府、炼器和 7 日目标。"
           : canClaimChapterReward
             ? "冀州初定已达成，先领取首章奖励。"
             : "前 30 分钟节点完成后领取首章奖励。",
-        status: hasClaimedChapterReward ? "done" : hasTower ? "active" : "pending",
+        status: hasClaimedChapterReward ? "done" : canClaimChapterReward ? "active" : "pending",
         step_id: "claim_chapter_reward",
         title: "领取章节奖励",
         unlock_hint: "完成探索、奇遇、炼丹和玄铁塔行动。",

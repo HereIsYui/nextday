@@ -487,6 +487,7 @@ export default function HomePage() {
   const availableFactionRoutes =
     faction?.routes.filter((item) => item.route_id !== "undecided") ?? [];
   const mainlineTask = selectMainlineTask(overview?.tasks ?? []);
+  const firstClaimableTask = completedTasks[0];
   const mainlineGuide = buildMainlineGuide({
     activeExplore,
     activeProfile,
@@ -498,7 +499,7 @@ export default function HomePage() {
     onCave: handleCollectCave,
     onExplore: () => handleExplore(exploreCount),
     onFocusEvent: handleFocusExploreEvent,
-    onTask: () => handleMainlineTask(mainlineTask),
+    onTask: () => handleMainlineTask(firstClaimableTask ?? mainlineTask),
     onTower: handleTowerAction,
     onGrowth: () => handleTabChange("growth"),
     overview,
@@ -525,7 +526,7 @@ export default function HomePage() {
     onClaimCultivation: handleClaimCultivation,
     onExplore: () => handleExplore(exploreCount),
     onMonthlyGrant: firstAncientGrant ? handleDrawAncientTreasure : () => handleTabChange("market"),
-    onTasks: () => handleMainlineTask(mainlineTask),
+    onTasks: () => handleMainlineTask(firstClaimableTask ?? mainlineTask),
     onTower: handleTowerAction,
   });
   const recommendedActions = buildRecommendedActions({
@@ -586,6 +587,7 @@ export default function HomePage() {
     firstActivity,
     firstClaimableActivity,
     guide: mainlineGuide,
+    claimableTask: firstClaimableTask,
     mainlineTask,
     onActivity: firstClaimableActivity
       ? () => handleClaimActivity(firstClaimableActivity)
@@ -597,7 +599,7 @@ export default function HomePage() {
     onExplore: () => handleExplore(exploreCount),
     onFocusEvent: handleFocusExploreEvent,
     onGrowth: () => handleTabChange("growth"),
-    onTask: () => handleMainlineTask(mainlineTask),
+    onTask: () => handleMainlineTask(firstClaimableTask ?? mainlineTask),
     onTower: handleTowerAction,
     selectedAlchemyRecipe,
     selectedForgeRecipe,
@@ -5977,6 +5979,7 @@ function buildPracticeFlowSteps(input: {
   activeExplore: ExploreResponse | null;
   busy: boolean;
   canClaimExplore: boolean;
+  claimableTask: TaskState | undefined;
   event: ExploreEventState | undefined;
   exploreCount: number;
   exploreRemainingSeconds: number;
@@ -6047,6 +6050,7 @@ function practiceStepAction(
     activeExplore: ExploreResponse | null;
     busy: boolean;
     canClaimExplore: boolean;
+    claimableTask: TaskState | undefined;
     event: ExploreEventState | undefined;
     firstActivity: ActivitySummaryState | undefined;
     firstClaimableActivity: ActivitySummaryState | undefined;
@@ -6062,9 +6066,16 @@ function practiceStepAction(
   },
 ): { disabled?: boolean; label: string; onAction?: () => void | Promise<void> } {
   if (actionHint === "task" || actionHint === "claim_task" || actionHint === "chapter_task") {
+    const claimableTask =
+      input.claimableTask ??
+      (input.mainlineTask?.status === "completed" ? input.mainlineTask : undefined);
     return {
       disabled: input.busy,
-      label: input.mainlineTask?.status === "completed" ? "领取章节奖励" : "整理任务",
+      label: claimableTask
+        ? claimableTask.task_type === "chapter"
+          ? "领取章节奖励"
+          : "领取任务奖励"
+        : "查看任务进度",
       onAction: input.onTask,
     };
   }

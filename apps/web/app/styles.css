@@ -1104,6 +1104,14 @@ h2 {
   justify-content: space-between;
 }
 
+.battle-card-badges {
+  align-items: flex-start;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
 .battle-card-head > div {
   display: grid;
   gap: 4px;
@@ -2517,7 +2525,7 @@ details.event-boundary {
 }
 
 .text-game-shell .metric-card strong {
-  font-size: 18px;
+  font-size: 15px;
 }
 
 .text-game-shell .ledger-experience {
@@ -3140,7 +3148,7 @@ details.event-boundary {
 .text-game-shell .practice-context-panel {
   align-self: start;
   display: grid;
-  gap: 12px;
+  gap: 8px;
   grid-area: auto;
   position: sticky;
   top: 14px;
@@ -3151,9 +3159,9 @@ details.event-boundary {
 .text-game-shell .flow-next-panel {
   border: 1px solid #111111;
   display: grid;
-  gap: 10px;
+  gap: 7px;
   min-width: 0;
-  padding: 12px;
+  padding: 8px;
 }
 
 .text-game-shell .practice-outcome-panel {
@@ -3162,8 +3170,8 @@ details.event-boundary {
 
 .text-game-shell .practice-outcome-panel p {
   color: #333333;
-  font-size: 14px;
-  line-height: 1.55;
+  font-size: 13px;
+  line-height: 1.4;
   margin: 0;
 }
 
@@ -3208,7 +3216,7 @@ details.event-boundary {
 
 .text-game-shell .flow-metric-grid .metric-card {
   border-bottom: 1px solid #eeeeee;
-  padding: 8px 0;
+  padding: 5px 0;
 }
 
 .text-game-shell .flow-metric-grid .metric-card:nth-child(odd) {
@@ -3312,26 +3320,31 @@ details.event-boundary {
 }
 
 .text-game-shell .practice-workbench {
-  gap: 16px 20px;
-  grid-template-columns: minmax(760px, 1fr) 340px;
+  gap: 12px 18px;
+  grid-template-columns: minmax(800px, 1fr) 300px;
 }
 
 .text-game-shell .practice-head {
-  padding-bottom: 8px;
+  padding-bottom: 4px;
 }
 
 .text-game-shell .practice-head h2 {
-  font-size: 22px;
+  font-size: 20px;
+}
+
+.text-game-shell .practice-head p {
+  line-height: 1.35;
+  margin: 0;
 }
 
 .text-game-shell .practice-focus-stage {
   border: 2px solid #111111;
   display: grid;
-  gap: 8px;
-  max-height: 360px;
+  gap: 6px;
+  max-height: 300px;
   min-width: 0;
   overflow: auto;
-  padding: 10px;
+  padding: 8px;
 }
 
 .text-game-shell .practice-focus-head {
@@ -3344,15 +3357,15 @@ details.event-boundary {
 
 .text-game-shell .practice-focus-head strong {
   display: block;
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1.25;
 }
 
 .text-game-shell .practice-focus-head span,
 .text-game-shell .practice-focus-head p {
   color: #555555;
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: 12px;
+  line-height: 1.35;
   margin: 0;
 }
 
@@ -3360,33 +3373,33 @@ details.event-boundary {
   background: #fbfbfa;
   border: 1px solid #111111;
   display: grid;
-  gap: 10px;
-  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 8px;
+  grid-template-columns: 34px minmax(0, 1fr);
   min-width: 0;
-  padding: 10px;
+  padding: 8px;
 }
 
 .text-game-shell .practice-focus-index {
   align-items: center;
   border: 1px solid #111111;
   display: inline-flex;
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 700;
-  height: 34px;
+  height: 28px;
   justify-content: center;
   line-height: 1;
-  width: 34px;
+  width: 28px;
 }
 
 .text-game-shell .practice-focus-title {
   align-items: start;
   display: grid;
-  gap: 12px;
+  gap: 8px;
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .text-game-shell .practice-focus-title h3 {
-  font-size: 24px;
+  font-size: 20px;
   line-height: 1.15;
   margin: 0;
 }
@@ -3396,8 +3409,8 @@ details.event-boundary {
 .text-game-shell .practice-focus-why span,
 .text-game-shell .practice-focus-action span {
   color: #444444;
-  font-size: 14px;
-  line-height: 1.55;
+  font-size: 13px;
+  line-height: 1.45;
   margin: 0;
 }
 
@@ -3405,8 +3418,8 @@ details.event-boundary {
   border-left: 2px solid #111111;
   display: grid;
   gap: 3px;
-  margin-top: 8px;
-  padding-left: 10px;
+  margin-top: 5px;
+  padding-left: 8px;
 }
 
 .text-game-shell .practice-focus-why strong {
@@ -3416,8 +3429,8 @@ details.event-boundary {
 
 .text-game-shell .practice-focus-controls {
   border-top: 1px solid #dddddd;
-  margin-top: 8px;
-  padding-top: 8px;
+  margin-top: 6px;
+  padding-top: 6px;
 }
 
 .text-game-shell .practice-step-controls {
@@ -3452,10 +3465,10 @@ details.event-boundary {
   align-items: center;
   border-top: 1px solid #dddddd;
   display: grid;
-  gap: 10px;
+  gap: 8px;
   grid-template-columns: minmax(0, 1fr) auto;
-  margin-top: 8px;
-  padding-top: 8px;
+  margin-top: 6px;
+  padding-top: 6px;
 }
 
 .text-game-shell .practice-focus-action .nextday-button {
@@ -3464,7 +3477,7 @@ details.event-boundary {
 
 .text-game-shell .practice-route-preview {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .text-game-shell .practice-route-preview > span {
@@ -3475,7 +3488,7 @@ details.event-boundary {
 
 .text-game-shell .practice-route-preview > div {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
@@ -3498,8 +3511,8 @@ details.event-boundary {
 }
 
 .text-game-shell .practice-context-panel {
-  gap: 10px;
-  max-height: 360px;
+  gap: 8px;
+  max-height: 300px;
   overflow: auto;
 }
 
@@ -3509,7 +3522,7 @@ details.event-boundary {
 
 .text-game-shell .practice-side-status {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -3613,6 +3626,31 @@ details.event-boundary {
   min-width: 0;
 }
 
+.text-game-shell .feature-group-tabs {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.text-game-shell .feature-group-tabs button {
+  background: transparent;
+  border: 1px solid #dddddd;
+  color: #111111;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.2;
+  min-height: 32px;
+  padding: 5px 6px;
+}
+
+.text-game-shell .feature-group-tabs button.active,
+.text-game-shell .feature-group-tabs button:hover {
+  border-color: #111111;
+  outline: 1px solid #111111;
+}
+
 .text-game-shell .feature-nav-group {
   border-left: 1px solid #dddddd;
   display: grid;
@@ -3702,7 +3740,7 @@ details.event-boundary {
   border-bottom: 0;
   border-right: 1px solid #111111;
   display: grid;
-  gap: 12px;
+  gap: 10px;
   grid-area: auto;
   max-height: calc(100dvh - 40px);
   min-width: 0;
@@ -3735,7 +3773,7 @@ details.event-boundary {
 
 .text-game-shell .feature-workbench .feature-launcher-grid {
   display: grid;
-  gap: 12px;
+  gap: 8px;
   grid-template-columns: minmax(0, 1fr);
 }
 
@@ -3743,7 +3781,7 @@ details.event-boundary {
   border-left: 0;
   border-top: 1px solid #dddddd;
   gap: 6px;
-  padding: 8px 0 0;
+  padding: 6px 0 0;
 }
 
 .text-game-shell .feature-workbench .feature-nav-group:first-child {
@@ -3752,12 +3790,12 @@ details.event-boundary {
 }
 
 .text-game-shell .feature-workbench .feature-nav-group > div {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .text-game-shell .feature-workbench .feature-nav-group button {
-  min-height: 38px;
-  padding: 6px 8px;
+  min-height: 42px;
+  padding: 6px 7px;
 }
 
 .text-game-shell .feature-workbench .feature-nav-group button strong {

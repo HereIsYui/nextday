@@ -183,6 +183,13 @@ const featureNavGroups: FeatureNavGroup[] = [
   },
 ];
 
+function getFeatureNavGroup(feature: ActiveFeature): FeatureNavGroup {
+  return (
+    featureNavGroups.find((group) => group.items.some((item) => item.key === feature)) ??
+    featureNavGroups[0]
+  );
+}
+
 interface DailyGoal {
   id: string;
   title: string;
@@ -223,6 +230,11 @@ interface JournalEntry {
   deltas: string[];
   recommendations: string[];
   experience?: ExperiencePayload;
+}
+
+interface BattleDisplayGroup {
+  battle: BattleSummary;
+  count: number;
 }
 
 interface GrowthTarget {
@@ -440,6 +452,10 @@ export default function HomePage() {
       }),
     [battleProvinceFilter, battleResultFilter, battleTraitFilter, recentBattles],
   );
+  const battleDisplayGroups = useMemo(
+    () => buildBattleDisplayGroups(filteredRecentBattles),
+    [filteredRecentBattles],
+  );
   const exploreRemainingSeconds = activeExplore
     ? Math.max(0, Math.ceil((new Date(activeExplore.completes_at).getTime() - nowMs) / 1000))
     : 0;
@@ -486,6 +502,7 @@ export default function HomePage() {
   const firstInnerCreature = innerWorld?.creatures.find((creature) => creature.status === "idle");
   const firstUnlockedProvince =
     selectedProvince ?? overview?.provinces.find((province) => province.unlocked);
+  const activeFeatureNavGroup = getFeatureNavGroup(activeFeature);
   const availableFactionRoutes =
     faction?.routes.filter((item) => item.route_id !== "undecided") ?? [];
   const mainlineTask = selectMainlineTask(overview?.tasks ?? []);
@@ -2771,26 +2788,38 @@ export default function HomePage() {
                   <h2>修行事务</h2>
                   <span>选择一项事务，右侧立即展开对应玩法。</span>
                 </div>
-                <div className="feature-launcher-grid">
+                <div className="feature-group-tabs" role="tablist" aria-label="事务分组">
                   {featureNavGroups.map((group) => (
-                    <div className="feature-nav-group" key={group.title}>
-                      <span>{group.title}</span>
-                      <div>
-                        {group.items.map((item) => (
-                          <button
-                            aria-current={activeFeature === item.key ? "page" : undefined}
-                            className={activeFeature === item.key ? "active" : ""}
-                            key={item.key}
-                            onClick={() => handleFeatureChange(item.key)}
-                            type="button"
-                          >
-                            <strong>{item.label}</strong>
-                            <span>{item.summary}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                    <button
+                      aria-selected={activeFeatureNavGroup.title === group.title}
+                      className={activeFeatureNavGroup.title === group.title ? "active" : ""}
+                      key={group.title}
+                      onClick={() => handleFeatureChange(group.items[0].key)}
+                      role="tab"
+                      type="button"
+                    >
+                      {group.title}
+                    </button>
                   ))}
+                </div>
+                <div className="feature-launcher-grid">
+                  <div className="feature-nav-group" key={activeFeatureNavGroup.title}>
+                    <span>{activeFeatureNavGroup.title}</span>
+                    <div>
+                      {activeFeatureNavGroup.items.map((item) => (
+                        <button
+                          aria-current={activeFeature === item.key ? "page" : undefined}
+                          className={activeFeature === item.key ? "active" : ""}
+                          key={item.key}
+                          onClick={() => handleFeatureChange(item.key)}
+                          type="button"
+                        >
+                          <strong>{item.label}</strong>
+                          <span>{item.summary}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </nav>
 
@@ -4446,10 +4475,31 @@ export default function HomePage() {
                       </label>
                     </div>
                     <div className="battle-list">
-                      {filteredRecentBattles.length ? (
-                        filteredRecentBattles.map((battle) => (
-                          <BattleReportCard battle={battle} key={battle.battle_id} />
-                        ))
+                      {battleDisplayGroups.length ? (
+                        <>
+                          {battleDisplayGroups.slice(0, 6).map((group) => (
+                            <BattleReportCard
+                              battle={group.battle}
+                              key={group.battle.battle_id}
+                              repeatCount={group.count}
+                            />
+                          ))}
+                          {battleDisplayGroups.length > 6 ? (
+                            <p className="action-note">
+                              其余{" "}
+                              {battleDisplayGroups
+                                .slice(6)
+                                .reduce((total, group) => total + group.count, 0)}{" "}
+                              场战报已收起，调整筛选可继续查看。
+                            </p>
+                          ) : null}
+                          {filteredRecentBattles.length > battleDisplayGroups.length ? (
+                            <p className="action-note">
+                              已合并 {filteredRecentBattles.length - battleDisplayGroups.length}{" "}
+                              场同类重复战报，避免旧记录刷屏。
+                            </p>
+                          ) : null}
+                        </>
                       ) : recentBattles.length ? (
                         <p className="empty">当前筛选下没有战报，调整州域、胜负或特性再看。</p>
                       ) : (
@@ -5717,7 +5767,13 @@ function CultivationJournal({
   );
 }
 
-function BattleReportCard({ battle }: { battle: BattleSummary }) {
+function BattleReportCard({
+  battle,
+  repeatCount = 1,
+}: {
+  battle: BattleSummary;
+  repeatCount?: number;
+}) {
   const latestLogs = battle.log.slice(-3);
   const provinceLabel = battleProvinceLabel(battle.province_id);
   const rewardSummary = formatBattleRewardSummary(battle.rewards);
@@ -5731,9 +5787,12 @@ function BattleReportCard({ battle }: { battle: BattleSummary }) {
             {battleTypeLabel(battle.battle_type)} · {provinceLabel} · {battle.rounds} 回合
           </span>
         </div>
-        <StatusBadge tone={battle.result === "win" ? "success" : "warning"}>
-          {battle.result === "win" ? "胜利" : "失利"}
-        </StatusBadge>
+        <div className="battle-card-badges">
+          {repeatCount > 1 ? <StatusBadge tone="neutral">同类 x{repeatCount}</StatusBadge> : null}
+          <StatusBadge tone={battle.result === "win" ? "success" : "warning"}>
+            {battle.result === "win" ? "胜利" : "失利"}
+          </StatusBadge>
+        </div>
       </div>
       <div className="mini-stats battle-meta-row">
         <span>{provinceLabel}</span>
@@ -5787,6 +5846,44 @@ function BattleReportCard({ battle }: { battle: BattleSummary }) {
       )}
     </article>
   );
+}
+
+function buildBattleDisplayGroups(battles: BattleSummary[]): BattleDisplayGroup[] {
+  const groups = new Map<string, BattleDisplayGroup>();
+
+  for (const battle of battles) {
+    const key = battleDisplayGroupKey(battle);
+    const group = groups.get(key);
+    if (group) {
+      group.count += 1;
+      continue;
+    }
+    groups.set(key, { battle, count: 1 });
+  }
+
+  return [...groups.values()];
+}
+
+function battleDisplayGroupKey(battle: BattleSummary): string {
+  const itemRewards = (battle.rewards.items ?? [])
+    .map((item) => `${item.item_id}:${item.count}`)
+    .sort()
+    .join(",");
+  const traits = [...(battle.enemy_traits ?? [])].sort().join(",");
+  return [
+    battle.province_id,
+    battle.battle_type,
+    battle.enemy_name,
+    battle.result,
+    battle.rounds,
+    battle.damage_done,
+    battle.damage_taken,
+    battle.rewards.cultivation ?? "0",
+    battle.rewards.spirit_stone ?? "0",
+    itemRewards,
+    traits,
+    battle.battle_hint ?? "",
+  ].join("|");
 }
 
 const visibleRiskJournalTagCodes = new Set([

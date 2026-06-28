@@ -3565,3 +3565,118 @@ details.event-boundary {
   min-height: 32px;
   padding: 6px 10px;
 }
+
+/* P3.8：功能启动器。下方详情区一次只打开一个玩法，避免功能大全式平铺。 */
+.text-game-shell .feature-launcher {
+  border-bottom: 1px solid #111111;
+  display: grid;
+  gap: 10px;
+  grid-area: nav;
+  min-width: 0;
+  padding-bottom: 12px;
+}
+
+.text-game-shell .feature-launcher-head {
+  align-items: end;
+  display: grid;
+  gap: 2px 16px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+}
+
+.text-game-shell .feature-launcher-head .eyebrow {
+  grid-column: 1 / -1;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.text-game-shell .feature-launcher-head h2 {
+  font-size: 18px;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.text-game-shell .feature-launcher-head span {
+  color: #555555;
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: right;
+}
+
+.text-game-shell .feature-launcher-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.text-game-shell .feature-nav-group {
+  border-left: 1px solid #dddddd;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding-left: 10px;
+}
+
+.text-game-shell .feature-nav-group > span {
+  color: #555555;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.text-game-shell .feature-nav-group > div {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.text-game-shell .feature-nav-group button {
+  align-items: start;
+  background: transparent;
+  border: 1px solid #dddddd;
+  color: #111111;
+  cursor: pointer;
+  display: grid;
+  font-family: inherit;
+  gap: 2px;
+  justify-items: start;
+  min-height: 46px;
+  min-width: 0;
+  padding: 7px 9px;
+  text-align: left;
+}
+
+.text-game-shell .feature-nav-group button:hover,
+.text-game-shell .feature-nav-group button.active {
+  border-color: #111111;
+  text-decoration: none;
+}
+
+.text-game-shell .feature-nav-group button.active {
+  background: #fbfbfa;
+  outline: 1px solid #111111;
+}
+
+.text-game-shell .feature-nav-group button strong {
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.text-game-shell .feature-nav-group button span {
+  color: #555555;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.text-game-shell .single-feature-layout {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.text-game-shell .tab-surface > .single-feature-layout,
+.text-game-shell .tab-surface > .panel {
+  max-width: 100%;
+}

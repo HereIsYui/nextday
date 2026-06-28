@@ -93,7 +93,7 @@
 | `material_chain_config` | P3 材料链 | item_id、source_rule、usage_rule、gap_hint |
 | `skill_learning_config` | P3 技能学习 | skill_id、unlock_condition、learn_cost、route_limit |
 | `battle_report_filter_config` | P3 战报筛选 | filter_id、scene_scope、summary_rule、fallback_text |
-| `daily_route_config` | P3 今日路线 | route_id、priority_rule、dedupe_rule、mobile_limit |
+| `daily_route_config` | P3 今日路线 | route_id、priority_rule、dedupe_rule、desktop_focus_limit |
 | `payment_product_config` | 付费商品 | product_id、fishpi_point_cost、deliver_rule |
 | `mail_template_config` | 邮件模板 | template_id、title、body、reward_group |
 | `announcement_config` | 公告 | announcement_id、type、content、visible_rule |
@@ -529,7 +529,7 @@
 | route_id | 今日路线配置 ID |
 | priority_rule | 可领取、可探索、奇遇、生产、九塔、任务领奖的优先级 |
 | dedupe_rule | 同一行动在今日修行、目标和成长中去重 |
-| mobile_limit | 移动端首屏展示数量 |
+| desktop_focus_limit | 桌面今日路线首屏展示数量 |
 | feedback_rule | 原地反馈、跳转详情和日志写入规则 |
 | boundary_rule | 不绕过行动令、幂等、月卡权益、风控和服务端结算 |
 
@@ -546,6 +546,36 @@
 | forbidden_reward_rule | 禁止付费仙玉、九大古宝本体、限定法宝、唯一战力道具和奖励倍率 |
 
 当前 P3-5 以测试内置画像完成回归，专项脚本为 `npm run test:p3-balance`；配置后台化时必须沿用上述禁止产物和付费便利边界。
+
+`web_desktop_playtest_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| script_id | 30 / 60 / 120 分钟桌面试玩脚本 ID |
+| viewport_rule | 默认 1280×720 桌面视口和小于 1280px 的桌面端提示规则 |
+| route_checkpoint | 创建角色、探索、奇遇、生产、九塔、活动等检查点 |
+| issue_capture_rule | 记录卡点、复现条件、期望反馈和实际反馈 |
+| port_cleanup_rule | 临时端口启动、浏览器验收和结束释放端口规则 |
+
+`web_copy_review_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| review_id | 文案扫描配置 ID |
+| forbidden_keywords | raw key、调试、服务端、风控、dry-run 等玩家主界面禁用词 |
+| allowed_context | 允许出现在折叠规则说明、后台或测试文档中的上下文 |
+| replacement_hint | 玩家语境替代表达 |
+| scan_scope | Web 玩家页面、插件展开态和必要的 Admin 玩家可见文案 |
+
+`mobile_reboot_design_config`
+
+| 字段 | 说明 |
+| --- | --- |
+| design_id | 移动端重启预备设计 ID |
+| desktop_dependency | 桌面今日路线、事务抽屉、成长闭环和战报稳定后再启动 |
+| navigation_rule | 移动端独立导航层级和首屏优先级 |
+| non_reuse_rule | 不复用压缩桌面事务工作台和 1280px 布局 |
+| acceptance_rule | 移动端后续独立验收口径 |
 
 ## 十、配置发布流程
 

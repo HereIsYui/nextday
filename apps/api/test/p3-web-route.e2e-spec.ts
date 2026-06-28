@@ -109,6 +109,80 @@ describe("P3-4 今日路线与 Web 体验", () => {
       target_tab: "growth",
     });
   });
+
+  it("旧周期同名日常不会污染任务列表和今日路线", async () => {
+    const { token, playerId } = await createP3RoutePlayer(app);
+    await markCompletedTasksClaimed(prisma, playerId);
+    await prisma.playerTaskState.create({
+      data: {
+        playerId,
+        progressValue: 1,
+        resetKey: "2026-01-01",
+        rewardSnapshot: { spirit_stone: "60" },
+        status: "completed",
+        targetValue: 1,
+        taskId: "daily_cave_collect",
+        taskStateId: `task_state_old_daily_${Date.now()}_${randomSuffix()}`,
+        taskType: "daily",
+        title: "洞府收取",
+      },
+    });
+
+    const tasks = await request(app.getHttpServer())
+      .get("/api/game/tasks")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    const caveTasks = tasks.body.data.tasks.filter(
+      (task: { task_id: string }) => task.task_id === "daily_cave_collect",
+    );
+    expect(caveTasks).toHaveLength(1);
+    expect(caveTasks[0].reset_key).not.toBe("2026-01-01");
+
+    const route = await request(app.getHttpServer())
+      .get("/api/game/daily-route")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(route.body.data.primary_action_hint).not.toBe("task");
+    expect(
+      route.body.data.steps.find((step: { step_id: string }) => step.step_id === "claim_task"),
+    ).toMatchObject({ status: "pending" });
+  });
+
+  it("领取同名日常时只处理当前周期任务", async () => {
+    const { token, playerId } = await createP3RoutePlayer(app);
+    await prisma.playerTaskState.updateMany({
+      where: { playerId, taskId: "daily_cave_collect" },
+      data: { progressValue: 1, status: "completed" },
+    });
+    await prisma.playerTaskState.create({
+      data: {
+        playerId,
+        progressValue: 1,
+        resetKey: "2026-01-01",
+        rewardSnapshot: { spirit_stone: "60" },
+        status: "completed",
+        targetValue: 1,
+        taskId: "daily_cave_collect",
+        taskStateId: `task_state_old_claim_${Date.now()}_${randomSuffix()}`,
+        taskType: "daily",
+        title: "洞府收取",
+      },
+    });
+
+    const claimed = await request(app.getHttpServer())
+      .post("/api/game/tasks/claim")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_p3_claim_current_${Date.now()}_${randomSuffix()}`)
+      .send({ task_id: "daily_cave_collect" })
+      .expect(201);
+    expect(claimed.body.data.task.reset_key).not.toBe("2026-01-01");
+    expect(claimed.body.data.task.status).toBe("claimed");
+
+    const oldTask = await prisma.playerTaskState.findFirstOrThrow({
+      where: { playerId, resetKey: "2026-01-01", taskId: "daily_cave_collect" },
+    });
+    expect(oldTask.status).toBe("completed");
+  });
 });
 
 async function markCompletedTasksClaimed(prisma: PrismaClient, playerId: string) {

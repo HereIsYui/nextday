@@ -382,7 +382,9 @@ export default function HomePage() {
     unlockedProvinces[0];
   const availablePills = useMemo(
     () =>
-      bag?.items.filter((item) => item.category === "pill" && !item.locked && !item.expired) ?? [],
+      (
+        bag?.items.filter((item) => item.category === "pill" && !item.locked && !item.expired) ?? []
+      ).sort(comparePillForUse),
     [bag],
   );
   const selectedAlchemyRecipe =
@@ -2806,6 +2808,98 @@ export default function HomePage() {
                           <h2>九州地图</h2>
                           <span>九州全域 · 按章节解锁</span>
                         </div>
+                        <article
+                          className="production-box world-explore-card"
+                          data-action-feedback-source="explore-queue"
+                        >
+                          <div className="province-head">
+                            <div>
+                              <strong>当前探索</strong>
+                              <span>
+                                {selectedProvince
+                                  ? `${selectedProvince.name} · ${selectedProvince.tower_name}`
+                                  : "暂无开放州域"}
+                              </span>
+                            </div>
+                            <StatusBadge
+                              tone={
+                                canClaimExplore
+                                  ? "success"
+                                  : activeExplore
+                                    ? "neutral"
+                                    : selectedProvince
+                                      ? "success"
+                                      : "neutral"
+                              }
+                            >
+                              {canClaimExplore
+                                ? "可领取"
+                                : activeExplore
+                                  ? "进行中"
+                                  : selectedProvince
+                                    ? "可出发"
+                                    : "未开放"}
+                            </StatusBadge>
+                          </div>
+                          <p className="province-detail">
+                            {activeExplore
+                              ? canClaimExplore
+                                ? `${activeExplore.province_name}探索已完成，可领取战报、材料和途中见闻。`
+                                : `${activeExplore.province_name}探索正在进行，剩余 ${formatRemainingSeconds(
+                                    exploreRemainingSeconds,
+                                  )}。`
+                              : "选择已开放州域后开始探索，探索会带来战报、材料和任务进度。"}
+                          </p>
+                          <div className="practice-step-controls">
+                            <label>
+                              <span>探索州域</span>
+                              <select
+                                disabled={busy || Boolean(activeExplore)}
+                                onChange={(event) => setSelectedProvinceId(event.target.value)}
+                                value={selectedProvince?.province_id ?? ""}
+                              >
+                                {unlockedProvinces.map((province) => (
+                                  <option key={province.province_id} value={province.province_id}>
+                                    {province.name} · {province.tower_name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label>
+                              <span>探索次数</span>
+                              <select
+                                disabled={busy || Boolean(activeExplore)}
+                                onChange={(event) => setExploreCount(Number(event.target.value))}
+                                value={exploreCount}
+                              >
+                                <option value={1}>1 次</option>
+                                <option value={3}>3 次</option>
+                                <option value={5}>5 次</option>
+                              </select>
+                            </label>
+                          </div>
+                          <div className="production-actions">
+                            {canClaimExplore ? (
+                              <Button disabled={busy} onClick={handleClaimExplore}>
+                                领取探索战报
+                              </Button>
+                            ) : activeExplore ? (
+                              <span className="action-note">
+                                完成后回到这里领取，不需要停留等待。
+                              </span>
+                            ) : selectedProvince ? (
+                              <Button disabled={busy} onClick={() => handleExplore(exploreCount)}>
+                                开始探索
+                              </Button>
+                            ) : (
+                              <span className="action-note">暂无可探索州域</span>
+                            )}
+                          </div>
+                          <ActionFeedbackInline
+                            feedback={actionFeedbackFor("explore-queue")}
+                            onViewDetails={handleViewActionFeedbackDetails}
+                          />
+                        </article>
                         <div className="province-grid">
                           {overview?.provinces.map((province) => (
                             <article
@@ -5327,7 +5421,7 @@ function SkillLoadoutPanel({
                 <SkillOptionContent skill={skill} />
                 {skill.learnable ? (
                   <Button disabled={busy} onClick={() => onLearn(skill.skill_id)}>
-                    学习
+                    学习{skill.name}
                   </Button>
                 ) : null}
               </article>
@@ -7636,6 +7730,28 @@ function pillQualityLabel(quality?: PillQuality | null): string {
 
 function formatPillItemLabel(item: BagSummaryResponse["items"][number]): string {
   return `${item.name}（${pillQualityLabel(item.quality)}）x${item.count}`;
+}
+
+function comparePillForUse(
+  left: BagSummaryResponse["items"][number],
+  right: BagSummaryResponse["items"][number],
+): number {
+  const qualityScore: Record<PillQuality, number> = {
+    flawless: 5,
+    best: 4,
+    high: 3,
+    middle: 2,
+    low: 1,
+  };
+  const leftScore = left.quality ? qualityScore[left.quality] : 0;
+  const rightScore = right.quality ? qualityScore[right.quality] : 0;
+  if (leftScore !== rightScore) {
+    return rightScore - leftScore;
+  }
+  if (left.name !== right.name) {
+    return left.name.localeCompare(right.name, "zh-Hans-CN");
+  }
+  return Number(right.count) - Number(left.count);
 }
 
 function skillRouteLabel(route: SkillSummary["route"]): string {

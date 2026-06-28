@@ -54,6 +54,7 @@ import {
   buildExploreBattleHint,
   defaultEraId,
   exploreEventConfigs,
+  getTaskDefinitions,
   maxExploreBatch,
   maxOfflineCultivationHours,
   provinceConfigs,
@@ -776,8 +777,14 @@ export class GameService {
       requestBody: { task_id: input.taskId },
       handler: async (tx) => {
         await this.ensureM2State(player.playerId, tx);
+        const activeResetKeys = getActiveTaskResetKeys();
         const task = await tx.playerTaskState.findFirst({
-          where: { playerId: player.playerId, taskId: input.taskId, status: "completed" },
+          where: {
+            playerId: player.playerId,
+            resetKey: { in: activeResetKeys },
+            status: "completed",
+            taskId: input.taskId,
+          },
           orderBy: { updatedAt: "desc" },
         });
 
@@ -1077,8 +1084,9 @@ export class GameService {
 
   private async getTasksByPlayerId(playerId: string): Promise<TaskState[]> {
     await this.ensureM2State(playerId);
+    const activeResetKeys = getActiveTaskResetKeys();
     const tasks = await this.prisma.playerTaskState.findMany({
-      where: { playerId },
+      where: { playerId, resetKey: { in: activeResetKeys } },
       orderBy: [{ taskType: "asc" }, { createdAt: "asc" }],
     });
 
@@ -2119,6 +2127,10 @@ function dailyRouteStatusWeight(status: NewPlayerRouteStepState["status"]): numb
     return 2;
   }
   return 1;
+}
+
+function getActiveTaskResetKeys(): string[] {
+  return [...new Set(getTaskDefinitions().map((definition) => definition.resetKey))];
 }
 
 function startOfDay(date = new Date()): Date {

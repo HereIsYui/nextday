@@ -1015,7 +1015,156 @@ P2 表结构为设计占位，正式 migration 可按功能阶段拆分落地。
 - `idx_transfer_execute_status(execute_status)`。
 - `idx_transfer_rank_cooldown(rank_cooldown_until)`。
 
-## 十三、幂等与事务边界
+## 十三、九州城池重构表结构占位
+
+本节对应 [《九州城池纪元》重策划案](JIUZHOU_CITY_ERA_DESIGN.md)。R1 实现前可先按以下表结构细化 Prisma migration。
+
+`player_city`
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| city_id | varchar | PK | 城池 ID |
+| player_id | varchar | index | 玩家 |
+| era_id | varchar | index | 纪元 |
+| city_type | varchar | index | main / sub |
+| province_id | varchar | index | 州 |
+| commandery_id | varchar | index | 郡 |
+| tile_id | varchar | unique | 所在地块 |
+| city_name | varchar |  | 城池名 |
+| city_level | int | index | 城池等级 |
+| status | varchar | index | normal / protected / damaged / besieged / vassal |
+| protection_until | datetime | index nullable | 新手、迁城或战败保护到期 |
+| owner_sect_id | varchar | index nullable | 宗门归属 |
+| defense_snapshot | jsonb |  | 驻防与城防摘要 |
+| resource_snapshot | jsonb |  | 资源摘要 |
+| created_at | datetime | index | 创建 |
+| updated_at | datetime |  | 更新 |
+
+`map_tile`
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| tile_id | varchar | PK | 地块 ID |
+| era_id | varchar | index | 纪元 |
+| province_id | varchar | index | 州 |
+| commandery_id | varchar | index | 郡 |
+| x | int | index | 坐标 X |
+| y | int | index | 坐标 Y |
+| tile_type | varchar | index | main_city / wild / resource / pass / capital / tower |
+| visibility | varchar | index | hidden / scouted / visible |
+| owner_player_id | varchar | index nullable | 玩家归属 |
+| owner_sect_id | varchar | index nullable | 宗门归属 |
+| owner_province_id | varchar | index nullable | 州势力归属 |
+| state_snapshot | jsonb |  | 地块状态、驻防、产出和事件摘要 |
+| created_at | datetime | index | 创建 |
+| updated_at | datetime |  | 更新 |
+
+唯一键：
+
+- `uk_map_tile_coord(era_id, province_id, x, y)`。
+
+`territory_node`
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| node_id | varchar | PK | 节点 ID |
+| tile_id | varchar | index | 所属地块 |
+| era_id | varchar | index | 纪元 |
+| node_type | varchar | index | farm / mine / forest / vein / pass / capital / tower |
+| level | int | index | 节点等级 |
+| owner_player_id | varchar | index nullable | 玩家归属 |
+| owner_sect_id | varchar | index nullable | 宗门归属 |
+| owner_province_id | varchar | index nullable | 州归属 |
+| production_snapshot | jsonb |  | 产出、维护和收益权摘要 |
+| defense_snapshot | jsonb |  | 守军和驻防摘要 |
+| status | varchar | index | idle / occupied / contested / protected / locked |
+| created_at | datetime | index | 创建 |
+| updated_at | datetime |  | 更新 |
+
+`march_queue`
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| march_id | varchar | PK | 行军 ID |
+| player_id | varchar | index | 玩家 |
+| era_id | varchar | index | 纪元 |
+| source_tile_id | varchar | index | 出发地 |
+| target_tile_id | varchar | index | 目标地 |
+| target_node_id | varchar | index nullable | 目标节点 |
+| march_type | varchar | index | scout / clear / occupy / attack / defend / return |
+| army_snapshot | jsonb |  | 队伍、将领、道兵、技能和补给摘要 |
+| status | varchar | index | marching / arrived / resolving / returning / completed / canceled |
+| arrives_at | datetime | index | 到达时间 |
+| idempotency_key | varchar | unique | 幂等键 |
+| created_at | datetime | index | 创建 |
+| updated_at | datetime |  | 更新 |
+
+`occupation_record`
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| occupation_id | varchar | PK | 占领记录 |
+| era_id | varchar | index | 纪元 |
+| tile_id | varchar | index | 地块 |
+| node_id | varchar | index nullable | 节点 |
+| attacker_player_id | varchar | index | 进攻玩家 |
+| previous_owner_player_id | varchar | index nullable | 原玩家归属 |
+| new_owner_player_id | varchar | index nullable | 新玩家归属 |
+| previous_owner_sect_id | varchar | index nullable | 原宗门归属 |
+| new_owner_sect_id | varchar | index nullable | 新宗门归属 |
+| occupation_type | varchar | index | clear / occupy / conquer / abandon / protect |
+| result | varchar | index | success / failed / protected / decayed |
+| battle_report_id | varchar | index nullable | 关联战报 |
+| reward_summary | jsonb |  | 收益、掠夺和维护摘要 |
+| idempotency_key | varchar | unique nullable | 幂等键 |
+| created_at | datetime | index | 创建 |
+
+`siege_record`
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| siege_id | varchar | PK | 攻城记录 |
+| era_id | varchar | index | 纪元 |
+| target_city_id | varchar | index | 目标城池 |
+| attacker_player_id | varchar | index | 进攻玩家 |
+| defender_player_id | varchar | index | 防守玩家 |
+| status | varchar | index | started / resolved / protected / damaged / vassal |
+| city_state_before | jsonb |  | 城池前状态 |
+| city_state_after | jsonb |  | 城池后状态 |
+| protection_until | datetime | index nullable | 战后保护 |
+| battle_report_id | varchar | index nullable | 战报 |
+| idempotency_key | varchar | unique | 幂等键 |
+| created_at | datetime | index | 创建 |
+
+`province_war_state`
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| province_war_id | varchar | PK | 州战状态 ID |
+| era_id | varchar | index | 纪元 |
+| season_id | varchar | index | 赛季 |
+| province_id | varchar | index | 州 |
+| city_control_score | bigint |  | 城池占有积分 |
+| vein_control_score | bigint |  | 灵脉控制积分 |
+| pass_control_score | bigint |  | 关隘控制积分 |
+| tower_control_score | bigint |  | 九塔奇观积分 |
+| war_score | bigint | index | 州势力总积分 |
+| ranking_snapshot | jsonb |  | 排名快照 |
+| settlement_status | varchar | index | open / daily_settled / weekly_settled / season_settled |
+| updated_at | datetime | index | 更新 |
+
+核心索引：
+
+- `idx_city_player(player_id, city_type, status)`。
+- `idx_tile_province_coord(era_id, province_id, x, y)`。
+- `idx_tile_owner(owner_player_id, owner_sect_id, owner_province_id)`。
+- `idx_node_owner(owner_player_id, owner_sect_id, node_type)`。
+- `idx_march_player_status(player_id, status, arrives_at)`。
+- `idx_march_target(target_tile_id, status, arrives_at)`。
+- `idx_occupation_tile(tile_id, created_at)`。
+- `idx_province_war(season_id, province_id, war_score)`。
+
+## 十四、幂等与事务边界
 
 必须具备幂等键的操作：
 
@@ -1031,6 +1180,7 @@ P2 表结构为设计占位，正式 migration 可按功能阶段拆分落地。
 - 合服 dry-run 报告生成和执行预留审计。
 - P2 收藏展示装备、深度外观装备、导师申请 / 审批 / 出师、宗门外交提案 / 审批、跨宗门雇佣创建 / 接取 / 结算。
 - P2 转服申请、取消、dry-run 报告生成、人工审核和执行预留。
+- R1-R6 城池建造、产出领取、行军、侦查、占领、驻防、攻城、撤防和州战结算。
 
 事务边界建议：
 
@@ -1047,8 +1197,9 @@ P2 表结构为设计占位，正式 migration 可按功能阶段拆分落地。
 - P2 收藏和外观装备只更新展示状态，不得修改战斗属性、掉落倍率、贡献倍率和排行分数。
 - P2 导师、外交和雇佣结算必须把奖励托管、风控记录、收益衰减和审计日志纳入同一事务或可靠队列链路。
 - P2 转服执行前必须先写 dry-run 报告、审核记录和 GM 操作日志；真实迁移开放时，资产映射、排行冷却、宗门清理和幂等记录必须在可回滚事务链路中完成。
+- R1-R6 行军扣资源、写队列、写行为日志必须在同一事务；占领结算必须同时写战报、归属变化、占领记录和资源日志；主城攻破只能写可恢复状态，不能永久转移主城归属。
 
-## 十四、验收场景
+## 十五、验收场景
 
 - 研发能根据本文建立 MVP 关键表、索引和唯一键。
 - 抽卡、订单、奖励领取重复请求不会重复发放。
@@ -1062,3 +1213,4 @@ P2 表结构为设计占位，正式 migration 可按功能阶段拆分落地。
 - P2 章节卷轴、纪元史册、收藏、外观、导师、外交、雇佣和转服都有字段级表结构、主键、核心索引和幂等边界。
 - P2 收藏和外观表不含战力、掉落倍率、贡献倍率和排行加成字段。
 - P2 转服表能追溯 dry-run、审核、资产映射、排行冷却、宗门清理、执行状态和审计记录。
+- R1-R6 城池表能覆盖主城、分城、地图地块、行军队列、占领记录、攻城保护和州战积分。

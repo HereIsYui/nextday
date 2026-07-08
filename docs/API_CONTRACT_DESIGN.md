@@ -577,7 +577,7 @@ P3 接口规则：
 | 城池 | `/api/city/produce/claim` | POST | 领取城池产出，需 `Idempotency-Key` |
 | 行军 | `/api/world/marches` | GET | 查询当前和最近行军队列、抵达状态和后续处理提示 |
 | 行军 | `/api/world/march` | POST | 派遣队伍前往地块、资源点、分城、关隘或九塔，需 `Idempotency-Key` |
-| 占领 | `/api/world/occupy` | POST | 对目标地块或节点发起占领，需 `Idempotency-Key` |
+| 占领 | `/api/world/occupy` | POST | 处理已抵达行军并占领目标地块或节点，需 `Idempotency-Key` |
 | 驻防 | `/api/world/defend` | POST | 派遣驻防、调整防守队伍或撤防，需 `Idempotency-Key` |
 | 侦查 | `/api/world/scout` | POST | 侦查目标地块、城池或驻防摘要，需 `Idempotency-Key` |
 | 战报 | `/api/world/reports` | GET | 查询行军、清野、攻城、占领、驻防和掠夺战报 |

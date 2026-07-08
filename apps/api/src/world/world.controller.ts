@@ -1,5 +1,7 @@
 import { Body, Controller, Get, Inject, Post, Query, Req, UseGuards } from "@nestjs/common";
 import type {
+  OccupyWorldRequest,
+  OccupyWorldResponse,
   StartWorldMarchRequest,
   StartWorldMarchResponse,
   WorldMapResponse,
@@ -21,8 +23,11 @@ export class WorldController {
   }
 
   @Get("map")
-  map(@Query("province_id") provinceId: string | undefined): WorldMapResponse {
-    return this.worldService.getMap({ provinceId });
+  map(
+    @Query("province_id") provinceId: string | undefined,
+    @Req() request: Request,
+  ): Promise<WorldMapResponse> {
+    return this.worldService.getMap({ accountId: requireAccountId(request), provinceId });
   }
 
   @Get("marches")
@@ -40,6 +45,16 @@ export class WorldController {
       body,
       idempotencyKey: requireIdempotencyKey(request),
       endpoint: "POST /api/world/march",
+    });
+  }
+
+  @Post("occupy")
+  occupy(@Body() body: OccupyWorldRequest, @Req() request: Request): Promise<OccupyWorldResponse> {
+    return this.worldService.occupy({
+      accountId: requireAccountId(request),
+      body,
+      idempotencyKey: requireIdempotencyKey(request),
+      endpoint: "POST /api/world/occupy",
     });
   }
 }

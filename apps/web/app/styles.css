@@ -3743,6 +3743,72 @@ details.event-boundary {
   max-width: 100%;
 }
 
+.text-game-shell .world-command-panel {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.text-game-shell .world-city-layout {
+  align-items: start;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.72fr);
+  min-width: 0;
+}
+
+.text-game-shell .world-city-card,
+.text-game-shell .world-map-card {
+  align-content: start;
+}
+
+.text-game-shell .world-map-card {
+  grid-row: span 3;
+}
+
+.text-game-shell .world-controls {
+  grid-template-columns: repeat(2, minmax(160px, 1fr));
+}
+
+.text-game-shell .practice-step-controls input {
+  background: transparent;
+  border: 1px solid #111111;
+  border-radius: 0;
+  color: #111111;
+  font-family: inherit;
+  min-height: 36px;
+  min-width: 0;
+  padding: 8px 10px;
+  width: 100%;
+}
+
+.text-game-shell .world-birth-grid,
+.text-game-shell .world-map-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  min-width: 0;
+}
+
+.text-game-shell .world-birth-card,
+.text-game-shell .world-tile-card {
+  border: 1px solid #dddddd;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.text-game-shell .world-tile-card .province-detail {
+  color: #333333;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.text-game-shell .world-march-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 /* P3.9：修行事务工作台。入口与内容同屏，避免点击功能后继续向下找反馈。 */
 .text-game-shell .feature-workbench {
   align-items: start;

@@ -14,6 +14,8 @@ import type {
   AppearancePlusState,
   BagSummaryResponse,
   BattleSummary,
+  CityBirthOptionState,
+  CityOverviewResponse,
   CollectionSummaryResponse,
   DailyRouteResponse,
   EntitlementOverviewResponse,
@@ -35,6 +37,9 @@ import type {
   InnerWorldSummaryResponse,
   JournalEntryState,
   LoginResponse,
+  MapTileState,
+  MarchQueueState,
+  MarchType,
   MentorRelationState,
   MentorSummaryResponse,
   MonthlyCardType,
@@ -59,11 +64,15 @@ import type {
   StoryScrollDetailResponse,
   StoryScrollListResponse,
   TaskState,
+  TerritoryOccupationState,
   TitleCollectionResponse,
   TowerListResponse,
   TowerStateSummary,
   TransferStatusResponse,
   WorldBossResponse,
+  WorldMapResponse,
+  WorldMarchListResponse,
+  WorldProvinceListResponse,
 } from "@nextday/shared";
 import { Button, StatusBadge } from "@nextday/ui";
 import {
@@ -369,6 +378,14 @@ export default function HomePage() {
   const [journalNextCursor, setJournalNextCursor] = useState<string | null>(null);
   const [journalLoadingMore, setJournalLoadingMore] = useState(false);
   const [selectedProvinceId, setSelectedProvinceId] = useState("");
+  const [worldProvinceList, setWorldProvinceList] = useState<WorldProvinceListResponse | null>(
+    null,
+  );
+  const [worldMap, setWorldMap] = useState<WorldMapResponse | null>(null);
+  const [cityOverview, setCityOverview] = useState<CityOverviewResponse | null>(null);
+  const [worldMarches, setWorldMarches] = useState<WorldMarchListResponse | null>(null);
+  const [selectedWorldProvinceId, setSelectedWorldProvinceId] = useState("");
+  const [worldCityName, setWorldCityName] = useState("");
   const [exploreCount, setExploreCount] = useState(5);
   const [selectedTowerId, setSelectedTowerId] = useState("");
   const [selectedAlchemyRecipeId, setSelectedAlchemyRecipeId] = useState("");
@@ -404,6 +421,36 @@ export default function HomePage() {
   const selectedProvince =
     unlockedProvinces.find((province) => province.province_id === selectedProvinceId) ??
     unlockedProvinces[0];
+  const worldProvinces = worldProvinceList?.provinces ?? [];
+  const worldMainCity = cityOverview?.main_city ?? null;
+  const selectedWorldProvince =
+    worldProvinces.find((province) => province.province_id === selectedWorldProvinceId) ??
+    worldProvinces.find((province) => province.province_id === worldMainCity?.province_id) ??
+    worldProvinces.find(
+      (province) => province.province_id === worldProvinceList?.recommended_province_id,
+    ) ??
+    worldProvinces[0];
+  const worldBirthOptions =
+    cityOverview?.birth_options.filter(
+      (option) =>
+        !selectedWorldProvince || option.province_id === selectedWorldProvince.province_id,
+    ) ?? [];
+  const recommendedBirthOption =
+    worldBirthOptions.find((option) => option.available && option.recommended) ??
+    worldBirthOptions.find((option) => option.available);
+  const worldTiles = worldMap?.tiles ?? [];
+  const occupiableWorldTiles = worldTiles.filter(
+    (tile) => tile.occupiable && tile.controllable && !tile.protected,
+  );
+  const arrivedWorldMarches =
+    worldMarches?.marches.filter(
+      (march) =>
+        march.status === "arrived" &&
+        (march.march_type === "clear_wild" || march.march_type === "occupy"),
+    ) ?? [];
+  const marchingWorldMarches =
+    worldMarches?.marches.filter((march) => march.status === "marching") ?? [];
+  const myWorldOccupations = worldMap?.my_occupations ?? [];
   const availablePills = useMemo(
     () =>
       (
@@ -762,6 +809,33 @@ export default function HomePage() {
   }, [selectedProvinceId, unlockedProvinces]);
 
   useEffect(() => {
+    const provinces = worldProvinceList?.provinces ?? [];
+    const preferredProvinceId =
+      worldMainCity?.province_id ??
+      worldProvinceList?.recommended_province_id ??
+      provinces[0]?.province_id ??
+      "";
+    if (!preferredProvinceId) {
+      return;
+    }
+    if (!provinces.some((province) => province.province_id === selectedWorldProvinceId)) {
+      setSelectedWorldProvinceId(preferredProvinceId);
+    }
+  }, [
+    selectedWorldProvinceId,
+    worldMainCity?.province_id,
+    worldProvinceList?.provinces,
+    worldProvinceList?.recommended_province_id,
+  ]);
+
+  useEffect(() => {
+    if (!activeProfile?.player?.name || worldCityName) {
+      return;
+    }
+    setWorldCityName(`${activeProfile.player.name}的仙城`);
+  }, [activeProfile?.player?.name, worldCityName]);
+
+  useEffect(() => {
     const towerList = towers?.towers ?? [];
     if (towerList.length === 0) {
       return;
@@ -868,6 +942,36 @@ export default function HomePage() {
       ignore = true;
     };
   }, [token, activePlayerId]);
+
+  useEffect(() => {
+    if (!token || !activePlayerId) {
+      return;
+    }
+
+    let ignore = false;
+    loadWorldState(createClient(token), selectedWorldProvinceId || undefined)
+      .then((state) => {
+        if (ignore) {
+          return;
+        }
+        setWorldProvinceList(state.provinces);
+        setCityOverview(state.city);
+        setWorldMarches(state.marches);
+        setWorldMap(state.map);
+        if (!selectedWorldProvinceId && state.selectedProvinceId) {
+          setSelectedWorldProvinceId(state.selectedProvinceId);
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setMessage("九州城池状态读取失败");
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [token, activePlayerId, selectedWorldProvinceId]);
 
   useEffect(() => {
     if (!token || !activePlayerId) {
@@ -1210,6 +1314,7 @@ export default function HomePage() {
     await refreshExplore();
     await refreshJournal();
     await refreshExploreEvents();
+    await refreshWorldState();
     setMessage(successMessage);
   }
 
@@ -1338,6 +1443,119 @@ export default function HomePage() {
     const response = await createClient(token).exploreEvents("pending", 10);
     ensureOk(response);
     setPendingExploreEvents(response.data.events);
+  }
+
+  async function refreshWorldState(successMessage?: string, provinceId?: string) {
+    if (!token) {
+      return;
+    }
+
+    const state = await loadWorldState(
+      createClient(token),
+      provinceId || selectedWorldProvinceId || undefined,
+    );
+    setWorldProvinceList(state.provinces);
+    setCityOverview(state.city);
+    setWorldMarches(state.marches);
+    setWorldMap(state.map);
+    if (state.selectedProvinceId && selectedWorldProvinceId !== state.selectedProvinceId) {
+      setSelectedWorldProvinceId(state.selectedProvinceId);
+    }
+    if (successMessage) {
+      setMessage(successMessage);
+    }
+  }
+
+  async function handleSettleMainCity(option: CityBirthOptionState) {
+    if (!option.available) {
+      setMessage(option.unavailable_reason ?? "这处出生地暂不可用");
+      return;
+    }
+
+    await runAction("建立主城", async () => {
+      const response = await client.settleMainCity(
+        {
+          city_name: worldCityName.trim() || undefined,
+          commandery_id: option.commandery_id,
+          province_id: option.province_id,
+        },
+        createIdempotencyKey(`web_world_settle_${option.province_id}_${option.commandery_id}`),
+      );
+      ensureOk(response);
+      setCityOverview(response.data.overview);
+      setSelectedWorldProvinceId(response.data.city.province_id);
+      rememberExperience(undefined, {
+        summary: `${response.data.city.city_name}立于${response.data.city.province_name} ${response.data.city.commandery_name}，主城进入新手保护。`,
+        tags: ["主城", "出生州"],
+        title: "建立主城",
+        tone: "success",
+      });
+      await refreshWorldState(
+        `已建立主城：${response.data.city.city_name}`,
+        response.data.city.province_id,
+      );
+    });
+  }
+
+  async function handleStartWorldMarch(tile: MapTileState, marchType: MarchType) {
+    if (!worldMainCity) {
+      setMessage("请先选择出生地建立主城");
+      return;
+    }
+    if (marchingWorldMarches.length > 0) {
+      setMessage("已有队伍在行军，等抵达后再派下一支");
+      return;
+    }
+    if (!tile.controllable) {
+      setMessage("这块地暂时无法派队");
+      return;
+    }
+
+    await runAction(marchType === "scout" ? "侦察地块" : "派遣队伍", async () => {
+      const response = await client.startWorldMarch(
+        {
+          march_type: marchType,
+          target_tile_id: tile.tile_id,
+        },
+        createIdempotencyKey(`web_world_march_${tile.tile_id}_${marchType}`),
+      );
+      ensureOk(response);
+      setWorldMarches(response.data.marches);
+      rememberExperience(undefined, {
+        summary: `队伍已从${response.data.march.source_city_name}出发，前往${response.data.march.target_name}，预计 ${formatRemainingSeconds(
+          response.data.march.travel_seconds,
+        )} 后抵达。`,
+        tags: ["行军", worldMarchTypeLabel(response.data.march.march_type)],
+        title: "派遣队伍",
+        tone: "neutral",
+      });
+      await refreshWorldState(`队伍已前往${response.data.march.target_name}`);
+    });
+  }
+
+  async function handleOccupyWorld(march: MarchQueueState) {
+    if (march.status !== "arrived") {
+      setMessage("队伍尚未抵达");
+      return;
+    }
+
+    await runAction("清野占领", async () => {
+      const response = await client.occupyWorld(
+        { march_id: march.march_id },
+        createIdempotencyKey(`web_world_occupy_${march.march_id}`),
+      );
+      ensureOk(response);
+      setWorldMap(response.data.map);
+      rememberExperience(undefined, {
+        summary: `${response.data.occupation.tile_name}已纳入领地，开始提供${worldOccupationProductionSummary(
+          response.data.occupation,
+        )}。`,
+        tags: ["领地", "占领成功"],
+        title: "占领地块",
+        tone: "success",
+      });
+      await refreshWorldState(`已占领${response.data.occupation.tile_name}`);
+    });
   }
 
   async function handleClaimCultivation() {
@@ -2924,129 +3142,366 @@ export default function HomePage() {
                 {activeFeature === "world" || activeFeature === "tasks" ? (
                   <div className="single-feature-layout">
                     {activeFeature === "world" ? (
-                      <section className="panel" aria-label="九州地图">
+                      <section className="panel world-command-panel" aria-label="九州城池">
                         <div className="section-title">
-                          <h2>九州地图</h2>
-                          <span>九州全域 · 按章节解锁</span>
+                          <h2>九州城池</h2>
+                          <span>出生建城 · 行军占领 · 领地经营</span>
                         </div>
-                        <article
-                          className="production-box world-explore-card"
-                          data-action-feedback-source="explore-queue"
-                        >
-                          <div className="province-head">
-                            <div>
-                              <strong>当前探索</strong>
-                              <span>
-                                {selectedProvince
-                                  ? `${selectedProvince.name} · ${selectedProvince.tower_name}`
-                                  : "暂无开放州域"}
-                              </span>
+                        <div className="world-city-layout">
+                          <article
+                            className="production-box world-city-card"
+                            data-action-feedback-source="world-city"
+                          >
+                            <div className="province-head">
+                              <div>
+                                <strong>{worldMainCity?.city_name ?? "选择出生地"}</strong>
+                                <span>
+                                  {worldMainCity
+                                    ? `${worldMainCity.province_name} · ${worldMainCity.commandery_name}`
+                                    : (cityOverview?.strategic_hint ??
+                                      "先选一处郡域建立主城，九州版图从这里展开。")}
+                                </span>
+                              </div>
+                              <StatusBadge tone={worldMainCity ? "success" : "neutral"}>
+                                {worldMainCity ? "主城已立" : "待建城"}
+                              </StatusBadge>
                             </div>
-                            <StatusBadge
-                              tone={
-                                canClaimExplore
-                                  ? "success"
-                                  : activeExplore
-                                    ? "neutral"
-                                    : selectedProvince
-                                      ? "success"
-                                      : "neutral"
-                              }
-                            >
-                              {canClaimExplore
-                                ? "可领取"
-                                : activeExplore
-                                  ? "进行中"
-                                  : selectedProvince
-                                    ? "可出发"
-                                    : "未开放"}
-                            </StatusBadge>
-                          </div>
-                          <p className="province-detail">
-                            {activeExplore
-                              ? canClaimExplore
-                                ? `${activeExplore.province_name}探索已完成，可领取战报、材料和途中见闻。`
-                                : `${activeExplore.province_name}探索正在进行，剩余 ${formatRemainingSeconds(
-                                    exploreRemainingSeconds,
-                                  )}。`
-                              : "选择已开放州域后开始探索，探索会带来战报、材料和任务进度。"}
-                          </p>
-                          <div className="practice-step-controls">
-                            <label>
-                              <span>探索州域</span>
-                              <select
-                                disabled={busy || Boolean(activeExplore)}
-                                onChange={(event) => setSelectedProvinceId(event.target.value)}
-                                value={selectedProvince?.province_id ?? ""}
-                              >
-                                {unlockedProvinces.map((province) => (
-                                  <option key={province.province_id} value={province.province_id}>
-                                    {province.name} · {province.tower_name}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <label>
-                              <span>探索次数</span>
-                              <select
-                                disabled={busy || Boolean(activeExplore)}
-                                onChange={(event) => setExploreCount(Number(event.target.value))}
-                                value={exploreCount}
-                              >
-                                <option value={1}>1 次</option>
-                                <option value={3}>3 次</option>
-                                <option value={5}>5 次</option>
-                              </select>
-                            </label>
-                          </div>
-                          <div className="production-actions">
-                            {canClaimExplore ? (
-                              <Button disabled={busy} onClick={handleClaimExplore}>
-                                领取探索战报
-                              </Button>
-                            ) : activeExplore ? (
-                              <span className="action-note">
-                                完成后回到这里领取，不需要停留等待。
-                              </span>
-                            ) : selectedProvince ? (
-                              <Button disabled={busy} onClick={() => handleExplore(exploreCount)}>
-                                开始探索
-                              </Button>
+                            {worldMainCity ? (
+                              <>
+                                <p className="province-detail">
+                                  城防 {worldMainCity.defense.wall_durability}/
+                                  {worldMainCity.defense.wall_durability_cap} · 驻防{" "}
+                                  {worldMainCity.defense.garrison_power} ·{" "}
+                                  {worldMainCity.defense.protection_label}
+                                </p>
+                                <div className="mini-stats">
+                                  <span>灵石 {worldMainCity.resources.spirit_stone}</span>
+                                  <span>粮草 {worldMainCity.resources.grain}</span>
+                                  <span>矿材 {worldMainCity.resources.ore}</span>
+                                  <span>灵木 {worldMainCity.resources.wood}</span>
+                                  <span>道兵 {worldMainCity.resources.soldier}</span>
+                                </div>
+                              </>
                             ) : (
-                              <span className="action-note">暂无可探索州域</span>
+                              <>
+                                <div className="practice-step-controls world-controls">
+                                  <label>
+                                    <span>出生州</span>
+                                    <select
+                                      disabled={busy || worldProvinces.length === 0}
+                                      onChange={(event) =>
+                                        setSelectedWorldProvinceId(event.target.value)
+                                      }
+                                      value={selectedWorldProvince?.province_id ?? ""}
+                                    >
+                                      {worldProvinces.map((province) => (
+                                        <option
+                                          key={province.province_id}
+                                          value={province.province_id}
+                                        >
+                                          {province.name} · {province.theme}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <label>
+                                    <span>主城名</span>
+                                    <input
+                                      disabled={busy}
+                                      maxLength={12}
+                                      onChange={(event) => setWorldCityName(event.target.value)}
+                                      placeholder="给主城取名"
+                                      value={worldCityName}
+                                    />
+                                  </label>
+                                </div>
+                                <div className="world-birth-grid">
+                                  {worldBirthOptions.length ? (
+                                    worldBirthOptions.map((option) => (
+                                      <article className="world-birth-card" key={option.tile_id}>
+                                        <div className="province-head">
+                                          <div>
+                                            <strong>{option.commandery_name}</strong>
+                                            <span>{option.tile_name}</span>
+                                          </div>
+                                          <StatusBadge
+                                            tone={
+                                              option.available
+                                                ? option.recommended
+                                                  ? "success"
+                                                  : "neutral"
+                                                : "warning"
+                                            }
+                                          >
+                                            {option.available
+                                              ? option.recommended
+                                                ? "推荐"
+                                                : "可选"
+                                              : "暂不可选"}
+                                          </StatusBadge>
+                                        </div>
+                                        <div className="mini-stats">
+                                          <span>安全 {option.safety_level}</span>
+                                          <span>{worldCongestionLabel(option.congestion)}</span>
+                                        </div>
+                                        <div className="production-actions">
+                                          {option.available ? (
+                                            <Button
+                                              disabled={busy}
+                                              onClick={() => handleSettleMainCity(option)}
+                                            >
+                                              在此建城
+                                            </Button>
+                                          ) : (
+                                            <span className="action-note">
+                                              {option.unavailable_reason ?? "暂不可用"}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </article>
+                                    ))
+                                  ) : (
+                                    <span className="action-note">出生地状态同步中</span>
+                                  )}
+                                </div>
+                                {recommendedBirthOption ? (
+                                  <div className="production-actions">
+                                    <Button
+                                      disabled={busy}
+                                      onClick={() => handleSettleMainCity(recommendedBirthOption)}
+                                    >
+                                      使用推荐出生地
+                                    </Button>
+                                  </div>
+                                ) : null}
+                              </>
                             )}
-                          </div>
-                          <ActionFeedbackInline
-                            feedback={actionFeedbackFor("explore-queue")}
-                            onViewDetails={handleViewActionFeedbackDetails}
-                          />
-                        </article>
-                        <div className="province-grid">
-                          {overview?.provinces.map((province) => (
-                            <article
-                              className={province.unlocked ? "province" : "province locked"}
-                              key={province.province_id}
-                            >
-                              <div className="province-head">
-                                <strong>{province.name}</strong>
-                                <StatusBadge tone={province.unlocked ? "success" : "neutral"}>
-                                  {province.unlocked
-                                    ? "已开放"
-                                    : `章节 ${province.chapter_required}`}
-                                </StatusBadge>
+                            <ActionFeedbackInline
+                              feedback={actionFeedbackFor("world-city")}
+                              onViewDetails={handleViewActionFeedbackDetails}
+                            />
+                          </article>
+
+                          <article
+                            className="production-box world-map-card"
+                            data-action-feedback-source="world-map"
+                          >
+                            <div className="province-head">
+                              <div>
+                                <strong>{worldMap?.province.name ?? "九州地图"}</strong>
+                                <span>
+                                  {worldMap?.province.map_focus ??
+                                    worldMap?.player_city_hint ??
+                                    "选择州域查看可扩张地块。"}
+                                </span>
                               </div>
-                              <span>{province.theme}</span>
-                              <span>
-                                {province.tower_name} · {province.recommended_action}
-                              </span>
-                              <p className="province-detail">{province.resources.join(" / ")}</p>
-                              <p className="province-detail">{province.long_term_goal}</p>
+                              <StatusBadge
+                                tone={occupiableWorldTiles.length ? "success" : "neutral"}
+                              >
+                                {occupiableWorldTiles.length
+                                  ? `${occupiableWorldTiles.length} 处可扩张`
+                                  : "等待版图"}
+                              </StatusBadge>
+                            </div>
+                            <div className="practice-step-controls world-controls">
+                              <label>
+                                <span>查看州域</span>
+                                <select
+                                  disabled={busy || worldProvinces.length === 0}
+                                  onChange={(event) =>
+                                    setSelectedWorldProvinceId(event.target.value)
+                                  }
+                                  value={selectedWorldProvince?.province_id ?? ""}
+                                >
+                                  {worldProvinces.map((province) => (
+                                    <option key={province.province_id} value={province.province_id}>
+                                      {province.name} · {province.map_focus}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            </div>
+                            {worldMap ? (
                               <div className="mini-stats">
-                                <span>探索 {province.exploration_count}</span>
-                                <span>魔染 {province.corruption}</span>
+                                <span>赛季 {worldMap.province.war_state.season_name}</span>
+                                <span>州势 {worldMap.province.war_state.score}</span>
+                                <span>
+                                  灵脉{" "}
+                                  {Math.round(
+                                    worldMap.province.war_state.spirit_vein_control_rate * 100,
+                                  )}
+                                  %
+                                </span>
+                                <span>可见 {worldMap.visible_tile_count}</span>
                               </div>
-                            </article>
-                          ))}
+                            ) : null}
+                            <div className="world-map-grid">
+                              {worldTiles.length ? (
+                                worldTiles.slice(0, 12).map((tile) => {
+                                  const marchType = worldTilePreferredMarchType(tile);
+                                  return (
+                                    <article className="world-tile-card" key={tile.tile_id}>
+                                      <div className="province-head">
+                                        <div>
+                                          <strong>{tile.tile_name}</strong>
+                                          <span>
+                                            {tile.commandery_name} ·{" "}
+                                            {worldTileTypeLabel(tile.tile_type)}
+                                          </span>
+                                        </div>
+                                        <StatusBadge tone={tile.occupiable ? "success" : "neutral"}>
+                                          {worldTileStatusLabel(tile.status)}
+                                        </StatusBadge>
+                                      </div>
+                                      <p className="province-detail">{tile.state_summary}</p>
+                                      <div className="mini-stats">
+                                        <span>危险 {tile.danger_level}</span>
+                                        <span>{formatRemainingSeconds(tile.travel_seconds)}</span>
+                                        {tile.labels.slice(0, 2).map((label) => (
+                                          <span key={label}>{label}</span>
+                                        ))}
+                                      </div>
+                                      {tile.owner.owner_player_name ? (
+                                        <span className="action-note">
+                                          归属 {tile.owner.owner_player_name}
+                                        </span>
+                                      ) : null}
+                                      <div className="production-actions">
+                                        {!worldMainCity ? (
+                                          <span className="action-note">先建立主城</span>
+                                        ) : tile.controllable && marchType ? (
+                                          <Button
+                                            disabled={busy || marchingWorldMarches.length > 0}
+                                            onClick={() => handleStartWorldMarch(tile, marchType)}
+                                          >
+                                            {worldMarchTypeLabel(marchType)}
+                                          </Button>
+                                        ) : (
+                                          <span className="action-note">
+                                            {tile.protected ? "处于保护" : "暂不可派队"}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </article>
+                                  );
+                                })
+                              ) : (
+                                <span className="action-note">地图状态同步中</span>
+                              )}
+                            </div>
+                            <ActionFeedbackInline
+                              feedback={actionFeedbackFor("world-map")}
+                              onViewDetails={handleViewActionFeedbackDetails}
+                            />
+                          </article>
+
+                          <article
+                            className="production-box world-march-card"
+                            data-action-feedback-source="world-marches"
+                          >
+                            <div className="province-head">
+                              <div>
+                                <strong>行军队列</strong>
+                                <span>
+                                  {worldMarches
+                                    ? `${worldMarches.active_count} 支队伍正在路上`
+                                    : "行军状态同步中"}
+                                </span>
+                              </div>
+                              <StatusBadge
+                                tone={arrivedWorldMarches.length ? "success" : "neutral"}
+                              >
+                                {arrivedWorldMarches.length ? "可处理" : "安定"}
+                              </StatusBadge>
+                            </div>
+                            <div className="task-list">
+                              {worldMarches?.marches.length ? (
+                                worldMarches.marches.slice(0, 6).map((march) => (
+                                  <article
+                                    className="task-row world-march-row"
+                                    key={march.march_id}
+                                  >
+                                    <div>
+                                      <strong>{march.target_name}</strong>
+                                      <span>
+                                        {worldMarchTypeLabel(march.march_type)} ·{" "}
+                                        {worldMarchStatusLabel(march.status)} ·{" "}
+                                        {march.status === "marching"
+                                          ? `剩余 ${formatRemainingSeconds(
+                                              march.remaining_seconds,
+                                            )}`
+                                          : march.action_hint}
+                                      </span>
+                                      <span>
+                                        {march.team.leader_name} · 战力 {march.team.team_power} ·
+                                        道兵 {march.team.soldier_count}
+                                      </span>
+                                    </div>
+                                    {march.status === "arrived" &&
+                                    (march.march_type === "clear_wild" ||
+                                      march.march_type === "occupy") ? (
+                                      <Button
+                                        disabled={busy}
+                                        onClick={() => handleOccupyWorld(march)}
+                                      >
+                                        清野占领
+                                      </Button>
+                                    ) : (
+                                      <StatusBadge
+                                        tone={march.status === "resolved" ? "success" : "neutral"}
+                                      >
+                                        {worldMarchStatusLabel(march.status)}
+                                      </StatusBadge>
+                                    )}
+                                  </article>
+                                ))
+                              ) : (
+                                <span className="action-note">
+                                  暂无行军，先从地图选择一处可扩张地块。
+                                </span>
+                              )}
+                            </div>
+                            <ActionFeedbackInline
+                              feedback={actionFeedbackFor("world-marches")}
+                              onViewDetails={handleViewActionFeedbackDetails}
+                            />
+                          </article>
+
+                          <article className="production-box world-territory-card">
+                            <div className="province-head">
+                              <div>
+                                <strong>我的领地</strong>
+                                <span>
+                                  {myWorldOccupations.length
+                                    ? `${myWorldOccupations.length} 处领地持续产出`
+                                    : "占领野地后会在这里汇总"}
+                                </span>
+                              </div>
+                              <StatusBadge tone={myWorldOccupations.length ? "success" : "neutral"}>
+                                {myWorldOccupations.length ? "已扩张" : "暂无领地"}
+                              </StatusBadge>
+                            </div>
+                            <div className="task-list">
+                              {myWorldOccupations.length ? (
+                                myWorldOccupations.slice(0, 5).map((occupation) => (
+                                  <article className="task-row" key={occupation.occupation_id}>
+                                    <div>
+                                      <strong>{occupation.tile_name}</strong>
+                                      <span>
+                                        {occupation.province_name} · {occupation.commandery_name}
+                                      </span>
+                                      <span>{worldOccupationProductionSummary(occupation)}</span>
+                                    </div>
+                                    <StatusBadge tone="success">已占领</StatusBadge>
+                                  </article>
+                                ))
+                              ) : (
+                                <span className="action-note">
+                                  推荐先清理主城附近野地，建立第一处资源点。
+                                </span>
+                              )}
+                            </div>
+                          </article>
                         </div>
                       </section>
                     ) : null}
@@ -7452,6 +7907,34 @@ async function loadGame(client: GameClient, token: string) {
   };
 }
 
+async function loadWorldState(client: GameClient, provinceId?: string) {
+  const [provinceResponse, cityResponse, marchResponse] = await Promise.all([
+    client.worldProvinces(),
+    client.cityOverview(),
+    client.worldMarches(),
+  ]);
+  ensureOk(provinceResponse);
+  ensureOk(cityResponse);
+  ensureOk(marchResponse);
+
+  const selectedProvinceId =
+    provinceId ||
+    cityResponse.data.main_city?.province_id ||
+    provinceResponse.data.recommended_province_id ||
+    provinceResponse.data.provinces[0]?.province_id ||
+    "";
+  const mapResponse = await client.worldMap(selectedProvinceId || undefined);
+  ensureOk(mapResponse);
+
+  return {
+    city: cityResponse.data,
+    map: mapResponse.data,
+    marches: marchResponse.data,
+    provinces: provinceResponse.data,
+    selectedProvinceId: mapResponse.data.province.province_id,
+  };
+}
+
 async function loadProduction(client: GameClient) {
   const [bagResponse, equipmentResponse, alchemyResponse, forgeResponse, skillResponse] =
     await Promise.all([
@@ -7702,6 +8185,87 @@ function actionFeedbackSuccessMessage(label: string): string {
     return `${label}完成`;
   }
   return `${label}完成`;
+}
+
+function worldMarchTypeLabel(type: MarchType): string {
+  const labels: Record<MarchType, string> = {
+    clear_wild: "清野",
+    occupy: "占领",
+    reinforce: "增援",
+    scout: "侦察",
+  };
+  return labels[type];
+}
+
+function worldMarchStatusLabel(status: MarchQueueState["status"]): string {
+  const labels: Record<MarchQueueState["status"], string> = {
+    arrived: "已抵达",
+    cancelled: "已撤回",
+    marching: "行军中",
+    resolved: "已处理",
+  };
+  return labels[status];
+}
+
+function worldTileTypeLabel(type: MapTileState["tile_type"]): string {
+  const labels: Record<MapTileState["tile_type"], string> = {
+    capital: "州府",
+    main_city: "主城",
+    pass: "关隘",
+    resource: "资源点",
+    rift: "裂隙",
+    sub_city: "分城",
+    tower: "九塔",
+    wild: "野地",
+  };
+  return labels[type] ?? "地块";
+}
+
+function worldTileStatusLabel(status: MapTileState["status"]): string {
+  const labels: Record<MapTileState["status"], string> = {
+    contested: "争夺中",
+    locked: "未开放",
+    occupied: "已占领",
+    peace: "安定",
+    protected: "保护中",
+    wild: "野地",
+  };
+  return labels[status] ?? "状态同步中";
+}
+
+function worldTilePreferredMarchType(tile: MapTileState): MarchType | null {
+  if (!tile.controllable || tile.protected || tile.status === "locked") {
+    return null;
+  }
+  if (tile.status === "wild" || tile.tile_type === "wild" || tile.owner.owner_player_id === null) {
+    return "clear_wild";
+  }
+  if (tile.occupiable) {
+    return "occupy";
+  }
+  return "scout";
+}
+
+function worldCongestionLabel(congestion: CityBirthOptionState["congestion"]): string {
+  const labels: Record<CityBirthOptionState["congestion"], string> = {
+    high: "人声鼎沸",
+    low: "清静",
+    medium: "适中",
+  };
+  return labels[congestion];
+}
+
+function worldOccupationProductionSummary(occupation: TerritoryOccupationState): string {
+  const parts = [
+    occupation.production.spirit_stone_per_hour
+      ? `灵石 ${occupation.production.spirit_stone_per_hour}/时`
+      : "",
+    occupation.production.grain_per_hour ? `粮草 ${occupation.production.grain_per_hour}/时` : "",
+    occupation.production.ore_per_hour ? `矿材 ${occupation.production.ore_per_hour}/时` : "",
+    occupation.production.wood_per_hour ? `灵木 ${occupation.production.wood_per_hour}/时` : "",
+    occupation.production.herb_per_hour ? `灵草 ${occupation.production.herb_per_hour}/时` : "",
+  ].filter(Boolean);
+  return parts.length ? parts.join("、") : "州势与领地收益";
 }
 
 function activityStatusLabel(status: string): string {

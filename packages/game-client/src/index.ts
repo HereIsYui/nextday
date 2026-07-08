@@ -38,6 +38,7 @@ import type {
   CaveCollectResponse,
   ChooseFactionRouteRequest,
   ChooseFactionRouteResponse,
+  CityOverviewResponse,
   ClaimActivityRewardRequest,
   ClaimActivityRewardResponse,
   ClaimAppearanceRequest,
@@ -115,6 +116,8 @@ import type {
   MentorSummaryResponse,
   MergeDryRunReportResponse,
   MockFishpiLoginRequest,
+  OccupyWorldRequest,
+  OccupyWorldResponse,
   PillUseRequest,
   PillUseResponse,
   PlayerProfileResponse,
@@ -165,8 +168,12 @@ import type {
   SetEquipmentLockRequest,
   SetItemLockRequest,
   SetItemLockResponse,
+  SettleMainCityRequest,
+  SettleMainCityResponse,
   SettleSectHireRequest,
   SkillLoadoutResponse,
+  StartWorldMarchRequest,
+  StartWorldMarchResponse,
   StoryScrollDetailResponse,
   StoryScrollListResponse,
   SubmitActivityProgressRequest,
@@ -187,6 +194,9 @@ import type {
   WorldBossChallengeRequest,
   WorldBossChallengeResponse,
   WorldBossResponse,
+  WorldMapResponse,
+  WorldMarchListResponse,
+  WorldProvinceListResponse,
 } from "@nextday/shared";
 
 export interface GameClientOptions {
@@ -416,6 +426,54 @@ export class GameClient {
 
   dailyRoute(): Promise<ApiResponse<DailyRouteResponse>> {
     return this.get<DailyRouteResponse>("/api/game/daily-route");
+  }
+
+  worldProvinces(): Promise<ApiResponse<WorldProvinceListResponse>> {
+    return this.get<WorldProvinceListResponse>("/api/world/provinces");
+  }
+
+  worldMap(provinceId?: string): Promise<ApiResponse<WorldMapResponse>> {
+    const params = new URLSearchParams();
+    if (provinceId) {
+      params.set("province_id", provinceId);
+    }
+    const query = params.toString();
+    return this.get<WorldMapResponse>(`/api/world/map${query ? `?${query}` : ""}`);
+  }
+
+  cityOverview(): Promise<ApiResponse<CityOverviewResponse>> {
+    return this.get<CityOverviewResponse>("/api/city/overview");
+  }
+
+  settleMainCity(
+    body: SettleMainCityRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<SettleMainCityResponse>> {
+    return this.post<SettleMainCityResponse, SettleMainCityRequest>("/api/city/settle", body, {
+      idempotencyKey,
+    });
+  }
+
+  worldMarches(): Promise<ApiResponse<WorldMarchListResponse>> {
+    return this.get<WorldMarchListResponse>("/api/world/marches");
+  }
+
+  startWorldMarch(
+    body: StartWorldMarchRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<StartWorldMarchResponse>> {
+    return this.post<StartWorldMarchResponse, StartWorldMarchRequest>("/api/world/march", body, {
+      idempotencyKey,
+    });
+  }
+
+  occupyWorld(
+    body: OccupyWorldRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<OccupyWorldResponse>> {
+    return this.post<OccupyWorldResponse, OccupyWorldRequest>("/api/world/occupy", body, {
+      idempotencyKey,
+    });
   }
 
   battles(

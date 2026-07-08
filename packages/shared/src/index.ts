@@ -723,6 +723,57 @@ export interface SettleMainCityResponse {
   overview: CityOverviewResponse;
 }
 
+export type MarchQueueStatus = "marching" | "arrived" | "resolved" | "cancelled";
+
+export type MarchType = "scout" | "clear_wild" | "occupy" | "reinforce";
+
+export interface MarchTeamSnapshot {
+  leader_name: string;
+  soldier_count: number;
+  team_power: number;
+  supply_cost: number;
+}
+
+export interface MarchQueueState {
+  march_id: string;
+  source_city_id: string;
+  source_city_name: string;
+  source_tile_id: string;
+  target_tile_id: string;
+  target_name: string;
+  province_id: string;
+  province_name: string;
+  commandery_id: string;
+  commandery_name: string;
+  march_type: MarchType;
+  status: MarchQueueStatus;
+  team: MarchTeamSnapshot;
+  travel_seconds: number;
+  remaining_seconds: number;
+  started_at: string;
+  arrives_at: string;
+  resolved_at: string | null;
+  action_hint: string;
+}
+
+export interface WorldMarchListResponse {
+  marches: MarchQueueState[];
+  active_count: number;
+  config_version: string;
+}
+
+export interface StartWorldMarchRequest {
+  target_tile_id: string;
+  source_city_id?: string;
+  march_type?: MarchType;
+}
+
+export interface StartWorldMarchResponse {
+  record_id: string;
+  march: MarchQueueState;
+  marches: WorldMarchListResponse;
+}
+
 export interface BattleRoundLog {
   round: number;
   actor: string;

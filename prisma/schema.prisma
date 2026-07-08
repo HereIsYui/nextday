@@ -104,6 +104,7 @@ model Player {
   hireHelpRecords           SectHireRecord[]
   transferRequests          TransferRequestRecord[]
   cities                    PlayerCity[]
+  marchQueues               MarchQueue[]
 
   @@index([accountId])
   @@index([sectId])
@@ -131,6 +132,7 @@ model PlayerCity {
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
   player Player @relation(fields: [playerId], references: [playerId])
+  marchQueues MarchQueue[]
 
   @@index([playerId])
   @@index([eraId])
@@ -140,6 +142,42 @@ model PlayerCity {
   @@index([status])
   @@index([protectionUntil])
   @@map("player_city")
+}
+
+model MarchQueue {
+  marchId        String   @id @map("march_id")
+  playerId       String   @map("player_id")
+  eraId          String   @default("era_mvp_001") @map("era_id")
+  sourceCityId   String   @map("source_city_id")
+  sourceTileId   String   @map("source_tile_id")
+  targetTileId   String   @map("target_tile_id")
+  targetName     String   @map("target_name")
+  provinceId     String   @map("province_id")
+  commanderyId   String   @map("commandery_id")
+  marchType      String   @map("march_type")
+  status         String   @default("marching")
+  teamSnapshot   Json     @map("team_snapshot")
+  travelSeconds  Int      @map("travel_seconds")
+  startedAt      DateTime @default(now()) @map("started_at")
+  arrivesAt      DateTime @map("arrives_at")
+  resolvedAt     DateTime? @map("resolved_at")
+  idempotencyKey String?  @unique @map("idempotency_key")
+  configVersion  String   @map("config_version")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  player     Player     @relation(fields: [playerId], references: [playerId])
+  sourceCity PlayerCity @relation(fields: [sourceCityId], references: [cityId])
+
+  @@index([playerId])
+  @@index([eraId])
+  @@index([provinceId, commanderyId])
+  @@index([sourceCityId])
+  @@index([targetTileId])
+  @@index([status])
+  @@index([arrivesAt])
+  @@index([createdAt])
+  @@map("march_queue")
 }
 
 model PlayerProgress {

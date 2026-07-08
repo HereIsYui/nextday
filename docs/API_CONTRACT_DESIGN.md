@@ -572,6 +572,7 @@ P3 接口规则：
 | 九州地图 | `/api/world/provinces` | GET | 返回九州、郡域、州势力、出生拥挤度和赛季状态 |
 | 九州地图 | `/api/world/map` | GET | 返回可见地块、坐标、地块类型、归属、驻防和可操作状态 |
 | 城池 | `/api/city/overview` | GET | 返回主城、分城、建筑、资源、队列、保护状态和驻防摘要 |
+| 城池 | `/api/city/settle` | POST | 选择出生州和郡域建立主城，需 `Idempotency-Key` |
 | 城池 | `/api/city/build` | POST | 建造或升级建筑，需 `Idempotency-Key` |
 | 城池 | `/api/city/produce/claim` | POST | 领取城池产出，需 `Idempotency-Key` |
 | 行军 | `/api/world/march` | POST | 派遣队伍前往地块、资源点、分城、关隘或九塔，需 `Idempotency-Key` |

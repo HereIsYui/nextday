@@ -650,6 +650,79 @@ export interface WorldMapResponse {
   config_version: string;
 }
 
+export type PlayerCityType = "main" | "sub";
+
+export type PlayerCityStatus = "normal" | "protected" | "damaged" | "besieged" | "vassal";
+
+export interface CityResourceSnapshot {
+  spirit_stone: string;
+  grain: string;
+  ore: string;
+  wood: string;
+  herb: string;
+  soldier: string;
+}
+
+export interface CityDefenseSnapshot {
+  wall_durability: number;
+  wall_durability_cap: number;
+  garrison_power: number;
+  protection_label: string;
+}
+
+export interface PlayerCityState {
+  city_id: string;
+  city_type: PlayerCityType;
+  province_id: string;
+  province_name: string;
+  commandery_id: string;
+  commandery_name: string;
+  tile_id: string;
+  city_name: string;
+  city_level: number;
+  status: PlayerCityStatus;
+  protection_until: string | null;
+  owner_sect_id: string | null;
+  defense: CityDefenseSnapshot;
+  resources: CityResourceSnapshot;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CityBirthOptionState {
+  province_id: string;
+  province_name: string;
+  commandery_id: string;
+  commandery_name: string;
+  tile_id: string;
+  tile_name: string;
+  available: boolean;
+  recommended: boolean;
+  congestion: "low" | "medium" | "high";
+  safety_level: number;
+  unavailable_reason: string | null;
+}
+
+export interface CityOverviewResponse {
+  main_city: PlayerCityState | null;
+  sub_cities: PlayerCityState[];
+  birth_options: CityBirthOptionState[];
+  strategic_hint: string;
+  config_version: string;
+}
+
+export interface SettleMainCityRequest {
+  province_id: string;
+  commandery_id?: string;
+  city_name?: string;
+}
+
+export interface SettleMainCityResponse {
+  record_id: string;
+  city: PlayerCityState;
+  overview: CityOverviewResponse;
+}
+
 export interface BattleRoundLog {
   round: number;
   actor: string;

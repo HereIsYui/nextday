@@ -103,12 +103,43 @@ model Player {
   mentorRelationsAsApprentice MentorRelationRecord[]  @relation("MentorRelationApprentice")
   hireHelpRecords           SectHireRecord[]
   transferRequests          TransferRequestRecord[]
+  cities                    PlayerCity[]
 
   @@index([accountId])
   @@index([sectId])
   @@index([currentRealm, currentStage, currentLevel])
   @@index([status])
   @@map("player")
+}
+
+model PlayerCity {
+  cityId           String    @id @map("city_id")
+  playerId         String    @map("player_id")
+  eraId            String    @default("era_mvp_001") @map("era_id")
+  cityType         String    @map("city_type")
+  provinceId       String    @map("province_id")
+  commanderyId     String    @map("commandery_id")
+  tileId           String    @unique @map("tile_id")
+  cityName         String    @map("city_name")
+  cityLevel        Int       @default(1) @map("city_level")
+  status           String    @default("protected")
+  protectionUntil  DateTime? @map("protection_until")
+  ownerSectId      String?   @map("owner_sect_id")
+  defenseSnapshot  Json      @map("defense_snapshot")
+  resourceSnapshot Json      @map("resource_snapshot")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@index([playerId])
+  @@index([eraId])
+  @@index([cityType])
+  @@index([provinceId])
+  @@index([commanderyId])
+  @@index([status])
+  @@index([protectionUntil])
+  @@map("player_city")
 }
 
 model PlayerProgress {

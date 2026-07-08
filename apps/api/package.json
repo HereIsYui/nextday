@@ -10,6 +10,7 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --fileParallelism=false",
+    "test:r1-city-birth": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/r1-city-birth.e2e-spec.ts",
     "test:r1-world-map": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/r1-world-map.e2e-spec.ts",
     "test:m1": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/m1.e2e-spec.ts",
     "test:m2": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/m2.e2e-spec.ts",

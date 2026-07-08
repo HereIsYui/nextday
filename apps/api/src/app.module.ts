@@ -25,6 +25,7 @@ import { RiskModule } from "./risk/risk.module";
 import { SocialModule } from "./social/social.module";
 import { StoryModule } from "./story/story.module";
 import { TransferModule } from "./transfer/transfer.module";
+import { WorldModule } from "./world/world.module";
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { TransferModule } from "./transfer/transfer.module";
     SocialModule,
     TransferModule,
     PluginModule,
+    WorldModule,
     AdminModule,
   ],
   controllers: [HealthController],

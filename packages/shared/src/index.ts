@@ -516,6 +516,140 @@ export interface ProvinceSummary {
   best_explore_stage: number;
 }
 
+export type WorldTileType =
+  | "main_city"
+  | "sub_city"
+  | "wild"
+  | "resource"
+  | "pass"
+  | "capital"
+  | "tower"
+  | "rift";
+
+export type WorldTileVisibility = "hidden" | "scouted" | "visible";
+
+export type TerritoryNodeType =
+  | "main_city"
+  | "sub_city"
+  | "farm"
+  | "mine"
+  | "forest"
+  | "vein"
+  | "pass"
+  | "capital"
+  | "tower"
+  | "rift";
+
+export type TerritoryNodeStatus = "idle" | "occupied" | "contested" | "protected" | "locked";
+
+export interface WorldOwnerState {
+  owner_player_id: string | null;
+  owner_player_name: string | null;
+  owner_sect_id: string | null;
+  owner_sect_name: string | null;
+  owner_province_id: string | null;
+  owner_province_name: string | null;
+}
+
+export interface ProvinceWarState {
+  province_id: string;
+  province_name: string;
+  season_id: string;
+  season_name: string;
+  rank: number;
+  score: number;
+  city_occupancy_rate: number;
+  spirit_vein_control_rate: number;
+  pass_control_count: number;
+  tower_state: "sealed" | "stable" | "contested" | "polluted";
+  dominant_sect_name: string | null;
+  daily_settlement_at: string;
+  weekly_settlement_at: string;
+}
+
+export interface WorldCommanderyState {
+  commandery_id: string;
+  province_id: string;
+  name: string;
+  terrain: string;
+  birth_available: boolean;
+  recommended_birth: boolean;
+  congestion: "low" | "medium" | "high";
+  resource_theme: string[];
+  safety_level: number;
+  tile_count: number;
+}
+
+export interface WorldProvinceState {
+  province_id: string;
+  name: string;
+  theme: string;
+  tower_name: string;
+  birth_available: boolean;
+  recommended_birth: boolean;
+  congestion: "low" | "medium" | "high";
+  season_state: "preseason" | "active" | "settling";
+  map_focus: string;
+  commanderies: WorldCommanderyState[];
+  war_state: ProvinceWarState;
+}
+
+export interface TerritoryNodeState {
+  node_id: string;
+  tile_id: string;
+  node_type: TerritoryNodeType;
+  node_name: string;
+  level: number;
+  status: TerritoryNodeStatus;
+  occupiable: boolean;
+  contestable: boolean;
+  protected: boolean;
+  production_summary: string;
+  defense_summary: string;
+  owner: WorldOwnerState;
+}
+
+export interface MapTileState {
+  tile_id: string;
+  province_id: string;
+  province_name: string;
+  commandery_id: string;
+  commandery_name: string;
+  tile_type: WorldTileType;
+  tile_name: string;
+  x: number;
+  y: number;
+  visibility: WorldTileVisibility;
+  status: "peace" | "wild" | "occupied" | "contested" | "protected" | "locked";
+  controllable: boolean;
+  occupiable: boolean;
+  protected: boolean;
+  danger_level: number;
+  travel_seconds: number;
+  labels: string[];
+  state_summary: string;
+  owner: WorldOwnerState;
+  nodes: TerritoryNodeState[];
+}
+
+export interface WorldProvinceListResponse {
+  provinces: WorldProvinceState[];
+  recommended_province_id: string;
+  season_id: string;
+  season_name: string;
+  config_version: string;
+}
+
+export interface WorldMapResponse {
+  province: WorldProvinceState;
+  commanderies: WorldCommanderyState[];
+  tiles: MapTileState[];
+  visible_tile_count: number;
+  occupiable_tile_count: number;
+  player_city_hint: string;
+  config_version: string;
+}
+
 export interface BattleRoundLog {
   round: number;
   actor: string;

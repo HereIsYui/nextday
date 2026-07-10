@@ -2,9 +2,12 @@ import { Body, Controller, Get, Inject, Post, Query, Req, UseGuards } from "@nes
 import type {
   OccupyWorldRequest,
   OccupyWorldResponse,
+  PurchaseWorldBlockRequest,
+  PurchaseWorldBlockResponse,
   StartWorldMarchRequest,
   StartWorldMarchResponse,
   WorldMapResponse,
+  WorldMapView,
   WorldMarchListResponse,
   WorldProvinceListResponse,
 } from "@nextday/shared";
@@ -25,9 +28,10 @@ export class WorldController {
   @Get("map")
   map(
     @Query("province_id") provinceId: string | undefined,
+    @Query("view") view: WorldMapView | undefined,
     @Req() request: Request,
   ): Promise<WorldMapResponse> {
-    return this.worldService.getMap({ accountId: requireAccountId(request), provinceId });
+    return this.worldService.getMap({ accountId: requireAccountId(request), provinceId, view });
   }
 
   @Get("marches")
@@ -55,6 +59,19 @@ export class WorldController {
       body,
       idempotencyKey: requireIdempotencyKey(request),
       endpoint: "POST /api/world/occupy",
+    });
+  }
+
+  @Post("blocks/purchase")
+  purchaseBlock(
+    @Body() body: PurchaseWorldBlockRequest,
+    @Req() request: Request,
+  ): Promise<PurchaseWorldBlockResponse> {
+    return this.worldService.purchaseBlock({
+      accountId: requireAccountId(request),
+      body,
+      idempotencyKey: requireIdempotencyKey(request),
+      endpoint: "POST /api/world/blocks/purchase",
     });
   }
 }

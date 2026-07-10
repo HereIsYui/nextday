@@ -39,27 +39,28 @@ describe("R1 基础行军队列", () => {
       .post("/api/world/march")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_r1_march_no_city_${Date.now()}_${randomSuffix()}`)
-      .send({ target_tile_id: "ji_wild_road", march_type: "scout" })
+      .send({ target_tile_id: "ji_block_5_5", march_type: "scout" })
       .expect(400);
   });
 
   it("玩家可以从主城向同州野地发起行军，重复幂等请求不重复创建队列", async () => {
     const { token } = await createR1MarchPlayer(app, "行军");
     await settleMainCity(app, token, "冀北仙城");
+    const targetTile = await findMapTile(app, token, "ji", (tile) => tile.tile_type === "wild");
     const idempotencyKey = `idem_r1_march_start_${Date.now()}_${randomSuffix()}`;
 
     const response = await request(app.getHttpServer())
       .post("/api/world/march")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", idempotencyKey)
-      .send({ target_tile_id: "ji_wild_road", march_type: "clear_wild" })
+      .send({ target_tile_id: targetTile.tile_id, march_type: "clear_wild" })
       .expect(201);
 
     expect(response.body.data.march).toMatchObject({
-      target_tile_id: "ji_wild_road",
-      target_name: "常山郡荒野外缘",
+      target_tile_id: targetTile.tile_id,
+      target_name: targetTile.tile_name,
       province_id: "ji",
-      commandery_id: "ji_commandery_1",
+      commandery_id: targetTile.commandery_id,
       march_type: "clear_wild",
       status: "marching",
     });
@@ -74,7 +75,7 @@ describe("R1 基础行军队列", () => {
       .post("/api/world/march")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", idempotencyKey)
-      .send({ target_tile_id: "ji_wild_road", march_type: "clear_wild" })
+      .send({ target_tile_id: targetTile.tile_id, march_type: "clear_wild" })
       .expect(201);
 
     expect(duplicate.body.data.march.march_id).toBe(response.body.data.march.march_id);
@@ -92,11 +93,18 @@ describe("R1 基础行军队列", () => {
   it("抵达后的队列显示为已抵达，且不阻塞下一次行军", async () => {
     const { token, playerId } = await createR1MarchPlayer(app, "抵达");
     await settleMainCity(app, token, "常山仙城");
+    const wildTile = await findMapTile(app, token, "ji", (tile) => tile.tile_type === "wild");
+    const resourceTile = await findMapTile(
+      app,
+      token,
+      "ji",
+      (tile) => tile.tile_type === "resource",
+    );
     const firstMarch = await request(app.getHttpServer())
       .post("/api/world/march")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_r1_march_arrive_${Date.now()}_${randomSuffix()}`)
-      .send({ target_tile_id: "ji_wild_road", march_type: "scout" })
+      .send({ target_tile_id: wildTile.tile_id, march_type: "scout" })
       .expect(201);
 
     await prisma.marchQueue.update({
@@ -121,10 +129,10 @@ describe("R1 基础行军队列", () => {
       .post("/api/world/march")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_r1_march_second_${Date.now()}_${randomSuffix()}`)
-      .send({ target_tile_id: "ji_resource_point", march_type: "occupy" })
+      .send({ target_tile_id: resourceTile.tile_id, march_type: "occupy" })
       .expect(201);
 
-    expect(secondMarch.body.data.march.target_tile_id).toBe("ji_resource_point");
+    expect(secondMarch.body.data.march.target_tile_id).toBe(resourceTile.tile_id);
     expect(secondMarch.body.data.march.status).toBe("marching");
 
     const marchCount = await prisma.marchQueue.count({ where: { playerId } });
@@ -134,22 +142,59 @@ describe("R1 基础行军队列", () => {
   it("R1 阶段不允许跨州行军或前往锁定州府", async () => {
     const { token } = await createR1MarchPlayer(app, "限制");
     await settleMainCity(app, token, "边郡仙城");
+    const yanTarget = await findMapTile(app, token, "yan", (tile) => tile.tile_type === "wild");
+    const capitalTarget = await findMapTile(
+      app,
+      token,
+      "ji",
+      (tile) => tile.tile_type === "capital",
+    );
 
     await request(app.getHttpServer())
       .post("/api/world/march")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_r1_march_cross_${Date.now()}_${randomSuffix()}`)
-      .send({ target_tile_id: "yan_wild_road", march_type: "scout" })
+      .send({ target_tile_id: yanTarget.tile_id, march_type: "scout" })
       .expect(400);
 
     await request(app.getHttpServer())
       .post("/api/world/march")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_r1_march_locked_${Date.now()}_${randomSuffix()}`)
-      .send({ target_tile_id: "ji_capital", march_type: "scout" })
+      .send({ target_tile_id: capitalTarget.tile_id, march_type: "scout" })
       .expect(400);
   });
 });
+
+interface TestMapTile {
+  tile_id: string;
+  tile_name: string;
+  commandery_id: string;
+  tile_type: string;
+  ownership: { owner_player_id: string | null };
+}
+
+async function findMapTile(
+  app: INestApplication,
+  token: string,
+  provinceId: string,
+  predicate: (tile: TestMapTile) => boolean,
+): Promise<TestMapTile> {
+  const map = await request(app.getHttpServer())
+    .get("/api/world/map")
+    .query({ province_id: provinceId, view: "detail" })
+    .set("Authorization", `Bearer ${token}`)
+    .expect(200);
+  const tile = (map.body.data.tiles as TestMapTile[]).find(
+    (item) => !item.ownership.owner_player_id && predicate(item),
+  );
+
+  if (!tile) {
+    throw new Error(`未找到 ${provinceId} 可用地块`);
+  }
+
+  return tile;
+}
 
 async function createR1MarchPlayer(
   app: INestApplication,

@@ -44,7 +44,7 @@ describe("game-client HTTP 客户端", () => {
     expect(idempotencyKey).toBe("idem_test");
   });
 
-  it("读取九州地图时按州域拼接查询参数", async () => {
+  it("读取九州地图时按州域和视图拼接查询参数", async () => {
     let requestedUrl = "";
     const client = new GameClient({
       baseUrl: "https://example.test",
@@ -62,8 +62,8 @@ describe("game-client HTTP 客户端", () => {
       },
     });
 
-    await client.worldMap("ji");
-    expect(requestedUrl).toBe("https://example.test/api/world/map?province_id=ji");
+    await client.worldMap("ji", "mini");
+    expect(requestedUrl).toBe("https://example.test/api/world/map?province_id=ji&view=mini");
   });
 
   it("九州城池写操作携带幂等键", async () => {
@@ -94,6 +94,7 @@ describe("game-client HTTP 客户端", () => {
       "idem_march",
     );
     await client.occupyWorld({ march_id: "march_1" }, "idem_occupy");
+    await client.purchaseWorldBlock({ tile_id: "ji_block_1_0" }, "idem_purchase");
 
     expect(calls).toEqual([
       {
@@ -110,6 +111,11 @@ describe("game-client HTTP 客户端", () => {
         body: { march_id: "march_1" },
         idempotencyKey: "idem_occupy",
         url: "https://example.test/api/world/occupy",
+      },
+      {
+        body: { tile_id: "ji_block_1_0" },
+        idempotencyKey: "idem_purchase",
+        url: "https://example.test/api/world/blocks/purchase",
       },
     ]);
   });

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import type {
   CityBirthOptionState,
@@ -19,7 +19,9 @@ import {
   type MapTileConfig,
   type WorldCommanderyConfig,
   type WorldProvinceConfig,
+  isBirthPlainTile,
   recommendedBirthProvinceId,
+  worldConfigVersion,
   worldProvinceConfigs,
   worldTileConfigs,
 } from "../world/world.constants";
@@ -65,8 +67,6 @@ export class CityService {
 
     const province = requireBirthProvince(normalizedBody.province_id);
     const commandery = requireBirthCommandery(province, normalizedBody.commandery_id);
-    const tile = requireBirthTile(province, commandery);
-
     return this.prisma.$transaction(async (tx) => {
       const player = await tx.player.findUnique({
         where: { accountId: input.accountId },
@@ -85,6 +85,12 @@ export class CityService {
         throw new BadRequestException("已经建立主城");
       }
 
+      const tile = await pickAvailableBirthTile(tx, {
+        commanderyId: commandery.commanderyId,
+        idempotencyKey: input.idempotencyKey,
+        playerId: player.playerId,
+        provinceId: province.provinceId,
+      });
       const protectionUntil =
         player.progress?.newbieProtectionUntil ??
         new Date(Date.now() + cityProtectionHours * 60 * 60 * 1000);
@@ -95,8 +101,8 @@ export class CityService {
           eraId: defaultEraId,
           cityType: "main",
           provinceId: province.provinceId,
-          commanderyId: commandery.commanderyId,
-          tileId: `${tile.tileId}_${player.playerId}`,
+          commanderyId: tile.commanderyId,
+          tileId: tile.tileId,
           cityName: normalizedBody.city_name ?? `${player.name}仙城`,
           cityLevel: 1,
           status: "protected",
@@ -104,6 +110,24 @@ export class CityService {
           ownerSectId: player.sectId,
           defenseSnapshot: initialCityDefense as unknown as Prisma.InputJsonValue,
           resourceSnapshot: initialCityResources as unknown as Prisma.InputJsonValue,
+        },
+      });
+      await tx.worldBlockOwnership.create({
+        data: {
+          ownershipId: `block_owner_${randomUUID()}`,
+          playerId: player.playerId,
+          eraId: defaultEraId,
+          tileId: tile.tileId,
+          provinceId: tile.provinceId,
+          commanderyId: tile.commanderyId,
+          terrainType: tile.terrainType,
+          ownershipType: "main_city",
+          status: "owned",
+          sourceType: "main_city",
+          sourceId: city.cityId,
+          purchaseCost: 0n,
+          idempotencyKey: `${input.idempotencyKey}:main_city_block`,
+          configVersion: worldConfigVersion,
         },
       });
       const overview = await this.buildOverview(player.playerId, tx);
@@ -173,7 +197,7 @@ export class CityService {
       birth_options: mainCity ? [] : buildBirthOptions(),
       strategic_hint: mainCity
         ? `${mainCity.cityName}已在${getProvinceName(mainCity.provinceId)}立稳根基，下一步可清理城外野地。`
-        : "先选择一个开放出生州建立主城，再从城外野地开始扩张。",
+        : "选择出生州后，系统会在该州安全平原随机划出一块无主区块建立主城。",
       config_version: cityConfigVersion,
     };
   }
@@ -229,7 +253,7 @@ function buildBirthOptions(): CityBirthOptionState[] {
       province.commanderies
         .filter((commandery) => commandery.birthAvailable)
         .map((commandery) => {
-          const tile = requireBirthTile(province, commandery);
+          const tile = getBirthOptionTile(province, commandery);
           const available = province.birthAvailable && commandery.birthAvailable;
 
           return {
@@ -238,7 +262,7 @@ function buildBirthOptions(): CityBirthOptionState[] {
             commandery_id: commandery.commanderyId,
             commandery_name: commandery.name,
             tile_id: tile.tileId,
-            tile_name: tile.tileName,
+            tile_name: `${province.name}安全平原随机建城`,
             available,
             recommended:
               province.provinceId === recommendedBirthProvinceId || commandery.recommendedBirth,
@@ -304,7 +328,7 @@ function requireCommandery(
   return commandery;
 }
 
-function requireBirthTile(
+function getBirthOptionTile(
   province: WorldProvinceConfig,
   commandery: WorldCommanderyConfig,
 ): MapTileConfig {
@@ -312,14 +336,64 @@ function requireBirthTile(
     (item) =>
       item.provinceId === province.provinceId &&
       item.commanderyId === commandery.commanderyId &&
-      item.tileType === "main_city",
+      isBirthPlainTile(item),
   );
 
   if (!tile) {
-    throw new BadRequestException("出生地块配置缺失");
+    throw new BadRequestException("安全平原出生池配置缺失");
   }
 
   return tile;
+}
+
+async function pickAvailableBirthTile(
+  tx: Prisma.TransactionClient,
+  input: {
+    provinceId: string;
+    commanderyId: string;
+    playerId: string;
+    idempotencyKey: string;
+  },
+): Promise<MapTileConfig> {
+  const candidates = worldTileConfigs.filter(
+    (tile) =>
+      tile.provinceId === input.provinceId &&
+      tile.commanderyId === input.commanderyId &&
+      isBirthPlainTile(tile),
+  );
+  const provinceCandidates = worldTileConfigs.filter(
+    (tile) => tile.provinceId === input.provinceId && isBirthPlainTile(tile),
+  );
+
+  if (provinceCandidates.length === 0) {
+    throw new BadRequestException("该州暂无可用安全平原");
+  }
+
+  const existingOwners = await tx.worldBlockOwnership.findMany({
+    where: {
+      eraId: defaultEraId,
+      tileId: { in: provinceCandidates.map((tile) => tile.tileId) },
+      status: "owned",
+    },
+    select: { tileId: true },
+  });
+  const ownedTileIds = new Set(existingOwners.map((owner) => owner.tileId));
+  const availableTiles =
+    candidates.filter((tile) => !ownedTileIds.has(tile.tileId)).length > 0
+      ? candidates.filter((tile) => !ownedTileIds.has(tile.tileId))
+      : provinceCandidates.filter((tile) => !ownedTileIds.has(tile.tileId));
+
+  if (availableTiles.length === 0) {
+    throw new BadRequestException("该州安全平原已被占满，请选择其他出生州");
+  }
+
+  const seed = stableNumber(`${input.playerId}:${input.provinceId}:${input.idempotencyKey}`);
+  return availableTiles[seed % availableTiles.length];
+}
+
+function stableNumber(value: string): number {
+  const hex = createHash("sha256").update(value).digest("hex").slice(0, 8);
+  return Number.parseInt(hex, 16);
 }
 
 function getProvinceName(provinceId: string): string {

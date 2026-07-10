@@ -26,7 +26,7 @@ describe("R1 出生州选择与主城建立", () => {
     await app.close();
   });
 
-  it("新角色建城前能看到开放出生州和推荐出生点", async () => {
+  it("新角色建城前能看到九州出生选项和推荐出生州", async () => {
     const { token } = await createR1CityPlayer(app, "候选");
 
     const overview = await request(app.getHttpServer())
@@ -35,20 +35,21 @@ describe("R1 出生州选择与主城建立", () => {
       .expect(200);
 
     expect(overview.body.data.main_city).toBeNull();
-    expect(overview.body.data.birth_options).toHaveLength(4);
+    expect(overview.body.data.birth_options).toHaveLength(9);
     expect(
       overview.body.data.birth_options.map((option: { province_id: string }) => option.province_id),
-    ).toEqual(["ji", "yan", "qing", "xu"]);
+    ).toEqual(["ji", "yan", "qing", "xu", "yang", "jing", "yu", "liang", "yong"]);
     expect(overview.body.data.birth_options[0]).toMatchObject({
       province_id: "ji",
       available: true,
       recommended: true,
     });
-    expect(overview.body.data.strategic_hint).toContain("建立主城");
+    expect(overview.body.data.birth_options[0].tile_name).toContain("安全平原随机建城");
+    expect(overview.body.data.strategic_hint).toContain("安全平原");
   });
 
   it("玩家可以在出生州建立主城，重复幂等请求不会创建第二座主城", async () => {
-    const { token } = await createR1CityPlayer(app, "主城");
+    const { token, playerId } = await createR1CityPlayer(app, "主城");
     const idempotencyKey = `idem_r1_city_settle_${Date.now()}_${randomSuffix()}`;
 
     const settle = await request(app.getHttpServer())
@@ -67,7 +68,7 @@ describe("R1 出生州选择与主城建立", () => {
       city_level: 1,
       status: "protected",
     });
-    expect(settle.body.data.city.tile_id).toContain("ji_birth_land");
+    expect(settle.body.data.city.tile_id).toMatch(/^ji_block_/);
     expect(settle.body.data.city.protection_until).not.toBeNull();
     expect(settle.body.data.city.resources).toMatchObject({
       spirit_stone: "800",
@@ -93,16 +94,32 @@ describe("R1 出生州选择与主城建立", () => {
 
     expect(overview.body.data.main_city.city_id).toBe(settle.body.data.city.city_id);
     expect(overview.body.data.strategic_hint).toContain("城外野地");
+
+    const map = await request(app.getHttpServer())
+      .get("/api/world/map")
+      .query({ province_id: "ji", view: "detail" })
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    const cityTile = map.body.data.tiles.find(
+      (tile: { tile_id: string }) => tile.tile_id === settle.body.data.city.tile_id,
+    );
+    expect(cityTile).toBeTruthy();
+    expect(cityTile).toMatchObject({
+      terrain_type: "plain",
+      danger_level: 1,
+      ownership: { owner_player_id: playerId },
+    });
+    expect(cityTile?.ownership.ownership_type).toBe("main_city");
   });
 
-  it("未开放州域不能建立主城，已有主城不能再次建立", async () => {
+  it("同州出生不会分到同一区块，已有主城不能再次建立", async () => {
     const locked = await createR1CityPlayer(app, "锁州");
 
     await request(app.getHttpServer())
       .post("/api/city/settle")
       .set("Authorization", `Bearer ${locked.token}`)
       .set("Idempotency-Key", `idem_r1_city_locked_${Date.now()}_${randomSuffix()}`)
-      .send({ province_id: "yong", city_name: "太初城" })
+      .send({ province_id: "you", city_name: "太初城" })
       .expect(400);
 
     const settled = await createR1CityPlayer(app, "重复");
@@ -120,6 +137,23 @@ describe("R1 出生州选择与主城建立", () => {
       .set("Idempotency-Key", `idem_r1_city_twice_${Date.now()}_${randomSuffix()}`)
       .send({ province_id: "qing", city_name: "潮生仙城" })
       .expect(400);
+
+    const first = await createR1CityPlayer(app, "同州甲");
+    const second = await createR1CityPlayer(app, "同州乙");
+    const firstSettle = await request(app.getHttpServer())
+      .post("/api/city/settle")
+      .set("Authorization", `Bearer ${first.token}`)
+      .set("Idempotency-Key", `idem_r1_city_same_a_${Date.now()}_${randomSuffix()}`)
+      .send({ province_id: "ji", city_name: "同州甲城" })
+      .expect(201);
+    const secondSettle = await request(app.getHttpServer())
+      .post("/api/city/settle")
+      .set("Authorization", `Bearer ${second.token}`)
+      .set("Idempotency-Key", `idem_r1_city_same_b_${Date.now()}_${randomSuffix()}`)
+      .send({ province_id: "ji", city_name: "同州乙城" })
+      .expect(201);
+
+    expect(secondSettle.body.data.city.tile_id).not.toBe(firstSettle.body.data.city.tile_id);
   });
 });
 

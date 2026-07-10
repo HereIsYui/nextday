@@ -106,6 +106,7 @@ model Player {
   cities                    PlayerCity[]
   marchQueues               MarchQueue[]
   territoryOccupations      TerritoryOccupation[]
+  worldBlockOwnerships      WorldBlockOwnership[]
 
   @@index([accountId])
   @@index([sectId])
@@ -211,6 +212,37 @@ model TerritoryOccupation {
   @@index([status])
   @@index([occupiedAt])
   @@map("territory_occupation")
+}
+
+model WorldBlockOwnership {
+  ownershipId      String   @id @map("ownership_id")
+  playerId         String   @map("player_id")
+  eraId            String   @default("era_mvp_001") @map("era_id")
+  tileId           String   @map("tile_id")
+  provinceId       String   @map("province_id")
+  commanderyId     String   @map("commandery_id")
+  terrainType      String   @map("terrain_type")
+  ownershipType    String   @map("ownership_type")
+  status           String   @default("owned")
+  sourceType       String   @map("source_type")
+  sourceId         String?  @map("source_id")
+  purchaseCost     BigInt   @default(0) @map("purchase_cost")
+  idempotencyKey   String?  @unique @map("idempotency_key")
+  configVersion    String   @map("config_version")
+  ownedAt          DateTime @default(now()) @map("owned_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@unique([eraId, tileId])
+  @@index([playerId])
+  @@index([eraId])
+  @@index([provinceId, commanderyId])
+  @@index([terrainType])
+  @@index([ownershipType])
+  @@index([status])
+  @@index([ownedAt])
+  @@map("world_block_ownership")
 }
 
 model PlayerProgress {

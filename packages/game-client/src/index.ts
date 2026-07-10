@@ -134,6 +134,8 @@ import type {
   PublishAdminConfigResponse,
   PurchaseMonthlyCardRequest,
   PurchaseMonthlyCardResponse,
+  PurchaseWorldBlockRequest,
+  PurchaseWorldBlockResponse,
   PvpAttackRequest,
   PvpBattleResponse,
   RankListResponse,
@@ -195,6 +197,7 @@ import type {
   WorldBossChallengeResponse,
   WorldBossResponse,
   WorldMapResponse,
+  WorldMapView,
   WorldMarchListResponse,
   WorldProvinceListResponse,
 } from "@nextday/shared";
@@ -432,10 +435,13 @@ export class GameClient {
     return this.get<WorldProvinceListResponse>("/api/world/provinces");
   }
 
-  worldMap(provinceId?: string): Promise<ApiResponse<WorldMapResponse>> {
+  worldMap(provinceId?: string, view?: WorldMapView): Promise<ApiResponse<WorldMapResponse>> {
     const params = new URLSearchParams();
     if (provinceId) {
       params.set("province_id", provinceId);
+    }
+    if (view) {
+      params.set("view", view);
     }
     const query = params.toString();
     return this.get<WorldMapResponse>(`/api/world/map${query ? `?${query}` : ""}`);
@@ -474,6 +480,17 @@ export class GameClient {
     return this.post<OccupyWorldResponse, OccupyWorldRequest>("/api/world/occupy", body, {
       idempotencyKey,
     });
+  }
+
+  purchaseWorldBlock(
+    body: PurchaseWorldBlockRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<PurchaseWorldBlockResponse>> {
+    return this.post<PurchaseWorldBlockResponse, PurchaseWorldBlockRequest>(
+      "/api/world/blocks/purchase",
+      body,
+      { idempotencyKey },
+    );
   }
 
   battles(

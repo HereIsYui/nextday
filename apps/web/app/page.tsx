@@ -71,6 +71,7 @@ import type {
   TransferStatusResponse,
   WorldBossResponse,
   WorldMapResponse,
+  WorldMapView,
   WorldMarchListResponse,
   WorldProvinceListResponse,
 } from "@nextday/shared";
@@ -385,6 +386,7 @@ export default function HomePage() {
   const [cityOverview, setCityOverview] = useState<CityOverviewResponse | null>(null);
   const [worldMarches, setWorldMarches] = useState<WorldMarchListResponse | null>(null);
   const [selectedWorldProvinceId, setSelectedWorldProvinceId] = useState("");
+  const [worldMapView, setWorldMapView] = useState<WorldMapView>("mini");
   const [worldCityName, setWorldCityName] = useState("");
   const [exploreCount, setExploreCount] = useState(5);
   const [selectedTowerId, setSelectedTowerId] = useState("");
@@ -439,6 +441,7 @@ export default function HomePage() {
     worldBirthOptions.find((option) => option.available && option.recommended) ??
     worldBirthOptions.find((option) => option.available);
   const worldTiles = worldMap?.tiles ?? [];
+  const worldTilesToShow = worldTiles.slice(0, worldMapView === "mini" ? 48 : 60);
   const occupiableWorldTiles = worldTiles.filter(
     (tile) => tile.occupiable && tile.controllable && !tile.protected,
   );
@@ -949,7 +952,7 @@ export default function HomePage() {
     }
 
     let ignore = false;
-    loadWorldState(createClient(token), selectedWorldProvinceId || undefined)
+    loadWorldState(createClient(token), selectedWorldProvinceId || undefined, worldMapView)
       .then((state) => {
         if (ignore) {
           return;
@@ -971,7 +974,7 @@ export default function HomePage() {
     return () => {
       ignore = true;
     };
-  }, [token, activePlayerId, selectedWorldProvinceId]);
+  }, [token, activePlayerId, selectedWorldProvinceId, worldMapView]);
 
   useEffect(() => {
     if (!token || !activePlayerId) {
@@ -1453,6 +1456,7 @@ export default function HomePage() {
     const state = await loadWorldState(
       createClient(token),
       provinceId || selectedWorldProvinceId || undefined,
+      worldMapView,
     );
     setWorldProvinceList(state.provinces);
     setCityOverview(state.city);
@@ -1555,6 +1559,45 @@ export default function HomePage() {
         tone: "success",
       });
       await refreshWorldState(`已占领${response.data.occupation.tile_name}`);
+    });
+  }
+
+  async function handlePurchaseWorldBlock(tile: MapTileState) {
+    if (!worldMainCity) {
+      setMessage("请先建立主城");
+      return;
+    }
+
+    if (!tile.purchase_state.purchasable) {
+      setMessage(tile.purchase_state.reason);
+      return;
+    }
+
+    await runAction("购买区块", async () => {
+      const response = await client.purchaseWorldBlock(
+        { tile_id: tile.tile_id },
+        createIdempotencyKey(`web_world_block_purchase_${tile.tile_id}`),
+      );
+      ensureOk(response);
+      setWorldMap(response.data.map);
+      setProfile((previous) =>
+        previous ? { ...previous, wallet: response.data.wallet } : previous,
+      );
+      setOverview((previous) =>
+        previous
+          ? { ...previous, profile: { ...previous.profile, wallet: response.data.wallet } }
+          : previous,
+      );
+      rememberExperience(undefined, {
+        summary: `${response.data.tile.tile_name}已归入领地，花费灵石 ${tile.purchase_state.cost_spirit_stone}。`,
+        tags: ["领地", "购买区块"],
+        title: "购买区块",
+        tone: "success",
+      });
+      await refreshWorldState(
+        `已购买${response.data.tile.tile_name}`,
+        response.data.tile.province_id,
+      );
     });
   }
 
@@ -3298,8 +3341,8 @@ export default function HomePage() {
                               <StatusBadge
                                 tone={occupiableWorldTiles.length ? "success" : "neutral"}
                               >
-                                {occupiableWorldTiles.length
-                                  ? `${occupiableWorldTiles.length} 处可扩张`
+                                {worldMap?.block_count
+                                  ? `${worldMap.block_count} 区块`
                                   : "等待版图"}
                               </StatusBadge>
                             </div>
@@ -3315,29 +3358,58 @@ export default function HomePage() {
                                 >
                                   {worldProvinces.map((province) => (
                                     <option key={province.province_id} value={province.province_id}>
-                                      {province.name} · {province.map_focus}
+                                      {province.name} · {province.block_count} 区块
                                     </option>
                                   ))}
                                 </select>
                               </label>
+                              <label>
+                                <span>地图视图</span>
+                                <select
+                                  disabled={busy}
+                                  onChange={(event) =>
+                                    setWorldMapView(event.target.value as WorldMapView)
+                                  }
+                                  value={worldMapView}
+                                >
+                                  <option value="mini">小地图势力分布</option>
+                                  <option value="detail">大地图区块详情</option>
+                                </select>
+                              </label>
                             </div>
                             {worldMap ? (
-                              <div className="mini-stats">
-                                <span>赛季 {worldMap.province.war_state.season_name}</span>
-                                <span>州势 {worldMap.province.war_state.score}</span>
-                                <span>
-                                  灵脉{" "}
-                                  {Math.round(
-                                    worldMap.province.war_state.spirit_vein_control_rate * 100,
+                              <>
+                                <div className="mini-stats">
+                                  <span>赛季 {worldMap.province.war_state.season_name}</span>
+                                  <span>州势 {worldMap.province.war_state.score}</span>
+                                  <span>
+                                    灵脉{" "}
+                                    {Math.round(
+                                      worldMap.province.war_state.spirit_vein_control_rate * 100,
+                                    )}
+                                    %
+                                  </span>
+                                  <span>九塔 {worldMap.mini_map_summary.tower_blocks} 格</span>
+                                  <span>我的 {worldMap.mini_map_summary.my_blocks} 格</span>
+                                  <span>无主 {worldMap.mini_map_summary.neutral_blocks} 格</span>
+                                </div>
+                                <div className="world-map-summary">
+                                  <span>州府 {worldMap.mini_map_summary.capital_blocks} 格</span>
+                                  <span>关隘 {worldMap.mini_map_summary.pass_blocks} 格</span>
+                                  <span>争夺 {worldMap.mini_map_summary.contested_blocks} 格</span>
+                                  {Object.entries(worldMap.mini_map_summary.terrain_counts).map(
+                                    ([terrain, count]) => (
+                                      <span key={terrain}>
+                                        {worldTerrainLabel(terrain)} {count}
+                                      </span>
+                                    ),
                                   )}
-                                  %
-                                </span>
-                                <span>可见 {worldMap.visible_tile_count}</span>
-                              </div>
+                                </div>
+                              </>
                             ) : null}
                             <div className="world-map-grid">
-                              {worldTiles.length ? (
-                                worldTiles.slice(0, 12).map((tile) => {
+                              {worldTilesToShow.length ? (
+                                worldTilesToShow.map((tile) => {
                                   const marchType = worldTilePreferredMarchType(tile);
                                   return (
                                     <article className="world-tile-card" key={tile.tile_id}>
@@ -3346,7 +3418,8 @@ export default function HomePage() {
                                           <strong>{tile.tile_name}</strong>
                                           <span>
                                             {tile.commandery_name} ·{" "}
-                                            {worldTileTypeLabel(tile.tile_type)}
+                                            {worldTileTypeLabel(tile.tile_type)} ·{" "}
+                                            {tile.terrain_label} · {tile.x},{tile.y}
                                           </span>
                                         </div>
                                         <StatusBadge tone={tile.occupiable ? "success" : "neutral"}>
@@ -3357,29 +3430,52 @@ export default function HomePage() {
                                       <div className="mini-stats">
                                         <span>危险 {tile.danger_level}</span>
                                         <span>{formatRemainingSeconds(tile.travel_seconds)}</span>
+                                        <span>灵石 {tile.purchase_state.cost_spirit_stone}</span>
                                         {tile.labels.slice(0, 2).map((label) => (
                                           <span key={label}>{label}</span>
                                         ))}
                                       </div>
-                                      {tile.owner.owner_player_name ? (
+                                      <div className="world-terrain-effects">
+                                        {tile.terrain_effects.slice(0, 4).map((effect) => (
+                                          <span key={effect}>{effect}</span>
+                                        ))}
+                                      </div>
+                                      {tile.owner.owner_player_name ||
+                                      tile.owner.owner_province_name ? (
                                         <span className="action-note">
-                                          归属 {tile.owner.owner_player_name}
+                                          归属{" "}
+                                          {tile.owner.owner_player_name ??
+                                            tile.owner.owner_province_name}
                                         </span>
                                       ) : null}
                                       <div className="production-actions">
                                         {!worldMainCity ? (
                                           <span className="action-note">先建立主城</span>
-                                        ) : tile.controllable && marchType ? (
-                                          <Button
-                                            disabled={busy || marchingWorldMarches.length > 0}
-                                            onClick={() => handleStartWorldMarch(tile, marchType)}
-                                          >
-                                            {worldMarchTypeLabel(marchType)}
-                                          </Button>
                                         ) : (
-                                          <span className="action-note">
-                                            {tile.protected ? "处于保护" : "暂不可派队"}
-                                          </span>
+                                          <>
+                                            {tile.purchase_state.purchasable ? (
+                                              <Button
+                                                disabled={busy}
+                                                onClick={() => handlePurchaseWorldBlock(tile)}
+                                              >
+                                                购买区块
+                                              </Button>
+                                            ) : (
+                                              <span className="action-note">
+                                                {tile.purchase_state.reason}
+                                              </span>
+                                            )}
+                                            {tile.controllable && marchType ? (
+                                              <Button
+                                                disabled={busy || marchingWorldMarches.length > 0}
+                                                onClick={() =>
+                                                  handleStartWorldMarch(tile, marchType)
+                                                }
+                                              >
+                                                {worldMarchTypeLabel(marchType)}
+                                              </Button>
+                                            ) : null}
+                                          </>
                                         )}
                                       </div>
                                     </article>
@@ -3389,6 +3485,12 @@ export default function HomePage() {
                                 <span className="action-note">地图状态同步中</span>
                               )}
                             </div>
+                            {worldTiles.length > worldTilesToShow.length ? (
+                              <span className="action-note">
+                                当前显示前 {worldTilesToShow.length}{" "}
+                                个区块；切换州域或大地图查看更多细节。
+                              </span>
+                            ) : null}
                             <ActionFeedbackInline
                               feedback={actionFeedbackFor("world-map")}
                               onViewDetails={handleViewActionFeedbackDetails}
@@ -7907,7 +8009,11 @@ async function loadGame(client: GameClient, token: string) {
   };
 }
 
-async function loadWorldState(client: GameClient, provinceId?: string) {
+async function loadWorldState(
+  client: GameClient,
+  provinceId?: string,
+  view: WorldMapView = "mini",
+) {
   const [provinceResponse, cityResponse, marchResponse] = await Promise.all([
     client.worldProvinces(),
     client.cityOverview(),
@@ -7923,7 +8029,7 @@ async function loadWorldState(client: GameClient, provinceId?: string) {
     provinceResponse.data.recommended_province_id ||
     provinceResponse.data.provinces[0]?.province_id ||
     "";
-  const mapResponse = await client.worldMap(selectedProvinceId || undefined);
+  const mapResponse = await client.worldMap(selectedProvinceId || undefined, view);
   ensureOk(mapResponse);
 
   return {
@@ -8233,8 +8339,25 @@ function worldTileStatusLabel(status: MapTileState["status"]): string {
   return labels[status] ?? "状态同步中";
 }
 
+function worldTerrainLabel(type: string): string {
+  const labels: Record<string, string> = {
+    desert: "沙漠",
+    forest: "森林",
+    mountain: "山地",
+    plain: "平原",
+    swamp: "沼泽",
+  };
+  return labels[type] ?? "地形";
+}
+
 function worldTilePreferredMarchType(tile: MapTileState): MarchType | null {
   if (!tile.controllable || tile.protected || tile.status === "locked") {
+    return null;
+  }
+  if (tile.ownership.owner_player_id || tile.owner.owner_player_id) {
+    return null;
+  }
+  if (tile.owner.owner_province_id) {
     return null;
   }
   if (tile.status === "wild" || tile.tile_type === "wild" || tile.owner.owner_player_id === null) {

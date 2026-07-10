@@ -3786,7 +3786,7 @@ details.event-boundary {
 .text-game-shell .world-map-grid {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   min-width: 0;
 }
 
@@ -3803,6 +3803,24 @@ details.event-boundary {
   color: #333333;
   font-size: 13px;
   line-height: 1.45;
+}
+
+.text-game-shell .world-map-summary,
+.text-game-shell .world-terrain-effects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.text-game-shell .world-map-summary span,
+.text-game-shell .world-terrain-effects span {
+  border: 1px solid #dddddd;
+  color: #333333;
+  font-size: 12px;
+  line-height: 1.35;
+  padding: 3px 6px;
+  white-space: nowrap;
 }
 
 .text-game-shell .world-march-row {

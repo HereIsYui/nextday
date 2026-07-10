@@ -1,12 +1,19 @@
-import type { TerritoryNodeStatus, TerritoryNodeType, WorldTileType } from "@nextday/shared";
+import type {
+  TerritoryNodeStatus,
+  TerritoryNodeType,
+  WorldTerrainType,
+  WorldTileType,
+} from "@nextday/shared";
 import { provinceConfigs } from "../game/game.constants";
 
-export const worldConfigVersion = "world_city_era_r1_001";
+export const worldConfigVersion = "world_city_era_r1_05_3600";
 export const worldSeasonId = "season_city_era_001";
 export const worldSeasonName = "九州城池纪元先遣季";
 export const recommendedBirthProvinceId = "ji";
+export const worldTotalBlockCount = 3600;
+export const towerBlockCountPerProvince = 16;
 
-const birthProvinceIds = new Set(["ji", "yan", "qing", "xu"]);
+const birthProvinceIds = new Set(provinceConfigs.map((province) => province.provinceId));
 
 const commanderyNameMap: Record<string, [string, string, string]> = {
   ji: ["常山郡", "北河郡", "玄铁郡"],
@@ -56,6 +63,90 @@ const capitalNameMap: Record<string, string> = {
   yong: "雍州府",
 };
 
+export interface ProvinceBlockPlan {
+  provinceId: string;
+  blockCount: number;
+  width: number;
+  height: number;
+  role: string;
+  terrainWeights: Record<WorldTerrainType, number>;
+}
+
+export const provinceBlockPlans: ProvinceBlockPlan[] = [
+  {
+    blockCount: 360,
+    height: 20,
+    provinceId: "ji",
+    role: "新手、北境、城防教学",
+    terrainWeights: { desert: 6, forest: 18, mountain: 22, plain: 42, swamp: 12 },
+    width: 18,
+  },
+  {
+    blockCount: 260,
+    height: 20,
+    provinceId: "yan",
+    role: "宗门、礼法、协防",
+    terrainWeights: { desert: 6, forest: 20, mountain: 12, plain: 48, swamp: 14 },
+    width: 13,
+  },
+  {
+    blockCount: 280,
+    height: 20,
+    provinceId: "qing",
+    role: "潮汐、水脉、丹材",
+    terrainWeights: { desert: 5, forest: 20, mountain: 10, plain: 30, swamp: 35 },
+    width: 14,
+  },
+  {
+    blockCount: 300,
+    height: 20,
+    provinceId: "xu",
+    role: "古战场、前线争夺",
+    terrainWeights: { desert: 20, forest: 10, mountain: 24, plain: 34, swamp: 12 },
+    width: 15,
+  },
+  {
+    blockCount: 420,
+    height: 21,
+    provinceId: "yang",
+    role: "商路、水网、资源流通",
+    terrainWeights: { desert: 5, forest: 28, mountain: 8, plain: 30, swamp: 29 },
+    width: 20,
+  },
+  {
+    blockCount: 520,
+    height: 26,
+    provinceId: "jing",
+    role: "泽林、灵植、秘境",
+    terrainWeights: { desert: 4, forest: 38, mountain: 14, plain: 20, swamp: 24 },
+    width: 20,
+  },
+  {
+    blockCount: 300,
+    height: 20,
+    provinceId: "yu",
+    role: "九州中枢、州府密集",
+    terrainWeights: { desert: 6, forest: 18, mountain: 10, plain: 52, swamp: 14 },
+    width: 15,
+  },
+  {
+    blockCount: 560,
+    height: 28,
+    provinceId: "liang",
+    role: "山川地脉、矿脉防御",
+    terrainWeights: { desert: 14, forest: 14, mountain: 52, plain: 12, swamp: 8 },
+    width: 20,
+  },
+  {
+    blockCount: 600,
+    height: 30,
+    provinceId: "yong",
+    role: "古都圣迹、终局资源",
+    terrainWeights: { desert: 34, forest: 8, mountain: 34, plain: 18, swamp: 6 },
+    width: 20,
+  },
+];
+
 export interface WorldCommanderyConfig {
   commanderyId: string;
   provinceId: string;
@@ -88,6 +179,10 @@ export interface MapTileConfig {
   provinceId: string;
   commanderyId: string;
   tileType: WorldTileType;
+  terrainType: WorldTerrainType;
+  terrainLabel: string;
+  terrainEffects: string[];
+  landmarkGroupId: string | null;
   tileName: string;
   x: number;
   y: number;
@@ -100,6 +195,7 @@ export interface MapTileConfig {
   labels: string[];
   stateSummary: string;
   ownerProvinceId: string | null;
+  purchaseBaseCost: number;
   nodes: TerritoryNodeConfig[];
 }
 
@@ -113,6 +209,9 @@ export interface WorldProvinceConfig {
   congestion: "low" | "medium" | "high";
   seasonState: "preseason" | "active" | "settling";
   mapFocus: string;
+  blockCount: number;
+  towerBlockCount: number;
+  role: string;
   commanderies: WorldCommanderyConfig[];
   warScore: number;
   warRank: number;
@@ -125,304 +224,496 @@ export interface WorldProvinceConfig {
 
 export const worldProvinceConfigs: WorldProvinceConfig[] = provinceConfigs.map(
   (province, provinceIndex) => {
+    const plan = requireProvinceBlockPlan(province.provinceId);
     const birthAvailable = birthProvinceIds.has(province.provinceId);
     const commanderyNames = commanderyNameMap[province.provinceId];
     const terrains = terrainMap[province.provinceId];
 
     return {
-      provinceId: province.provinceId,
-      name: province.name,
-      theme: province.theme,
-      towerName: province.towerName,
       birthAvailable,
-      recommendedBirth: province.provinceId === recommendedBirthProvinceId,
-      congestion: provinceIndex < 2 ? "low" : provinceIndex < 4 ? "medium" : "high",
-      seasonState: "preseason",
-      mapFocus: `${province.name}以${province.resources.join("、")}为核心资源，适合作为城池扩张的第一层地图。`,
+      blockCount: plan.blockCount,
+      cityOccupancyRate: Math.max(0.18, 0.42 - provinceIndex * 0.025),
       commanderies: commanderyNames.map((name, commanderyIndex) => ({
-        commanderyId: `${province.provinceId}_commandery_${commanderyIndex + 1}`,
-        provinceId: province.provinceId,
-        name,
-        terrain: terrains[commanderyIndex],
         birthAvailable: birthAvailable && commanderyIndex === 0,
+        commanderyId: `${province.provinceId}_commandery_${commanderyIndex + 1}`,
+        congestion: commanderyIndex === 0 ? "low" : commanderyIndex === 1 ? "medium" : "high",
+        name,
+        provinceId: province.provinceId,
         recommendedBirth:
           province.provinceId === recommendedBirthProvinceId && commanderyIndex === 0,
-        congestion: commanderyIndex === 0 ? "low" : commanderyIndex === 1 ? "medium" : "high",
         resourceTheme: province.resources,
         safetyLevel: Math.max(1, 5 - commanderyIndex - Math.floor(provinceIndex / 3)),
+        terrain: terrains[commanderyIndex],
       })),
-      warScore: 1200 - provinceIndex * 65,
-      warRank: provinceIndex + 1,
-      cityOccupancyRate: Math.max(0.18, 0.42 - provinceIndex * 0.025),
-      spiritVeinControlRate: Math.max(0.16, 0.38 - provinceIndex * 0.02),
-      passControlCount: provinceIndex < 4 ? 1 : 0,
-      towerState: provinceIndex < 2 ? "stable" : provinceIndex < 6 ? "contested" : "sealed",
+      congestion: provinceIndex < 2 ? "low" : provinceIndex < 4 ? "medium" : "high",
       dominantSectName: provinceIndex < 4 ? `${province.name}同盟` : null,
+      mapFocus: `${province.name}拥有 ${plan.blockCount} 个区块，${plan.role}，九塔占据 4×4 战略区域。`,
+      name: province.name,
+      passControlCount: provinceIndex < 4 ? 1 : 0,
+      provinceId: province.provinceId,
+      recommendedBirth: province.provinceId === recommendedBirthProvinceId,
+      role: plan.role,
+      seasonState: "preseason",
+      spiritVeinControlRate: Math.max(0.16, 0.38 - provinceIndex * 0.02),
+      theme: province.theme,
+      towerBlockCount: towerBlockCountPerProvince,
+      towerName: province.towerName,
+      towerState: provinceIndex < 2 ? "stable" : provinceIndex < 6 ? "contested" : "sealed",
+      warRank: provinceIndex + 1,
+      warScore: 1200 - provinceIndex * 65,
     };
   },
 );
 
 export const worldTileConfigs: MapTileConfig[] = worldProvinceConfigs.flatMap(
-  (province, provinceIndex) => {
-    const [birthCommandery, resourceCommandery, strategicCommandery] = province.commanderies;
-    const xOffset = provinceIndex * 8;
-    const resourceNodeType = getResourceNodeType(province.provinceId);
-
-    return [
-      {
-        tileId: `${province.provinceId}_birth_land`,
-        provinceId: province.provinceId,
-        commanderyId: birthCommandery.commanderyId,
-        tileType: "main_city",
-        tileName: `${birthCommandery.name}新手城址`,
-        x: xOffset,
-        y: 0,
-        status: "protected",
-        controllable: false,
-        occupiable: false,
-        protected: true,
-        dangerLevel: 1,
-        travelSeconds: 0,
-        labels: ["出生地", "主城保护"],
-        stateSummary: province.birthAvailable
-          ? "可在此建立主城，主城不会被永久夺走。"
-          : "本季暂不开放出生，可作为后续争夺区观察。",
-        ownerProvinceId: province.provinceId,
-        nodes: [
-          createNode({
-            province,
-            tileId: `${province.provinceId}_birth_land`,
-            nodeType: "main_city",
-            nodeName: `${province.name}主城基址`,
-            level: 1,
-            status: "protected",
-            occupiable: false,
-            contestable: false,
-            protected: true,
-            productionSummary: "提供城主府、仓库和新手恢复路径。",
-            defenseSummary: "主城保护生效，不会永久易主。",
-          }),
-        ],
-      },
-      {
-        tileId: `${province.provinceId}_wild_road`,
-        provinceId: province.provinceId,
-        commanderyId: birthCommandery.commanderyId,
-        tileType: "wild",
-        tileName: `${birthCommandery.name}荒野外缘`,
-        x: xOffset + 1,
-        y: 1,
-        status: "wild",
-        controllable: true,
-        occupiable: true,
-        protected: false,
-        dangerLevel: 2 + Math.floor(provinceIndex / 3),
-        travelSeconds: 120 + provinceIndex * 15,
-        labels: ["清野", "低风险"],
-        stateSummary: "适合第一支队伍清理妖兽，占下后形成城外缓冲地。",
-        ownerProvinceId: null,
-        nodes: [
-          createNode({
-            province,
-            tileId: `${province.provinceId}_wild_road`,
-            nodeType: "vein",
-            nodeName: `${province.name}外缘灵脉`,
-            level: 1,
-            status: "idle",
-            occupiable: true,
-            contestable: true,
-            protected: false,
-            productionSummary: "提供少量灵石与州望。",
-            defenseSummary: "只有野怪镜像驻守。",
-            ownerProvinceId: null,
-          }),
-        ],
-      },
-      {
-        tileId: `${province.provinceId}_resource_point`,
-        provinceId: province.provinceId,
-        commanderyId: resourceCommandery.commanderyId,
-        tileType: "resource",
-        tileName: `${resourceCommandery.name}${province.commanderies[0].resourceTheme[0]}产地`,
-        x: xOffset + 2,
-        y: 2,
-        status: "occupied",
-        controllable: true,
-        occupiable: true,
-        protected: false,
-        dangerLevel: 3 + Math.floor(provinceIndex / 2),
-        travelSeconds: 240 + provinceIndex * 20,
-        labels: ["资源点", "可易主"],
-        stateSummary: "资源点会产生持续收益，后续可被其他玩家或宗门夺取。",
-        ownerProvinceId: province.provinceId,
-        nodes: [
-          createNode({
-            province,
-            tileId: `${province.provinceId}_resource_point`,
-            nodeType: resourceNodeType,
-            nodeName: `${province.name}${getResourceNodeName(resourceNodeType)}`,
-            level: 2,
-            status: "occupied",
-            occupiable: true,
-            contestable: true,
-            protected: false,
-            productionSummary: `稳定产出${province.commanderies[0].resourceTheme.slice(0, 2).join("、")}。`,
-            defenseSummary: "有州内守军驻防，适合宗门协防教学。",
-          }),
-        ],
-      },
-      {
-        tileId: `${province.provinceId}_border_pass`,
-        provinceId: province.provinceId,
-        commanderyId: strategicCommandery.commanderyId,
-        tileType: "pass",
-        tileName: passNameMap[province.provinceId],
-        x: xOffset + 3,
-        y: 1,
-        status: province.passControlCount > 0 ? "occupied" : "contested",
-        controllable: true,
-        occupiable: true,
-        protected: false,
-        dangerLevel: 5 + Math.floor(provinceIndex / 2),
-        travelSeconds: 420 + provinceIndex * 30,
-        labels: ["关隘", "州战路线"],
-        stateSummary: "关隘决定行军线路和州战入口，是宗门集结的天然目标。",
-        ownerProvinceId: province.passControlCount > 0 ? province.provinceId : null,
-        nodes: [
-          createNode({
-            province,
-            tileId: `${province.provinceId}_border_pass`,
-            nodeType: "pass",
-            nodeName: passNameMap[province.provinceId],
-            level: 3,
-            status: province.passControlCount > 0 ? "occupied" : "contested",
-            occupiable: true,
-            contestable: true,
-            protected: false,
-            productionSummary: "控制后影响跨郡和跨州行军效率。",
-            defenseSummary: "需要宗门或州盟组织驻防。",
-            ownerProvinceId: province.passControlCount > 0 ? province.provinceId : null,
-          }),
-        ],
-      },
-      {
-        tileId: `${province.provinceId}_capital`,
-        provinceId: province.provinceId,
-        commanderyId: strategicCommandery.commanderyId,
-        tileType: "capital",
-        tileName: capitalNameMap[province.provinceId],
-        x: xOffset + 4,
-        y: 3,
-        status: "locked",
-        controllable: true,
-        occupiable: true,
-        protected: true,
-        dangerLevel: 7 + Math.floor(provinceIndex / 2),
-        travelSeconds: 600 + provinceIndex * 35,
-        labels: ["州府", "赛季目标"],
-        stateSummary: "州府是赛季治理核心，当前只开放地图预览，后续接入周结争夺。",
-        ownerProvinceId: province.provinceId,
-        nodes: [
-          createNode({
-            province,
-            tileId: `${province.provinceId}_capital`,
-            nodeType: "capital",
-            nodeName: capitalNameMap[province.provinceId],
-            level: 4,
-            status: "locked",
-            occupiable: true,
-            contestable: true,
-            protected: true,
-            productionSummary: "影响州内治理、税收和州战积分。",
-            defenseSummary: "需要州盟级别集结，R1 只读展示。",
-          }),
-        ],
-      },
-      {
-        tileId: `${province.provinceId}_tower_wonder`,
-        provinceId: province.provinceId,
-        commanderyId: strategicCommandery.commanderyId,
-        tileType: "tower",
-        tileName: province.towerName,
-        x: xOffset + 5,
-        y: 2,
-        status: province.towerState === "contested" ? "contested" : "occupied",
-        controllable: true,
-        occupiable: true,
-        protected: false,
-        dangerLevel: 6 + Math.floor(provinceIndex / 2),
-        travelSeconds: 520 + provinceIndex * 30,
-        labels: ["九塔奇观", "州级增益"],
-        stateSummary: "九塔从日课目标降级为州级奇观，控制状态会影响后续战略效果。",
-        ownerProvinceId: province.towerState === "contested" ? null : province.provinceId,
-        nodes: [
-          createNode({
-            province,
-            tileId: `${province.provinceId}_tower_wonder`,
-            nodeType: "tower",
-            nodeName: province.towerName,
-            level: 4,
-            status: province.towerState === "contested" ? "contested" : "occupied",
-            occupiable: true,
-            contestable: true,
-            protected: false,
-            productionSummary: "控制后可影响本州灵脉、魔潮和赛季叙事。",
-            defenseSummary: "适合宗门长期镇守。",
-            ownerProvinceId: province.towerState === "contested" ? null : province.provinceId,
-          }),
-        ],
-      },
-    ];
-  },
+  (province, provinceIndex) => generateProvinceTiles(province, provinceIndex),
 );
+
+if (worldTileConfigs.length !== worldTotalBlockCount) {
+  throw new Error(`九州区块总数配置错误：${worldTileConfigs.length}/${worldTotalBlockCount}`);
+}
+
+export function getTerrainLabel(terrainType: WorldTerrainType): string {
+  const labels: Record<WorldTerrainType, string> = {
+    desert: "沙漠",
+    forest: "森林",
+    mountain: "山地",
+    plain: "平原",
+    swamp: "沼泽",
+  };
+  return labels[terrainType];
+}
+
+export function getTerrainEffects(terrainType: WorldTerrainType): string[] {
+  const effects: Record<WorldTerrainType, string[]> = {
+    desert: ["阵砂", "火晶", "遗迹碎片", "商路风险收益"],
+    forest: ["灵木", "兽材", "药草", "驻防隐蔽"],
+    mountain: ["灵石矿", "矿材", "炼器材料", "城防材料"],
+    plain: ["主城扩建", "建筑位", "仓储", "粮草承载"],
+    swamp: ["灵草", "泽晶", "水脉材料", "行军减速"],
+  };
+  return effects[terrainType];
+}
+
+export function isBirthPlainTile(tile: MapTileConfig): boolean {
+  return (
+    tile.terrainType === "plain" &&
+    tile.tileType === "wild" &&
+    tile.dangerLevel <= 1 &&
+    tile.ownerProvinceId === null &&
+    !tile.landmarkGroupId
+  );
+}
+
+export function getWorldTilesByProvince(provinceId: string): MapTileConfig[] {
+  return worldTileConfigs.filter((tile) => tile.provinceId === provinceId);
+}
+
+export function findWorldTile(tileId: string): MapTileConfig | undefined {
+  return worldTileConfigs.find((tile) => tile.tileId === tileId);
+}
+
+export function areAdjacentWorldTiles(left: MapTileConfig, right: MapTileConfig): boolean {
+  if (left.provinceId !== right.provinceId) {
+    return false;
+  }
+
+  return Math.abs(left.x - right.x) + Math.abs(left.y - right.y) === 1;
+}
+
+export function worldBlockTileId(provinceId: string, x: number, y: number): string {
+  return blockTileId(provinceId, x, y);
+}
+
+function generateProvinceTiles(province: WorldProvinceConfig, provinceIndex: number) {
+  const plan = requireProvinceBlockPlan(province.provinceId);
+  const towerOrigin = {
+    x: Math.max(2, Math.floor(plan.width * 0.66) - 2),
+    y: Math.max(2, Math.floor(plan.height * 0.48) - 2),
+  };
+  const capitalOrigin = {
+    x: Math.max(1, Math.floor(plan.width * 0.5) - 1),
+    y: Math.max(1, Math.floor(plan.height * 0.5) + 3),
+  };
+  const passY = Math.max(1, Math.floor(plan.height * 0.32));
+
+  return Array.from({ length: plan.blockCount }, (_, index): MapTileConfig => {
+    const x = index % plan.width;
+    const y = Math.floor(index / plan.width);
+    const commandery = province.commanderies[getCommanderyIndex(x, plan.width)];
+    const isTower = inRect(x, y, towerOrigin.x, towerOrigin.y, 4, 4);
+    const isCapital = inRect(x, y, capitalOrigin.x, capitalOrigin.y, 2, 2);
+    const isPass = !isTower && !isCapital && (x === 0 || x === plan.width - 1) && y === passY;
+    const terrainType = chooseTerrain(province.provinceId, plan, x, y, index);
+    const strategic = buildStrategicTileConfig({
+      capitalName: capitalNameMap[province.provinceId],
+      commanderyId: commandery.commanderyId,
+      isCapital,
+      isPass,
+      isTower,
+      passName: passNameMap[province.provinceId],
+      province,
+      provinceIndex,
+      terrainType,
+      towerName: province.towerName,
+      x,
+      y,
+    });
+
+    if (strategic) {
+      return strategic;
+    }
+
+    const dangerLevel = getBaseDangerLevel(provinceIndex, terrainType, x, y, plan);
+    const tileId = blockTileId(province.provinceId, x, y);
+    const nodeType = getResourceNodeType(terrainType);
+
+    return {
+      commanderyId: commandery.commanderyId,
+      controllable: true,
+      dangerLevel,
+      labels: [getTerrainLabel(terrainType), dangerLevel <= 1 ? "安全出生池" : "可购买"],
+      landmarkGroupId: null,
+      nodes: [
+        createNode({
+          defenseSummary: dangerLevel <= 1 ? "仅有零散野兽，不影响新手建城。" : "有野怪镜像驻守。",
+          nodeName: `${province.name}${getResourceNodeName(nodeType, terrainType)}`,
+          nodeType,
+          occupiable: true,
+          ownerProvinceId: null,
+          productionSummary: terrainProductionSummary(terrainType),
+          protected: false,
+          province,
+          status: "idle",
+          tileId,
+        }),
+      ],
+      occupiable: true,
+      ownerProvinceId: null,
+      protected: false,
+      provinceId: province.provinceId,
+      purchaseBaseCost: getPurchaseBaseCost(terrainType, dangerLevel),
+      stateSummary:
+        dangerLevel <= 1
+          ? `${getTerrainLabel(terrainType)}安全区块，可作为随机主城出生池。`
+          : `${getTerrainLabel(terrainType)}区块，${terrainProductionSummary(terrainType)}。`,
+      status: "wild",
+      terrainEffects: getTerrainEffects(terrainType),
+      terrainLabel: getTerrainLabel(terrainType),
+      terrainType,
+      tileId,
+      tileName: `${commandery.name}${getTerrainLabel(terrainType)} ${x + 1}-${y + 1}`,
+      tileType: terrainType === "plain" ? "wild" : "resource",
+      travelSeconds: getTravelSeconds(terrainType, dangerLevel, provinceIndex),
+      x,
+      y,
+    };
+  });
+}
+
+function buildStrategicTileConfig(input: {
+  capitalName: string;
+  commanderyId: string;
+  isCapital: boolean;
+  isPass: boolean;
+  isTower: boolean;
+  passName: string;
+  province: WorldProvinceConfig;
+  provinceIndex: number;
+  terrainType: WorldTerrainType;
+  towerName: string;
+  x: number;
+  y: number;
+}): MapTileConfig | null {
+  const tileId = blockTileId(input.province.provinceId, input.x, input.y);
+
+  if (input.isTower) {
+    const contested = input.province.towerState === "contested";
+    return createStrategicTile({
+      commanderyId: input.commanderyId,
+      dangerLevel: 6 + Math.floor(input.provinceIndex / 2),
+      labels: ["九塔奇观", "4×4", getTerrainLabel(input.terrainType)],
+      landmarkGroupId: `${input.province.provinceId}_tower`,
+      nodeName: input.towerName,
+      nodeType: "tower",
+      ownerProvinceId: contested ? null : input.province.provinceId,
+      province: input.province,
+      purchaseBaseCost: 0,
+      stateSummary: `${input.towerName}占据 4×4 战略区块，后续影响州级增益与魔潮压力。`,
+      status: contested ? "contested" : "occupied",
+      terrainType: input.terrainType,
+      tileId,
+      tileName: `${input.towerName}塔域 ${input.x + 1}-${input.y + 1}`,
+      tileType: "tower",
+      travelSeconds: 520 + input.provinceIndex * 30,
+      x: input.x,
+      y: input.y,
+    });
+  }
+
+  if (input.isCapital) {
+    return createStrategicTile({
+      commanderyId: input.commanderyId,
+      dangerLevel: 7 + Math.floor(input.provinceIndex / 2),
+      labels: ["州府", "赛季目标", getTerrainLabel(input.terrainType)],
+      landmarkGroupId: `${input.province.provinceId}_capital`,
+      nodeName: input.capitalName,
+      nodeType: "capital",
+      ownerProvinceId: input.province.provinceId,
+      province: input.province,
+      protected: true,
+      purchaseBaseCost: 0,
+      stateSummary: "州府是赛季治理核心，当前只开放地图预览，后续接入周结争夺。",
+      status: "locked",
+      terrainType: input.terrainType,
+      tileId,
+      tileName: `${input.capitalName}城区 ${input.x + 1}-${input.y + 1}`,
+      tileType: "capital",
+      travelSeconds: 600 + input.provinceIndex * 35,
+      x: input.x,
+      y: input.y,
+    });
+  }
+
+  if (input.isPass) {
+    const occupied = input.province.passControlCount > 0;
+    return createStrategicTile({
+      commanderyId: input.commanderyId,
+      dangerLevel: 5 + Math.floor(input.provinceIndex / 2),
+      labels: ["关隘", "州战路线", getTerrainLabel(input.terrainType)],
+      landmarkGroupId: `${input.province.provinceId}_pass`,
+      nodeName: input.passName,
+      nodeType: "pass",
+      ownerProvinceId: occupied ? input.province.provinceId : null,
+      province: input.province,
+      purchaseBaseCost: 0,
+      stateSummary: "关隘决定行军线路和州战入口，是宗门集结的天然目标。",
+      status: occupied ? "occupied" : "contested",
+      terrainType: input.terrainType,
+      tileId,
+      tileName: `${input.passName} ${input.x + 1}-${input.y + 1}`,
+      tileType: "pass",
+      travelSeconds: 420 + input.provinceIndex * 30,
+      x: input.x,
+      y: input.y,
+    });
+  }
+
+  return null;
+}
+
+function createStrategicTile(input: {
+  commanderyId: string;
+  dangerLevel: number;
+  labels: string[];
+  landmarkGroupId: string;
+  nodeName: string;
+  nodeType: TerritoryNodeType;
+  ownerProvinceId: string | null;
+  province: WorldProvinceConfig;
+  protected?: boolean;
+  purchaseBaseCost: number;
+  stateSummary: string;
+  status: MapTileConfig["status"];
+  terrainType: WorldTerrainType;
+  tileId: string;
+  tileName: string;
+  tileType: WorldTileType;
+  travelSeconds: number;
+  x: number;
+  y: number;
+}): MapTileConfig {
+  return {
+    commanderyId: input.commanderyId,
+    controllable: true,
+    dangerLevel: input.dangerLevel,
+    labels: input.labels,
+    landmarkGroupId: input.landmarkGroupId,
+    nodes: [
+      createNode({
+        defenseSummary: "需要宗门或州盟组织驻防。",
+        nodeName: input.nodeName,
+        nodeType: input.nodeType,
+        occupiable: input.tileType !== "capital",
+        ownerProvinceId: input.ownerProvinceId,
+        productionSummary:
+          input.tileType === "tower"
+            ? "控制后影响本州灵脉、魔潮和赛季叙事。"
+            : "控制后影响州内治理、税收和行军效率。",
+        protected: input.protected ?? false,
+        province: input.province,
+        status:
+          input.status === "locked"
+            ? "locked"
+            : input.status === "contested"
+              ? "contested"
+              : "occupied",
+        tileId: input.tileId,
+      }),
+    ],
+    occupiable: input.tileType !== "capital",
+    ownerProvinceId: input.ownerProvinceId,
+    protected: input.protected ?? false,
+    provinceId: input.province.provinceId,
+    purchaseBaseCost: input.purchaseBaseCost,
+    stateSummary: input.stateSummary,
+    status: input.status,
+    terrainEffects: getTerrainEffects(input.terrainType),
+    terrainLabel: getTerrainLabel(input.terrainType),
+    terrainType: input.terrainType,
+    tileId: input.tileId,
+    tileName: input.tileName,
+    tileType: input.tileType,
+    travelSeconds: input.travelSeconds,
+    x: input.x,
+    y: input.y,
+  };
+}
 
 function createNode(input: {
   province: WorldProvinceConfig;
   tileId: string;
   nodeType: TerritoryNodeType;
   nodeName: string;
-  level: number;
   status: TerritoryNodeStatus;
   occupiable: boolean;
-  contestable: boolean;
   protected: boolean;
   productionSummary: string;
   defenseSummary: string;
   ownerProvinceId?: string | null;
 }): TerritoryNodeConfig {
   return {
-    nodeId: `${input.tileId}_${input.nodeType}`,
-    tileId: input.tileId,
-    nodeType: input.nodeType,
-    nodeName: input.nodeName,
-    level: input.level,
-    status: input.status,
-    occupiable: input.occupiable,
-    contestable: input.contestable,
-    protected: input.protected,
-    productionSummary: input.productionSummary,
+    contestable: !input.protected,
     defenseSummary: input.defenseSummary,
+    level: getNodeLevel(input.nodeType),
+    nodeId: `${input.tileId}_${input.nodeType}`,
+    nodeName: input.nodeName,
+    nodeType: input.nodeType,
+    occupiable: input.occupiable,
     ownerProvinceId: input.ownerProvinceId ?? input.province.provinceId,
+    productionSummary: input.productionSummary,
+    protected: input.protected,
+    status: input.status,
+    tileId: input.tileId,
   };
 }
 
-function getResourceNodeType(provinceId: string): TerritoryNodeType {
-  if (provinceId === "ji" || provinceId === "liang") {
-    return "mine";
+function chooseTerrain(
+  provinceId: string,
+  plan: ProvinceBlockPlan,
+  x: number,
+  y: number,
+  index: number,
+): WorldTerrainType {
+  if (isBirthPlainCoordinate(x, y, plan)) {
+    return "plain";
   }
 
-  if (provinceId === "yang") {
-    return "forest";
-  }
-
-  if (provinceId === "qing" || provinceId === "jing") {
-    return "farm";
-  }
-
-  return "vein";
+  const weightedTerrains = Object.entries(plan.terrainWeights).flatMap(([terrain, weight]) =>
+    Array.from({ length: weight }, () => terrain as WorldTerrainType),
+  );
+  const hash = stableHash(`${provinceId}:${x}:${y}:${index}`);
+  return weightedTerrains[hash % weightedTerrains.length] ?? "plain";
 }
 
-function getResourceNodeName(nodeType: TerritoryNodeType): string {
+function getBaseDangerLevel(
+  provinceIndex: number,
+  terrainType: WorldTerrainType,
+  x: number,
+  y: number,
+  plan: ProvinceBlockPlan,
+): number {
+  if (isBirthPlainCoordinate(x, y, plan)) {
+    return 1;
+  }
+
+  const distanceScore = Math.floor(
+    (x + y) / Math.max(4, Math.floor((plan.width + plan.height) / 8)),
+  );
+  const terrainRisk: Record<WorldTerrainType, number> = {
+    desert: 2,
+    forest: 1,
+    mountain: 2,
+    plain: 0,
+    swamp: 2,
+  };
+  return Math.min(8, 2 + Math.floor(provinceIndex / 3) + distanceScore + terrainRisk[terrainType]);
+}
+
+function isBirthPlainCoordinate(x: number, y: number, plan: ProvinceBlockPlan): boolean {
+  return (
+    x < Math.max(5, Math.floor(plan.width * 0.5)) && y < Math.max(4, Math.floor(plan.height * 0.5))
+  );
+}
+
+function getCommanderyIndex(x: number, width: number): 0 | 1 | 2 {
+  const ratio = x / width;
+  if (ratio < 1 / 3) {
+    return 0;
+  }
+  if (ratio < 2 / 3) {
+    return 1;
+  }
+  return 2;
+}
+
+function inRect(x: number, y: number, left: number, top: number, width: number, height: number) {
+  return x >= left && x < left + width && y >= top && y < top + height;
+}
+
+function blockTileId(provinceId: string, x: number, y: number): string {
+  return `${provinceId}_block_${x}_${y}`;
+}
+
+function getPurchaseBaseCost(terrainType: WorldTerrainType, dangerLevel: number): number {
+  const terrainCost: Record<WorldTerrainType, number> = {
+    desert: 180,
+    forest: 160,
+    mountain: 220,
+    plain: 120,
+    swamp: 170,
+  };
+  return terrainCost[terrainType] + dangerLevel * 20;
+}
+
+function getTravelSeconds(
+  terrainType: WorldTerrainType,
+  dangerLevel: number,
+  provinceIndex: number,
+): number {
+  const terrainSeconds: Record<WorldTerrainType, number> = {
+    desert: 150,
+    forest: 130,
+    mountain: 180,
+    plain: 100,
+    swamp: 210,
+  };
+  return terrainSeconds[terrainType] + dangerLevel * 20 + provinceIndex * 8;
+}
+
+function getResourceNodeType(terrainType: WorldTerrainType): TerritoryNodeType {
+  switch (terrainType) {
+    case "forest":
+      return "forest";
+    case "mountain":
+      return "mine";
+    case "plain":
+      return "farm";
+    case "swamp":
+      return "farm";
+    default:
+      return "vein";
+  }
+}
+
+function getResourceNodeName(nodeType: TerritoryNodeType, terrainType: WorldTerrainType): string {
+  if (terrainType === "desert") {
+    return "阵砂遗迹";
+  }
+  if (terrainType === "swamp") {
+    return "泽灵草甸";
+  }
+
   switch (nodeType) {
     case "farm":
       return "灵田";
@@ -433,4 +724,45 @@ function getResourceNodeName(nodeType: TerritoryNodeType): string {
     default:
       return "灵脉泉";
   }
+}
+
+function terrainProductionSummary(terrainType: WorldTerrainType): string {
+  const summaries: Record<WorldTerrainType, string> = {
+    desert: "产出阵砂、火晶和遗迹碎片",
+    forest: "产出灵木、兽材和药草",
+    mountain: "产出玄铁、青曜、赤霞、白玉、紫晶等灵石矿",
+    plain: "提供主城扩建空间、粮草和建筑承载",
+    swamp: "产出灵草、泽晶和水脉材料",
+  };
+  return summaries[terrainType];
+}
+
+function getNodeLevel(nodeType: TerritoryNodeType): number {
+  if (nodeType === "tower" || nodeType === "capital") {
+    return 4;
+  }
+  if (nodeType === "pass") {
+    return 3;
+  }
+  return 1;
+}
+
+function stableHash(input: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function requireProvinceBlockPlan(provinceId: string): ProvinceBlockPlan {
+  const plan = provinceBlockPlans.find((item) => item.provinceId === provinceId);
+  if (!plan) {
+    throw new Error(`缺少州区块规划：${provinceId}`);
+  }
+  if (plan.width * plan.height !== plan.blockCount) {
+    throw new Error(`州区块规划尺寸错误：${provinceId}`);
+  }
+  return plan;
 }

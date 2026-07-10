@@ -8,6 +8,8 @@ import type {
   OccupyWorldRequest,
   OccupyWorldResponse,
   ProvinceWarState,
+  PurchaseWorldBlockRequest,
+  PurchaseWorldBlockResponse,
   StartWorldMarchRequest,
   StartWorldMarchResponse,
   TerritoryDefenseSnapshot,
@@ -16,14 +18,24 @@ import type {
   TerritoryOccupationStatus,
   TerritoryOccupationType,
   TerritoryProductionSnapshot,
+  WalletSnapshot,
   WorldCommanderyState,
   WorldMapResponse,
+  WorldMapView,
   WorldMarchListResponse,
+  WorldMiniMapSummary,
   WorldOwnerState,
   WorldProvinceListResponse,
   WorldProvinceState,
 } from "@nextday/shared";
-import type { MarchQueue, Player, PlayerCity, Prisma, TerritoryOccupation } from "@prisma/client";
+import type {
+  MarchQueue,
+  Player,
+  PlayerCity,
+  Prisma,
+  TerritoryOccupation,
+  WorldBlockOwnership,
+} from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
 import { defaultEraId } from "../game/game.constants";
 import { hashRequestBody } from "../platform/utils/hash";
@@ -32,12 +44,16 @@ import {
   type TerritoryNodeConfig,
   type WorldCommanderyConfig,
   type WorldProvinceConfig,
+  areAdjacentWorldTiles,
+  findWorldTile,
+  getWorldTilesByProvince,
+  isBirthPlainTile,
   recommendedBirthProvinceId,
   worldConfigVersion,
   worldProvinceConfigs,
   worldSeasonId,
   worldSeasonName,
-  worldTileConfigs,
+  type worldTileConfigs,
 } from "./world.constants";
 
 const marchConfigVersion = "world_march_r1_001";
@@ -46,6 +62,7 @@ const validMarchTypes = new Set<MarchType>(["scout", "clear_wild", "occupy", "re
 const occupationMarchTypes = new Set<MarchType>(["clear_wild", "occupy"]);
 
 type OccupationWithPlayer = TerritoryOccupation & { player: Player };
+type WorldBlockOwnershipWithPlayer = WorldBlockOwnership & { player: Player };
 
 @Injectable()
 export class WorldService {
@@ -241,17 +258,14 @@ export class WorldService {
       }
 
       const targetTile = requireOccupationTarget(march.targetTileId);
-      const existingOccupation = await tx.territoryOccupation.findUnique({
-        where: {
-          playerId_tileId: {
-            playerId: player.playerId,
-            tileId: targetTile.tileId,
-          },
-        },
+      const existingBlockOwner = await tx.worldBlockOwnership.findUnique({
+        where: { eraId_tileId: { eraId: defaultEraId, tileId: targetTile.tileId } },
       });
 
-      if (existingOccupation) {
-        throw new BadRequestException("你已经占领该地块");
+      if (existingBlockOwner) {
+        throw new BadRequestException(
+          existingBlockOwner.playerId === player.playerId ? "你已经拥有该区块" : "该区块已有归属",
+        );
       }
 
       const now = new Date();
@@ -278,6 +292,24 @@ export class WorldService {
           configVersion: occupationConfigVersion,
         },
       });
+      await tx.worldBlockOwnership.create({
+        data: {
+          ownershipId: `block_owner_${randomUUID()}`,
+          playerId: player.playerId,
+          eraId: defaultEraId,
+          tileId: targetTile.tileId,
+          provinceId: targetTile.provinceId,
+          commanderyId: targetTile.commanderyId,
+          terrainType: targetTile.terrainType,
+          ownershipType: "occupation",
+          status: "owned",
+          sourceType: "occupation",
+          sourceId: occupation.occupationId,
+          purchaseCost: 0n,
+          idempotencyKey: `${input.idempotencyKey}:block_ownership`,
+          configVersion: worldConfigVersion,
+        },
+      });
       const updatedMarch = await tx.marchQueue.update({
         where: { marchId: march.marchId },
         data: { status: "resolved", resolvedAt: now },
@@ -298,14 +330,20 @@ export class WorldService {
         },
         include: { player: true },
       });
+      const ownerships = await tx.worldBlockOwnership.findMany({
+        where: { eraId: defaultEraId, provinceId: targetTile.provinceId, status: "owned" },
+        include: { player: true },
+      });
       const responseData: OccupyWorldResponse = {
         record_id: `occupy_${randomUUID()}`,
         occupation: this.toOccupationState({ ...occupation, player }),
         march: this.toMarchState(updatedMarch, sourceCity),
         map: this.buildMapResponse({
           occupations,
+          ownerships,
           playerId: player.playerId,
           provinceId: targetTile.provinceId,
+          view: "detail",
         }),
       };
 
@@ -340,7 +378,192 @@ export class WorldService {
     });
   }
 
-  async getMap(input: { accountId?: string; provinceId?: string }): Promise<WorldMapResponse> {
+  async purchaseBlock(input: {
+    accountId: string;
+    body: PurchaseWorldBlockRequest;
+    idempotencyKey: string;
+    endpoint: string;
+  }): Promise<PurchaseWorldBlockResponse> {
+    const normalizedBody = normalizePurchaseWorldBlockBody(input.body);
+    const requestHash = hashRequestBody(normalizedBody);
+    const existingRecord = await this.prisma.idempotencyRecord.findUnique({
+      where: { idempotencyKey: input.idempotencyKey },
+    });
+
+    if (existingRecord) {
+      if (
+        existingRecord.accountId !== input.accountId ||
+        existingRecord.endpoint !== input.endpoint ||
+        existingRecord.requestHash !== requestHash
+      ) {
+        throw new BadRequestException("幂等键已被其他请求使用");
+      }
+
+      return existingRecord.responseData as unknown as PurchaseWorldBlockResponse;
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const player = await tx.player.findUnique({
+        where: { accountId: input.accountId },
+      });
+
+      if (!player) {
+        throw new BadRequestException("请先创建角色");
+      }
+
+      const city = await tx.playerCity.findFirst({
+        where: { playerId: player.playerId, cityType: "main" },
+        orderBy: { createdAt: "asc" },
+      });
+
+      if (!city) {
+        throw new BadRequestException("请先建立主城");
+      }
+
+      const targetTile = requireMapTile(normalizedBody.tile_id);
+      if (targetTile.provinceId !== city.provinceId) {
+        throw new BadRequestException("R1 阶段暂不开放跨州购买区块");
+      }
+      assertPurchasableTile(targetTile);
+
+      const existingOwner = await tx.worldBlockOwnership.findUnique({
+        where: { eraId_tileId: { eraId: defaultEraId, tileId: targetTile.tileId } },
+      });
+      if (existingOwner) {
+        throw new BadRequestException(
+          existingOwner.playerId === player.playerId ? "你已经拥有该区块" : "该区块已有归属",
+        );
+      }
+
+      const myOwnerships = await tx.worldBlockOwnership.findMany({
+        where: { playerId: player.playerId, eraId: defaultEraId, status: "owned" },
+      });
+      const adjacentOwned = myOwnerships.some((ownership) => {
+        const ownedTile = findWorldTile(ownership.tileId);
+        return ownedTile ? areAdjacentWorldTiles(ownedTile, targetTile) : false;
+      });
+
+      if (!adjacentOwned) {
+        throw new BadRequestException("只能购买与已有领地相邻的无主区块");
+      }
+
+      const cost = BigInt(targetTile.purchaseBaseCost);
+      const wallet = await tx.playerWallet.findUniqueOrThrow({
+        where: { playerId: player.playerId },
+      });
+      if (wallet.spiritStone < cost) {
+        throw new BadRequestException("灵石不足，无法购买区块");
+      }
+
+      await tx.playerWallet.update({
+        where: { playerId: player.playerId },
+        data: { spiritStone: { decrement: cost } },
+      });
+      await tx.walletLog.create({
+        data: {
+          logId: `wallet_${randomUUID()}`,
+          playerId: player.playerId,
+          currencyType: "spirit_stone",
+          changeAmount: -cost,
+          beforeAmount: wallet.spiritStone,
+          afterAmount: wallet.spiritStone - cost,
+          sourceType: "world_block_purchase",
+          sourceId: targetTile.tileId,
+          idempotencyKey: `${input.idempotencyKey}:spirit_stone`,
+        },
+      });
+
+      const ownership = await tx.worldBlockOwnership.create({
+        data: {
+          ownershipId: `block_owner_${randomUUID()}`,
+          playerId: player.playerId,
+          eraId: defaultEraId,
+          tileId: targetTile.tileId,
+          provinceId: targetTile.provinceId,
+          commanderyId: targetTile.commanderyId,
+          terrainType: targetTile.terrainType,
+          ownershipType: "purchase",
+          status: "owned",
+          sourceType: "purchase",
+          sourceId: targetTile.tileId,
+          purchaseCost: cost,
+          idempotencyKey: input.idempotencyKey,
+          configVersion: worldConfigVersion,
+        },
+        include: { player: true },
+      });
+      const [ownerships, occupations, updatedWallet] = await Promise.all([
+        tx.worldBlockOwnership.findMany({
+          where: { eraId: defaultEraId, provinceId: targetTile.provinceId, status: "owned" },
+          include: { player: true },
+        }),
+        tx.territoryOccupation.findMany({
+          where: {
+            playerId: player.playerId,
+            provinceId: targetTile.provinceId,
+            status: "occupied",
+          },
+          include: { player: true },
+        }),
+        tx.playerWallet.findUniqueOrThrow({ where: { playerId: player.playerId } }),
+      ]);
+      const map = this.buildMapResponse({
+        occupations,
+        ownerships,
+        playerId: player.playerId,
+        provinceId: targetTile.provinceId,
+        view: "detail",
+      });
+      const responseData: PurchaseWorldBlockResponse = {
+        record_id: `purchase_block_${randomUUID()}`,
+        tile:
+          map.tiles.find((tile) => tile.tile_id === ownership.tileId) ??
+          this.toMapTileState(
+            targetTile,
+            ownership,
+            null,
+            mapPurchaseContext(ownerships, player.playerId),
+          ),
+        map,
+        wallet: this.toWalletSnapshot(updatedWallet),
+      };
+
+      await tx.auditLog.create({
+        data: {
+          auditLogId: `audit_${randomUUID()}`,
+          accountId: input.accountId,
+          playerId: player.playerId,
+          action: "world_block_purchase",
+          targetType: "map_tile",
+          targetId: targetTile.tileId,
+          afterSnapshot: responseData.tile as unknown as Prisma.InputJsonValue,
+          reason: "九州城池纪元购买相邻区块",
+          idempotencyKey: input.idempotencyKey,
+          configVersion: worldConfigVersion,
+        },
+      });
+
+      await tx.idempotencyRecord.create({
+        data: {
+          idempotencyKey: input.idempotencyKey,
+          accountId: input.accountId,
+          endpoint: input.endpoint,
+          requestHash,
+          responseData: responseData as unknown as Prisma.InputJsonValue,
+          statusCode: 200,
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        },
+      });
+
+      return responseData;
+    });
+  }
+
+  async getMap(input: {
+    accountId?: string;
+    provinceId?: string;
+    view?: WorldMapView;
+  }): Promise<WorldMapResponse> {
     const provinceId = input.provinceId?.trim() || recommendedBirthProvinceId;
     const province = worldProvinceConfigs.find((item) => item.provinceId === provinceId);
 
@@ -357,18 +580,26 @@ export class WorldService {
           include: { player: true },
         })
       : [];
+    const ownerships = await this.prisma.worldBlockOwnership.findMany({
+      where: { eraId: defaultEraId, provinceId, status: "owned" },
+      include: { player: true },
+    });
 
     return this.buildMapResponse({
       occupations,
+      ownerships,
       playerId: player?.playerId ?? null,
       provinceId,
+      view: normalizeWorldMapView(input.view),
     });
   }
 
   private buildMapResponse(input: {
     occupations: OccupationWithPlayer[];
+    ownerships: WorldBlockOwnershipWithPlayer[];
     playerId: string | null;
     provinceId: string;
+    view: WorldMapView;
   }): WorldMapResponse {
     const province = worldProvinceConfigs.find((item) => item.provinceId === input.provinceId);
 
@@ -379,26 +610,45 @@ export class WorldService {
     const occupationMap = new Map(
       input.occupations.map((occupation) => [occupation.tileId, occupation]),
     );
-    const tiles = worldTileConfigs
-      .filter((tile) => tile.provinceId === province.provinceId)
-      .map((tile) => this.toMapTileState(tile, occupationMap.get(tile.tileId) ?? null));
+    const ownershipMap = new Map(
+      input.ownerships.map((ownership) => [ownership.tileId, ownership]),
+    );
+    const purchaseContext = mapPurchaseContext(input.ownerships, input.playerId);
+    const provinceTiles = getWorldTilesByProvince(province.provinceId);
+    const tiles = provinceTiles.map((tile) =>
+      this.toMapTileState(
+        tile,
+        ownershipMap.get(tile.tileId) ?? null,
+        occupationMap.get(tile.tileId) ?? null,
+        purchaseContext,
+      ),
+    );
+    const miniMapSummary = buildMiniMapSummary({
+      ownerships: input.ownerships,
+      playerId: input.playerId,
+      province,
+      tiles: provinceTiles,
+    });
 
     return {
+      view: input.view,
       province: this.toProvinceState(province),
       commanderies: province.commanderies.map((commandery) =>
         this.toCommanderyState(
           commandery,
-          worldTileConfigs.filter((tile) => tile.commanderyId === commandery.commanderyId).length,
+          provinceTiles.filter((tile) => tile.commanderyId === commandery.commanderyId).length,
         ),
       ),
       tiles,
+      block_count: provinceTiles.length,
+      mini_map_summary: miniMapSummary,
       visible_tile_count: tiles.filter((tile) => tile.visibility === "visible").length,
       occupiable_tile_count: tiles.filter((tile) => tile.occupiable).length,
       my_occupations: input.occupations
         .filter((occupation) => occupation.playerId === input.playerId)
         .map((occupation) => this.toOccupationState(occupation)),
       player_city_hint: province.birthAvailable
-        ? `${province.name}已开放出生，后续可在新手城址建立主城。`
+        ? `${province.name}已开放出生，系统会从安全平原无主区块中随机建立主城。`
         : `${province.name}暂不开放出生，可先作为州战目标预览。`,
       config_version: worldConfigVersion,
     };
@@ -415,10 +665,16 @@ export class WorldService {
       congestion: province.congestion,
       season_state: province.seasonState,
       map_focus: province.mapFocus,
+      block_count: province.blockCount,
+      tower_block_count: province.towerBlockCount,
+      birth_plain_count: getWorldTilesByProvince(province.provinceId).filter(isBirthPlainTile)
+        .length,
       commanderies: province.commanderies.map((commandery) =>
         this.toCommanderyState(
           commandery,
-          worldTileConfigs.filter((tile) => tile.commanderyId === commandery.commanderyId).length,
+          getWorldTilesByProvince(province.provinceId).filter(
+            (tile) => tile.commanderyId === commandery.commanderyId,
+          ).length,
         ),
       ),
       war_state: this.toProvinceWarState(province),
@@ -440,6 +696,9 @@ export class WorldService {
       resource_theme: commandery.resourceTheme,
       safety_level: commandery.safetyLevel,
       tile_count: tileCount,
+      birth_plain_count: getWorldTilesByProvince(commandery.provinceId).filter(
+        (tile) => tile.commanderyId === commandery.commanderyId && isBirthPlainTile(tile),
+      ).length,
     };
   }
 
@@ -463,7 +722,9 @@ export class WorldService {
 
   private toMapTileState(
     tile: (typeof worldTileConfigs)[number],
+    ownership: WorldBlockOwnershipWithPlayer | null = null,
     occupation: OccupationWithPlayer | null = null,
+    purchaseContext: PurchaseContext = emptyPurchaseContext,
   ): MapTileState {
     const province = this.requireProvince(tile.provinceId);
     const commandery = province.commanderies.find(
@@ -481,11 +742,15 @@ export class WorldService {
       commandery_id: commandery.commanderyId,
       commandery_name: commandery.name,
       tile_type: tile.tileType,
+      terrain_type: tile.terrainType,
+      terrain_label: tile.terrainLabel,
+      terrain_effects: tile.terrainEffects,
+      landmark_group_id: tile.landmarkGroupId,
       tile_name: tile.tileName,
       x: tile.x,
       y: tile.y,
       visibility: "visible",
-      status: occupation ? "occupied" : tile.status,
+      status: ownership || occupation ? "occupied" : tile.status,
       controllable: tile.controllable,
       occupiable: tile.occupiable,
       protected: tile.protected,
@@ -493,14 +758,17 @@ export class WorldService {
       travel_seconds: tile.travelSeconds,
       labels: tile.labels,
       state_summary: tile.stateSummary,
-      owner: this.toOwnerState(tile.ownerProvinceId, occupation),
-      nodes: tile.nodes.map((node) => this.toTerritoryNodeState(node, occupation)),
+      owner: this.toOwnerState(tile.ownerProvinceId, occupation, ownership),
+      ownership: this.toBlockOwnershipState(ownership),
+      purchase_state: buildPurchaseState(tile, ownership, purchaseContext),
+      nodes: tile.nodes.map((node) => this.toTerritoryNodeState(node, occupation, ownership)),
     };
   }
 
   private toTerritoryNodeState(
     node: TerritoryNodeConfig,
     occupation: OccupationWithPlayer | null = null,
+    ownership: WorldBlockOwnershipWithPlayer | null = null,
   ): TerritoryNodeState {
     return {
       node_id: node.nodeId,
@@ -508,33 +776,67 @@ export class WorldService {
       node_type: node.nodeType,
       node_name: node.nodeName,
       level: node.level,
-      status: occupation ? "occupied" : node.status,
+      status: occupation || ownership ? "occupied" : node.status,
       occupiable: node.occupiable,
       contestable: node.contestable,
       protected: node.protected,
       production_summary: node.productionSummary,
       defense_summary: node.defenseSummary,
-      owner: this.toOwnerState(node.ownerProvinceId, occupation),
+      owner: this.toOwnerState(node.ownerProvinceId, occupation, ownership),
     };
   }
 
   private toOwnerState(
     ownerProvinceId: string | null,
     occupation: OccupationWithPlayer | null = null,
+    ownership: WorldBlockOwnershipWithPlayer | null = null,
   ): WorldOwnerState {
     const province = ownerProvinceId
       ? worldProvinceConfigs.find((item) => item.provinceId === ownerProvinceId)
       : null;
 
     return {
-      owner_player_id: occupation?.playerId ?? null,
-      owner_player_name: occupation?.player.name ?? null,
+      owner_player_id: ownership?.playerId ?? occupation?.playerId ?? null,
+      owner_player_name: ownership?.player.name ?? occupation?.player.name ?? null,
       owner_sect_id: null,
       owner_sect_name: null,
-      owner_province_id: occupation?.provinceId ?? province?.provinceId ?? null,
+      owner_province_id:
+        ownership?.provinceId ?? occupation?.provinceId ?? province?.provinceId ?? null,
       owner_province_name: occupation
         ? this.requireProvince(occupation.provinceId).name
-        : (province?.name ?? null),
+        : ownership
+          ? this.requireProvince(ownership.provinceId).name
+          : (province?.name ?? null),
+    };
+  }
+
+  private toBlockOwnershipState(
+    ownership: WorldBlockOwnershipWithPlayer | null,
+  ): MapTileState["ownership"] {
+    return {
+      ownership_id: ownership?.ownershipId ?? null,
+      owner_player_id: ownership?.playerId ?? null,
+      owner_player_name: ownership?.player.name ?? null,
+      ownership_type: ownership ? normalizeOwnershipType(ownership.ownershipType) : null,
+      owned_at: ownership?.ownedAt.toISOString() ?? null,
+    };
+  }
+
+  private toWalletSnapshot(wallet: {
+    playerId: string;
+    spiritStone: bigint;
+    immortalStone: bigint;
+    jadePaid: bigint;
+    jadeBound: bigint;
+    eraPoint: bigint;
+  }): WalletSnapshot {
+    return {
+      player_id: wallet.playerId,
+      spirit_stone: wallet.spiritStone.toString(),
+      immortal_stone: wallet.immortalStone.toString(),
+      jade_paid: wallet.jadePaid.toString(),
+      jade_bound: wallet.jadeBound.toString(),
+      era_point: wallet.eraPoint.toString(),
     };
   }
 
@@ -685,6 +987,22 @@ function normalizeOccupyWorldBody(body: OccupyWorldRequest): OccupyWorldRequest 
   return { march_id: marchId };
 }
 
+function normalizePurchaseWorldBlockBody(
+  body: PurchaseWorldBlockRequest,
+): PurchaseWorldBlockRequest {
+  const tileId = body?.tile_id?.trim();
+
+  if (!tileId) {
+    throw new BadRequestException("请选择要购买的区块");
+  }
+
+  return { tile_id: tileId };
+}
+
+function normalizeWorldMapView(view: WorldMapView | undefined): WorldMapView {
+  return view === "mini" ? "mini" : "detail";
+}
+
 function resolveSourceCity(cities: PlayerCity[], sourceCityId: string): PlayerCity {
   const city = sourceCityId
     ? cities.find((item) => item.cityId === sourceCityId)
@@ -733,14 +1051,182 @@ function requireOccupationTarget(targetTileId: string): MapTileConfig {
   return targetTile;
 }
 
+function assertPurchasableTile(tile: MapTileConfig) {
+  if (
+    !tile.controllable ||
+    tile.protected ||
+    tile.status === "locked" ||
+    tile.ownerProvinceId ||
+    tile.purchaseBaseCost <= 0
+  ) {
+    throw new BadRequestException("该区块暂不可购买");
+  }
+
+  if (tile.tileType === "tower" || tile.tileType === "capital" || tile.tileType === "pass") {
+    throw new BadRequestException("战略区块暂不可购买");
+  }
+}
+
 function requireMapTile(targetTileId: string): MapTileConfig {
-  const targetTile = worldTileConfigs.find((tile) => tile.tileId === targetTileId);
+  const targetTile = findWorldTile(targetTileId);
 
   if (!targetTile) {
     throw new BadRequestException("未知目标地块");
   }
 
   return targetTile;
+}
+
+interface PurchaseContext {
+  playerId: string | null;
+  myOwnedTiles: MapTileConfig[];
+}
+
+const emptyPurchaseContext: PurchaseContext = {
+  playerId: null,
+  myOwnedTiles: [],
+};
+
+function mapPurchaseContext(
+  ownerships: WorldBlockOwnershipWithPlayer[],
+  playerId: string | null,
+): PurchaseContext {
+  if (!playerId) {
+    return emptyPurchaseContext;
+  }
+
+  return {
+    playerId,
+    myOwnedTiles: ownerships
+      .filter((ownership) => ownership.playerId === playerId)
+      .map((ownership) => findWorldTile(ownership.tileId))
+      .filter((tile): tile is MapTileConfig => Boolean(tile)),
+  };
+}
+
+function buildPurchaseState(
+  tile: MapTileConfig,
+  ownership: WorldBlockOwnershipWithPlayer | null,
+  context: PurchaseContext,
+): MapTileState["purchase_state"] {
+  const cost = tile.purchaseBaseCost.toString();
+
+  if (!context.playerId) {
+    return {
+      purchasable: false,
+      reason: "请先创建角色并建立主城",
+      cost_spirit_stone: cost,
+      adjacent_owned: false,
+    };
+  }
+
+  if (ownership) {
+    return {
+      purchasable: false,
+      reason: ownership.playerId === context.playerId ? "已归你所有" : "已有城主",
+      cost_spirit_stone: cost,
+      adjacent_owned: false,
+    };
+  }
+
+  if (context.myOwnedTiles.length === 0) {
+    return {
+      purchasable: false,
+      reason: "请先建立主城",
+      cost_spirit_stone: cost,
+      adjacent_owned: false,
+    };
+  }
+
+  const adjacentOwned = context.myOwnedTiles.some((ownedTile) =>
+    areAdjacentWorldTiles(ownedTile, tile),
+  );
+
+  if (
+    !tile.controllable ||
+    tile.protected ||
+    tile.status === "locked" ||
+    tile.ownerProvinceId ||
+    tile.purchaseBaseCost <= 0 ||
+    tile.tileType === "tower" ||
+    tile.tileType === "capital" ||
+    tile.tileType === "pass"
+  ) {
+    return {
+      purchasable: false,
+      reason: "战略或保护区块暂不可购买",
+      cost_spirit_stone: cost,
+      adjacent_owned: adjacentOwned,
+    };
+  }
+
+  if (!adjacentOwned) {
+    return {
+      purchasable: false,
+      reason: "需与已有领地相邻",
+      cost_spirit_stone: cost,
+      adjacent_owned: false,
+    };
+  }
+
+  return {
+    purchasable: true,
+    reason: "可购买并纳入领地",
+    cost_spirit_stone: cost,
+    adjacent_owned: true,
+  };
+}
+
+function buildMiniMapSummary(input: {
+  province: WorldProvinceConfig;
+  tiles: MapTileConfig[];
+  ownerships: WorldBlockOwnershipWithPlayer[];
+  playerId: string | null;
+}): WorldMiniMapSummary {
+  const ownershipMap = new Map(input.ownerships.map((ownership) => [ownership.tileId, ownership]));
+  const terrainCounts = {
+    desert: 0,
+    forest: 0,
+    mountain: 0,
+    plain: 0,
+    swamp: 0,
+  };
+
+  for (const tile of input.tiles) {
+    terrainCounts[tile.terrainType] += 1;
+  }
+
+  return {
+    province_id: input.province.provinceId,
+    total_blocks: input.tiles.length,
+    owned_blocks: input.tiles.filter(
+      (tile) => ownershipMap.has(tile.tileId) || Boolean(tile.ownerProvinceId),
+    ).length,
+    neutral_blocks: input.tiles.filter(
+      (tile) => !ownershipMap.has(tile.tileId) && !tile.ownerProvinceId,
+    ).length,
+    contested_blocks: input.tiles.filter((tile) => tile.status === "contested").length,
+    tower_blocks: input.tiles.filter((tile) => tile.tileType === "tower").length,
+    capital_blocks: input.tiles.filter((tile) => tile.tileType === "capital").length,
+    pass_blocks: input.tiles.filter((tile) => tile.tileType === "pass").length,
+    my_blocks: input.playerId
+      ? input.ownerships.filter((ownership) => ownership.playerId === input.playerId).length
+      : 0,
+    terrain_counts: terrainCounts,
+  };
+}
+
+function normalizeOwnershipType(value: string): MapTileState["ownership"]["ownership_type"] {
+  if (
+    value === "main_city" ||
+    value === "purchase" ||
+    value === "occupation" ||
+    value === "system"
+  ) {
+    return value;
+  }
+
+  return "system";
 }
 
 function createTeamSnapshot(city: PlayerCity): Prisma.InputJsonValue {

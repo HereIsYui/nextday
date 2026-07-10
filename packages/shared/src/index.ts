@@ -421,6 +421,8 @@ export interface PlayerWalletState {
   era_point: string;
 }
 
+export type WalletSnapshot = PlayerWalletState;
+
 export interface GuestLoginRequest {
   device_id?: string;
   nickname?: string;
@@ -526,7 +528,11 @@ export type WorldTileType =
   | "tower"
   | "rift";
 
+export type WorldTerrainType = "plain" | "swamp" | "forest" | "mountain" | "desert";
+
 export type WorldTileVisibility = "hidden" | "scouted" | "visible";
+
+export type WorldMapView = "mini" | "detail";
 
 export type TerritoryNodeType =
   | "main_city"
@@ -578,6 +584,7 @@ export interface WorldCommanderyState {
   resource_theme: string[];
   safety_level: number;
   tile_count: number;
+  birth_plain_count: number;
 }
 
 export interface WorldProvinceState {
@@ -590,6 +597,9 @@ export interface WorldProvinceState {
   congestion: "low" | "medium" | "high";
   season_state: "preseason" | "active" | "settling";
   map_focus: string;
+  block_count: number;
+  tower_block_count: number;
+  birth_plain_count: number;
   commanderies: WorldCommanderyState[];
   war_state: ProvinceWarState;
 }
@@ -609,6 +619,21 @@ export interface TerritoryNodeState {
   owner: WorldOwnerState;
 }
 
+export interface WorldBlockOwnershipState {
+  ownership_id: string | null;
+  owner_player_id: string | null;
+  owner_player_name: string | null;
+  ownership_type: "main_city" | "purchase" | "occupation" | "system" | null;
+  owned_at: string | null;
+}
+
+export interface WorldBlockPurchaseState {
+  purchasable: boolean;
+  reason: string;
+  cost_spirit_stone: string;
+  adjacent_owned: boolean;
+}
+
 export interface MapTileState {
   tile_id: string;
   province_id: string;
@@ -616,6 +641,10 @@ export interface MapTileState {
   commandery_id: string;
   commandery_name: string;
   tile_type: WorldTileType;
+  terrain_type: WorldTerrainType;
+  terrain_label: string;
+  terrain_effects: string[];
+  landmark_group_id: string | null;
   tile_name: string;
   x: number;
   y: number;
@@ -629,7 +658,22 @@ export interface MapTileState {
   labels: string[];
   state_summary: string;
   owner: WorldOwnerState;
+  ownership: WorldBlockOwnershipState;
+  purchase_state: WorldBlockPurchaseState;
   nodes: TerritoryNodeState[];
+}
+
+export interface WorldMiniMapSummary {
+  province_id: string;
+  total_blocks: number;
+  owned_blocks: number;
+  neutral_blocks: number;
+  contested_blocks: number;
+  tower_blocks: number;
+  capital_blocks: number;
+  pass_blocks: number;
+  my_blocks: number;
+  terrain_counts: Record<WorldTerrainType, number>;
 }
 
 export interface WorldProvinceListResponse {
@@ -641,9 +685,12 @@ export interface WorldProvinceListResponse {
 }
 
 export interface WorldMapResponse {
+  view: WorldMapView;
   province: WorldProvinceState;
   commanderies: WorldCommanderyState[];
   tiles: MapTileState[];
+  block_count: number;
+  mini_map_summary: WorldMiniMapSummary;
   visible_tile_count: number;
   occupiable_tile_count: number;
   my_occupations: TerritoryOccupationState[];
@@ -822,6 +869,17 @@ export interface OccupyWorldResponse {
   occupation: TerritoryOccupationState;
   march: MarchQueueState;
   map: WorldMapResponse;
+}
+
+export interface PurchaseWorldBlockRequest {
+  tile_id: string;
+}
+
+export interface PurchaseWorldBlockResponse {
+  record_id: string;
+  tile: MapTileState;
+  map: WorldMapResponse;
+  wallet: WalletSnapshot;
 }
 
 export interface BattleRoundLog {

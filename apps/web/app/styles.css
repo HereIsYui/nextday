@@ -3887,10 +3887,15 @@ details.event-boundary {
 
 .text-game-shell .atlas-map-grid {
   display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(5, minmax(110px, 1fr));
-  grid-template-rows: repeat(4, 100px);
-  min-width: 650px;
+  align-content: center;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(190px, 1fr));
+  grid-template-rows: repeat(3, 178px);
+  margin: 0 auto;
+  max-width: 840px;
+  min-height: 562px;
+  min-width: 0;
+  width: 100%;
 }
 
 .text-game-shell .atlas-province {
@@ -3899,8 +3904,11 @@ details.event-boundary {
   border: 1px solid #8c8066;
   cursor: pointer;
   display: grid;
-  gap: 3px;
-  padding: 8px;
+  gap: 4px;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  height: 178px;
+  min-width: 0;
+  padding: 10px 12px;
   text-align: left;
 }
 
@@ -3914,14 +3922,19 @@ details.event-boundary {
 .text-game-shell .atlas-province-grid {
   display: grid;
   gap: 2px;
+  height: 82px;
+  justify-self: start;
   margin-top: auto;
-  min-height: 52px;
+  max-width: 138px;
+  min-height: 0;
+  width: 100%;
 }
 
 .text-game-shell .atlas-cell {
-  aspect-ratio: 1;
   background: #ddd4bd;
   border: 1px solid rgba(60, 50, 35, 0.18);
+  min-height: 0;
+  min-width: 0;
 }
 .text-game-shell .atlas-cell.mine {
   background: #3f6850;
@@ -4181,6 +4194,10 @@ details.event-boundary {
 .text-game-shell .strategic-map-footer .nextday-button {
   justify-self: start;
   margin-top: 2px;
+}
+
+.text-game-shell .strategic-map-footer.atlas-summary-hidden {
+  display: none;
 }
 
 /* 九州地图是默认舞台，旧功能入口收拢为一条工具栏。 */

@@ -3835,7 +3835,10 @@ export default function HomePage() {
                               </>
                             )}
                           </div>
-                          <section className="strategic-map-footer" aria-label="城池与行军摘要">
+                          <section
+                            aria-label="城池与行军摘要"
+                            className={`strategic-map-footer ${strategicMapScope === "atlas" ? "atlas-summary-hidden" : ""}`}
+                          >
                             <article>
                               <strong>{worldMainCity?.city_name ?? "城池筹备中"}</strong>
                               <span>

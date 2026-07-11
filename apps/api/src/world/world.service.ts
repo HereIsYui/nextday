@@ -104,15 +104,15 @@ export class WorldService {
     );
     const owned = new Set(ownerships.map((item) => item.tileId));
     const layout: Record<string, [number, number]> = {
-      ji: [1, 0],
-      yan: [2, 1],
-      qing: [3, 0],
-      xu: [3, 1],
-      yang: [4, 2],
-      jing: [3, 3],
-      yu: [2, 2],
-      liang: [1, 3],
-      yong: [0, 3],
+      ji: [0, 0],
+      yan: [1, 0],
+      qing: [2, 0],
+      liang: [0, 1],
+      yu: [1, 1],
+      xu: [2, 1],
+      yong: [0, 2],
+      jing: [1, 2],
+      yang: [2, 2],
     };
     const homeProvinceId =
       (

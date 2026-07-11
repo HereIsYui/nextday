@@ -1,7 +1,21 @@
-import type { CityExpansionState, CityResourceSnapshot, WorldTerrainType } from "@nextday/shared";
+import type {
+  CityBuildingCostState,
+  CityBuildingType,
+  CityExpansionState,
+  CityResourceSnapshot,
+  CityStorageCapacityState,
+  WorldTerrainType,
+} from "@nextday/shared";
 
-export const territoryConfigVersion = "world_territory_r1_006";
+export const territoryConfigVersion = "world_territory_r1_007";
 export const maximumCityLevel = 10;
+export const territoryCollectionCapSeconds = 12 * 60 * 60;
+export const cityBuildingTypes: CityBuildingType[] = [
+  "warehouse",
+  "barracks",
+  "fortification",
+  "workshop",
+];
 
 export interface TerritoryHourlyOutput {
   spirit_stone: number;
@@ -17,6 +31,13 @@ export interface CityExpansionCost {
   ore: number;
   wood: number;
 }
+
+const cityBuildingNames: Record<CityBuildingType, string> = {
+  warehouse: "仓库",
+  barracks: "兵营",
+  fortification: "城防",
+  workshop: "工坊",
+};
 
 const terrainHourlyOutput: Record<WorldTerrainType, TerritoryHourlyOutput> = {
   plain: { spirit_stone: 2, grain: 18, ore: 0, wood: 2, herb: 0 },
@@ -94,4 +115,79 @@ export function getTerrainHourlyOutput(terrainType: WorldTerrainType): Territory
 
 export function emptyTerritoryHourlyOutput(): TerritoryHourlyOutput {
   return { spirit_stone: 0, grain: 0, ore: 0, wood: 0, herb: 0 };
+}
+
+export function sumTerritoryHourlyOutput(terrainTypes: WorldTerrainType[]): TerritoryHourlyOutput {
+  return terrainTypes.reduce((total, terrainType) => {
+    const output = getTerrainHourlyOutput(terrainType);
+    total.spirit_stone += output.spirit_stone;
+    total.grain += output.grain;
+    total.ore += output.ore;
+    total.wood += output.wood;
+    total.herb += output.herb;
+    return total;
+  }, emptyTerritoryHourlyOutput());
+}
+
+export function getCityBuildingName(buildingType: CityBuildingType): string {
+  return cityBuildingNames[buildingType];
+}
+
+export function getMaximumBuildingLevel(cityLevel: number): number {
+  return Math.max(1, cityLevel * 2);
+}
+
+export function getBuildingUpgradeCost(
+  buildingType: CityBuildingType,
+  buildingLevel: number,
+): CityBuildingCostState {
+  const targetLevel = buildingLevel + 1;
+  const base = 80 + targetLevel * 55;
+  const modifier =
+    buildingType === "warehouse"
+      ? { spirit_stone: 1, grain: 1.3, ore: 0.8, wood: 1.2 }
+      : buildingType === "barracks"
+        ? { spirit_stone: 1.1, grain: 1.4, ore: 0.9, wood: 0.8 }
+        : buildingType === "fortification"
+          ? { spirit_stone: 1.2, grain: 0.7, ore: 1.5, wood: 1.1 }
+          : { spirit_stone: 1.3, grain: 0.8, ore: 1.1, wood: 1.4 };
+
+  return {
+    spirit_stone: Math.round(base * modifier.spirit_stone),
+    grain: Math.round(base * modifier.grain),
+    ore: Math.round(base * modifier.ore),
+    wood: Math.round(base * modifier.wood),
+  };
+}
+
+export function getBuildingUpgradeSeconds(buildingLevel: number): number {
+  return 60 + buildingLevel * 30;
+}
+
+export function getStorageCapacity(warehouseLevel: number): CityStorageCapacityState {
+  const level = Math.max(1, warehouseLevel);
+  return {
+    spirit_stone: 3000 + level * 2200,
+    grain: 4500 + level * 3000,
+    ore: 1800 + level * 1500,
+    wood: 2200 + level * 1800,
+    herb: 1400 + level * 1200,
+  };
+}
+
+export function getCityBuildingEffectSummary(
+  buildingType: CityBuildingType,
+  level: number,
+): string {
+  if (buildingType === "warehouse") {
+    const capacity = getStorageCapacity(level);
+    return `库存上限：灵石 ${capacity.spirit_stone}、粮草 ${capacity.grain}`;
+  }
+  if (buildingType === "barracks") {
+    return `驻防上限与城防兵力提升，当前兵营 ${level} 级`;
+  }
+  if (buildingType === "fortification") {
+    return `城墙耐久与守城韧性提升，当前城防 ${level} 级`;
+  }
+  return `炼丹、炼器与阵法建设的基础工坊，当前 ${level} 级`;
 }

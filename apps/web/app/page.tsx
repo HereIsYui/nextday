@@ -15,6 +15,8 @@ import type {
   BagSummaryResponse,
   BattleSummary,
   CityBirthOptionState,
+  CityBuildingState,
+  CityManagementResponse,
   CityOverviewResponse,
   CollectionSummaryResponse,
   DailyRouteResponse,
@@ -385,6 +387,7 @@ export default function HomePage() {
   );
   const [worldMap, setWorldMap] = useState<WorldMapResponse | null>(null);
   const [cityOverview, setCityOverview] = useState<CityOverviewResponse | null>(null);
+  const [cityManagement, setCityManagement] = useState<CityManagementResponse | null>(null);
   const [worldTerritory, setWorldTerritory] = useState<TerritoryOverviewResponse | null>(null);
   const [worldMarches, setWorldMarches] = useState<WorldMarchListResponse | null>(null);
   const [selectedWorldProvinceId, setSelectedWorldProvinceId] = useState("");
@@ -428,6 +431,8 @@ export default function HomePage() {
   const worldProvinces = worldProvinceList?.provinces ?? [];
   const worldMainCity = cityOverview?.main_city ?? null;
   const cityExpansion = worldTerritory?.expansion ?? null;
+  const territoryCollect = cityManagement?.territory_collect ?? null;
+  const cityBuildings = cityManagement?.buildings ?? [];
   const selectedWorldProvince =
     worldProvinces.find((province) => province.province_id === selectedWorldProvinceId) ??
     worldProvinces.find((province) => province.province_id === worldMainCity?.province_id) ??
@@ -962,6 +967,7 @@ export default function HomePage() {
         }
         setWorldProvinceList(state.provinces);
         setCityOverview(state.city);
+        setCityManagement(state.management);
         setWorldTerritory(state.territory);
         setWorldMarches(state.marches);
         setWorldMap(state.map);
@@ -1464,6 +1470,7 @@ export default function HomePage() {
     );
     setWorldProvinceList(state.provinces);
     setCityOverview(state.city);
+    setCityManagement(state.management);
     setWorldTerritory(state.territory);
     setWorldMarches(state.marches);
     setWorldMap(state.map);
@@ -1627,6 +1634,48 @@ export default function HomePage() {
         tone: "success",
       });
       await refreshWorldState(`主城扩建至 ${response.data.city.city_level} 级`);
+    });
+  }
+
+  async function handleCollectTerritory() {
+    if (!territoryCollect) {
+      setMessage("领地产出状态同步中");
+      return;
+    }
+
+    await runAction("收取领地资源", async () => {
+      const response = await client.collectTerritory(createIdempotencyKey("web_territory_collect"));
+      ensureOk(response);
+      const collected = response.data.collected;
+      rememberExperience(undefined, {
+        summary: `收取领地资源：灵石 ${collected.spirit_stone}、粮草 ${collected.grain}、矿材 ${collected.ore}、灵木 ${collected.wood}。`,
+        tags: ["领地产出", "资源入库"],
+        title: "收取领地资源",
+        tone: "success",
+      });
+      await refreshWorldState("领地产出已入库");
+    });
+  }
+
+  async function handleUpgradeCityBuilding(building: CityBuildingState) {
+    if (!building.next_cost) {
+      setMessage(`${building.name}已达当前主城可升级上限`);
+      return;
+    }
+
+    await runAction(`升级${building.name}`, async () => {
+      const response = await client.upgradeCityBuilding(
+        { building_type: building.building_type },
+        createIdempotencyKey(`web_city_building_${building.building_type}`),
+      );
+      ensureOk(response);
+      rememberExperience(undefined, {
+        summary: `${building.name}开始升级，完成后将带来新的城池加成。`,
+        tags: ["城池经营", "建筑升级"],
+        title: `升级${building.name}`,
+        tone: "neutral",
+      });
+      await refreshWorldState(`${building.name}已开始升级`);
     });
   }
 
@@ -3281,6 +3330,40 @@ export default function HomePage() {
                                         </span>
                                       ))}
                                     </div>
+                                    {territoryCollect ? (
+                                      <div className="world-collect-row">
+                                        <div>
+                                          <strong>领地产出</strong>
+                                          <span>
+                                            待收 灵石 {territoryCollect.claimable.spirit_stone} ·
+                                            粮草 {territoryCollect.claimable.grain} · 矿材{" "}
+                                            {territoryCollect.claimable.ore} · 灵木{" "}
+                                            {territoryCollect.claimable.wood}
+                                          </span>
+                                          <small>
+                                            仓库容量：灵石{" "}
+                                            {territoryCollect.storage_capacity.spirit_stone} · 粮草{" "}
+                                            {territoryCollect.storage_capacity.grain}
+                                          </small>
+                                        </div>
+                                        <div className="production-actions">
+                                          <Button
+                                            disabled={
+                                              busy ||
+                                              territoryCollect.claimable.spirit_stone +
+                                                territoryCollect.claimable.grain +
+                                                territoryCollect.claimable.ore +
+                                                territoryCollect.claimable.wood +
+                                                territoryCollect.claimable.herb ===
+                                                0
+                                            }
+                                            onClick={handleCollectTerritory}
+                                          >
+                                            收取资源
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    ) : null}
                                     {cityExpansion ? (
                                       <div className="world-expansion-row">
                                         <div>
@@ -3311,6 +3394,67 @@ export default function HomePage() {
                                           <span className="action-note">当前纪元已达上限</span>
                                         )}
                                       </div>
+                                    ) : null}
+                                    {cityBuildings.length ? (
+                                      <section className="world-building-list">
+                                        <div className="province-head">
+                                          <div>
+                                            <strong>主城建筑</strong>
+                                            <span>
+                                              {cityManagement?.active_building
+                                                ? `${cityManagement.active_building.name}正在升级`
+                                                : "选择一座建筑开始升级"}
+                                            </span>
+                                          </div>
+                                          <StatusBadge
+                                            tone={
+                                              cityManagement?.active_building
+                                                ? "warning"
+                                                : "neutral"
+                                            }
+                                          >
+                                            {cityManagement?.active_building
+                                              ? "升级中"
+                                              : "队列空闲"}
+                                          </StatusBadge>
+                                        </div>
+                                        <div className="world-building-grid">
+                                          {cityBuildings.map((building) => (
+                                            <article key={building.building_id}>
+                                              <div>
+                                                <strong>
+                                                  {building.name} {building.level} 级
+                                                </strong>
+                                                <span>{building.effect_summary}</span>
+                                              </div>
+                                              <div className="production-actions">
+                                                {building.status === "upgrading" ? (
+                                                  <span className="action-note">
+                                                    升至 {building.target_level} 级 · 剩余{" "}
+                                                    {formatRemainingSeconds(
+                                                      building.remaining_seconds,
+                                                    )}
+                                                  </span>
+                                                ) : building.next_cost ? (
+                                                  <Button
+                                                    disabled={
+                                                      busy ||
+                                                      Boolean(cityManagement?.active_building)
+                                                    }
+                                                    onClick={() =>
+                                                      handleUpgradeCityBuilding(building)
+                                                    }
+                                                  >
+                                                    升级
+                                                  </Button>
+                                                ) : (
+                                                  <span className="action-note">等待主城扩建</span>
+                                                )}
+                                              </div>
+                                            </article>
+                                          ))}
+                                        </div>
+                                      </section>
                                     ) : null}
                                   </section>
                                 ) : null}
@@ -8104,14 +8248,17 @@ async function loadWorldState(
   provinceId?: string,
   view: WorldMapView = "mini",
 ) {
-  const [provinceResponse, cityResponse, marchResponse, territoryResponse] = await Promise.all([
-    client.worldProvinces(),
-    client.cityOverview(),
-    client.worldMarches(),
-    client.worldTerritory(),
-  ]);
+  const [provinceResponse, cityResponse, managementResponse, marchResponse, territoryResponse] =
+    await Promise.all([
+      client.worldProvinces(),
+      client.cityOverview(),
+      client.cityManagement(),
+      client.worldMarches(),
+      client.worldTerritory(),
+    ]);
   ensureOk(provinceResponse);
   ensureOk(cityResponse);
+  ensureOk(managementResponse);
   ensureOk(marchResponse);
   ensureOk(territoryResponse);
 
@@ -8126,6 +8273,7 @@ async function loadWorldState(
 
   return {
     city: cityResponse.data,
+    management: managementResponse.data,
     territory: territoryResponse.data,
     map: mapResponse.data,
     marches: marchResponse.data,

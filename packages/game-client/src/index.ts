@@ -38,6 +38,7 @@ import type {
   CaveCollectResponse,
   ChooseFactionRouteRequest,
   ChooseFactionRouteResponse,
+  CityManagementResponse,
   CityOverviewResponse,
   ClaimActivityRewardRequest,
   ClaimActivityRewardResponse,
@@ -47,6 +48,7 @@ import type {
   ClaimMonthlyDailyResponse,
   ClaimRankTitleRequest,
   ClaimRankTitleResponse,
+  CollectTerritoryResponse,
   CollectionSummaryResponse,
   ConfigEnvelope,
   ConfigType,
@@ -195,6 +197,8 @@ import type {
   TransferFactionRouteResponse,
   TransferRuleResponse,
   TransferStatusResponse,
+  UpgradeCityBuildingRequest,
+  UpgradeCityBuildingResponse,
   WorldBossChallengeRequest,
   WorldBossChallengeResponse,
   WorldBossResponse,
@@ -453,8 +457,31 @@ export class GameClient {
     return this.get<CityOverviewResponse>("/api/city/overview");
   }
 
+  cityManagement(): Promise<ApiResponse<CityManagementResponse>> {
+    return this.get<CityManagementResponse>("/api/city/management");
+  }
+
   expandCity(idempotencyKey: string): Promise<ApiResponse<ExpandCityResponse>> {
     return this.post<ExpandCityResponse>("/api/city/expand", {}, { idempotencyKey });
+  }
+
+  collectTerritory(idempotencyKey: string): Promise<ApiResponse<CollectTerritoryResponse>> {
+    return this.post<CollectTerritoryResponse>(
+      "/api/city/territory/collect",
+      {},
+      { idempotencyKey },
+    );
+  }
+
+  upgradeCityBuilding(
+    body: UpgradeCityBuildingRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<UpgradeCityBuildingResponse>> {
+    return this.post<UpgradeCityBuildingResponse, UpgradeCityBuildingRequest>(
+      "/api/city/buildings/upgrade",
+      body,
+      { idempotencyKey },
+    );
   }
 
   settleMainCity(

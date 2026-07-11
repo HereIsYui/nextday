@@ -2,22 +2,44 @@ import { createHash, randomUUID } from "node:crypto";
 import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import type {
   CityBirthOptionState,
+  CityBuildingState,
+  CityBuildingType,
   CityDefenseSnapshot,
   CityExpansionState,
+  CityManagementResponse,
   CityOverviewResponse,
   CityResourceSnapshot,
+  CollectTerritoryResponse,
   ExpandCityResponse,
   PlayerCityState,
   PlayerCityStatus,
   PlayerCityType,
   SettleMainCityRequest,
   SettleMainCityResponse,
+  TerritoryCollectState,
+  TerritoryHourlyOutputState,
+  UpgradeCityBuildingRequest,
+  UpgradeCityBuildingResponse,
+  WorldTerrainType,
 } from "@nextday/shared";
-import type { PlayerCity, Prisma } from "@prisma/client";
+import type { CityBuilding, PlayerCity, Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
 import { defaultEraId } from "../game/game.constants";
 import { hashRequestBody } from "../platform/utils/hash";
-import { buildCityExpansionState, territoryConfigVersion } from "../world/territory.constants";
+import {
+  buildCityExpansionState,
+  cityBuildingTypes,
+  emptyTerritoryHourlyOutput,
+  getBuildingUpgradeCost,
+  getBuildingUpgradeSeconds,
+  getCityBuildingEffectSummary,
+  getCityBuildingName,
+  getMaximumBuildingLevel,
+  getStorageCapacity,
+  sumTerritoryHourlyOutput,
+  territoryCollectionCapSeconds,
+  territoryConfigVersion,
+} from "../world/territory.constants";
 import {
   type MapTileConfig,
   type WorldCommanderyConfig,
@@ -42,6 +64,183 @@ export class CityService {
   async getOverview(accountId: string): Promise<CityOverviewResponse> {
     const player = await this.requirePlayer(accountId);
     return this.buildOverview(player.playerId);
+  }
+
+  async getManagement(accountId: string): Promise<CityManagementResponse> {
+    const player = await this.requirePlayer(accountId);
+    return this.prisma.$transaction((tx) => this.buildManagement(player.playerId, tx));
+  }
+
+  async collectTerritory(input: {
+    accountId: string;
+    idempotencyKey: string;
+    endpoint: string;
+  }): Promise<CollectTerritoryResponse> {
+    const requestHash = hashRequestBody({});
+    const existingRecord = await this.prisma.idempotencyRecord.findUnique({
+      where: { idempotencyKey: input.idempotencyKey },
+    });
+    if (existingRecord) {
+      this.assertMatchingIdempotencyRecord(existingRecord, input, requestHash);
+      return existingRecord.responseData as unknown as CollectTerritoryResponse;
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const player = await tx.player.findUnique({ where: { accountId: input.accountId } });
+      if (!player) {
+        throw new BadRequestException("请先创建角色");
+      }
+      const initialCity = await this.requireMainCity(player.playerId, tx);
+      const city = await this.settleCompletedBuildingUpgrades(tx, initialCity);
+      const buildings = await this.ensureCityBuildings(tx, city.cityId);
+      const ownerships = await tx.worldBlockOwnership.findMany({
+        where: { playerId: player.playerId, eraId: defaultEraId, status: "owned" },
+        select: { terrainType: true },
+      });
+      const hourlyOutput = sumTerritoryHourlyOutput(
+        ownerships.map((ownership) => normalizeTerrainType(ownership.terrainType)),
+      );
+      const warehouse = requireBuilding(buildings, "warehouse");
+      const now = new Date();
+      const collectState = buildTerritoryCollectState({
+        city,
+        hourlyOutput,
+        storageCapacity: getStorageCapacity(warehouse.level),
+        now,
+      });
+      const resources = normalizeResourceSnapshot(city.resourceSnapshot);
+      const collected = capCollectionToStorage(
+        collectState.claimable,
+        resources,
+        collectState.storage_capacity,
+      );
+      const overflow = subtractHourlyOutput(collectState.claimable, collected);
+      const nextResources: CityResourceSnapshot = {
+        ...resources,
+        spirit_stone: String(Number(resources.spirit_stone) + collected.spirit_stone),
+        grain: String(Number(resources.grain) + collected.grain),
+        ore: String(Number(resources.ore) + collected.ore),
+        wood: String(Number(resources.wood) + collected.wood),
+        herb: String(Number(resources.herb) + collected.herb),
+      };
+      const updatedCity = await tx.playerCity.update({
+        where: { cityId: city.cityId },
+        data: {
+          resourceSnapshot: nextResources as unknown as Prisma.InputJsonValue,
+          territoryCollectedAt: now,
+        },
+      });
+      const management = await this.buildManagement(player.playerId, tx, updatedCity);
+      const responseData: CollectTerritoryResponse = {
+        record_id: `territory_collect_${randomUUID()}`,
+        city: this.toCityState(updatedCity),
+        collected,
+        overflow,
+        territory_collect:
+          management.territory_collect ??
+          buildTerritoryCollectState({
+            city: updatedCity,
+            hourlyOutput,
+            storageCapacity: getStorageCapacity(warehouse.level),
+            now,
+          }),
+        buildings: management.buildings,
+      };
+      await this.createCityActionRecord(tx, {
+        accountId: input.accountId,
+        action: "city_territory_collect",
+        afterSnapshot: responseData,
+        endpoint: input.endpoint,
+        idempotencyKey: input.idempotencyKey,
+        playerId: player.playerId,
+        reason: "收取领地产出",
+        requestHash,
+        targetId: city.cityId,
+      });
+      return responseData;
+    });
+  }
+
+  async upgradeBuilding(input: {
+    accountId: string;
+    body: UpgradeCityBuildingRequest;
+    idempotencyKey: string;
+    endpoint: string;
+  }): Promise<UpgradeCityBuildingResponse> {
+    const body = normalizeUpgradeBuildingBody(input.body);
+    const requestHash = hashRequestBody(body);
+    const existingRecord = await this.prisma.idempotencyRecord.findUnique({
+      where: { idempotencyKey: input.idempotencyKey },
+    });
+    if (existingRecord) {
+      this.assertMatchingIdempotencyRecord(existingRecord, input, requestHash);
+      return existingRecord.responseData as unknown as UpgradeCityBuildingResponse;
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const player = await tx.player.findUnique({ where: { accountId: input.accountId } });
+      if (!player) {
+        throw new BadRequestException("请先创建角色");
+      }
+      const initialCity = await this.requireMainCity(player.playerId, tx);
+      const city = await this.settleCompletedBuildingUpgrades(tx, initialCity);
+      const buildings = await this.ensureCityBuildings(tx, city.cityId);
+      if (buildings.some((building) => building.status === "upgrading")) {
+        throw new BadRequestException("已有建筑正在升级，请等待队列完成");
+      }
+      const building = requireBuilding(buildings, body.building_type);
+      if (building.level >= getMaximumBuildingLevel(city.cityLevel)) {
+        throw new BadRequestException("主城等级不足，无法继续升级该建筑");
+      }
+      const cost = getBuildingUpgradeCost(body.building_type, building.level);
+      const resources = normalizeResourceSnapshot(city.resourceSnapshot);
+      if (!canAffordCityCost(resources, cost)) {
+        throw new BadRequestException("主城库存不足，无法升级建筑");
+      }
+
+      const now = new Date();
+      const upgradeEndsAt = new Date(
+        now.getTime() + getBuildingUpgradeSeconds(building.level) * 1000,
+      );
+      const nextResources = subtractCityCost(resources, cost);
+      const [updatedCity, updatedBuilding] = await Promise.all([
+        tx.playerCity.update({
+          where: { cityId: city.cityId },
+          data: { resourceSnapshot: nextResources as unknown as Prisma.InputJsonValue },
+        }),
+        tx.cityBuilding.update({
+          where: { buildingId: building.buildingId },
+          data: {
+            status: "upgrading",
+            targetLevel: building.level + 1,
+            upgradeStartedAt: now,
+            upgradeEndsAt,
+            costSnapshot: cost as unknown as Prisma.InputJsonValue,
+          },
+        }),
+      ]);
+      const refreshedBuildings = await this.ensureCityBuildings(tx, city.cityId);
+      const responseData: UpgradeCityBuildingResponse = {
+        record_id: `city_building_upgrade_${randomUUID()}`,
+        city: this.toCityState(updatedCity),
+        building: this.toBuildingState(updatedBuilding, updatedCity.cityLevel, now),
+        buildings: refreshedBuildings.map((item) =>
+          this.toBuildingState(item, updatedCity.cityLevel, now),
+        ),
+      };
+      await this.createCityActionRecord(tx, {
+        accountId: input.accountId,
+        action: "city_building_upgrade",
+        afterSnapshot: responseData,
+        endpoint: input.endpoint,
+        idempotencyKey: input.idempotencyKey,
+        playerId: player.playerId,
+        reason: `升级${getCityBuildingName(body.building_type)}`,
+        requestHash,
+        targetId: building.buildingId,
+      });
+      return responseData;
+    });
   }
 
   async settleMainCity(input: {
@@ -133,6 +332,7 @@ export class CityService {
           configVersion: worldConfigVersion,
         },
       });
+      await this.ensureCityBuildings(tx, city.cityId);
       const overview = await this.buildOverview(player.playerId, tx);
       const responseData: SettleMainCityResponse = {
         record_id: `settle_city_${randomUUID()}`,
@@ -284,6 +484,218 @@ export class CityService {
       });
 
       return responseData;
+    });
+  }
+
+  private async buildManagement(
+    playerId: string,
+    tx: Prisma.TransactionClient,
+    knownCity?: PlayerCity,
+  ): Promise<CityManagementResponse> {
+    const initialCity =
+      knownCity ??
+      (await tx.playerCity.findFirst({
+        where: { playerId, cityType: "main" },
+        orderBy: { createdAt: "asc" },
+      }));
+    if (!initialCity) {
+      return {
+        city: null,
+        buildings: [],
+        territory_collect: null,
+        active_building: null,
+        config_version: territoryConfigVersion,
+      };
+    }
+    const city = await this.settleCompletedBuildingUpgrades(tx, initialCity);
+    const buildings = await this.ensureCityBuildings(tx, city.cityId);
+    const ownerships = await tx.worldBlockOwnership.findMany({
+      where: { playerId, eraId: defaultEraId, status: "owned" },
+      select: { terrainType: true },
+    });
+    const hourlyOutput = sumTerritoryHourlyOutput(
+      ownerships.map((ownership) => normalizeTerrainType(ownership.terrainType)),
+    );
+    const now = new Date();
+    const buildingStates = buildings.map((building) =>
+      this.toBuildingState(building, city.cityLevel, now),
+    );
+    const warehouse = requireBuilding(buildings, "warehouse");
+
+    return {
+      city: this.toCityState(city),
+      buildings: buildingStates,
+      territory_collect: buildTerritoryCollectState({
+        city,
+        hourlyOutput,
+        storageCapacity: getStorageCapacity(warehouse.level),
+        now,
+      }),
+      active_building: buildingStates.find((building) => building.status === "upgrading") ?? null,
+      config_version: territoryConfigVersion,
+    };
+  }
+
+  private async requireMainCity(
+    playerId: string,
+    tx: Prisma.TransactionClient,
+  ): Promise<PlayerCity> {
+    const city = await tx.playerCity.findFirst({
+      where: { playerId, cityType: "main" },
+      orderBy: { createdAt: "asc" },
+    });
+    if (!city) {
+      throw new BadRequestException("请先建立主城");
+    }
+    return city;
+  }
+
+  private async ensureCityBuildings(
+    tx: Prisma.TransactionClient,
+    cityId: string,
+  ): Promise<CityBuilding[]> {
+    await tx.cityBuilding.createMany({
+      data: cityBuildingTypes.map((buildingType) => ({
+        buildingId: `city_building_${randomUUID()}`,
+        cityId,
+        buildingType,
+        level: 1,
+        status: "idle",
+        costSnapshot: {} as Prisma.InputJsonValue,
+      })),
+      skipDuplicates: true,
+    });
+    return tx.cityBuilding.findMany({ where: { cityId }, orderBy: { buildingType: "asc" } });
+  }
+
+  private async settleCompletedBuildingUpgrades(
+    tx: Prisma.TransactionClient,
+    city: PlayerCity,
+  ): Promise<PlayerCity> {
+    const now = new Date();
+    const completedBuildings = await tx.cityBuilding.findMany({
+      where: { cityId: city.cityId, status: "upgrading", upgradeEndsAt: { lte: now } },
+    });
+    if (completedBuildings.length === 0) {
+      return city;
+    }
+
+    let garrisonIncrease = 0;
+    let wallIncrease = 0;
+    for (const building of completedBuildings) {
+      const targetLevel = building.targetLevel ?? building.level + 1;
+      if (building.buildingType === "barracks") {
+        garrisonIncrease += 35 * targetLevel;
+      }
+      if (building.buildingType === "fortification") {
+        wallIncrease += 260 * targetLevel;
+      }
+      await tx.cityBuilding.update({
+        where: { buildingId: building.buildingId },
+        data: {
+          level: targetLevel,
+          status: "idle",
+          targetLevel: null,
+          upgradeStartedAt: null,
+          upgradeEndsAt: null,
+          costSnapshot: {} as Prisma.InputJsonValue,
+        },
+      });
+    }
+    if (garrisonIncrease === 0 && wallIncrease === 0) {
+      return city;
+    }
+    const defense = normalizeDefenseSnapshot(city.defenseSnapshot);
+    return tx.playerCity.update({
+      where: { cityId: city.cityId },
+      data: {
+        defenseSnapshot: {
+          ...defense,
+          garrison_power: defense.garrison_power + garrisonIncrease,
+          wall_durability: defense.wall_durability + wallIncrease,
+          wall_durability_cap: defense.wall_durability_cap + wallIncrease,
+        } as unknown as Prisma.InputJsonValue,
+      },
+    });
+  }
+
+  private toBuildingState(building: CityBuilding, cityLevel: number, now: Date): CityBuildingState {
+    const buildingType = normalizeBuildingType(building.buildingType);
+    const targetLevel =
+      building.status === "upgrading" ? (building.targetLevel ?? building.level + 1) : null;
+    const remainingSeconds = building.upgradeEndsAt
+      ? Math.max(0, Math.ceil((building.upgradeEndsAt.getTime() - now.getTime()) / 1000))
+      : 0;
+    const canUpgrade =
+      building.status !== "upgrading" && building.level < getMaximumBuildingLevel(cityLevel);
+
+    return {
+      building_id: building.buildingId,
+      building_type: buildingType,
+      name: getCityBuildingName(buildingType),
+      level: building.level,
+      target_level: targetLevel,
+      status: building.status === "upgrading" ? "upgrading" : "idle",
+      upgrade_started_at: building.upgradeStartedAt?.toISOString() ?? null,
+      upgrade_ends_at: building.upgradeEndsAt?.toISOString() ?? null,
+      remaining_seconds: remainingSeconds,
+      next_cost: canUpgrade ? getBuildingUpgradeCost(buildingType, building.level) : null,
+      effect_summary: getCityBuildingEffectSummary(buildingType, targetLevel ?? building.level),
+    };
+  }
+
+  private assertMatchingIdempotencyRecord(
+    record: { accountId: string | null; endpoint: string; requestHash: string },
+    input: { accountId: string; endpoint: string },
+    requestHash: string,
+  ): void {
+    if (
+      record.accountId !== input.accountId ||
+      record.endpoint !== input.endpoint ||
+      record.requestHash !== requestHash
+    ) {
+      throw new BadRequestException("幂等键已被其他请求使用");
+    }
+  }
+
+  private async createCityActionRecord(
+    tx: Prisma.TransactionClient,
+    input: {
+      accountId: string;
+      action: string;
+      afterSnapshot: unknown;
+      endpoint: string;
+      idempotencyKey: string;
+      playerId: string;
+      reason: string;
+      requestHash: string;
+      targetId: string;
+    },
+  ): Promise<void> {
+    await tx.auditLog.create({
+      data: {
+        auditLogId: `audit_${randomUUID()}`,
+        accountId: input.accountId,
+        playerId: input.playerId,
+        action: input.action,
+        targetType: "player_city",
+        targetId: input.targetId,
+        afterSnapshot: input.afterSnapshot as Prisma.InputJsonValue,
+        reason: input.reason,
+        idempotencyKey: input.idempotencyKey,
+        configVersion: territoryConfigVersion,
+      },
+    });
+    await tx.idempotencyRecord.create({
+      data: {
+        idempotencyKey: input.idempotencyKey,
+        accountId: input.accountId,
+        endpoint: input.endpoint,
+        requestHash: input.requestHash,
+        responseData: input.afterSnapshot as Prisma.InputJsonValue,
+        statusCode: 200,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      },
     });
   }
 
@@ -555,6 +967,124 @@ function normalizeResourceSnapshot(value: Prisma.JsonValue): CityResourceSnapsho
     wood: toStringValue(record.wood, initialCityResources.wood),
     herb: toStringValue(record.herb, initialCityResources.herb),
     soldier: toStringValue(record.soldier, initialCityResources.soldier),
+  };
+}
+
+function normalizeUpgradeBuildingBody(
+  body: UpgradeCityBuildingRequest,
+): UpgradeCityBuildingRequest {
+  const buildingType = body?.building_type;
+  if (!buildingType || !cityBuildingTypes.includes(buildingType)) {
+    throw new BadRequestException("请选择要升级的建筑");
+  }
+
+  return { building_type: buildingType };
+}
+
+function normalizeBuildingType(value: string): CityBuildingType {
+  return cityBuildingTypes.includes(value as CityBuildingType)
+    ? (value as CityBuildingType)
+    : "warehouse";
+}
+
+function normalizeTerrainType(value: string): WorldTerrainType {
+  if (value === "swamp" || value === "forest" || value === "mountain" || value === "desert") {
+    return value;
+  }
+
+  return "plain";
+}
+
+function requireBuilding(buildings: CityBuilding[], buildingType: CityBuildingType): CityBuilding {
+  const building = buildings.find((item) => item.buildingType === buildingType);
+  if (!building) {
+    throw new BadRequestException("建筑状态初始化失败");
+  }
+
+  return building;
+}
+
+function buildTerritoryCollectState(input: {
+  city: PlayerCity;
+  hourlyOutput: TerritoryHourlyOutputState;
+  storageCapacity: ReturnType<typeof getStorageCapacity>;
+  now: Date;
+}): TerritoryCollectState {
+  const elapsedSeconds = Math.max(
+    0,
+    Math.floor((input.now.getTime() - input.city.territoryCollectedAt.getTime()) / 1000),
+  );
+  const cappedSeconds = Math.min(elapsedSeconds, territoryCollectionCapSeconds);
+  const multiplier = cappedSeconds / 3600;
+
+  return {
+    last_collected_at: input.city.territoryCollectedAt.toISOString(),
+    elapsed_seconds: elapsedSeconds,
+    capped_seconds: cappedSeconds,
+    remaining_cap_seconds: Math.max(0, territoryCollectionCapSeconds - cappedSeconds),
+    claimable: {
+      spirit_stone: Math.floor(input.hourlyOutput.spirit_stone * multiplier),
+      grain: Math.floor(input.hourlyOutput.grain * multiplier),
+      ore: Math.floor(input.hourlyOutput.ore * multiplier),
+      wood: Math.floor(input.hourlyOutput.wood * multiplier),
+      herb: Math.floor(input.hourlyOutput.herb * multiplier),
+    },
+    storage_capacity: input.storageCapacity,
+  };
+}
+
+function capCollectionToStorage(
+  claimable: TerritoryHourlyOutputState,
+  resources: CityResourceSnapshot,
+  capacity: ReturnType<typeof getStorageCapacity>,
+): TerritoryHourlyOutputState {
+  return {
+    spirit_stone: Math.max(
+      0,
+      Math.min(claimable.spirit_stone, capacity.spirit_stone - Number(resources.spirit_stone)),
+    ),
+    grain: Math.max(0, Math.min(claimable.grain, capacity.grain - Number(resources.grain))),
+    ore: Math.max(0, Math.min(claimable.ore, capacity.ore - Number(resources.ore))),
+    wood: Math.max(0, Math.min(claimable.wood, capacity.wood - Number(resources.wood))),
+    herb: Math.max(0, Math.min(claimable.herb, capacity.herb - Number(resources.herb))),
+  };
+}
+
+function subtractHourlyOutput(
+  source: TerritoryHourlyOutputState,
+  deducted: TerritoryHourlyOutputState,
+): TerritoryHourlyOutputState {
+  return {
+    spirit_stone: source.spirit_stone - deducted.spirit_stone,
+    grain: source.grain - deducted.grain,
+    ore: source.ore - deducted.ore,
+    wood: source.wood - deducted.wood,
+    herb: source.herb - deducted.herb,
+  };
+}
+
+function canAffordCityCost(
+  resources: CityResourceSnapshot,
+  cost: ReturnType<typeof getBuildingUpgradeCost>,
+): boolean {
+  return (
+    Number(resources.spirit_stone) >= cost.spirit_stone &&
+    Number(resources.grain) >= cost.grain &&
+    Number(resources.ore) >= cost.ore &&
+    Number(resources.wood) >= cost.wood
+  );
+}
+
+function subtractCityCost(
+  resources: CityResourceSnapshot,
+  cost: ReturnType<typeof getBuildingUpgradeCost>,
+): CityResourceSnapshot {
+  return {
+    ...resources,
+    spirit_stone: String(Number(resources.spirit_stone) - cost.spirit_stone),
+    grain: String(Number(resources.grain) - cost.grain),
+    ore: String(Number(resources.ore) - cost.ore),
+    wood: String(Number(resources.wood) - cost.wood),
   };
 }
 

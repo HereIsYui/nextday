@@ -130,11 +130,13 @@ model PlayerCity {
   ownerSectId      String?   @map("owner_sect_id")
   defenseSnapshot  Json      @map("defense_snapshot")
   resourceSnapshot Json      @map("resource_snapshot")
+  territoryCollectedAt DateTime @default(now()) @map("territory_collected_at")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
   player Player @relation(fields: [playerId], references: [playerId])
   marchQueues MarchQueue[]
+  buildings CityBuilding[]
 
   @@index([playerId])
   @@index([eraId])
@@ -144,6 +146,28 @@ model PlayerCity {
   @@index([status])
   @@index([protectionUntil])
   @@map("player_city")
+}
+
+model CityBuilding {
+  buildingId       String    @id @map("building_id")
+  cityId           String    @map("city_id")
+  buildingType     String    @map("building_type")
+  level            Int       @default(1)
+  status           String    @default("idle")
+  targetLevel      Int?      @map("target_level")
+  upgradeStartedAt DateTime? @map("upgrade_started_at")
+  upgradeEndsAt    DateTime? @map("upgrade_ends_at")
+  costSnapshot     Json      @map("cost_snapshot")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  city PlayerCity @relation(fields: [cityId], references: [cityId], onDelete: Cascade)
+
+  @@unique([cityId, buildingType])
+  @@index([cityId])
+  @@index([status])
+  @@index([upgradeEndsAt])
+  @@map("city_building")
 }
 
 model MarchQueue {

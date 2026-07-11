@@ -950,6 +950,76 @@ export interface ExpandCityResponse {
   expansion: CityExpansionState;
 }
 
+export type CityBuildingType = "warehouse" | "barracks" | "fortification" | "workshop";
+
+export type CityBuildingStatus = "idle" | "upgrading";
+
+export interface CityBuildingCostState {
+  spirit_stone: number;
+  grain: number;
+  ore: number;
+  wood: number;
+}
+
+export interface CityBuildingState {
+  building_id: string;
+  building_type: CityBuildingType;
+  name: string;
+  level: number;
+  target_level: number | null;
+  status: CityBuildingStatus;
+  upgrade_started_at: string | null;
+  upgrade_ends_at: string | null;
+  remaining_seconds: number;
+  next_cost: CityBuildingCostState | null;
+  effect_summary: string;
+}
+
+export interface CityStorageCapacityState {
+  spirit_stone: number;
+  grain: number;
+  ore: number;
+  wood: number;
+  herb: number;
+}
+
+export interface TerritoryCollectState {
+  last_collected_at: string;
+  elapsed_seconds: number;
+  capped_seconds: number;
+  remaining_cap_seconds: number;
+  claimable: TerritoryHourlyOutputState;
+  storage_capacity: CityStorageCapacityState;
+}
+
+export interface CityManagementResponse {
+  city: PlayerCityState | null;
+  buildings: CityBuildingState[];
+  territory_collect: TerritoryCollectState | null;
+  active_building: CityBuildingState | null;
+  config_version: string;
+}
+
+export interface CollectTerritoryResponse {
+  record_id: string;
+  city: PlayerCityState;
+  collected: TerritoryHourlyOutputState;
+  overflow: TerritoryHourlyOutputState;
+  territory_collect: TerritoryCollectState;
+  buildings: CityBuildingState[];
+}
+
+export interface UpgradeCityBuildingRequest {
+  building_type: CityBuildingType;
+}
+
+export interface UpgradeCityBuildingResponse {
+  record_id: string;
+  city: PlayerCityState;
+  building: CityBuildingState;
+  buildings: CityBuildingState[];
+}
+
 export interface BattleRoundLog {
   round: number;
   actor: string;

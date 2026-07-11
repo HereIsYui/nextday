@@ -1,9 +1,13 @@
 import { Body, Controller, Get, Inject, Post, Req, UseGuards } from "@nestjs/common";
 import type {
+  CityManagementResponse,
   CityOverviewResponse,
+  CollectTerritoryResponse,
   ExpandCityResponse,
   SettleMainCityRequest,
   SettleMainCityResponse,
+  UpgradeCityBuildingRequest,
+  UpgradeCityBuildingResponse,
 } from "@nextday/shared";
 import type { Request } from "express";
 import { BearerAuthGuard } from "../auth/bearer-auth.guard";
@@ -17,6 +21,11 @@ export class CityController {
   @Get("overview")
   overview(@Req() request: Request): Promise<CityOverviewResponse> {
     return this.cityService.getOverview(requireAccountId(request));
+  }
+
+  @Get("management")
+  management(@Req() request: Request): Promise<CityManagementResponse> {
+    return this.cityService.getManagement(requireAccountId(request));
   }
 
   @Post("settle")
@@ -38,6 +47,28 @@ export class CityController {
       accountId: requireAccountId(request),
       idempotencyKey: requireIdempotencyKey(request),
       endpoint: "POST /api/city/expand",
+    });
+  }
+
+  @Post("territory/collect")
+  collectTerritory(@Req() request: Request): Promise<CollectTerritoryResponse> {
+    return this.cityService.collectTerritory({
+      accountId: requireAccountId(request),
+      idempotencyKey: requireIdempotencyKey(request),
+      endpoint: "POST /api/city/territory/collect",
+    });
+  }
+
+  @Post("buildings/upgrade")
+  upgradeBuilding(
+    @Body() body: UpgradeCityBuildingRequest,
+    @Req() request: Request,
+  ): Promise<UpgradeCityBuildingResponse> {
+    return this.cityService.upgradeBuilding({
+      accountId: requireAccountId(request),
+      body,
+      idempotencyKey: requireIdempotencyKey(request),
+      endpoint: "POST /api/city/buildings/upgrade",
     });
   }
 }

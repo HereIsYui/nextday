@@ -15,6 +15,7 @@
     "test:r1-world-map": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/r1-world-map.e2e-spec.ts",
     "test:r1-world-occupy": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/r1-world-occupy.e2e-spec.ts",
     "test:r1-territory": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/r1-territory.e2e-spec.ts",
+    "test:r1-city-management": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/r1-city-management.e2e-spec.ts",
     "test:m1": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/m1.e2e-spec.ts",
     "test:m2": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/m2.e2e-spec.ts",
     "test:m3": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game vitest run test/m3.e2e-spec.ts",

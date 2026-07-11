@@ -65,6 +65,7 @@ import type {
   StoryScrollListResponse,
   TaskState,
   TerritoryOccupationState,
+  TerritoryOverviewResponse,
   TitleCollectionResponse,
   TowerListResponse,
   TowerStateSummary,
@@ -384,6 +385,7 @@ export default function HomePage() {
   );
   const [worldMap, setWorldMap] = useState<WorldMapResponse | null>(null);
   const [cityOverview, setCityOverview] = useState<CityOverviewResponse | null>(null);
+  const [worldTerritory, setWorldTerritory] = useState<TerritoryOverviewResponse | null>(null);
   const [worldMarches, setWorldMarches] = useState<WorldMarchListResponse | null>(null);
   const [selectedWorldProvinceId, setSelectedWorldProvinceId] = useState("");
   const [worldMapView, setWorldMapView] = useState<WorldMapView>("mini");
@@ -425,6 +427,7 @@ export default function HomePage() {
     unlockedProvinces[0];
   const worldProvinces = worldProvinceList?.provinces ?? [];
   const worldMainCity = cityOverview?.main_city ?? null;
+  const cityExpansion = worldTerritory?.expansion ?? null;
   const selectedWorldProvince =
     worldProvinces.find((province) => province.province_id === selectedWorldProvinceId) ??
     worldProvinces.find((province) => province.province_id === worldMainCity?.province_id) ??
@@ -959,6 +962,7 @@ export default function HomePage() {
         }
         setWorldProvinceList(state.provinces);
         setCityOverview(state.city);
+        setWorldTerritory(state.territory);
         setWorldMarches(state.marches);
         setWorldMap(state.map);
         if (!selectedWorldProvinceId && state.selectedProvinceId) {
@@ -1460,6 +1464,7 @@ export default function HomePage() {
     );
     setWorldProvinceList(state.provinces);
     setCityOverview(state.city);
+    setWorldTerritory(state.territory);
     setWorldMarches(state.marches);
     setWorldMap(state.map);
     if (state.selectedProvinceId && selectedWorldProvinceId !== state.selectedProvinceId) {
@@ -1598,6 +1603,30 @@ export default function HomePage() {
         `已购买${response.data.tile.tile_name}`,
         response.data.tile.province_id,
       );
+    });
+  }
+
+  async function handleExpandMainCity() {
+    if (!worldMainCity || !cityExpansion) {
+      setMessage("主城领地状态同步中");
+      return;
+    }
+
+    if (!cityExpansion.eligible) {
+      setMessage(cityExpansion.reason);
+      return;
+    }
+
+    await runAction("扩建主城", async () => {
+      const response = await client.expandCity(createIdempotencyKey("web_city_expand"));
+      ensureOk(response);
+      rememberExperience(undefined, {
+        summary: `${response.data.city.city_name}扩建至 ${response.data.city.city_level} 级，建筑位与城防一并提升。`,
+        tags: ["主城扩建", "领地经营"],
+        title: "扩建主城",
+        tone: "success",
+      });
+      await refreshWorldState(`主城扩建至 ${response.data.city.city_level} 级`);
     });
   }
 
@@ -3224,6 +3253,67 @@ export default function HomePage() {
                                   <span>灵木 {worldMainCity.resources.wood}</span>
                                   <span>道兵 {worldMainCity.resources.soldier}</span>
                                 </div>
+                                {worldTerritory ? (
+                                  <section className="world-territory-overview">
+                                    <div className="province-head">
+                                      <div>
+                                        <strong>我的领地</strong>
+                                        <span>{worldTerritory.next_purchase_hint}</span>
+                                      </div>
+                                      <StatusBadge tone="neutral">
+                                        {worldTerritory.owned_block_count}/
+                                        {worldTerritory.block_limit} 区块
+                                      </StatusBadge>
+                                    </div>
+                                    <div className="mini-stats">
+                                      <span>
+                                        灵石 +{worldTerritory.hourly_output.spirit_stone}/时
+                                      </span>
+                                      <span>粮草 +{worldTerritory.hourly_output.grain}/时</span>
+                                      <span>矿材 +{worldTerritory.hourly_output.ore}/时</span>
+                                      <span>灵木 +{worldTerritory.hourly_output.wood}/时</span>
+                                      <span>灵草 +{worldTerritory.hourly_output.herb}/时</span>
+                                    </div>
+                                    <div className="world-terrain-summary">
+                                      {worldTerritory.terrain_summary.map((terrain) => (
+                                        <span key={terrain.terrain_type}>
+                                          {terrain.terrain_label} {terrain.block_count} 格
+                                        </span>
+                                      ))}
+                                    </div>
+                                    {cityExpansion ? (
+                                      <div className="world-expansion-row">
+                                        <div>
+                                          <strong>主城扩建</strong>
+                                          <span>
+                                            {cityExpansion.next_city_level
+                                              ? `升至 ${cityExpansion.next_city_level} 级 · 建筑位 ${cityExpansion.building_slots}`
+                                              : `建筑位 ${cityExpansion.building_slots}`}
+                                          </span>
+                                          <small>{cityExpansion.reason}</small>
+                                        </div>
+                                        {cityExpansion.cost ? (
+                                          <div className="production-actions">
+                                            <span className="action-note">
+                                              粮草 {cityExpansion.cost.grain} · 灵木{" "}
+                                              {cityExpansion.cost.wood}· 矿材{" "}
+                                              {cityExpansion.cost.ore} · 灵石{" "}
+                                              {cityExpansion.cost.spirit_stone}
+                                            </span>
+                                            <Button
+                                              disabled={busy || !cityExpansion.eligible}
+                                              onClick={handleExpandMainCity}
+                                            >
+                                              扩建主城
+                                            </Button>
+                                          </div>
+                                        ) : (
+                                          <span className="action-note">当前纪元已达上限</span>
+                                        )}
+                                      </div>
+                                    ) : null}
+                                  </section>
+                                ) : null}
                               </>
                             ) : (
                               <>
@@ -8014,14 +8104,16 @@ async function loadWorldState(
   provinceId?: string,
   view: WorldMapView = "mini",
 ) {
-  const [provinceResponse, cityResponse, marchResponse] = await Promise.all([
+  const [provinceResponse, cityResponse, marchResponse, territoryResponse] = await Promise.all([
     client.worldProvinces(),
     client.cityOverview(),
     client.worldMarches(),
+    client.worldTerritory(),
   ]);
   ensureOk(provinceResponse);
   ensureOk(cityResponse);
   ensureOk(marchResponse);
+  ensureOk(territoryResponse);
 
   const selectedProvinceId =
     provinceId ||
@@ -8034,6 +8126,7 @@ async function loadWorldState(
 
   return {
     city: cityResponse.data,
+    territory: territoryResponse.data,
     map: mapResponse.data,
     marches: marchResponse.data,
     provinces: provinceResponse.data,

@@ -6,6 +6,7 @@ import type {
   PurchaseWorldBlockResponse,
   StartWorldMarchRequest,
   StartWorldMarchResponse,
+  TerritoryOverviewResponse,
   WorldMapResponse,
   WorldMapView,
   WorldMarchListResponse,
@@ -37,6 +38,11 @@ export class WorldController {
   @Get("marches")
   marches(@Req() request: Request): Promise<WorldMarchListResponse> {
     return this.worldService.getMarches(requireAccountId(request));
+  }
+
+  @Get("territory")
+  territory(@Req() request: Request): Promise<TerritoryOverviewResponse> {
+    return this.worldService.getTerritory(requireAccountId(request));
   }
 
   @Post("march")

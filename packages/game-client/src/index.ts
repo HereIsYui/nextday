@@ -81,6 +81,7 @@ import type {
   EraMuseumResponse,
   ExecuteMergeReservedRequest,
   ExecuteMergeReservedResponse,
+  ExpandCityResponse,
   ExploreClaimRequest,
   ExploreCurrentResponse,
   ExploreEventListResponse,
@@ -185,6 +186,7 @@ import type {
   TaskClaimRequest,
   TaskClaimResponse,
   TaskSummaryResponse,
+  TerritoryOverviewResponse,
   TitleCollectionResponse,
   TowerActionRequest,
   TowerActionResponse,
@@ -451,6 +453,10 @@ export class GameClient {
     return this.get<CityOverviewResponse>("/api/city/overview");
   }
 
+  expandCity(idempotencyKey: string): Promise<ApiResponse<ExpandCityResponse>> {
+    return this.post<ExpandCityResponse>("/api/city/expand", {}, { idempotencyKey });
+  }
+
   settleMainCity(
     body: SettleMainCityRequest,
     idempotencyKey: string,
@@ -462,6 +468,10 @@ export class GameClient {
 
   worldMarches(): Promise<ApiResponse<WorldMarchListResponse>> {
     return this.get<WorldMarchListResponse>("/api/world/marches");
+  }
+
+  worldTerritory(): Promise<ApiResponse<TerritoryOverviewResponse>> {
+    return this.get<TerritoryOverviewResponse>("/api/world/territory");
   }
 
   startWorldMarch(

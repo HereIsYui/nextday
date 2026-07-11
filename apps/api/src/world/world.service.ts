@@ -1,23 +1,29 @@
 import { randomUUID } from "node:crypto";
 import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import type {
+  CityDefenseSnapshot,
+  CityResourceSnapshot,
   MapTileState,
   MarchQueueState,
   MarchQueueStatus,
   MarchType,
   OccupyWorldRequest,
   OccupyWorldResponse,
+  PlayerCityStatus,
   ProvinceWarState,
   PurchaseWorldBlockRequest,
   PurchaseWorldBlockResponse,
   StartWorldMarchRequest,
   StartWorldMarchResponse,
+  TerritoryBlockState,
   TerritoryDefenseSnapshot,
   TerritoryNodeState,
   TerritoryOccupationState,
   TerritoryOccupationStatus,
   TerritoryOccupationType,
+  TerritoryOverviewResponse,
   TerritoryProductionSnapshot,
+  TerritoryTerrainSummaryState,
   WalletSnapshot,
   WorldCommanderyState,
   WorldMapResponse,
@@ -39,6 +45,13 @@ import type {
 import { PrismaService } from "../database/prisma.service";
 import { defaultEraId } from "../game/game.constants";
 import { hashRequestBody } from "../platform/utils/hash";
+import {
+  buildCityExpansionState,
+  emptyTerritoryHourlyOutput,
+  getTerrainHourlyOutput,
+  getTerritoryBlockLimit,
+  territoryConfigVersion,
+} from "./territory.constants";
 import {
   type MapTileConfig,
   type TerritoryNodeConfig,
@@ -91,6 +104,94 @@ export class WorldService {
     });
 
     return this.toMarchListResponse(marches, cityMap);
+  }
+
+  async getTerritory(accountId: string): Promise<TerritoryOverviewResponse> {
+    const player = await this.requirePlayer(accountId);
+    const [city, ownerships] = await Promise.all([
+      this.prisma.playerCity.findFirst({
+        where: { playerId: player.playerId, cityType: "main" },
+        orderBy: { createdAt: "asc" },
+      }),
+      this.prisma.worldBlockOwnership.findMany({
+        where: { playerId: player.playerId, eraId: defaultEraId, status: "owned" },
+        orderBy: { ownedAt: "asc" },
+      }),
+    ]);
+
+    if (!city) {
+      return {
+        main_city: null,
+        owned_block_count: 0,
+        block_limit: 0,
+        remaining_block_capacity: 0,
+        hourly_output: emptyTerritoryHourlyOutput(),
+        terrain_summary: [],
+        blocks: [],
+        expansion: null,
+        next_purchase_hint: "先选择出生州建立主城，再从相邻无主区块开始扩张。",
+        config_version: territoryConfigVersion,
+      };
+    }
+
+    const blocks = ownerships
+      .map((ownership) => this.toTerritoryBlockState(ownership))
+      .filter((block): block is TerritoryBlockState => Boolean(block));
+    const hourlyOutput = emptyTerritoryHourlyOutput();
+    const terrainSummary = new Map<
+      TerritoryTerrainSummaryState["terrain_type"],
+      TerritoryTerrainSummaryState
+    >();
+
+    for (const block of blocks) {
+      const output = block.hourly_output;
+      hourlyOutput.spirit_stone += output.spirit_stone;
+      hourlyOutput.grain += output.grain;
+      hourlyOutput.ore += output.ore;
+      hourlyOutput.wood += output.wood;
+      hourlyOutput.herb += output.herb;
+      const existing = terrainSummary.get(block.terrain_type) ?? {
+        terrain_type: block.terrain_type,
+        terrain_label: block.terrain_label,
+        block_count: 0,
+        hourly_output: emptyTerritoryHourlyOutput(),
+      };
+      existing.block_count += 1;
+      existing.hourly_output.spirit_stone += output.spirit_stone;
+      existing.hourly_output.grain += output.grain;
+      existing.hourly_output.ore += output.ore;
+      existing.hourly_output.wood += output.wood;
+      existing.hourly_output.herb += output.herb;
+      terrainSummary.set(block.terrain_type, existing);
+    }
+
+    const expansion = buildCityExpansionState({
+      cityLevel: city.cityLevel,
+      ownedPlainBlocks: blocks.filter((block) => block.terrain_type === "plain").length,
+      resources: normalizeCityResources(city.resourceSnapshot),
+    });
+    const blockLimit = getTerritoryBlockLimit(city.cityLevel);
+    const remainingBlockCapacity = Math.max(0, blockLimit - blocks.length);
+
+    return {
+      main_city: this.toCityState(city),
+      owned_block_count: blocks.length,
+      block_limit: blockLimit,
+      remaining_block_capacity: remainingBlockCapacity,
+      hourly_output: hourlyOutput,
+      terrain_summary: [...terrainSummary.values()].sort(
+        (left, right) => right.block_count - left.block_count,
+      ),
+      blocks,
+      expansion,
+      next_purchase_hint:
+        remainingBlockCapacity <= 0
+          ? "领地已达当前上限，先扩建主城以容纳更多区块。"
+          : expansion.owned_plain_blocks < expansion.required_plain_blocks
+            ? "优先购买相邻平原，为主城扩建补足地基。"
+            : "可按当前缺口购买相邻资源地，继续完善领地产出。",
+      config_version: territoryConfigVersion,
+    };
   }
 
   async startMarch(input: {
@@ -258,6 +359,18 @@ export class WorldService {
       }
 
       const targetTile = requireOccupationTarget(march.targetTileId);
+      const sourceCity = await tx.playerCity.findUnique({
+        where: { cityId: march.sourceCityId },
+      });
+      if (!sourceCity) {
+        throw new BadRequestException("行军来源城池不存在");
+      }
+      const ownedBlockCount = await tx.worldBlockOwnership.count({
+        where: { playerId: player.playerId, eraId: defaultEraId, status: "owned" },
+      });
+      if (ownedBlockCount >= getTerritoryBlockLimit(sourceCity.cityLevel)) {
+        throw new BadRequestException("领地已达当前主城上限，扩建主城后再占领新区块");
+      }
       const existingBlockOwner = await tx.worldBlockOwnership.findUnique({
         where: { eraId_tileId: { eraId: defaultEraId, tileId: targetTile.tileId } },
       });
@@ -314,14 +427,6 @@ export class WorldService {
         where: { marchId: march.marchId },
         data: { status: "resolved", resolvedAt: now },
       });
-      const sourceCity = await tx.playerCity.findUnique({
-        where: { cityId: march.sourceCityId },
-      });
-
-      if (!sourceCity) {
-        throw new BadRequestException("行军来源城池不存在");
-      }
-
       const occupations = await tx.territoryOccupation.findMany({
         where: {
           playerId: player.playerId,
@@ -438,6 +543,9 @@ export class WorldService {
       const myOwnerships = await tx.worldBlockOwnership.findMany({
         where: { playerId: player.playerId, eraId: defaultEraId, status: "owned" },
       });
+      if (myOwnerships.length >= getTerritoryBlockLimit(city.cityLevel)) {
+        throw new BadRequestException("领地已达当前主城上限，扩建主城后再购买新区块");
+      }
       const adjacentOwned = myOwnerships.some((ownership) => {
         const ownedTile = findWorldTile(ownership.tileId);
         return ownedTile ? areAdjacentWorldTiles(ownedTile, targetTile) : false;
@@ -819,6 +927,65 @@ export class WorldService {
       owner_player_name: ownership?.player.name ?? null,
       ownership_type: ownership ? normalizeOwnershipType(ownership.ownershipType) : null,
       owned_at: ownership?.ownedAt.toISOString() ?? null,
+    };
+  }
+
+  private toTerritoryBlockState(ownership: WorldBlockOwnership): TerritoryBlockState | null {
+    const tile = findWorldTile(ownership.tileId);
+    if (!tile) {
+      return null;
+    }
+    const province = this.requireProvince(tile.provinceId);
+    const commandery = province.commanderies.find(
+      (item) => item.commanderyId === tile.commanderyId,
+    );
+    if (!commandery) {
+      return null;
+    }
+
+    return {
+      tile_id: tile.tileId,
+      tile_name: tile.tileName,
+      province_id: province.provinceId,
+      province_name: province.name,
+      commandery_id: commandery.commanderyId,
+      commandery_name: commandery.name,
+      terrain_type: tile.terrainType,
+      terrain_label: tile.terrainLabel,
+      ownership_type: normalizeOwnershipType(ownership.ownershipType),
+      owned_at: ownership.ownedAt.toISOString(),
+      hourly_output: getTerrainHourlyOutput(tile.terrainType),
+      city_expansion_eligible: tile.terrainType === "plain",
+    };
+  }
+
+  private toCityState(city: PlayerCity): TerritoryOverviewResponse["main_city"] {
+    const province = this.requireProvince(city.provinceId);
+    const commandery = province.commanderies.find(
+      (item) => item.commanderyId === city.commanderyId,
+    );
+    if (!commandery) {
+      throw new BadRequestException("主城郡域配置错误");
+    }
+    const defense = normalizeCityDefense(city.defenseSnapshot);
+
+    return {
+      city_id: city.cityId,
+      city_type: city.cityType === "sub" ? "sub" : "main",
+      province_id: province.provinceId,
+      province_name: province.name,
+      commandery_id: commandery.commanderyId,
+      commandery_name: commandery.name,
+      tile_id: city.tileId,
+      city_name: city.cityName,
+      city_level: city.cityLevel,
+      status: normalizeCityStatus(city.status),
+      protection_until: city.protectionUntil?.toISOString() ?? null,
+      owner_sect_id: city.ownerSectId,
+      defense,
+      resources: normalizeCityResources(city.resourceSnapshot),
+      created_at: city.createdAt.toISOString(),
+      updated_at: city.updatedAt.toISOString(),
     };
   }
 
@@ -1216,7 +1383,9 @@ function buildMiniMapSummary(input: {
   };
 }
 
-function normalizeOwnershipType(value: string): MapTileState["ownership"]["ownership_type"] {
+function normalizeOwnershipType(
+  value: string,
+): NonNullable<MapTileState["ownership"]["ownership_type"]> {
   if (
     value === "main_city" ||
     value === "purchase" ||
@@ -1366,6 +1535,38 @@ function normalizeTeamSnapshot(value: Prisma.JsonValue) {
     team_power: toNumber(record.team_power, 120),
     supply_cost: toNumber(record.supply_cost, 12),
   };
+}
+
+function normalizeCityResources(value: Prisma.JsonValue): CityResourceSnapshot {
+  const record = isRecord(value) ? value : {};
+
+  return {
+    spirit_stone: toStringValue(record.spirit_stone, "0"),
+    grain: toStringValue(record.grain, "0"),
+    ore: toStringValue(record.ore, "0"),
+    wood: toStringValue(record.wood, "0"),
+    herb: toStringValue(record.herb, "0"),
+    soldier: toStringValue(record.soldier, "0"),
+  };
+}
+
+function normalizeCityDefense(value: Prisma.JsonValue): CityDefenseSnapshot {
+  const record = isRecord(value) ? value : {};
+
+  return {
+    wall_durability: toNumber(record.wall_durability, 0),
+    wall_durability_cap: toNumber(record.wall_durability_cap, 0),
+    garrison_power: toNumber(record.garrison_power, 0),
+    protection_label: toStringValue(record.protection_label, "城防整备中"),
+  };
+}
+
+function normalizeCityStatus(value: string): PlayerCityStatus {
+  if (value === "normal" || value === "damaged" || value === "besieged" || value === "vassal") {
+    return value;
+  }
+
+  return "protected";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

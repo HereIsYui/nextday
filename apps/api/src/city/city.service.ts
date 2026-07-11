@@ -3,8 +3,10 @@ import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import type {
   CityBirthOptionState,
   CityDefenseSnapshot,
+  CityExpansionState,
   CityOverviewResponse,
   CityResourceSnapshot,
+  ExpandCityResponse,
   PlayerCityState,
   PlayerCityStatus,
   PlayerCityType,
@@ -15,6 +17,7 @@ import type { PlayerCity, Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
 import { defaultEraId } from "../game/game.constants";
 import { hashRequestBody } from "../platform/utils/hash";
+import { buildCityExpansionState, territoryConfigVersion } from "../world/territory.constants";
 import {
   type MapTileConfig,
   type WorldCommanderyConfig,
@@ -152,6 +155,122 @@ export class CityService {
         },
       });
 
+      await tx.idempotencyRecord.create({
+        data: {
+          idempotencyKey: input.idempotencyKey,
+          accountId: input.accountId,
+          endpoint: input.endpoint,
+          requestHash,
+          responseData: responseData as unknown as Prisma.InputJsonValue,
+          statusCode: 200,
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        },
+      });
+
+      return responseData;
+    });
+  }
+
+  async expandMainCity(input: {
+    accountId: string;
+    idempotencyKey: string;
+    endpoint: string;
+  }): Promise<ExpandCityResponse> {
+    const requestHash = hashRequestBody({});
+    const existingRecord = await this.prisma.idempotencyRecord.findUnique({
+      where: { idempotencyKey: input.idempotencyKey },
+    });
+
+    if (existingRecord) {
+      if (
+        existingRecord.accountId !== input.accountId ||
+        existingRecord.endpoint !== input.endpoint ||
+        existingRecord.requestHash !== requestHash
+      ) {
+        throw new BadRequestException("幂等键已被其他请求使用");
+      }
+
+      return existingRecord.responseData as unknown as ExpandCityResponse;
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const player = await tx.player.findUnique({ where: { accountId: input.accountId } });
+      if (!player) {
+        throw new BadRequestException("请先创建角色");
+      }
+
+      const city = await tx.playerCity.findFirst({
+        where: { playerId: player.playerId, cityType: "main" },
+        orderBy: { createdAt: "asc" },
+      });
+      if (!city) {
+        throw new BadRequestException("请先建立主城");
+      }
+
+      const ownedPlainBlocks = await tx.worldBlockOwnership.count({
+        where: {
+          playerId: player.playerId,
+          eraId: defaultEraId,
+          status: "owned",
+          terrainType: "plain",
+        },
+      });
+      const resources = normalizeResourceSnapshot(city.resourceSnapshot);
+      const expansion = buildCityExpansionState({
+        cityLevel: city.cityLevel,
+        ownedPlainBlocks,
+        resources,
+      });
+      if (!expansion.eligible || !expansion.cost) {
+        throw new BadRequestException(expansion.reason);
+      }
+
+      const nextResources: CityResourceSnapshot = {
+        ...resources,
+        spirit_stone: String(Number(resources.spirit_stone) - expansion.cost.spirit_stone),
+        grain: String(Number(resources.grain) - expansion.cost.grain),
+        ore: String(Number(resources.ore) - expansion.cost.ore),
+        wood: String(Number(resources.wood) - expansion.cost.wood),
+      };
+      const defense = normalizeDefenseSnapshot(city.defenseSnapshot);
+      const nextDefense: CityDefenseSnapshot = {
+        ...defense,
+        garrison_power: defense.garrison_power + 20,
+        wall_durability: defense.wall_durability + 250,
+        wall_durability_cap: defense.wall_durability_cap + 250,
+      };
+      const updatedCity = await tx.playerCity.update({
+        where: { cityId: city.cityId },
+        data: {
+          cityLevel: { increment: 1 },
+          defenseSnapshot: nextDefense as unknown as Prisma.InputJsonValue,
+          resourceSnapshot: nextResources as unknown as Prisma.InputJsonValue,
+        },
+      });
+      const responseData: ExpandCityResponse = {
+        record_id: `city_expand_${randomUUID()}`,
+        city: this.toCityState(updatedCity),
+        expansion: buildCityExpansionState({
+          cityLevel: updatedCity.cityLevel,
+          ownedPlainBlocks,
+          resources: nextResources,
+        }),
+      };
+
+      await tx.auditLog.create({
+        data: {
+          auditLogId: `audit_${randomUUID()}`,
+          accountId: input.accountId,
+          playerId: player.playerId,
+          action: "city_expand",
+          targetType: "player_city",
+          targetId: city.cityId,
+          afterSnapshot: responseData as unknown as Prisma.InputJsonValue,
+          reason: "平原领地支撑主城扩建",
+          idempotencyKey: input.idempotencyKey,
+          configVersion: territoryConfigVersion,
+        },
+      });
       await tx.idempotencyRecord.create({
         data: {
           idempotencyKey: input.idempotencyKey,

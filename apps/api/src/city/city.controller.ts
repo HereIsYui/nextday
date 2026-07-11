@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Inject, Post, Req, UseGuards } from "@nestjs/common";
 import type {
   CityOverviewResponse,
+  ExpandCityResponse,
   SettleMainCityRequest,
   SettleMainCityResponse,
 } from "@nextday/shared";
@@ -28,6 +29,15 @@ export class CityController {
       body,
       idempotencyKey: requireIdempotencyKey(request),
       endpoint: "POST /api/city/settle",
+    });
+  }
+
+  @Post("expand")
+  expand(@Req() request: Request): Promise<ExpandCityResponse> {
+    return this.cityService.expandMainCity({
+      accountId: requireAccountId(request),
+      idempotencyKey: requireIdempotencyKey(request),
+      endpoint: "POST /api/city/expand",
     });
   }
 }

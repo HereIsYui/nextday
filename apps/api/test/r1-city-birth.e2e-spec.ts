@@ -63,11 +63,11 @@ describe("R1 出生州选择与主城建立", () => {
       city_type: "main",
       province_id: "ji",
       province_name: "冀州",
-      commandery_id: "ji_commandery_1",
       city_name: "北境仙城",
       city_level: 1,
       status: "protected",
     });
+    expect(settle.body.data.city.commandery_id).toMatch(/^ji_commandery_/);
     expect(settle.body.data.city.tile_id).toMatch(/^ji_block_/);
     expect(settle.body.data.city.protection_until).not.toBeNull();
     expect(settle.body.data.city.resources).toMatchObject({

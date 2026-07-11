@@ -882,6 +882,74 @@ export interface PurchaseWorldBlockResponse {
   wallet: WalletSnapshot;
 }
 
+export interface TerritoryHourlyOutputState {
+  spirit_stone: number;
+  grain: number;
+  ore: number;
+  wood: number;
+  herb: number;
+}
+
+export interface TerritoryTerrainSummaryState {
+  terrain_type: WorldTerrainType;
+  terrain_label: string;
+  block_count: number;
+  hourly_output: TerritoryHourlyOutputState;
+}
+
+export interface TerritoryBlockState {
+  tile_id: string;
+  tile_name: string;
+  province_id: string;
+  province_name: string;
+  commandery_id: string;
+  commandery_name: string;
+  terrain_type: WorldTerrainType;
+  terrain_label: string;
+  ownership_type: NonNullable<WorldBlockOwnershipState["ownership_type"]>;
+  owned_at: string;
+  hourly_output: TerritoryHourlyOutputState;
+  city_expansion_eligible: boolean;
+}
+
+export interface CityExpansionCostState {
+  spirit_stone: number;
+  grain: number;
+  ore: number;
+  wood: number;
+}
+
+export interface CityExpansionState {
+  city_level: number;
+  next_city_level: number | null;
+  maximum_city_level: number;
+  building_slots: number;
+  owned_plain_blocks: number;
+  required_plain_blocks: number;
+  eligible: boolean;
+  reason: string;
+  cost: CityExpansionCostState | null;
+}
+
+export interface TerritoryOverviewResponse {
+  main_city: PlayerCityState | null;
+  owned_block_count: number;
+  block_limit: number;
+  remaining_block_capacity: number;
+  hourly_output: TerritoryHourlyOutputState;
+  terrain_summary: TerritoryTerrainSummaryState[];
+  blocks: TerritoryBlockState[];
+  expansion: CityExpansionState | null;
+  next_purchase_hint: string;
+  config_version: string;
+}
+
+export interface ExpandCityResponse {
+  record_id: string;
+  city: PlayerCityState;
+  expansion: CityExpansionState;
+}
+
 export interface BattleRoundLog {
   round: number;
   actor: string;

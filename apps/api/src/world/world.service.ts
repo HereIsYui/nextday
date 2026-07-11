@@ -868,6 +868,7 @@ export class WorldService {
       state_summary: tile.stateSummary,
       owner: this.toOwnerState(tile.ownerProvinceId, occupation, ownership),
       ownership: this.toBlockOwnershipState(ownership),
+      garrison: null,
       purchase_state: buildPurchaseState(tile, ownership, purchaseContext),
       nodes: tile.nodes.map((node) => this.toTerritoryNodeState(node, occupation, ownership)),
     };
@@ -1388,6 +1389,7 @@ function normalizeOwnershipType(
 ): NonNullable<MapTileState["ownership"]["ownership_type"]> {
   if (
     value === "main_city" ||
+    value === "sub_city" ||
     value === "purchase" ||
     value === "occupation" ||
     value === "system"

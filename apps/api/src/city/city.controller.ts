@@ -3,6 +3,8 @@ import type {
   CityManagementResponse,
   CityOverviewResponse,
   CollectTerritoryResponse,
+  EstablishSubCityRequest,
+  EstablishSubCityResponse,
   ExpandCityResponse,
   SettleMainCityRequest,
   SettleMainCityResponse,
@@ -47,6 +49,19 @@ export class CityController {
       accountId: requireAccountId(request),
       idempotencyKey: requireIdempotencyKey(request),
       endpoint: "POST /api/city/expand",
+    });
+  }
+
+  @Post("subcity")
+  establishSubCity(
+    @Body() body: EstablishSubCityRequest,
+    @Req() request: Request,
+  ): Promise<EstablishSubCityResponse> {
+    return this.cityService.establishSubCity({
+      accountId: requireAccountId(request),
+      body,
+      idempotencyKey: requireIdempotencyKey(request),
+      endpoint: "POST /api/city/subcity",
     });
   }
 

@@ -623,7 +623,7 @@ export interface WorldBlockOwnershipState {
   ownership_id: string | null;
   owner_player_id: string | null;
   owner_player_name: string | null;
-  ownership_type: "main_city" | "purchase" | "occupation" | "system" | null;
+  ownership_type: "main_city" | "sub_city" | "purchase" | "occupation" | "system" | null;
   owned_at: string | null;
 }
 
@@ -659,6 +659,7 @@ export interface MapTileState {
   state_summary: string;
   owner: WorldOwnerState;
   ownership: WorldBlockOwnershipState;
+  garrison: TerritoryGarrisonState | null;
   purchase_state: WorldBlockPurchaseState;
   nodes: TerritoryNodeState[];
 }
@@ -771,9 +772,20 @@ export interface SettleMainCityResponse {
   overview: CityOverviewResponse;
 }
 
+export interface EstablishSubCityRequest {
+  tile_id: string;
+  city_name?: string;
+}
+
+export interface EstablishSubCityResponse {
+  record_id: string;
+  city: PlayerCityState;
+  overview: CityOverviewResponse;
+}
+
 export type MarchQueueStatus = "marching" | "arrived" | "resolved" | "cancelled";
 
-export type MarchType = "scout" | "clear_wild" | "occupy" | "reinforce";
+export type MarchType = "scout" | "clear_wild" | "occupy" | "reinforce" | "siege";
 
 export interface MarchTeamSnapshot {
   leader_name: string;
@@ -839,6 +851,41 @@ export interface TerritoryDefenseSnapshot {
   guard_power: number;
   stationed_soldiers: number;
   defense_hint: string;
+}
+
+export interface TerritoryGarrisonState {
+  tile_id: string;
+  owner_player_id: string;
+  soldier_count: number;
+  defense_power: number;
+  is_mine: boolean;
+  updated_at: string;
+}
+
+export interface DefendWorldRequest {
+  tile_id: string;
+  soldier_count: number;
+}
+
+export interface DefendWorldResponse {
+  record_id: string;
+  garrison: TerritoryGarrisonState | null;
+  city: PlayerCityState;
+  map: WorldMapResponse;
+}
+
+export interface SiegeWorldRequest {
+  march_id: string;
+}
+
+export interface SiegeWorldResponse {
+  record_id: string;
+  march: MarchQueueState;
+  won: boolean;
+  attacker_power: number;
+  defender_power: number;
+  city: PlayerCityState | null;
+  map: WorldMapResponse;
 }
 
 export interface TerritoryOccupationState {

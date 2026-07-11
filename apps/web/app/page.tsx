@@ -1637,6 +1637,23 @@ export default function HomePage() {
     });
   }
 
+  async function handleEstablishSubCity(tile: MapTileState) {
+    await runAction("建立分城", async () => {
+      const response = await client.establishSubCity(
+        { city_name: `${tile.tile_name}分城`, tile_id: tile.tile_id },
+        createIdempotencyKey(`web_sub_city_${tile.tile_id}`),
+      );
+      ensureOk(response);
+      rememberExperience(undefined, {
+        summary: `${response.data.city.city_name}已在${tile.tile_name}建立，可作为新的行军与驻防据点。`,
+        tags: ["分城", "领地扩张"],
+        title: "建立分城",
+        tone: "success",
+      });
+      await refreshWorldState(`已建立${response.data.city.city_name}`);
+    });
+  }
+
   async function handleCollectTerritory() {
     if (!territoryCollect) {
       setMessage("领地产出状态同步中");
@@ -3687,6 +3704,16 @@ export default function HomePage() {
                                           <span className="action-note">先建立主城</span>
                                         ) : (
                                           <>
+                                            {tile.ownership.owner_player_id === activePlayerId &&
+                                            tile.terrain_type === "plain" &&
+                                            tile.ownership.ownership_type !== "sub_city" ? (
+                                              <Button
+                                                disabled={busy || worldMainCity.city_level < 2}
+                                                onClick={() => handleEstablishSubCity(tile)}
+                                              >
+                                                建立分城
+                                              </Button>
+                                            ) : null}
                                             {tile.purchase_state.purchasable ? (
                                               <Button
                                                 disabled={busy}
@@ -8540,6 +8567,7 @@ function worldMarchTypeLabel(type: MarchType): string {
     occupy: "占领",
     reinforce: "增援",
     scout: "侦察",
+    siege: "围城",
   };
   return labels[type];
 }

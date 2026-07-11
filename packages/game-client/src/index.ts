@@ -81,6 +81,8 @@ import type {
   EquipmentTargetRequest,
   EraChronicleResponse,
   EraMuseumResponse,
+  EstablishSubCityRequest,
+  EstablishSubCityResponse,
   ExecuteMergeReservedRequest,
   ExecuteMergeReservedResponse,
   ExpandCityResponse,
@@ -489,6 +491,15 @@ export class GameClient {
     idempotencyKey: string,
   ): Promise<ApiResponse<SettleMainCityResponse>> {
     return this.post<SettleMainCityResponse, SettleMainCityRequest>("/api/city/settle", body, {
+      idempotencyKey,
+    });
+  }
+
+  establishSubCity(
+    body: EstablishSubCityRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<EstablishSubCityResponse>> {
+    return this.post<EstablishSubCityResponse, EstablishSubCityRequest>("/api/city/subcity", body, {
       idempotencyKey,
     });
   }

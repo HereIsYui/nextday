@@ -10,6 +10,8 @@ import type {
   CityOverviewResponse,
   CityResourceSnapshot,
   CollectTerritoryResponse,
+  EstablishSubCityRequest,
+  EstablishSubCityResponse,
   ExpandCityResponse,
   PlayerCityState,
   PlayerCityStatus,
@@ -44,6 +46,7 @@ import {
   type MapTileConfig,
   type WorldCommanderyConfig,
   type WorldProvinceConfig,
+  findWorldTile,
   isBirthPlainTile,
   recommendedBirthProvinceId,
   worldConfigVersion,
@@ -367,6 +370,109 @@ export class CityService {
         },
       });
 
+      return responseData;
+    });
+  }
+
+  async establishSubCity(input: {
+    accountId: string;
+    body: EstablishSubCityRequest;
+    idempotencyKey: string;
+    endpoint: string;
+  }): Promise<EstablishSubCityResponse> {
+    const body = normalizeEstablishSubCityBody(input.body);
+    const requestHash = hashRequestBody(body);
+    const existingRecord = await this.prisma.idempotencyRecord.findUnique({
+      where: { idempotencyKey: input.idempotencyKey },
+    });
+    if (existingRecord) {
+      this.assertMatchingIdempotencyRecord(existingRecord, input, requestHash);
+      return existingRecord.responseData as unknown as EstablishSubCityResponse;
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const player = await tx.player.findUnique({ where: { accountId: input.accountId } });
+      if (!player) throw new BadRequestException("请先创建角色");
+      const mainCity = await this.requireMainCity(player.playerId, tx);
+      if (mainCity.cityLevel < 2) throw new BadRequestException("主城达到 2 级后才能建立分城");
+      const targetTile = findWorldTile(body.tile_id);
+      if (!targetTile || targetTile.terrainType !== "plain") {
+        throw new BadRequestException("只能在已拥有的平原区块建立分城");
+      }
+      const ownership = await tx.worldBlockOwnership.findUnique({
+        where: { eraId_tileId: { eraId: defaultEraId, tileId: targetTile.tileId } },
+      });
+      if (!ownership || ownership.playerId !== player.playerId) {
+        throw new BadRequestException("该平原区块不属于你");
+      }
+      const existingCity = await tx.playerCity.findUnique({ where: { tileId: targetTile.tileId } });
+      if (existingCity) throw new BadRequestException("该区块已经建有城池");
+      const subCityCount = await tx.playerCity.count({
+        where: { playerId: player.playerId, cityType: "sub" },
+      });
+      if (subCityCount >= Math.floor(mainCity.cityLevel / 2)) {
+        throw new BadRequestException("当前主城等级可管理的分城数量已满");
+      }
+      const resources = normalizeResourceSnapshot(mainCity.resourceSnapshot);
+      const cost = { spirit_stone: 180, grain: 300, ore: 140, wood: 220 };
+      if (!canAffordCityCost(resources, cost))
+        throw new BadRequestException("主城库存不足，无法建立分城");
+      const city = await tx.playerCity.create({
+        data: {
+          cityId: `city_${randomUUID()}`,
+          playerId: player.playerId,
+          eraId: defaultEraId,
+          cityType: "sub",
+          provinceId: targetTile.provinceId,
+          commanderyId: targetTile.commanderyId,
+          tileId: targetTile.tileId,
+          cityName: body.city_name ?? `${targetTile.tileName}分城`,
+          cityLevel: 1,
+          status: "protected",
+          protectionUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          ownerSectId: player.sectId,
+          defenseSnapshot: {
+            ...initialCityDefense,
+            wall_durability: 500,
+            wall_durability_cap: 500,
+            garrison_power: 80,
+          } as Prisma.InputJsonValue,
+          resourceSnapshot: {
+            spirit_stone: "0",
+            grain: "0",
+            ore: "0",
+            wood: "0",
+            herb: "0",
+            soldier: "0",
+          } as Prisma.InputJsonValue,
+        },
+      });
+      await tx.playerCity.update({
+        where: { cityId: mainCity.cityId },
+        data: {
+          resourceSnapshot: subtractCityCost(resources, cost) as unknown as Prisma.InputJsonValue,
+        },
+      });
+      await tx.worldBlockOwnership.update({
+        where: { ownershipId: ownership.ownershipId },
+        data: { ownershipType: "sub_city", sourceType: "sub_city", sourceId: city.cityId },
+      });
+      const overview = await this.buildOverview(player.playerId, tx);
+      const responseData: EstablishSubCityResponse = {
+        record_id: `sub_city_${randomUUID()}`,
+        city: this.toCityState(city),
+        overview,
+      };
+      await this.createCityActionRecord(tx, {
+        accountId: input.accountId,
+        action: "city_establish_sub",
+        afterSnapshot: responseData,
+        endpoint: input.endpoint,
+        idempotencyKey: input.idempotencyKey,
+        playerId: player.playerId,
+        reason: "建立平原分城",
+        requestHash,
+        targetId: city.cityId,
+      });
       return responseData;
     });
   }
@@ -776,6 +882,16 @@ function normalizeSettleMainCityBody(body: SettleMainCityRequest): SettleMainCit
     ...(commanderyId ? { commandery_id: commanderyId } : {}),
     ...(cityName ? { city_name: cityName } : {}),
   };
+}
+
+function normalizeEstablishSubCityBody(body: EstablishSubCityRequest): EstablishSubCityRequest {
+  const tileId = body?.tile_id?.trim();
+  const cityName = body?.city_name?.trim();
+  if (!tileId) throw new BadRequestException("请选择建立分城的区块");
+  if (cityName && (cityName.length < 2 || cityName.length > 16)) {
+    throw new BadRequestException("分城名需为 2-16 个字符");
+  }
+  return { tile_id: tileId, ...(cityName ? { city_name: cityName } : {}) };
 }
 
 function buildBirthOptions(): CityBirthOptionState[] {

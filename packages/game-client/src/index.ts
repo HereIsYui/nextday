@@ -201,6 +201,7 @@ import type {
   TransferStatusResponse,
   UpgradeCityBuildingRequest,
   UpgradeCityBuildingResponse,
+  WorldAtlasResponse,
   WorldBossChallengeRequest,
   WorldBossChallengeResponse,
   WorldBossResponse,
@@ -441,6 +442,10 @@ export class GameClient {
 
   worldProvinces(): Promise<ApiResponse<WorldProvinceListResponse>> {
     return this.get<WorldProvinceListResponse>("/api/world/provinces");
+  }
+
+  worldAtlas(): Promise<ApiResponse<WorldAtlasResponse>> {
+    return this.get<WorldAtlasResponse>("/api/world/atlas");
   }
 
   worldMap(provinceId?: string, view?: WorldMapView): Promise<ApiResponse<WorldMapResponse>> {

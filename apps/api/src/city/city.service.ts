@@ -819,7 +819,8 @@ export class CityService {
 
   private async buildOverview(
     playerId: string,
-    db: Pick<PrismaService, "playerCity"> | Prisma.TransactionClient = this.prisma,
+    db: Pick<PrismaService, "playerCity" | "worldBlockOwnership"> | Prisma.TransactionClient = this
+      .prisma,
   ): Promise<CityOverviewResponse> {
     const cities = await db.playerCity.findMany({
       where: { playerId },
@@ -827,11 +828,27 @@ export class CityService {
     });
     const mainCity = cities.find((city) => city.cityType === "main") ?? null;
     const subCities = cities.filter((city) => city.cityType === "sub");
+    const ownedBirthTileIds = mainCity
+      ? new Set<string>()
+      : new Set(
+          (
+            await db.worldBlockOwnership.findMany({
+              where: {
+                eraId: defaultEraId,
+                status: "owned",
+                tileId: {
+                  in: worldTileConfigs.filter(isBirthPlainTile).map((tile) => tile.tileId),
+                },
+              },
+              select: { tileId: true },
+            })
+          ).map((ownership) => ownership.tileId),
+        );
 
     return {
       main_city: mainCity ? this.toCityState(mainCity) : null,
       sub_cities: subCities.map((city) => this.toCityState(city)),
-      birth_options: mainCity ? [] : buildBirthOptions(),
+      birth_options: mainCity ? [] : buildBirthOptions(ownedBirthTileIds),
       strategic_hint: mainCity
         ? `${mainCity.cityName}已在${getProvinceName(mainCity.provinceId)}立稳根基，下一步可清理城外野地。`
         : "选择出生州后，系统会在该州安全平原随机划出一块无主区块建立主城。",
@@ -894,14 +911,23 @@ function normalizeEstablishSubCityBody(body: EstablishSubCityRequest): Establish
   return { tile_id: tileId, ...(cityName ? { city_name: cityName } : {}) };
 }
 
-function buildBirthOptions(): CityBirthOptionState[] {
+function buildBirthOptions(ownedBirthTileIds: Set<string>): CityBirthOptionState[] {
   return worldProvinceConfigs
     .flatMap((province) =>
       province.commanderies
         .filter((commandery) => commandery.birthAvailable)
         .map((commandery) => {
           const tile = getBirthOptionTile(province, commandery);
-          const available = province.birthAvailable && commandery.birthAvailable;
+          const available =
+            province.birthAvailable &&
+            commandery.birthAvailable &&
+            worldTileConfigs.some(
+              (candidate) =>
+                candidate.provinceId === province.provinceId &&
+                candidate.commanderyId === commandery.commanderyId &&
+                isBirthPlainTile(candidate) &&
+                !ownedBirthTileIds.has(candidate.tileId),
+            );
 
           return {
             province_id: province.provinceId,
@@ -915,7 +941,7 @@ function buildBirthOptions(): CityBirthOptionState[] {
               province.provinceId === recommendedBirthProvinceId || commandery.recommendedBirth,
             congestion: commandery.congestion,
             safety_level: commandery.safetyLevel,
-            unavailable_reason: available ? null : "本季暂未开放出生",
+            unavailable_reason: available ? null : "该郡安全平原暂时没有空位",
           };
         }),
     )

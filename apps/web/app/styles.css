@@ -3757,6 +3757,50 @@ details.event-boundary {
   min-width: 0;
 }
 
+.text-game-shell .practice-workbench,
+.text-game-shell .world-city-layout {
+  display: none;
+}
+
+.text-game-shell .topbar {
+  align-items: start;
+  display: grid;
+  gap: 10px 20px;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(180px, auto) minmax(420px, 1.2fr);
+}
+
+.text-game-shell .strategic-topbar-status {
+  align-items: center;
+  border-left: 1px solid #111111;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding-left: 14px;
+}
+
+.text-game-shell .strategic-topbar-status > div:first-child {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.text-game-shell .strategic-topbar-status strong {
+  font-size: 14px;
+}
+
+.text-game-shell .strategic-topbar-status span {
+  color: #555555;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.text-game-shell .strategic-resource-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
 .text-game-shell .world-city-card,
 .text-game-shell .world-map-card {
   align-content: start;
@@ -3764,6 +3808,368 @@ details.event-boundary {
 
 .text-game-shell .world-map-card {
   grid-row: span 3;
+}
+
+.text-game-shell .strategic-map-stage {
+  background: #fbf7eb;
+  border: 1px solid #111111;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.text-game-shell .strategic-map-toolbar,
+.text-game-shell .strategic-map-tools {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.text-game-shell .strategic-map-toolbar {
+  justify-content: space-between;
+}
+
+.text-game-shell .strategic-map-tools {
+  flex-wrap: wrap;
+  justify-content: end;
+}
+
+.text-game-shell .strategic-map-tools label {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.text-game-shell .strategic-map-tools label span {
+  color: #555555;
+  font-size: 12px;
+}
+
+.text-game-shell .strategic-map-tools select {
+  background: #fffdf6;
+  border: 1px solid #8c8066;
+  color: #111111;
+  font: inherit;
+  min-height: 32px;
+  padding: 3px 6px;
+}
+
+.text-game-shell .strategic-map-toolbar > div:first-child,
+.text-game-shell .strategic-inspector {
+  display: grid;
+  gap: 4px;
+}
+
+.text-game-shell .strategic-map-toolbar span,
+.text-game-shell .strategic-inspector span,
+.text-game-shell .strategic-inspector p {
+  color: #555555;
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.text-game-shell .strategic-map-layout {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  min-width: 0;
+}
+
+.text-game-shell .strategic-map-canvas {
+  background: #efe8d6;
+  border: 1px solid #c8bfa8;
+  min-height: 430px;
+  overflow: auto;
+  padding: 14px;
+}
+
+.text-game-shell .atlas-map-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(5, minmax(110px, 1fr));
+  grid-template-rows: repeat(4, 100px);
+  min-width: 650px;
+}
+
+.text-game-shell .atlas-province {
+  align-content: start;
+  background: #f9f4e8;
+  border: 1px solid #8c8066;
+  cursor: pointer;
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  text-align: left;
+}
+
+.text-game-shell .atlas-province:hover {
+  outline: 2px solid #3d5940;
+}
+.text-game-shell .atlas-province span {
+  color: #5b5549;
+  font-size: 12px;
+}
+.text-game-shell .atlas-province-grid {
+  display: grid;
+  gap: 2px;
+  margin-top: auto;
+  min-height: 52px;
+}
+
+.text-game-shell .atlas-cell {
+  aspect-ratio: 1;
+  background: #ddd4bd;
+  border: 1px solid rgba(60, 50, 35, 0.18);
+}
+.text-game-shell .atlas-cell.mine {
+  background: #3f6850;
+}
+.text-game-shell .atlas-cell.other {
+  background: #9a5550;
+}
+.text-game-shell .atlas-cell.landmark {
+  box-shadow: inset 0 0 0 1px #1f1f1f;
+}
+.text-game-shell .atlas-cell[data-landmark="tower"] {
+  background-color: #34302b;
+}
+.text-game-shell .atlas-cell[data-landmark="capital"] {
+  background-color: #7e6444;
+}
+.text-game-shell .atlas-cell[data-landmark="pass"] {
+  background-color: #55504a;
+}
+
+.text-game-shell .province-block-map {
+  display: grid;
+  gap: 1px;
+  transform-origin: top left;
+  width: max-content;
+}
+.text-game-shell .province-block {
+  align-items: center;
+  border: 0;
+  cursor: pointer;
+  display: inline-flex;
+  font-family: "Songti SC", SimSun, serif;
+  font-size: 10px;
+  height: 22px;
+  justify-content: center;
+  line-height: 1;
+  min-height: 22px;
+  padding: 0;
+  width: 22px;
+}
+.text-game-shell .province-block:hover,
+.text-game-shell .province-block.selected {
+  outline: 2px solid #151515;
+  outline-offset: 1px;
+  z-index: 1;
+}
+.text-game-shell .province-block.mine {
+  box-shadow: inset 0 0 0 3px #315f44;
+}
+.text-game-shell .province-block.tower {
+  box-shadow: inset 0 0 0 2px #24211d;
+}
+.text-game-shell .terrain-plain {
+  background: #b9bf86;
+}
+.text-game-shell .terrain-swamp {
+  background: #6d8d7b;
+}
+.text-game-shell .terrain-forest {
+  background: #55795c;
+}
+.text-game-shell .terrain-mountain {
+  background: #8d8170;
+}
+.text-game-shell .terrain-desert {
+  background: #c8ae75;
+}
+.text-game-shell .strategic-inspector {
+  border-left: 1px solid #c8bfa8;
+  align-content: start;
+  min-width: 0;
+  padding: 10px;
+}
+
+.text-game-shell .strategic-inspector-tags,
+.text-game-shell .strategic-inspector-nodes,
+.text-game-shell .strategic-birth-options {
+  display: grid;
+  gap: 5px;
+}
+
+.text-game-shell .strategic-inspector-tags {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.text-game-shell .strategic-inspector-tags span {
+  border: 1px solid #c8bfa8;
+  color: #484238;
+  padding: 2px 5px;
+}
+
+.text-game-shell .strategic-inspector-nodes span {
+  border-left: 2px solid #8c8066;
+  padding-left: 7px;
+}
+
+.text-game-shell .strategic-city-name {
+  display: grid;
+  gap: 4px;
+}
+
+.text-game-shell .strategic-city-name input {
+  background: #fffdf6;
+  border: 1px solid #8c8066;
+  font: inherit;
+  min-width: 0;
+  padding: 7px;
+  width: 100%;
+}
+
+.text-game-shell .strategic-birth-options .nextday-button {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.text-game-shell .strategic-primary-action {
+  align-items: stretch;
+}
+
+.text-game-shell .strategic-primary-action .nextday-button {
+  width: 100%;
+}
+
+.text-game-shell .strategic-map-footer {
+  border-top: 1px solid #c8bfa8;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1.2fr) repeat(2, minmax(0, 1fr));
+  padding-top: 10px;
+}
+
+.text-game-shell .strategic-map-footer article {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.text-game-shell .strategic-map-footer strong {
+  font-size: 13px;
+}
+
+.text-game-shell .strategic-map-footer span {
+  color: #555555;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.text-game-shell .strategic-map-footer .nextday-button {
+  justify-self: start;
+  margin-top: 2px;
+}
+
+/* 九州地图是默认舞台，旧功能入口收拢为一条工具栏。 */
+.text-game-shell .feature-workbench.is-open {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.text-game-shell .feature-workbench-summary {
+  display: none;
+}
+
+.text-game-shell .feature-workbench .feature-launcher {
+  align-items: center;
+  border-bottom: 1px solid #111111;
+  display: grid;
+  gap: 8px 14px;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  padding: 0 0 8px;
+  position: static;
+}
+
+.text-game-shell .feature-workbench .feature-launcher-head {
+  display: block;
+}
+
+.text-game-shell .feature-workbench .feature-launcher-head .eyebrow,
+.text-game-shell .feature-workbench .feature-launcher-head h2,
+.text-game-shell .feature-workbench .feature-launcher-head span,
+.text-game-shell .feature-workbench .feature-nav-group > span,
+.text-game-shell .feature-workbench .feature-nav-group button span {
+  display: none;
+}
+
+.text-game-shell .feature-workbench .feature-launcher-grid,
+.text-game-shell .feature-workbench .feature-nav-group,
+.text-game-shell .feature-workbench .feature-nav-group > div {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.text-game-shell .feature-workbench .feature-launcher-grid {
+  justify-content: start;
+}
+
+.text-game-shell .feature-workbench .feature-nav-group {
+  border: 0;
+  padding: 0;
+}
+
+.text-game-shell .feature-workbench .feature-nav-group button {
+  flex: 0 0 auto;
+  min-height: 32px;
+  min-width: 56px;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+.text-game-shell .feature-workbench .feature-nav-group button strong {
+  display: block;
+  font-size: 13px;
+  min-width: 2em;
+  white-space: nowrap;
+}
+
+.text-game-shell .feature-workbench .feature-context-bar {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding-bottom: 8px;
+}
+
+.text-game-shell .feature-context-bar > div {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.text-game-shell .feature-context-bar p {
+  display: none;
+}
+
+.text-game-shell .feature-context-bar strong {
+  font-size: 16px;
+}
+
+.text-game-shell .feature-context-bar button {
+  min-height: 32px;
+  padding: 0 8px;
+}
+.text-game-shell .world-map-card {
+  display: none;
 }
 
 .text-game-shell .world-controls {

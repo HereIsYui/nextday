@@ -7,6 +7,7 @@ import type {
   StartWorldMarchRequest,
   StartWorldMarchResponse,
   TerritoryOverviewResponse,
+  WorldAtlasResponse,
   WorldMapResponse,
   WorldMapView,
   WorldMarchListResponse,
@@ -24,6 +25,11 @@ export class WorldController {
   @Get("provinces")
   provinces(): WorldProvinceListResponse {
     return this.worldService.getProvinces();
+  }
+
+  @Get("atlas")
+  atlas(@Req() request: Request): Promise<WorldAtlasResponse> {
+    return this.worldService.getAtlas(requireAccountId(request));
   }
 
   @Get("map")

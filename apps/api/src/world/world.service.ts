@@ -25,6 +25,8 @@ import type {
   TerritoryProductionSnapshot,
   TerritoryTerrainSummaryState,
   WalletSnapshot,
+  WorldAtlasCellState,
+  WorldAtlasResponse,
   WorldCommanderyState,
   WorldMapResponse,
   WorldMapView,
@@ -87,6 +89,102 @@ export class WorldService {
       recommended_province_id: recommendedBirthProvinceId,
       season_id: worldSeasonId,
       season_name: worldSeasonName,
+      config_version: worldConfigVersion,
+    };
+  }
+
+  async getAtlas(accountId: string): Promise<WorldAtlasResponse> {
+    const player = await this.requirePlayer(accountId);
+    const [ownerships, marches] = await Promise.all([
+      this.prisma.worldBlockOwnership.findMany({ where: { eraId: defaultEraId, status: "owned" } }),
+      this.prisma.marchQueue.findMany({ where: { playerId: player.playerId, status: "marching" } }),
+    ]);
+    const mine = new Set(
+      ownerships.filter((item) => item.playerId === player.playerId).map((item) => item.tileId),
+    );
+    const owned = new Set(ownerships.map((item) => item.tileId));
+    const layout: Record<string, [number, number]> = {
+      ji: [1, 0],
+      yan: [2, 1],
+      qing: [3, 0],
+      xu: [3, 1],
+      yang: [4, 2],
+      jing: [3, 3],
+      yu: [2, 2],
+      liang: [1, 3],
+      yong: [0, 3],
+    };
+    const homeProvinceId =
+      (
+        await this.prisma.playerCity.findFirst({
+          where: { playerId: player.playerId, cityType: "main" },
+        })
+      )?.provinceId ?? null;
+    return {
+      provinces: worldProvinceConfigs.map((province) => {
+        const tiles = getWorldTilesByProvince(province.provinceId);
+        const [layoutX, layoutY] = layout[province.provinceId] ?? [0, 0];
+        const mapWidth = Math.max(...tiles.map((tile) => tile.x + 1));
+        const mapHeight = Math.max(...tiles.map((tile) => tile.y + 1));
+        const stepX = Math.max(1, Math.ceil(mapWidth / 6));
+        const stepY = Math.max(1, Math.ceil(mapHeight / 6));
+        const layoutWidth = Math.ceil(mapWidth / stepX);
+        const layoutHeight = Math.ceil(mapHeight / stepY);
+        const buckets = new Map<string, typeof tiles>();
+
+        for (const tile of tiles) {
+          const x = Math.min(layoutWidth - 1, Math.floor(tile.x / stepX));
+          const y = Math.min(layoutHeight - 1, Math.floor(tile.y / stepY));
+          const key = `${x}:${y}`;
+          buckets.set(key, [...(buckets.get(key) ?? []), tile]);
+        }
+
+        const cells: WorldAtlasCellState[] = Array.from(buckets.entries()).map(
+          ([key, bucket]): WorldAtlasCellState => {
+            const [x, y] = key.split(":").map(Number);
+            const landmarkTile = bucket.find(
+              (tile) =>
+                tile.tileType === "tower" ||
+                tile.tileType === "capital" ||
+                tile.tileType === "pass",
+            );
+            const landmark = landmarkTile
+              ? landmarkTile.tileType === "tower"
+                ? "tower"
+                : landmarkTile.tileType === "capital"
+                  ? "capital"
+                  : "pass"
+              : null;
+
+            return {
+              x,
+              y,
+              terrain_type: bucket[0]?.terrainType ?? "plain",
+              landmark,
+              control: bucket.some((tile) => mine.has(tile.tileId))
+                ? "mine"
+                : bucket.some((tile) => owned.has(tile.tileId))
+                  ? "other"
+                  : landmark
+                    ? "landmark"
+                    : "neutral",
+            };
+          },
+        );
+        return {
+          province: this.toProvinceState(province),
+          layout_x: layoutX,
+          layout_y: layoutY,
+          layout_width: layoutWidth,
+          layout_height: layoutHeight,
+          my_blocks: tiles.filter((tile) => mine.has(tile.tileId)).length,
+          neutral_blocks: tiles.filter((tile) => !owned.has(tile.tileId)).length,
+          owned_blocks: tiles.filter((tile) => owned.has(tile.tileId)).length,
+          has_active_march: marches.some((march) => march.provinceId === province.provinceId),
+          cells,
+        };
+      }),
+      home_province_id: homeProvinceId,
       config_version: worldConfigVersion,
     };
   }

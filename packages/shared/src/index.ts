@@ -699,6 +699,35 @@ export interface WorldMapResponse {
   config_version: string;
 }
 
+export type WorldAtlasCellControl = "neutral" | "mine" | "other" | "landmark";
+
+export interface WorldAtlasCellState {
+  x: number;
+  y: number;
+  control: WorldAtlasCellControl;
+  terrain_type: WorldTerrainType;
+  landmark: "tower" | "capital" | "pass" | null;
+}
+
+export interface WorldAtlasProvinceState {
+  province: WorldProvinceState;
+  layout_x: number;
+  layout_y: number;
+  layout_width: number;
+  layout_height: number;
+  my_blocks: number;
+  neutral_blocks: number;
+  owned_blocks: number;
+  has_active_march: boolean;
+  cells: WorldAtlasCellState[];
+}
+
+export interface WorldAtlasResponse {
+  provinces: WorldAtlasProvinceState[];
+  home_province_id: string | null;
+  config_version: string;
+}
+
 export type PlayerCityType = "main" | "sub";
 
 export type PlayerCityStatus = "normal" | "protected" | "damaged" | "besieged" | "vassal";

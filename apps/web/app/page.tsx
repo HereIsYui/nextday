@@ -72,6 +72,7 @@ import type {
   TowerListResponse,
   TowerStateSummary,
   TransferStatusResponse,
+  WorldAtlasResponse,
   WorldBossResponse,
   WorldMapResponse,
   WorldMapView,
@@ -386,12 +387,16 @@ export default function HomePage() {
     null,
   );
   const [worldMap, setWorldMap] = useState<WorldMapResponse | null>(null);
+  const [worldAtlas, setWorldAtlas] = useState<WorldAtlasResponse | null>(null);
   const [cityOverview, setCityOverview] = useState<CityOverviewResponse | null>(null);
   const [cityManagement, setCityManagement] = useState<CityManagementResponse | null>(null);
   const [worldTerritory, setWorldTerritory] = useState<TerritoryOverviewResponse | null>(null);
   const [worldMarches, setWorldMarches] = useState<WorldMarchListResponse | null>(null);
   const [selectedWorldProvinceId, setSelectedWorldProvinceId] = useState("");
-  const [worldMapView, setWorldMapView] = useState<WorldMapView>("mini");
+  const [worldMapView, setWorldMapView] = useState<WorldMapView>("detail");
+  const [strategicMapScope, setStrategicMapScope] = useState<"atlas" | "province">("atlas");
+  const [selectedWorldTileId, setSelectedWorldTileId] = useState<string | null>(null);
+  const [strategicMapZoom, setStrategicMapZoom] = useState(1);
   const [worldCityName, setWorldCityName] = useState("");
   const [exploreCount, setExploreCount] = useState(5);
   const [selectedTowerId, setSelectedTowerId] = useState("");
@@ -407,7 +412,7 @@ export default function HomePage() {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
-  const [featureWorkbenchOpen, setFeatureWorkbenchOpen] = useState(false);
+  const [featureWorkbenchOpen, setFeatureWorkbenchOpen] = useState(true);
   const [tabFocusPulse, setTabFocusPulse] = useState(false);
   const [actionFeedback, setActionFeedback] = useState<ActionFeedbackState | null>(null);
   const [mainActionFeedback, setMainActionFeedback] = useState<ActionFeedbackState | null>(null);
@@ -422,7 +427,7 @@ export default function HomePage() {
 
   const client = useMemo(() => createClient(token ?? undefined), [token]);
   const activeProfile = overview?.profile ?? profile;
-  const activePlayerId = overview?.profile.player?.player_id ?? null;
+  const activePlayerId = overview?.profile.player?.player_id ?? profile?.player?.player_id ?? null;
   const completedTasks = overview?.tasks.filter((task) => task.status === "completed") ?? [];
   const unlockedProvinces = overview?.provinces.filter((province) => province.unlocked) ?? [];
   const selectedProvince =
@@ -449,6 +454,10 @@ export default function HomePage() {
     worldBirthOptions.find((option) => option.available && option.recommended) ??
     worldBirthOptions.find((option) => option.available);
   const worldTiles = worldMap?.tiles ?? [];
+  const selectedWorldTile = worldTiles.find((tile) => tile.tile_id === selectedWorldTileId) ?? null;
+  const selectedWorldTileMarchType = selectedWorldTile
+    ? worldTilePreferredMarchType(selectedWorldTile)
+    : null;
   const worldTilesToShow = worldTiles.slice(0, worldMapView === "mini" ? 48 : 60);
   const occupiableWorldTiles = worldTiles.filter(
     (tile) => tile.occupiable && tile.controllable && !tile.protected,
@@ -461,6 +470,10 @@ export default function HomePage() {
     ) ?? [];
   const marchingWorldMarches =
     worldMarches?.marches.filter((march) => march.status === "marching") ?? [];
+  const selectedWorldTileArrivedMarch = selectedWorldTile
+    ? (arrivedWorldMarches.find((march) => march.target_tile_id === selectedWorldTile.tile_id) ??
+      null)
+    : null;
   const myWorldOccupations = worldMap?.my_occupations ?? [];
   const availablePills = useMemo(
     () =>
@@ -840,6 +853,36 @@ export default function HomePage() {
   ]);
 
   useEffect(() => {
+    if (strategicMapScope !== "province") {
+      return;
+    }
+
+    if (worldTiles.length === 0) {
+      if (selectedWorldTileId) {
+        setSelectedWorldTileId(null);
+      }
+      return;
+    }
+
+    if (selectedWorldTileId && worldTiles.some((tile) => tile.tile_id === selectedWorldTileId)) {
+      return;
+    }
+
+    const homeTile =
+      worldMainCity?.province_id === worldMap?.province.province_id
+        ? worldTiles.find((tile) => tile.tile_id === worldMainCity?.tile_id)
+        : undefined;
+    setSelectedWorldTileId(homeTile?.tile_id ?? worldTiles[0]?.tile_id ?? null);
+  }, [
+    selectedWorldTileId,
+    strategicMapScope,
+    worldMainCity?.province_id,
+    worldMainCity?.tile_id,
+    worldMap?.province.province_id,
+    worldTiles,
+  ]);
+
+  useEffect(() => {
     if (!activeProfile?.player?.name || worldCityName) {
       return;
     }
@@ -966,6 +1009,7 @@ export default function HomePage() {
           return;
         }
         setWorldProvinceList(state.provinces);
+        setWorldAtlas(state.atlas);
         setCityOverview(state.city);
         setCityManagement(state.management);
         setWorldTerritory(state.territory);
@@ -1469,6 +1513,7 @@ export default function HomePage() {
       worldMapView,
     );
     setWorldProvinceList(state.provinces);
+    setWorldAtlas(state.atlas);
     setCityOverview(state.city);
     setCityManagement(state.management);
     setWorldTerritory(state.territory);
@@ -2673,6 +2718,20 @@ export default function HomePage() {
     }
   }
 
+  function handleOpenStrategicProvince(provinceId: string) {
+    setSelectedWorldProvinceId(provinceId);
+    setWorldMapView("detail");
+    setSelectedWorldTileId(null);
+    setStrategicMapZoom(1);
+    setStrategicMapScope("province");
+  }
+
+  function handleReturnToAtlas() {
+    setSelectedWorldTileId(null);
+    setStrategicMapZoom(1);
+    setStrategicMapScope("atlas");
+  }
+
   function handleFeatureChange(feature: ActiveFeature, options: { focus?: boolean } = {}) {
     const shouldFocus = options.focus ?? true;
     setActiveFeature(feature);
@@ -2693,10 +2752,12 @@ export default function HomePage() {
   }
 
   function handleReturnToPractice() {
+    setActiveFeature("world");
+    setFeatureWorkbenchOpen(true);
+    handleReturnToAtlas();
     window.setTimeout(() => {
-      scrollElementToTop(practiceFlowRef.current);
-      practiceFlowRef.current?.focus({ preventScroll: true });
-      setMessage("已回到今日路线");
+      scrollElementToTop(practiceWorkbenchRef.current ?? tabSurfaceRef.current);
+      setMessage("已回到九州地图");
     }, 0);
   }
 
@@ -3067,6 +3128,28 @@ export default function HomePage() {
             </StatusBadge>
             <span className="message">{message}</span>
           </div>
+          {activeProfile?.player ? (
+            <div className="strategic-topbar-status" aria-label="城池资源摘要">
+              <div>
+                <strong>{worldMainCity?.city_name ?? "尚未建城"}</strong>
+                <span>
+                  {worldMainCity
+                    ? `${worldMainCity.province_name} · ${worldMainCity.city_level} 级主城`
+                    : "选择出生州后获得安全平原主城"}
+                </span>
+              </div>
+              {worldMainCity ? (
+                <div className="strategic-resource-row">
+                  <span>灵石 {worldMainCity.resources.spirit_stone}</span>
+                  <span>粮草 {worldMainCity.resources.grain}</span>
+                  <span>矿材 {worldMainCity.resources.ore}</span>
+                  <span>灵木 {worldMainCity.resources.wood}</span>
+                  <span>道兵 {worldMainCity.resources.soldier}</span>
+                  <span>{worldMainCity.defense.protection_label}</span>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </section>
 
         {!activeProfile?.player ? (
@@ -3269,12 +3352,12 @@ export default function HomePage() {
               >
                 <div className="feature-context-bar">
                   <div>
-                    <span>{activeFeatureNavGroup.title} · 当前详情</span>
+                    <span>{activeFeatureNavGroup.title} · 事务入口</span>
                     <strong>{activeFeatureName}</strong>
                     <p>{activeFeatureHint}</p>
                   </div>
                   <button onClick={handleReturnToPractice} type="button">
-                    回到今日路线
+                    回到九州地图
                   </button>
                 </div>
                 {activeFeature === "world" || activeFeature === "tasks" ? (
@@ -3285,6 +3368,315 @@ export default function HomePage() {
                           <h2>九州城池</h2>
                           <span>出生建城 · 行军占领 · 领地经营</span>
                         </div>
+                        <section
+                          className="strategic-map-stage"
+                          aria-label="九州战略地图"
+                          data-action-feedback-source="world-map"
+                        >
+                          <div className="strategic-map-toolbar">
+                            <div>
+                              <strong>
+                                {strategicMapScope === "atlas"
+                                  ? "九州总览"
+                                  : worldMap?.province.name}
+                              </strong>
+                              <span>
+                                {strategicMapScope === "atlas"
+                                  ? "选择州域进入区块沙盘"
+                                  : "点击区块查看详情与行动"}
+                              </span>
+                            </div>
+                            <div className="strategic-map-tools">
+                              {strategicMapScope === "province" ? (
+                                <button onClick={handleReturnToAtlas} type="button">
+                                  返回九州
+                                </button>
+                              ) : null}
+                              <label>
+                                <span>州域</span>
+                                <select
+                                  aria-label="选择州域"
+                                  onChange={(event) =>
+                                    handleOpenStrategicProvince(event.target.value)
+                                  }
+                                  value={selectedWorldProvinceId}
+                                >
+                                  {worldAtlas?.provinces.map((item) => (
+                                    <option
+                                      key={item.province.province_id}
+                                      value={item.province.province_id}
+                                    >
+                                      {item.province.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <button
+                                disabled={strategicMapScope === "atlas"}
+                                onClick={() =>
+                                  setStrategicMapZoom((value) => Math.max(0.7, value - 0.15))
+                                }
+                                type="button"
+                              >
+                                缩小
+                              </button>
+                              <button
+                                disabled={strategicMapScope === "atlas"}
+                                onClick={() =>
+                                  setStrategicMapZoom((value) => Math.min(1.5, value + 0.15))
+                                }
+                                type="button"
+                              >
+                                放大
+                              </button>
+                              <button
+                                disabled={strategicMapScope === "atlas"}
+                                onClick={() => setStrategicMapZoom(1)}
+                                type="button"
+                              >
+                                复位
+                              </button>
+                            </div>
+                          </div>
+                          <div className="strategic-map-layout">
+                            <div className="strategic-map-canvas">
+                              {strategicMapScope === "atlas" ? (
+                                <div className="atlas-map-grid">
+                                  {worldAtlas?.provinces.map((item) => (
+                                    <button
+                                      className="atlas-province"
+                                      key={item.province.province_id}
+                                      aria-label={`${item.province.name}，我的区块 ${item.my_blocks}，无主区块 ${item.neutral_blocks}`}
+                                      onClick={() =>
+                                        handleOpenStrategicProvince(item.province.province_id)
+                                      }
+                                      style={{
+                                        gridColumn: item.layout_x + 1,
+                                        gridRow: item.layout_y + 1,
+                                      }}
+                                      type="button"
+                                    >
+                                      <strong>{item.province.name}</strong>
+                                      <span>
+                                        {item.my_blocks
+                                          ? `我的 ${item.my_blocks}`
+                                          : `无主 ${item.neutral_blocks}`}
+                                      </span>
+                                      <span
+                                        aria-hidden="true"
+                                        className="atlas-province-grid"
+                                        style={{
+                                          gridTemplateColumns: `repeat(${item.layout_width}, minmax(0, 1fr))`,
+                                          gridTemplateRows: `repeat(${item.layout_height}, minmax(0, 1fr))`,
+                                        }}
+                                      >
+                                        {item.cells.map((cell) => (
+                                          <b
+                                            className={`atlas-cell ${cell.control} terrain-${cell.terrain_type}`}
+                                            data-landmark={cell.landmark ?? undefined}
+                                            key={`${cell.x}-${cell.y}`}
+                                            style={{ gridColumn: cell.x + 1, gridRow: cell.y + 1 }}
+                                          />
+                                        ))}
+                                      </span>
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div
+                                  className="province-block-map"
+                                  style={{ transform: `scale(${strategicMapZoom})` }}
+                                >
+                                  {worldTiles.map((tile) => (
+                                    <button
+                                      aria-label={`${tile.tile_name}，${tile.terrain_label}，${worldTileStatusLabel(tile.status)}`}
+                                      className={`province-block terrain-${tile.terrain_type} ${selectedWorldTile?.tile_id === tile.tile_id ? "selected" : ""} ${tile.ownership.owner_player_id === activePlayerId ? "mine" : ""} ${tile.tile_type}`}
+                                      key={tile.tile_id}
+                                      onClick={() => setSelectedWorldTileId(tile.tile_id)}
+                                      style={{ gridColumn: tile.x + 1, gridRow: tile.y + 1 }}
+                                      type="button"
+                                      title={`${tile.tile_name} · ${tile.terrain_label}`}
+                                    >
+                                      <span aria-hidden="true">
+                                        {worldTileMapMarker(tile, activePlayerId)}
+                                      </span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <aside className="strategic-inspector">
+                              {!worldMainCity ? (
+                                <>
+                                  <strong>建立主城</strong>
+                                  <p>
+                                    {cityOverview?.strategic_hint ??
+                                      "选择一州，在安全平原随机获得一块无主主城地。"}
+                                  </p>
+                                  <label className="strategic-city-name">
+                                    <span>城名</span>
+                                    <input
+                                      maxLength={20}
+                                      onChange={(event) => setWorldCityName(event.target.value)}
+                                      value={worldCityName}
+                                    />
+                                  </label>
+                                  <div className="strategic-birth-options">
+                                    {worldBirthOptions
+                                      .filter((option) => option.available)
+                                      .map((option) => (
+                                        <Button
+                                          disabled={busy}
+                                          key={option.commandery_id}
+                                          onClick={() => handleSettleMainCity(option)}
+                                        >
+                                          在{option.commandery_name}建城
+                                        </Button>
+                                      ))}
+                                  </div>
+                                </>
+                              ) : selectedWorldTile ? (
+                                <>
+                                  <strong>{selectedWorldTile.tile_name}</strong>
+                                  <span>
+                                    {worldTileTypeLabel(selectedWorldTile.tile_type)} ·{" "}
+                                    {selectedWorldTile.terrain_label} · 危险{" "}
+                                    {selectedWorldTile.danger_level}
+                                  </span>
+                                  <p>{selectedWorldTile.state_summary}</p>
+                                  <span>
+                                    归属：{selectedWorldTile.owner.owner_player_name ?? "无主"} ·{" "}
+                                    {selectedWorldTile.garrison
+                                      ? `驻防 ${selectedWorldTile.garrison.defense_power}`
+                                      : "暂无驻防"}
+                                  </span>
+                                  <div className="strategic-inspector-tags">
+                                    {selectedWorldTile.terrain_effects.slice(0, 4).map((effect) => (
+                                      <span key={effect}>{effect}</span>
+                                    ))}
+                                    {selectedWorldTile.labels.slice(0, 2).map((label) => (
+                                      <span key={label}>{label}</span>
+                                    ))}
+                                  </div>
+                                  <div className="strategic-inspector-nodes">
+                                    {selectedWorldTile.nodes.slice(0, 2).map((node) => (
+                                      <span key={node.node_id}>
+                                        {node.node_name} · {node.production_summary}
+                                      </span>
+                                    ))}
+                                  </div>
+                                  <div className="production-actions strategic-primary-action">
+                                    {selectedWorldTileArrivedMarch ? (
+                                      <Button
+                                        disabled={busy}
+                                        onClick={() =>
+                                          handleOccupyWorld(selectedWorldTileArrivedMarch)
+                                        }
+                                      >
+                                        清野并占领
+                                      </Button>
+                                    ) : selectedWorldTile.ownership.owner_player_id ===
+                                        activePlayerId &&
+                                      selectedWorldTile.terrain_type === "plain" &&
+                                      selectedWorldTile.ownership.ownership_type !== "sub_city" ? (
+                                      <Button
+                                        disabled={busy || worldMainCity.city_level < 2}
+                                        onClick={() => handleEstablishSubCity(selectedWorldTile)}
+                                      >
+                                        建立分城
+                                      </Button>
+                                    ) : selectedWorldTile.purchase_state.purchasable ? (
+                                      <Button
+                                        disabled={busy}
+                                        onClick={() => handlePurchaseWorldBlock(selectedWorldTile)}
+                                      >
+                                        购买区块
+                                      </Button>
+                                    ) : selectedWorldTileMarchType ? (
+                                      <Button
+                                        disabled={busy || marchingWorldMarches.length > 0}
+                                        onClick={() =>
+                                          handleStartWorldMarch(
+                                            selectedWorldTile,
+                                            selectedWorldTileMarchType,
+                                          )
+                                        }
+                                      >
+                                        {worldMarchTypeLabel(selectedWorldTileMarchType)}
+                                      </Button>
+                                    ) : (
+                                      <span className="action-note">
+                                        {selectedWorldTile.purchase_state.reason}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <ActionFeedbackInline
+                                    feedback={actionFeedbackFor("world-map")}
+                                    onViewDetails={handleViewActionFeedbackDetails}
+                                  />
+                                </>
+                              ) : (
+                                <>
+                                  <strong>当前战略建议</strong>
+                                  <p>
+                                    {worldTerritory?.next_purchase_hint ??
+                                      "选择一州，查看可扩张的区块。"}
+                                  </p>
+                                </>
+                              )}
+                            </aside>
+                          </div>
+                          <section className="strategic-map-footer" aria-label="城池与行军摘要">
+                            <article>
+                              <strong>{worldMainCity?.city_name ?? "城池筹备中"}</strong>
+                              <span>
+                                {worldMainCity
+                                  ? `城防 ${worldMainCity.defense.wall_durability}/${worldMainCity.defense.wall_durability_cap} · ${worldMainCity.defense.protection_label}`
+                                  : "建立主城后可购买相邻无主区块。"}
+                              </span>
+                              {worldTerritory ? (
+                                <span>
+                                  领地 {worldTerritory.owned_block_count}/
+                                  {worldTerritory.block_limit} · 灵石 +
+                                  {worldTerritory.hourly_output.spirit_stone}/时
+                                </span>
+                              ) : null}
+                              {territoryCollect &&
+                              territoryCollect.claimable.spirit_stone +
+                                territoryCollect.claimable.grain +
+                                territoryCollect.claimable.ore +
+                                territoryCollect.claimable.wood >
+                                0 ? (
+                                <Button disabled={busy} onClick={handleCollectTerritory}>
+                                  收取领地产出
+                                </Button>
+                              ) : null}
+                            </article>
+                            <article>
+                              <strong>行军</strong>
+                              {worldMarches?.marches.length ? (
+                                worldMarches.marches.slice(0, 2).map((march) => (
+                                  <span key={march.march_id}>
+                                    {march.target_name} · {worldMarchStatusLabel(march.status)} ·{" "}
+                                    {march.status === "marching"
+                                      ? `剩余 ${formatRemainingSeconds(march.remaining_seconds)}`
+                                      : march.action_hint}
+                                  </span>
+                                ))
+                              ) : (
+                                <span>暂无行军，从地图选择区块即可派遣队伍。</span>
+                              )}
+                            </article>
+                            <article>
+                              <strong>最近战报</strong>
+                              <span>
+                                {recentBattles[0]
+                                  ? `${recentBattles[0].enemy_name} · ${recentBattles[0].result === "win" ? "胜" : "败"}`
+                                  : "尚无战报，清野后会留下行军记录。"}
+                              </span>
+                            </article>
+                          </section>
+                        </section>
                         <div className="world-city-layout">
                           <article
                             className="production-box world-city-card"
@@ -8275,15 +8667,23 @@ async function loadWorldState(
   provinceId?: string,
   view: WorldMapView = "mini",
 ) {
-  const [provinceResponse, cityResponse, managementResponse, marchResponse, territoryResponse] =
-    await Promise.all([
-      client.worldProvinces(),
-      client.cityOverview(),
-      client.cityManagement(),
-      client.worldMarches(),
-      client.worldTerritory(),
-    ]);
+  const [
+    provinceResponse,
+    atlasResponse,
+    cityResponse,
+    managementResponse,
+    marchResponse,
+    territoryResponse,
+  ] = await Promise.all([
+    client.worldProvinces(),
+    client.worldAtlas(),
+    client.cityOverview(),
+    client.cityManagement(),
+    client.worldMarches(),
+    client.worldTerritory(),
+  ]);
   ensureOk(provinceResponse);
+  ensureOk(atlasResponse);
   ensureOk(cityResponse);
   ensureOk(managementResponse);
   ensureOk(marchResponse);
@@ -8300,6 +8700,7 @@ async function loadWorldState(
 
   return {
     city: cityResponse.data,
+    atlas: atlasResponse.data,
     management: managementResponse.data,
     territory: territoryResponse.data,
     map: mapResponse.data,
@@ -8606,6 +9007,26 @@ function worldTileStatusLabel(status: MapTileState["status"]): string {
     wild: "野地",
   };
   return labels[status] ?? "状态同步中";
+}
+
+function worldTileMapMarker(tile: MapTileState, activePlayerId: string | null): string {
+  if (tile.ownership.owner_player_id === activePlayerId) {
+    if (tile.ownership.ownership_type === "main_city") {
+      return "城";
+    }
+    if (tile.ownership.ownership_type === "sub_city") {
+      return "分";
+    }
+    return "我";
+  }
+
+  const markers: Partial<Record<MapTileState["tile_type"], string>> = {
+    capital: "府",
+    pass: "关",
+    resource: "矿",
+    tower: "塔",
+  };
+  return markers[tile.tile_type] ?? "";
 }
 
 function worldTerrainLabel(type: string): string {

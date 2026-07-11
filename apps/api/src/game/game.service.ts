@@ -917,19 +917,16 @@ export class GameService {
       update: {},
     });
 
-    for (const province of provinceConfigs) {
-      await tx.playerProvinceProgress.upsert({
-        where: { playerId_provinceId: { playerId, provinceId: province.provinceId } },
-        create: {
-          provinceProgressId: `province_progress_${randomUUID()}`,
-          playerId,
-          eraId: defaultEraId,
-          provinceId: province.provinceId,
-          unlocked: province.chapterRequired === 1,
-        },
-        update: {},
-      });
-    }
+    await tx.playerProvinceProgress.createMany({
+      data: provinceConfigs.map((province) => ({
+        provinceProgressId: `province_progress_${randomUUID()}`,
+        playerId,
+        eraId: defaultEraId,
+        provinceId: province.provinceId,
+        unlocked: province.chapterRequired === 1,
+      })),
+      skipDuplicates: true,
+    });
 
     await ensureInitialPlayerTasks(tx, playerId);
   }

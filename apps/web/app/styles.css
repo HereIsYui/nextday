@@ -3996,6 +3996,113 @@ details.event-boundary {
   padding: 10px;
 }
 
+.text-game-shell .city-interior-canvas {
+  background: linear-gradient(rgba(112, 96, 66, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(112, 96, 66, 0.12) 1px, transparent 1px), #efe5cf;
+  background-size: 24px 24px;
+  border: 1px solid #c8bfa8;
+  display: grid;
+  gap: 18px;
+  min-height: 430px;
+  padding: 22px;
+}
+
+.text-game-shell .city-interior-gate {
+  align-items: center;
+  border: 2px solid #483a2b;
+  color: #2f261c;
+  display: inline-flex;
+  font-family: "Songti SC", SimSun, serif;
+  font-size: 18px;
+  justify-content: center;
+  justify-self: center;
+  line-height: 1.2;
+  min-height: 48px;
+  padding: 8px 22px;
+}
+
+.text-game-shell .city-interior-grid {
+  align-content: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(108px, 1fr));
+  min-width: 0;
+}
+
+.text-game-shell .city-interior-building {
+  background: rgba(255, 252, 241, 0.72);
+  border: 1px solid #816d4d;
+  color: #211b14;
+  cursor: pointer;
+  display: grid;
+  gap: 5px;
+  min-height: 108px;
+  padding: 12px 10px;
+  text-align: left;
+}
+
+.text-game-shell .city-interior-building:hover,
+.text-game-shell .city-interior-building.selected {
+  background: #fffaf0;
+  box-shadow: inset 0 0 0 2px #394d35;
+}
+
+.text-game-shell .city-interior-building.locked {
+  background: rgba(119, 105, 80, 0.16);
+  border-style: dashed;
+  color: #6d6455;
+}
+
+.text-game-shell .city-interior-building strong {
+  font-family: "Songti SC", SimSun, serif;
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.text-game-shell .city-interior-building span {
+  color: #665d50;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.text-game-shell .city-interior-building.building-city_hall {
+  grid-column: 2 / span 2;
+}
+
+.text-game-shell .city-interior-building.building-garden {
+  border-color: #54734f;
+}
+
+.text-game-shell .city-interior-inspector {
+  background: #fbf7eb;
+  border: 1px solid #c8bfa8;
+}
+
+.text-game-shell .city-garden-plots {
+  border-top: 1px solid #d5cab5;
+  display: grid;
+  gap: 6px;
+  margin-top: 3px;
+  padding-top: 8px;
+}
+
+.text-game-shell .city-garden-plots article {
+  border-left: 2px solid #5e8158;
+  display: grid;
+  gap: 2px;
+  padding-left: 7px;
+}
+
+.text-game-shell .city-garden-plots strong {
+  font-size: 13px;
+}
+
+.text-game-shell .city-garden-plots span {
+  color: #555555;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .text-game-shell .strategic-inspector-tags,
 .text-game-shell .strategic-inspector-nodes,
 .text-game-shell .strategic-birth-options {
@@ -4563,4 +4670,8 @@ details.event-boundary {
 .text-game-shell .tab-surface:focus {
   outline: 2px solid #111111;
   outline-offset: 3px;
+}
+
+.text-game-shell .practice-workbench.map-primary-hidden {
+  display: none;
 }

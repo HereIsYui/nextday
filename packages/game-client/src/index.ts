@@ -102,6 +102,9 @@ import type {
   GameOverviewResponse,
   GraduateMentorRequest,
   GuestLoginRequest,
+  HarvestHerbRequest,
+  HarvestHerbResponse,
+  HerbGardenState,
   InnerWorldAssignmentListResponse,
   InnerWorldClaimRequest,
   InnerWorldClaimResponse,
@@ -125,6 +128,8 @@ import type {
   OccupyWorldResponse,
   PillUseRequest,
   PillUseResponse,
+  PlantHerbRequest,
+  PlantHerbResponse,
   PlayerProfileResponse,
   PluginExpandedPanelResponse,
   PluginNavigationLinksResponse,
@@ -466,6 +471,28 @@ export class GameClient {
 
   cityManagement(): Promise<ApiResponse<CityManagementResponse>> {
     return this.get<CityManagementResponse>("/api/city/management");
+  }
+
+  herbGarden(): Promise<ApiResponse<HerbGardenState>> {
+    return this.get<HerbGardenState>("/api/city/garden");
+  }
+
+  plantHerb(
+    body: PlantHerbRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<PlantHerbResponse>> {
+    return this.post<PlantHerbResponse, PlantHerbRequest>("/api/city/garden/plant", body, {
+      idempotencyKey,
+    });
+  }
+
+  harvestHerb(
+    body: HarvestHerbRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<HarvestHerbResponse>> {
+    return this.post<HarvestHerbResponse, HarvestHerbRequest>("/api/city/garden/harvest", body, {
+      idempotencyKey,
+    });
   }
 
   expandCity(idempotencyKey: string): Promise<ApiResponse<ExpandCityResponse>> {

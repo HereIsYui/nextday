@@ -104,6 +104,7 @@ model Player {
   hireHelpRecords           SectHireRecord[]
   transferRequests          TransferRequestRecord[]
   cities                    PlayerCity[]
+  herbGardenPlots           CityHerbGardenPlot[]
   marchQueues               MarchQueue[]
   territoryOccupations      TerritoryOccupation[]
   worldBlockOwnerships      WorldBlockOwnership[]
@@ -138,6 +139,7 @@ model PlayerCity {
   player Player @relation(fields: [playerId], references: [playerId])
   marchQueues MarchQueue[]
   buildings CityBuilding[]
+  herbGardenPlots CityHerbGardenPlot[]
 
   @@index([playerId])
   @@index([eraId])
@@ -169,6 +171,27 @@ model CityBuilding {
   @@index([status])
   @@index([upgradeEndsAt])
   @@map("city_building")
+}
+
+model CityHerbGardenPlot {
+  plotId     String    @id @map("plot_id")
+  playerId   String    @map("player_id")
+  cityId     String    @map("city_id")
+  plotIndex  Int       @map("plot_index")
+  herbId     String?   @map("herb_id")
+  status     String    @default("empty")
+  plantedAt  DateTime? @map("planted_at")
+  readyAt    DateTime? @map("ready_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  player Player     @relation(fields: [playerId], references: [playerId])
+  city   PlayerCity @relation(fields: [cityId], references: [cityId], onDelete: Cascade)
+
+  @@unique([cityId, plotIndex])
+  @@index([playerId, cityId])
+  @@index([readyAt])
+  @@map("city_herb_garden_plot")
 }
 
 model MarchQueue {

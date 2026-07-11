@@ -6,6 +6,11 @@ import type {
   EstablishSubCityRequest,
   EstablishSubCityResponse,
   ExpandCityResponse,
+  HarvestHerbRequest,
+  HarvestHerbResponse,
+  HerbGardenState,
+  PlantHerbRequest,
+  PlantHerbResponse,
   SettleMainCityRequest,
   SettleMainCityResponse,
   UpgradeCityBuildingRequest,
@@ -28,6 +33,34 @@ export class CityController {
   @Get("management")
   management(@Req() request: Request): Promise<CityManagementResponse> {
     return this.cityService.getManagement(requireAccountId(request));
+  }
+
+  @Get("garden")
+  garden(@Req() request: Request): Promise<HerbGardenState> {
+    return this.cityService.getHerbGarden(requireAccountId(request));
+  }
+
+  @Post("garden/plant")
+  plantHerb(@Body() body: PlantHerbRequest, @Req() request: Request): Promise<PlantHerbResponse> {
+    return this.cityService.plantHerb({
+      accountId: requireAccountId(request),
+      body,
+      idempotencyKey: requireIdempotencyKey(request),
+      endpoint: "POST /api/city/garden/plant",
+    });
+  }
+
+  @Post("garden/harvest")
+  harvestHerb(
+    @Body() body: HarvestHerbRequest,
+    @Req() request: Request,
+  ): Promise<HarvestHerbResponse> {
+    return this.cityService.harvestHerb({
+      accountId: requireAccountId(request),
+      body,
+      idempotencyKey: requireIdempotencyKey(request),
+      endpoint: "POST /api/city/garden/harvest",
+    });
   }
 
   @Post("settle")

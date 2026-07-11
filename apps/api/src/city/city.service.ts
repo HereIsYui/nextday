@@ -13,6 +13,12 @@ import type {
   EstablishSubCityRequest,
   EstablishSubCityResponse,
   ExpandCityResponse,
+  HarvestHerbRequest,
+  HarvestHerbResponse,
+  HerbGardenPlotState,
+  HerbGardenState,
+  PlantHerbRequest,
+  PlantHerbResponse,
   PlayerCityState,
   PlayerCityStatus,
   PlayerCityType,
@@ -24,7 +30,7 @@ import type {
   UpgradeCityBuildingResponse,
   WorldTerrainType,
 } from "@nextday/shared";
-import type { CityBuilding, PlayerCity, Prisma } from "@prisma/client";
+import type { CityBuilding, CityHerbGardenPlot, PlayerCity, Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
 import { defaultEraId } from "../game/game.constants";
 import { hashRequestBody } from "../platform/utils/hash";
@@ -56,6 +62,12 @@ import {
 import {
   cityConfigVersion,
   cityProtectionHours,
+  herbGardenConfigVersion,
+  herbGardenGrowSeconds,
+  herbGardenHarvestCount,
+  herbGardenPlantCost,
+  herbGardenPlotCount,
+  herbGardenUnlockSubCityCount,
   initialCityDefense,
   initialCityResources,
 } from "./city.constants";
@@ -72,6 +84,146 @@ export class CityService {
   async getManagement(accountId: string): Promise<CityManagementResponse> {
     const player = await this.requirePlayer(accountId);
     return this.prisma.$transaction((tx) => this.buildManagement(player.playerId, tx));
+  }
+
+  async getHerbGarden(accountId: string): Promise<HerbGardenState> {
+    const player = await this.requirePlayer(accountId);
+    return this.prisma.$transaction((tx) => this.buildHerbGarden(player.playerId, tx));
+  }
+
+  async plantHerb(input: {
+    accountId: string;
+    body: PlantHerbRequest;
+    idempotencyKey: string;
+    endpoint: string;
+  }): Promise<PlantHerbResponse> {
+    const body = normalizeGardenPlotBody(input.body);
+    const requestHash = hashRequestBody(body);
+    const existingRecord = await this.prisma.idempotencyRecord.findUnique({
+      where: { idempotencyKey: input.idempotencyKey },
+    });
+    if (existingRecord) {
+      this.assertMatchingIdempotencyRecord(existingRecord, input, requestHash);
+      return existingRecord.responseData as unknown as PlantHerbResponse;
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const player = await tx.player.findUnique({ where: { accountId: input.accountId } });
+      if (!player) throw new BadRequestException("请先创建角色");
+      const city = await this.requireMainCity(player.playerId, tx);
+      await this.ensureHerbGardenUnlocked(tx, player.playerId, city);
+      const plot = await tx.cityHerbGardenPlot.findFirst({
+        where: { plotId: body.plot_id, playerId: player.playerId, cityId: city.cityId },
+      });
+      if (!plot) throw new BadRequestException("请选择自己的药圃");
+      if (plot.status !== "empty") throw new BadRequestException("这块药圃尚未收获");
+
+      const resources = normalizeResourceSnapshot(city.resourceSnapshot);
+      if (Number(resources.spirit_stone) < herbGardenPlantCost) {
+        throw new BadRequestException("主城灵石不足，暂无法种植");
+      }
+      const now = new Date();
+      const readyAt = new Date(now.getTime() + herbGardenGrowSeconds * 1000);
+      const updatedCity = await tx.playerCity.update({
+        where: { cityId: city.cityId },
+        data: {
+          resourceSnapshot: {
+            ...resources,
+            spirit_stone: String(Number(resources.spirit_stone) - herbGardenPlantCost),
+          } as Prisma.InputJsonValue,
+        },
+      });
+      await tx.cityHerbGardenPlot.update({
+        where: { plotId: plot.plotId },
+        data: { herbId: "low_herb", plantedAt: now, readyAt, status: "growing" },
+      });
+      const garden = await this.buildHerbGarden(player.playerId, tx, updatedCity);
+      const responseData: PlantHerbResponse = {
+        record_id: `garden_plant_${randomUUID()}`,
+        city: this.toCityState(updatedCity),
+        garden,
+      };
+      await this.createCityActionRecord(tx, {
+        accountId: input.accountId,
+        action: "city_herb_garden_plant",
+        afterSnapshot: responseData,
+        endpoint: input.endpoint,
+        idempotencyKey: input.idempotencyKey,
+        playerId: player.playerId,
+        reason: "药园种植凝露草",
+        requestHash,
+        targetId: plot.plotId,
+      });
+      return responseData;
+    });
+  }
+
+  async harvestHerb(input: {
+    accountId: string;
+    body: HarvestHerbRequest;
+    idempotencyKey: string;
+    endpoint: string;
+  }): Promise<HarvestHerbResponse> {
+    const body = normalizeGardenPlotBody(input.body);
+    const requestHash = hashRequestBody(body);
+    const existingRecord = await this.prisma.idempotencyRecord.findUnique({
+      where: { idempotencyKey: input.idempotencyKey },
+    });
+    if (existingRecord) {
+      this.assertMatchingIdempotencyRecord(existingRecord, input, requestHash);
+      return existingRecord.responseData as unknown as HarvestHerbResponse;
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const player = await tx.player.findUnique({ where: { accountId: input.accountId } });
+      if (!player) throw new BadRequestException("请先创建角色");
+      const city = await this.requireMainCity(player.playerId, tx);
+      await this.ensureHerbGardenUnlocked(tx, player.playerId, city);
+      const plot = await tx.cityHerbGardenPlot.findFirst({
+        where: { plotId: body.plot_id, playerId: player.playerId, cityId: city.cityId },
+      });
+      if (!plot) throw new BadRequestException("请选择自己的药圃");
+      if (!plot.readyAt || plot.readyAt.getTime() > Date.now()) {
+        throw new BadRequestException("灵草尚未成熟");
+      }
+
+      await tx.playerItem.create({
+        data: {
+          itemInstanceId: `item_${randomUUID()}`,
+          playerId: player.playerId,
+          itemId: "low_herb",
+          count: BigInt(herbGardenHarvestCount),
+          bindType: "bound",
+          locked: false,
+          sourceType: "city_herb_garden",
+          metadata: { garden_plot_id: plot.plotId } as Prisma.InputJsonValue,
+        },
+      });
+      await tx.cityHerbGardenPlot.update({
+        where: { plotId: plot.plotId },
+        data: { herbId: null, plantedAt: null, readyAt: null, status: "empty" },
+      });
+      const garden = await this.buildHerbGarden(player.playerId, tx, city);
+      const responseData: HarvestHerbResponse = {
+        record_id: `garden_harvest_${randomUUID()}`,
+        garden,
+        harvested_item_id: "low_herb",
+        harvested_item_name: "凝露草",
+        harvested_count: herbGardenHarvestCount,
+      };
+      await this.createCityActionRecord(tx, {
+        accountId: input.accountId,
+        action: "city_herb_garden_harvest",
+        afterSnapshot: responseData,
+        endpoint: input.endpoint,
+        idempotencyKey: input.idempotencyKey,
+        playerId: player.playerId,
+        reason: "药园收获凝露草",
+        requestHash,
+        targetId: plot.plotId,
+      });
+      return responseData;
+    });
   }
 
   async collectTerritory(input: {
@@ -656,6 +808,111 @@ export class CityService {
     return city;
   }
 
+  private async buildHerbGarden(
+    playerId: string,
+    tx: Prisma.TransactionClient,
+    knownCity?: PlayerCity,
+  ): Promise<HerbGardenState> {
+    const city =
+      knownCity ??
+      (await tx.playerCity.findFirst({
+        where: { playerId, cityType: "main" },
+        orderBy: { createdAt: "asc" },
+      }));
+    if (!city) {
+      return {
+        unlocked: false,
+        unlock_hint: "建立主城后可规划药园。",
+        plot_count: 0,
+        growing_count: 0,
+        ready_count: 0,
+        plant_cost_spirit_stone: herbGardenPlantCost,
+        grow_seconds: herbGardenGrowSeconds,
+        plots: [],
+        config_version: herbGardenConfigVersion,
+      };
+    }
+    const subCityCount = await tx.playerCity.count({
+      where: { playerId, cityType: "sub" },
+    });
+    if (subCityCount < herbGardenUnlockSubCityCount) {
+      return {
+        unlocked: false,
+        unlock_hint: `建立 ${herbGardenUnlockSubCityCount} 座分城后开放药园`,
+        plot_count: 0,
+        growing_count: 0,
+        ready_count: 0,
+        plant_cost_spirit_stone: herbGardenPlantCost,
+        grow_seconds: herbGardenGrowSeconds,
+        plots: [],
+        config_version: herbGardenConfigVersion,
+      };
+    }
+
+    const plots = await this.ensureHerbGardenPlots(tx, playerId, city.cityId);
+    const now = new Date();
+    const states = plots.map((plot) => this.toHerbGardenPlotState(plot, now));
+    return {
+      unlocked: true,
+      unlock_hint: "药园已开放，凝露草可用于基础炼丹。",
+      plot_count: states.length,
+      growing_count: states.filter((plot) => plot.status === "growing").length,
+      ready_count: states.filter((plot) => plot.status === "ready").length,
+      plant_cost_spirit_stone: herbGardenPlantCost,
+      grow_seconds: herbGardenGrowSeconds,
+      plots: states,
+      config_version: herbGardenConfigVersion,
+    };
+  }
+
+  private async ensureHerbGardenUnlocked(
+    tx: Prisma.TransactionClient,
+    playerId: string,
+    city: PlayerCity,
+  ): Promise<void> {
+    const subCityCount = await tx.playerCity.count({
+      where: { playerId, cityType: "sub" },
+    });
+    if (subCityCount < herbGardenUnlockSubCityCount) {
+      throw new BadRequestException(`建立 ${herbGardenUnlockSubCityCount} 座分城后开放药园`);
+    }
+    await this.ensureHerbGardenPlots(tx, playerId, city.cityId);
+  }
+
+  private async ensureHerbGardenPlots(
+    tx: Prisma.TransactionClient,
+    playerId: string,
+    cityId: string,
+  ): Promise<CityHerbGardenPlot[]> {
+    await tx.cityHerbGardenPlot.createMany({
+      data: Array.from({ length: herbGardenPlotCount }, (_, index) => ({
+        plotId: `garden_plot_${randomUUID()}`,
+        playerId,
+        cityId,
+        plotIndex: index + 1,
+        status: "empty",
+      })),
+      skipDuplicates: true,
+    });
+    return tx.cityHerbGardenPlot.findMany({ where: { cityId }, orderBy: { plotIndex: "asc" } });
+  }
+
+  private toHerbGardenPlotState(plot: CityHerbGardenPlot, now: Date): HerbGardenPlotState {
+    const readyAt = plot.readyAt?.getTime() ?? null;
+    const ready = Boolean(readyAt && readyAt <= now.getTime());
+    return {
+      plot_id: plot.plotId,
+      plot_index: plot.plotIndex,
+      herb_id: plot.herbId,
+      herb_name: plot.herbId === "low_herb" ? "凝露草" : null,
+      status: plot.status === "empty" ? "empty" : ready ? "ready" : "growing",
+      planted_at: plot.plantedAt?.toISOString() ?? null,
+      ready_at: plot.readyAt?.toISOString() ?? null,
+      remaining_seconds: readyAt ? Math.max(0, Math.ceil((readyAt - now.getTime()) / 1000)) : 0,
+      harvest_count: plot.herbId ? herbGardenHarvestCount : 0,
+    };
+  }
+
   private async ensureCityBuildings(
     tx: Prisma.TransactionClient,
     cityId: string,
@@ -909,6 +1166,12 @@ function normalizeEstablishSubCityBody(body: EstablishSubCityRequest): Establish
     throw new BadRequestException("分城名需为 2-16 个字符");
   }
   return { tile_id: tileId, ...(cityName ? { city_name: cityName } : {}) };
+}
+
+function normalizeGardenPlotBody(body: PlantHerbRequest | HarvestHerbRequest): { plot_id: string } {
+  const plotId = body?.plot_id?.trim();
+  if (!plotId) throw new BadRequestException("请选择药圃");
+  return { plot_id: plotId };
 }
 
 function buildBirthOptions(ownedBirthTileIds: Set<string>): CityBirthOptionState[] {

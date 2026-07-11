@@ -1096,6 +1096,54 @@ export interface UpgradeCityBuildingResponse {
   buildings: CityBuildingState[];
 }
 
+export type HerbGardenPlotStatus = "empty" | "growing" | "ready";
+
+export interface HerbGardenPlotState {
+  plot_id: string;
+  plot_index: number;
+  herb_id: string | null;
+  herb_name: string | null;
+  status: HerbGardenPlotStatus;
+  planted_at: string | null;
+  ready_at: string | null;
+  remaining_seconds: number;
+  harvest_count: number;
+}
+
+export interface HerbGardenState {
+  unlocked: boolean;
+  unlock_hint: string;
+  plot_count: number;
+  growing_count: number;
+  ready_count: number;
+  plant_cost_spirit_stone: number;
+  grow_seconds: number;
+  plots: HerbGardenPlotState[];
+  config_version: string;
+}
+
+export interface PlantHerbRequest {
+  plot_id: string;
+}
+
+export interface PlantHerbResponse {
+  record_id: string;
+  city: PlayerCityState;
+  garden: HerbGardenState;
+}
+
+export interface HarvestHerbRequest {
+  plot_id: string;
+}
+
+export interface HarvestHerbResponse {
+  record_id: string;
+  garden: HerbGardenState;
+  harvested_item_id: string;
+  harvested_item_name: string;
+  harvested_count: number;
+}
+
 export interface BattleRoundLog {
   round: number;
   actor: string;

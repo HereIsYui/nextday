@@ -36,6 +36,7 @@ import type {
   GameOverviewResponse,
   GraduateMentorRequest,
   HealthStatus,
+  HerbGardenState,
   InnerWorldSummaryResponse,
   JournalEntryState,
   LoginResponse,
@@ -130,6 +131,69 @@ type ActiveFeature =
   | "tower"
   | "tower_map"
   | "world";
+
+type CityInteriorBuildingId =
+  | "city_hall"
+  | "enlightenment"
+  | "alchemy"
+  | "forge"
+  | "training"
+  | "barracks"
+  | "fortification"
+  | "garden";
+
+interface CityInteriorBuildingDefinition {
+  id: CityInteriorBuildingId;
+  label: string;
+  role: string;
+  description: string;
+}
+
+const cityInteriorBuildings: CityInteriorBuildingDefinition[] = [
+  {
+    id: "city_hall",
+    label: "城主府",
+    role: "领地中枢",
+    description: "扩建主城、收取领地产出与查看分城进度。",
+  },
+  {
+    id: "enlightenment",
+    label: "悟道房",
+    role: "修行静室",
+    description: "吐纳收束修为，在积累足够后尝试突破。",
+  },
+  {
+    id: "alchemy",
+    label: "炼丹房",
+    role: "丹火常明",
+    description: "将药材炼成丹药，支撑后续修为成长。",
+  },
+  { id: "forge", label: "炼器坊", role: "百工铸器", description: "炼制法宝并淬炼已有器物。" },
+  {
+    id: "training",
+    label: "演武场",
+    role: "战法演练",
+    description: "学习招式、配置主动技能与本命技能。",
+  },
+  {
+    id: "barracks",
+    label: "兵营",
+    role: "道兵整训",
+    description: "查看道兵与行军状态，后续可从此调整驻防。",
+  },
+  {
+    id: "fortification",
+    label: "城防司",
+    role: "护城大阵",
+    description: "加固城防，维持主城保护与驻防优势。",
+  },
+  {
+    id: "garden",
+    label: "药园",
+    role: "分城产业",
+    description: "首座分城开放，种植凝露草供炼丹使用。",
+  },
+];
 
 const tokenStorageKey = "nextday_m1_token";
 const deviceStorageKey = "nextday_m1_device_id";
@@ -390,11 +454,16 @@ export default function HomePage() {
   const [worldAtlas, setWorldAtlas] = useState<WorldAtlasResponse | null>(null);
   const [cityOverview, setCityOverview] = useState<CityOverviewResponse | null>(null);
   const [cityManagement, setCityManagement] = useState<CityManagementResponse | null>(null);
+  const [herbGarden, setHerbGarden] = useState<HerbGardenState | null>(null);
   const [worldTerritory, setWorldTerritory] = useState<TerritoryOverviewResponse | null>(null);
   const [worldMarches, setWorldMarches] = useState<WorldMarchListResponse | null>(null);
   const [selectedWorldProvinceId, setSelectedWorldProvinceId] = useState("");
   const [worldMapView, setWorldMapView] = useState<WorldMapView>("detail");
-  const [strategicMapScope, setStrategicMapScope] = useState<"atlas" | "province">("atlas");
+  const [strategicMapScope, setStrategicMapScope] = useState<"atlas" | "province" | "city">(
+    "atlas",
+  );
+  const [selectedCityInteriorBuildingId, setSelectedCityInteriorBuildingId] =
+    useState<CityInteriorBuildingId>("city_hall");
   const [selectedWorldTileId, setSelectedWorldTileId] = useState<string | null>(null);
   const [strategicMapZoom, setStrategicMapZoom] = useState(1);
   const [worldCityName, setWorldCityName] = useState("");
@@ -438,6 +507,9 @@ export default function HomePage() {
   const cityExpansion = worldTerritory?.expansion ?? null;
   const territoryCollect = cityManagement?.territory_collect ?? null;
   const cityBuildings = cityManagement?.buildings ?? [];
+  const selectedCityInteriorBuilding =
+    cityInteriorBuildings.find((building) => building.id === selectedCityInteriorBuildingId) ??
+    cityInteriorBuildings[0];
   const selectedWorldProvince =
     worldProvinces.find((province) => province.province_id === selectedWorldProvinceId) ??
     worldProvinces.find((province) => province.province_id === worldMainCity?.province_id) ??
@@ -1037,6 +1109,31 @@ export default function HomePage() {
 
     let ignore = false;
     createClient(token)
+      .herbGarden()
+      .then((response) => {
+        ensureOk(response);
+        if (!ignore) {
+          setHerbGarden(response.data);
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setMessage("药园状态读取失败");
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [token, activePlayerId]);
+
+  useEffect(() => {
+    if (!token || !activePlayerId) {
+      return;
+    }
+
+    let ignore = false;
+    createClient(token)
       .transferStatus()
       .then((response) => {
         if (ignore) {
@@ -1372,7 +1469,17 @@ export default function HomePage() {
     await refreshJournal();
     await refreshExploreEvents();
     await refreshWorldState();
+    await refreshHerbGarden();
     setMessage(successMessage);
+  }
+
+  async function refreshHerbGarden() {
+    if (!token) {
+      return;
+    }
+    const response = await createClient(token).herbGarden();
+    ensureOk(response);
+    setHerbGarden(response.data);
   }
 
   async function refreshProduction() {
@@ -1738,6 +1845,44 @@ export default function HomePage() {
         tone: "neutral",
       });
       await refreshWorldState(`${building.name}已开始升级`);
+    });
+  }
+
+  async function handlePlantHerb(plotId: string) {
+    await runAction("药园种植", async () => {
+      const response = await client.plantHerb(
+        { plot_id: plotId },
+        createIdempotencyKey(`web_garden_plant_${plotId}`),
+      );
+      ensureOk(response);
+      setHerbGarden(response.data.garden);
+      rememberExperience(undefined, {
+        summary: `凝露草已种入药圃，约 ${Math.ceil(response.data.garden.grow_seconds / 60)} 分钟后成熟。`,
+        tags: ["药园", "凝露草"],
+        title: "药园种植",
+        tone: "success",
+      });
+      await refreshOverview("凝露草已种下");
+    });
+  }
+
+  async function handleHarvestHerb(plotId: string) {
+    await runAction("药园收获", async () => {
+      const response = await client.harvestHerb(
+        { plot_id: plotId },
+        createIdempotencyKey(`web_garden_harvest_${plotId}`),
+      );
+      ensureOk(response);
+      setHerbGarden(response.data.garden);
+      rememberExperience(undefined, {
+        summary: `收获 ${response.data.harvested_item_name} x${response.data.harvested_count}，已放入背包，可用于炼丹。`,
+        tags: ["药园", "炼丹材料"],
+        title: "药园收获",
+        tone: "success",
+      });
+      await refreshOverview(
+        `收获 ${response.data.harvested_item_name} x${response.data.harvested_count}`,
+      );
     });
   }
 
@@ -2732,6 +2877,20 @@ export default function HomePage() {
     setStrategicMapScope("atlas");
   }
 
+  function handleOpenCityInterior() {
+    if (!worldMainCity) {
+      setMessage("建立主城后才能进入城内布局");
+      return;
+    }
+    setSelectedCityInteriorBuildingId("city_hall");
+    setStrategicMapScope("city");
+  }
+
+  function handleReturnToProvinceMap() {
+    setSelectedWorldTileId(worldMainCity?.tile_id ?? null);
+    setStrategicMapScope("province");
+  }
+
   function handleFeatureChange(feature: ActiveFeature, options: { focus?: boolean } = {}) {
     const shouldFocus = options.focus ?? true;
     setActiveFeature(feature);
@@ -3198,7 +3357,7 @@ export default function HomePage() {
         ) : (
           <>
             <section
-              className="practice-workbench"
+              className={`practice-workbench ${activeFeature === "world" ? "map-primary-hidden" : ""}`}
               aria-label="今日修行流程台"
               ref={practiceFlowRef}
               tabIndex={-1}
@@ -3378,24 +3537,38 @@ export default function HomePage() {
                               <strong>
                                 {strategicMapScope === "atlas"
                                   ? "九州总览"
-                                  : worldMap?.province.name}
+                                  : strategicMapScope === "city"
+                                    ? `${worldMainCity?.city_name ?? "主城"} · 城内布局`
+                                    : worldMap?.province.name}
                               </strong>
                               <span>
                                 {strategicMapScope === "atlas"
                                   ? "选择州域进入区块沙盘"
-                                  : "点击区块查看详情与行动"}
+                                  : strategicMapScope === "city"
+                                    ? "选择建筑进入对应城内事务"
+                                    : "点击区块查看详情与行动"}
                               </span>
                             </div>
                             <div className="strategic-map-tools">
-                              {strategicMapScope === "province" ? (
+                              {strategicMapScope === "city" ? (
+                                <button onClick={handleReturnToProvinceMap} type="button">
+                                  返回大地图
+                                </button>
+                              ) : strategicMapScope === "province" ? (
                                 <button onClick={handleReturnToAtlas} type="button">
                                   返回九州
+                                </button>
+                              ) : null}
+                              {worldMainCity && strategicMapScope !== "city" ? (
+                                <button onClick={handleOpenCityInterior} type="button">
+                                  进入城内
                                 </button>
                               ) : null}
                               <label>
                                 <span>州域</span>
                                 <select
                                   aria-label="选择州域"
+                                  disabled={strategicMapScope === "city"}
                                   onChange={(event) =>
                                     handleOpenStrategicProvince(event.target.value)
                                   }
@@ -3412,7 +3585,7 @@ export default function HomePage() {
                                 </select>
                               </label>
                               <button
-                                disabled={strategicMapScope === "atlas"}
+                                disabled={strategicMapScope !== "province"}
                                 onClick={() =>
                                   setStrategicMapZoom((value) => Math.max(0.7, value - 0.15))
                                 }
@@ -3421,7 +3594,7 @@ export default function HomePage() {
                                 缩小
                               </button>
                               <button
-                                disabled={strategicMapScope === "atlas"}
+                                disabled={strategicMapScope !== "province"}
                                 onClick={() =>
                                   setStrategicMapZoom((value) => Math.min(1.5, value + 0.15))
                                 }
@@ -3430,7 +3603,7 @@ export default function HomePage() {
                                 放大
                               </button>
                               <button
-                                disabled={strategicMapScope === "atlas"}
+                                disabled={strategicMapScope !== "province"}
                                 onClick={() => setStrategicMapZoom(1)}
                                 type="button"
                               >
@@ -3439,192 +3612,228 @@ export default function HomePage() {
                             </div>
                           </div>
                           <div className="strategic-map-layout">
-                            <div className="strategic-map-canvas">
-                              {strategicMapScope === "atlas" ? (
-                                <div className="atlas-map-grid">
-                                  {worldAtlas?.provinces.map((item) => (
-                                    <button
-                                      className="atlas-province"
-                                      key={item.province.province_id}
-                                      aria-label={`${item.province.name}，我的区块 ${item.my_blocks}，无主区块 ${item.neutral_blocks}`}
-                                      onClick={() =>
-                                        handleOpenStrategicProvince(item.province.province_id)
-                                      }
-                                      style={{
-                                        gridColumn: item.layout_x + 1,
-                                        gridRow: item.layout_y + 1,
-                                      }}
-                                      type="button"
-                                    >
-                                      <strong>{item.province.name}</strong>
-                                      <span>
-                                        {item.my_blocks
-                                          ? `我的 ${item.my_blocks}`
-                                          : `无主 ${item.neutral_blocks}`}
-                                      </span>
-                                      <span
-                                        aria-hidden="true"
-                                        className="atlas-province-grid"
-                                        style={{
-                                          gridTemplateColumns: `repeat(${item.layout_width}, minmax(0, 1fr))`,
-                                          gridTemplateRows: `repeat(${item.layout_height}, minmax(0, 1fr))`,
-                                        }}
-                                      >
-                                        {item.cells.map((cell) => (
-                                          <b
-                                            className={`atlas-cell ${cell.control} terrain-${cell.terrain_type}`}
-                                            data-landmark={cell.landmark ?? undefined}
-                                            key={`${cell.x}-${cell.y}`}
-                                            style={{ gridColumn: cell.x + 1, gridRow: cell.y + 1 }}
-                                          />
-                                        ))}
-                                      </span>
-                                    </button>
-                                  ))}
-                                </div>
-                              ) : (
-                                <div
-                                  className="province-block-map"
-                                  style={{ transform: `scale(${strategicMapZoom})` }}
-                                >
-                                  {worldTiles.map((tile) => (
-                                    <button
-                                      aria-label={`${tile.tile_name}，${tile.terrain_label}，${worldTileStatusLabel(tile.status)}`}
-                                      className={`province-block terrain-${tile.terrain_type} ${selectedWorldTile?.tile_id === tile.tile_id ? "selected" : ""} ${tile.ownership.owner_player_id === activePlayerId ? "mine" : ""} ${tile.tile_type}`}
-                                      key={tile.tile_id}
-                                      onClick={() => setSelectedWorldTileId(tile.tile_id)}
-                                      style={{ gridColumn: tile.x + 1, gridRow: tile.y + 1 }}
-                                      type="button"
-                                      title={`${tile.tile_name} · ${tile.terrain_label}`}
-                                    >
-                                      <span aria-hidden="true">
-                                        {worldTileMapMarker(tile, activePlayerId)}
-                                      </span>
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                            <aside className="strategic-inspector">
-                              {!worldMainCity ? (
-                                <>
-                                  <strong>建立主城</strong>
-                                  <p>
-                                    {cityOverview?.strategic_hint ??
-                                      "选择一州，在安全平原随机获得一块无主主城地。"}
-                                  </p>
-                                  <label className="strategic-city-name">
-                                    <span>城名</span>
-                                    <input
-                                      maxLength={20}
-                                      onChange={(event) => setWorldCityName(event.target.value)}
-                                      value={worldCityName}
-                                    />
-                                  </label>
-                                  <div className="strategic-birth-options">
-                                    {worldBirthOptions
-                                      .filter((option) => option.available)
-                                      .map((option) => (
-                                        <Button
-                                          disabled={busy}
-                                          key={option.commandery_id}
-                                          onClick={() => handleSettleMainCity(option)}
+                            {strategicMapScope === "city" && worldMainCity ? (
+                              <CityInteriorStage
+                                buildings={cityBuildings}
+                                busy={busy}
+                                city={worldMainCity}
+                                cityExpansion={cityExpansion}
+                                garden={herbGarden}
+                                onAlchemy={handleCraftAlchemy}
+                                onBreakthrough={handleBreakthrough}
+                                onClaimCultivation={handleClaimCultivation}
+                                onCollectTerritory={handleCollectTerritory}
+                                onExpandCity={handleExpandMainCity}
+                                onForge={handleCraftForge}
+                                onHarvestHerb={handleHarvestHerb}
+                                onOpenFeature={handleFeatureChange}
+                                onPlantHerb={handlePlantHerb}
+                                onSelectBuilding={setSelectedCityInteriorBuildingId}
+                                onUpgradeBuilding={handleUpgradeCityBuilding}
+                                selectedBuilding={selectedCityInteriorBuilding}
+                                territoryCollect={territoryCollect}
+                              />
+                            ) : (
+                              <>
+                                <div className="strategic-map-canvas">
+                                  {strategicMapScope === "atlas" ? (
+                                    <div className="atlas-map-grid">
+                                      {worldAtlas?.provinces.map((item) => (
+                                        <button
+                                          className="atlas-province"
+                                          key={item.province.province_id}
+                                          aria-label={`${item.province.name}，我的区块 ${item.my_blocks}，无主区块 ${item.neutral_blocks}`}
+                                          onClick={() =>
+                                            handleOpenStrategicProvince(item.province.province_id)
+                                          }
+                                          style={{
+                                            gridColumn: item.layout_x + 1,
+                                            gridRow: item.layout_y + 1,
+                                          }}
+                                          type="button"
                                         >
-                                          在{option.commandery_name}建城
-                                        </Button>
+                                          <strong>{item.province.name}</strong>
+                                          <span>
+                                            {item.my_blocks
+                                              ? `我的 ${item.my_blocks}`
+                                              : `无主 ${item.neutral_blocks}`}
+                                          </span>
+                                          <span
+                                            aria-hidden="true"
+                                            className="atlas-province-grid"
+                                            style={{
+                                              gridTemplateColumns: `repeat(${item.layout_width}, minmax(0, 1fr))`,
+                                              gridTemplateRows: `repeat(${item.layout_height}, minmax(0, 1fr))`,
+                                            }}
+                                          >
+                                            {item.cells.map((cell) => (
+                                              <b
+                                                className={`atlas-cell ${cell.control} terrain-${cell.terrain_type}`}
+                                                data-landmark={cell.landmark ?? undefined}
+                                                key={`${cell.x}-${cell.y}`}
+                                                style={{
+                                                  gridColumn: cell.x + 1,
+                                                  gridRow: cell.y + 1,
+                                                }}
+                                              />
+                                            ))}
+                                          </span>
+                                        </button>
                                       ))}
-                                  </div>
-                                </>
-                              ) : selectedWorldTile ? (
-                                <>
-                                  <strong>{selectedWorldTile.tile_name}</strong>
-                                  <span>
-                                    {worldTileTypeLabel(selectedWorldTile.tile_type)} ·{" "}
-                                    {selectedWorldTile.terrain_label} · 危险{" "}
-                                    {selectedWorldTile.danger_level}
-                                  </span>
-                                  <p>{selectedWorldTile.state_summary}</p>
-                                  <span>
-                                    归属：{selectedWorldTile.owner.owner_player_name ?? "无主"} ·{" "}
-                                    {selectedWorldTile.garrison
-                                      ? `驻防 ${selectedWorldTile.garrison.defense_power}`
-                                      : "暂无驻防"}
-                                  </span>
-                                  <div className="strategic-inspector-tags">
-                                    {selectedWorldTile.terrain_effects.slice(0, 4).map((effect) => (
-                                      <span key={effect}>{effect}</span>
-                                    ))}
-                                    {selectedWorldTile.labels.slice(0, 2).map((label) => (
-                                      <span key={label}>{label}</span>
-                                    ))}
-                                  </div>
-                                  <div className="strategic-inspector-nodes">
-                                    {selectedWorldTile.nodes.slice(0, 2).map((node) => (
-                                      <span key={node.node_id}>
-                                        {node.node_name} · {node.production_summary}
+                                    </div>
+                                  ) : (
+                                    <div
+                                      className="province-block-map"
+                                      style={{ transform: `scale(${strategicMapZoom})` }}
+                                    >
+                                      {worldTiles.map((tile) => (
+                                        <button
+                                          aria-label={`${tile.tile_name}，${tile.terrain_label}，${worldTileStatusLabel(tile.status)}`}
+                                          className={`province-block terrain-${tile.terrain_type} ${selectedWorldTile?.tile_id === tile.tile_id ? "selected" : ""} ${tile.ownership.owner_player_id === activePlayerId ? "mine" : ""} ${tile.tile_type}`}
+                                          key={tile.tile_id}
+                                          onClick={() => setSelectedWorldTileId(tile.tile_id)}
+                                          style={{ gridColumn: tile.x + 1, gridRow: tile.y + 1 }}
+                                          type="button"
+                                          title={`${tile.tile_name} · ${tile.terrain_label}`}
+                                        >
+                                          <span aria-hidden="true">
+                                            {worldTileMapMarker(tile, activePlayerId)}
+                                          </span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                                <aside className="strategic-inspector">
+                                  {!worldMainCity ? (
+                                    <>
+                                      <strong>建立主城</strong>
+                                      <p>
+                                        {cityOverview?.strategic_hint ??
+                                          "选择一州，在安全平原随机获得一块无主主城地。"}
+                                      </p>
+                                      <label className="strategic-city-name">
+                                        <span>城名</span>
+                                        <input
+                                          maxLength={20}
+                                          onChange={(event) => setWorldCityName(event.target.value)}
+                                          value={worldCityName}
+                                        />
+                                      </label>
+                                      <div className="strategic-birth-options">
+                                        {worldBirthOptions
+                                          .filter((option) => option.available)
+                                          .map((option) => (
+                                            <Button
+                                              disabled={busy}
+                                              key={option.commandery_id}
+                                              onClick={() => handleSettleMainCity(option)}
+                                            >
+                                              在{option.commandery_name}建城
+                                            </Button>
+                                          ))}
+                                      </div>
+                                    </>
+                                  ) : selectedWorldTile ? (
+                                    <>
+                                      <strong>{selectedWorldTile.tile_name}</strong>
+                                      <span>
+                                        {worldTileTypeLabel(selectedWorldTile.tile_type)} ·{" "}
+                                        {selectedWorldTile.terrain_label} · 危险{" "}
+                                        {selectedWorldTile.danger_level}
                                       </span>
-                                    ))}
-                                  </div>
-                                  <div className="production-actions strategic-primary-action">
-                                    {selectedWorldTileArrivedMarch ? (
-                                      <Button
-                                        disabled={busy}
-                                        onClick={() =>
-                                          handleOccupyWorld(selectedWorldTileArrivedMarch)
-                                        }
-                                      >
-                                        清野并占领
-                                      </Button>
-                                    ) : selectedWorldTile.ownership.owner_player_id ===
-                                        activePlayerId &&
-                                      selectedWorldTile.terrain_type === "plain" &&
-                                      selectedWorldTile.ownership.ownership_type !== "sub_city" ? (
-                                      <Button
-                                        disabled={busy || worldMainCity.city_level < 2}
-                                        onClick={() => handleEstablishSubCity(selectedWorldTile)}
-                                      >
-                                        建立分城
-                                      </Button>
-                                    ) : selectedWorldTile.purchase_state.purchasable ? (
-                                      <Button
-                                        disabled={busy}
-                                        onClick={() => handlePurchaseWorldBlock(selectedWorldTile)}
-                                      >
-                                        购买区块
-                                      </Button>
-                                    ) : selectedWorldTileMarchType ? (
-                                      <Button
-                                        disabled={busy || marchingWorldMarches.length > 0}
-                                        onClick={() =>
-                                          handleStartWorldMarch(
-                                            selectedWorldTile,
-                                            selectedWorldTileMarchType,
-                                          )
-                                        }
-                                      >
-                                        {worldMarchTypeLabel(selectedWorldTileMarchType)}
-                                      </Button>
-                                    ) : (
-                                      <span className="action-note">
-                                        {selectedWorldTile.purchase_state.reason}
+                                      <p>{selectedWorldTile.state_summary}</p>
+                                      <span>
+                                        归属：{selectedWorldTile.owner.owner_player_name ?? "无主"}{" "}
+                                        ·{" "}
+                                        {selectedWorldTile.garrison
+                                          ? `驻防 ${selectedWorldTile.garrison.defense_power}`
+                                          : "暂无驻防"}
                                       </span>
-                                    )}
-                                  </div>
-                                  <ActionFeedbackInline
-                                    feedback={actionFeedbackFor("world-map")}
-                                    onViewDetails={handleViewActionFeedbackDetails}
-                                  />
-                                </>
-                              ) : (
-                                <>
-                                  <strong>当前战略建议</strong>
-                                  <p>
-                                    {worldTerritory?.next_purchase_hint ??
-                                      "选择一州，查看可扩张的区块。"}
-                                  </p>
-                                </>
-                              )}
-                            </aside>
+                                      <div className="strategic-inspector-tags">
+                                        {selectedWorldTile.terrain_effects
+                                          .slice(0, 4)
+                                          .map((effect) => (
+                                            <span key={effect}>{effect}</span>
+                                          ))}
+                                        {selectedWorldTile.labels.slice(0, 2).map((label) => (
+                                          <span key={label}>{label}</span>
+                                        ))}
+                                      </div>
+                                      <div className="strategic-inspector-nodes">
+                                        {selectedWorldTile.nodes.slice(0, 2).map((node) => (
+                                          <span key={node.node_id}>
+                                            {node.node_name} · {node.production_summary}
+                                          </span>
+                                        ))}
+                                      </div>
+                                      <div className="production-actions strategic-primary-action">
+                                        {selectedWorldTileArrivedMarch ? (
+                                          <Button
+                                            disabled={busy}
+                                            onClick={() =>
+                                              handleOccupyWorld(selectedWorldTileArrivedMarch)
+                                            }
+                                          >
+                                            清野并占领
+                                          </Button>
+                                        ) : selectedWorldTile.ownership.owner_player_id ===
+                                            activePlayerId &&
+                                          selectedWorldTile.terrain_type === "plain" &&
+                                          selectedWorldTile.ownership.ownership_type !==
+                                            "sub_city" ? (
+                                          <Button
+                                            disabled={busy || worldMainCity.city_level < 2}
+                                            onClick={() =>
+                                              handleEstablishSubCity(selectedWorldTile)
+                                            }
+                                          >
+                                            建立分城
+                                          </Button>
+                                        ) : selectedWorldTile.purchase_state.purchasable ? (
+                                          <Button
+                                            disabled={busy}
+                                            onClick={() =>
+                                              handlePurchaseWorldBlock(selectedWorldTile)
+                                            }
+                                          >
+                                            购买区块
+                                          </Button>
+                                        ) : selectedWorldTileMarchType ? (
+                                          <Button
+                                            disabled={busy || marchingWorldMarches.length > 0}
+                                            onClick={() =>
+                                              handleStartWorldMarch(
+                                                selectedWorldTile,
+                                                selectedWorldTileMarchType,
+                                              )
+                                            }
+                                          >
+                                            {worldMarchTypeLabel(selectedWorldTileMarchType)}
+                                          </Button>
+                                        ) : (
+                                          <span className="action-note">
+                                            {selectedWorldTile.purchase_state.reason}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <ActionFeedbackInline
+                                        feedback={actionFeedbackFor("world-map")}
+                                        onViewDetails={handleViewActionFeedbackDetails}
+                                      />
+                                    </>
+                                  ) : (
+                                    <>
+                                      <strong>当前战略建议</strong>
+                                      <p>
+                                        {worldTerritory?.next_purchase_hint ??
+                                          "选择一州，查看可扩张的区块。"}
+                                      </p>
+                                    </>
+                                  )}
+                                </aside>
+                              </>
+                            )}
                           </div>
                           <section className="strategic-map-footer" aria-label="城池与行军摘要">
                             <article>
@@ -5877,6 +6086,243 @@ function DesktopOnlyNotice() {
         <p>当前 Web 正在优先打磨桌面版文字修行界面。移动端会在玩法和桌面布局稳定后单独设计。</p>
       </div>
     </section>
+  );
+}
+
+function CityInteriorStage({
+  buildings,
+  busy,
+  city,
+  cityExpansion,
+  garden,
+  onAlchemy,
+  onBreakthrough,
+  onClaimCultivation,
+  onCollectTerritory,
+  onExpandCity,
+  onForge,
+  onHarvestHerb,
+  onOpenFeature,
+  onPlantHerb,
+  onSelectBuilding,
+  onUpgradeBuilding,
+  selectedBuilding,
+  territoryCollect,
+}: {
+  buildings: CityBuildingState[];
+  busy: boolean;
+  city: NonNullable<CityOverviewResponse["main_city"]>;
+  cityExpansion: TerritoryOverviewResponse["expansion"] | null;
+  garden: HerbGardenState | null;
+  onAlchemy: () => void | Promise<void>;
+  onBreakthrough: () => void | Promise<void>;
+  onClaimCultivation: () => void | Promise<void>;
+  onCollectTerritory: () => void | Promise<void>;
+  onExpandCity: () => void | Promise<void>;
+  onForge: () => void | Promise<void>;
+  onHarvestHerb: (plotId: string) => void | Promise<void>;
+  onOpenFeature: (feature: ActiveFeature) => void;
+  onPlantHerb: (plotId: string) => void | Promise<void>;
+  onSelectBuilding: (buildingId: CityInteriorBuildingId) => void;
+  onUpgradeBuilding: (building: CityBuildingState) => void | Promise<void>;
+  selectedBuilding: CityInteriorBuildingDefinition;
+  territoryCollect: CityManagementResponse["territory_collect"] | null;
+}) {
+  const selectedCityBuilding =
+    selectedBuilding.id === "forge"
+      ? buildings.find((building) => building.building_type === "workshop")
+      : selectedBuilding.id === "barracks"
+        ? buildings.find((building) => building.building_type === "barracks")
+        : selectedBuilding.id === "fortification"
+          ? buildings.find((building) => building.building_type === "fortification")
+          : undefined;
+  const readyGardenPlot = garden?.plots.find((plot) => plot.status === "ready");
+  const emptyGardenPlot = garden?.plots.find((plot) => plot.status === "empty");
+  const claimableTerritory = territoryCollect
+    ? territoryCollect.claimable.spirit_stone +
+      territoryCollect.claimable.grain +
+      territoryCollect.claimable.ore +
+      territoryCollect.claimable.wood +
+      territoryCollect.claimable.herb
+    : 0;
+
+  return (
+    <>
+      <div className="city-interior-canvas" aria-label="城内建筑布局">
+        <div className="city-interior-gate">{city.city_name}</div>
+        <div className="city-interior-grid">
+          {cityInteriorBuildings.map((building) => {
+            const selected = building.id === selectedBuilding.id;
+            const locked = building.id === "garden" && garden?.unlocked !== true;
+            return (
+              <button
+                aria-pressed={selected}
+                className={`city-interior-building building-${building.id} ${selected ? "selected" : ""} ${locked ? "locked" : ""}`}
+                key={building.id}
+                onClick={() => onSelectBuilding(building.id)}
+                type="button"
+              >
+                <strong>{building.label}</strong>
+                <span>{locked ? "分城后开放" : building.role}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <aside
+        className="strategic-inspector city-interior-inspector"
+        data-action-feedback-source="city-interior"
+      >
+        <strong>{selectedBuilding.label}</strong>
+        <span>{selectedBuilding.role}</span>
+        <p>{selectedBuilding.description}</p>
+
+        {selectedBuilding.id === "city_hall" ? (
+          <>
+            <div className="strategic-inspector-tags">
+              <span>{city.city_level} 级主城</span>
+              <span>领地 {cityExpansion?.owned_plain_blocks ?? 0} 块平原</span>
+            </div>
+            <p>{cityExpansion?.reason ?? "扩建状态正在同步。"}</p>
+            <div className="production-actions strategic-primary-action">
+              {claimableTerritory > 0 ? (
+                <Button disabled={busy} onClick={onCollectTerritory}>
+                  收取领地产出
+                </Button>
+              ) : cityExpansion?.eligible ? (
+                <Button disabled={busy} onClick={onExpandCity}>
+                  扩建主城
+                </Button>
+              ) : (
+                <span className="action-note">继续扩张相邻平原，为主城扩建做准备。</span>
+              )}
+            </div>
+          </>
+        ) : null}
+
+        {selectedBuilding.id === "enlightenment" ? (
+          <div className="production-actions strategic-primary-action">
+            <Button disabled={busy} onClick={onClaimCultivation}>
+              吐纳收束修为
+            </Button>
+            <Button disabled={busy} onClick={onBreakthrough}>
+              尝试突破
+            </Button>
+          </div>
+        ) : null}
+
+        {selectedBuilding.id === "alchemy" ? (
+          <div className="production-actions strategic-primary-action">
+            <Button disabled={busy} onClick={onAlchemy}>
+              炼制当前丹方
+            </Button>
+            <button onClick={() => onOpenFeature("alchemy")} type="button">
+              查看丹方与材料
+            </button>
+          </div>
+        ) : null}
+
+        {selectedBuilding.id === "forge" ? (
+          <>
+            {selectedCityBuilding ? (
+              <p>
+                {selectedCityBuilding.name} {selectedCityBuilding.level} 级 ·{" "}
+                {selectedCityBuilding.effect_summary}
+              </p>
+            ) : null}
+            <div className="production-actions strategic-primary-action">
+              <Button disabled={busy} onClick={onForge}>
+                炼制当前器方
+              </Button>
+              <button onClick={() => onOpenFeature("forge")} type="button">
+                查看器方与法宝
+              </button>
+            </div>
+          </>
+        ) : null}
+
+        {selectedBuilding.id === "training" ? (
+          <div className="production-actions strategic-primary-action">
+            <Button disabled={busy} onClick={() => onOpenFeature("skills")}>
+              进入演武配置
+            </Button>
+          </div>
+        ) : null}
+
+        {selectedBuilding.id === "barracks" ? (
+          <>
+            <p>当前可调度道兵 {city.resources.soldier}，行军与驻防会从这里整训。</p>
+            <div className="production-actions strategic-primary-action">
+              <Button disabled={busy} onClick={() => onOpenFeature("world")}>
+                查看行军与领地
+              </Button>
+            </div>
+          </>
+        ) : null}
+
+        {selectedBuilding.id === "fortification" ? (
+          <>
+            <p>
+              城墙 {city.defense.wall_durability}/{city.defense.wall_durability_cap} ·{" "}
+              {city.defense.protection_label}
+            </p>
+            <div className="production-actions strategic-primary-action">
+              {selectedCityBuilding?.next_cost ? (
+                <Button
+                  disabled={busy || selectedCityBuilding.status === "upgrading"}
+                  onClick={() => onUpgradeBuilding(selectedCityBuilding)}
+                >
+                  {selectedCityBuilding.status === "upgrading" ? "城防升级中" : "加固城防"}
+                </Button>
+              ) : (
+                <span className="action-note">主城扩建后可继续加固。</span>
+              )}
+            </div>
+          </>
+        ) : null}
+
+        {selectedBuilding.id === "garden" ? (
+          !garden?.unlocked ? (
+            <span className="action-note">{garden?.unlock_hint ?? "建立首座分城后开放药园。"}</span>
+          ) : (
+            <>
+              <div className="strategic-inspector-tags">
+                <span>{garden.plot_count} 块药圃</span>
+                <span>成熟 {garden.ready_count}</span>
+                <span>种植消耗灵石 {garden.plant_cost_spirit_stone}</span>
+              </div>
+              <div className="city-garden-plots">
+                {garden.plots.map((plot) => (
+                  <article key={plot.plot_id}>
+                    <strong>药圃 {plot.plot_index}</strong>
+                    <span>
+                      {plot.status === "empty"
+                        ? "空地待种"
+                        : plot.status === "ready"
+                          ? `${plot.herb_name}已成熟`
+                          : `${plot.herb_name}生长中 · 剩余 ${formatRemainingSeconds(plot.remaining_seconds)}`}
+                    </span>
+                  </article>
+                ))}
+              </div>
+              <div className="production-actions strategic-primary-action">
+                {readyGardenPlot ? (
+                  <Button disabled={busy} onClick={() => onHarvestHerb(readyGardenPlot.plot_id)}>
+                    收获凝露草
+                  </Button>
+                ) : emptyGardenPlot ? (
+                  <Button disabled={busy} onClick={() => onPlantHerb(emptyGardenPlot.plot_id)}>
+                    种植凝露草
+                  </Button>
+                ) : (
+                  <span className="action-note">药圃生长中，成熟后可收获炼丹材料。</span>
+                )}
+              </div>
+            </>
+          )
+        ) : null}
+      </aside>
+    </>
   );
 }
 

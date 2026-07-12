@@ -6239,6 +6239,7 @@ function WorldMapScreen({
   }, [canvasSize, pan, worldBounds, zoom]);
 
   useEffect(() => {
+    void mode;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const resize = () =>
@@ -6250,7 +6251,7 @@ function WorldMapScreen({
     const observer = new ResizeObserver(resize);
     observer.observe(canvas);
     return () => observer.disconnect();
-  }, []);
+  }, [mode]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -6347,7 +6348,15 @@ function WorldMapScreen({
           }
           if (landmark !== "." && transform.cellSize >= 4) {
             context.fillStyle =
-              landmark === "t" ? "#211e1a" : landmark === "c" ? "#745735" : "#4d4a43";
+              landmark === "t"
+                ? "#211e1a"
+                : landmark === "h"
+                  ? "#b43a2f"
+                  : landmark === "s"
+                    ? "#9a6d24"
+                    : landmark === "c"
+                      ? "#745735"
+                      : "#4d4a43";
             context.fillRect(
               drawX + transform.cellSize * 0.25,
               drawY + transform.cellSize * 0.25,
@@ -6360,7 +6369,15 @@ function WorldMapScreen({
               context.textAlign = "center";
               context.textBaseline = "middle";
               context.fillText(
-                landmark === "t" ? "塔" : landmark === "c" ? "府" : "关",
+                landmark === "t"
+                  ? "塔"
+                  : landmark === "h"
+                    ? "城"
+                    : landmark === "s"
+                      ? "邑"
+                      : landmark === "c"
+                        ? "府"
+                        : "关",
                 drawX + transform.cellSize / 2,
                 drawY + transform.cellSize / 2,
               );
@@ -6622,6 +6639,9 @@ function WorldMapScreen({
               </span>
               <p>{selectedTile.state_summary}</p>
               <div className="world-inspector-tags">
+                {selectedTile.ownership.ownership_type ? (
+                  <span>{worldOwnershipTypeLabel(selectedTile.ownership.ownership_type)}</span>
+                ) : null}
                 {selectedTile.terrain_effects.slice(0, 3).map((effect) => (
                   <span key={effect}>{effect}</span>
                 ))}
@@ -10062,6 +10082,19 @@ function worldTileStatusLabel(status: MapTileState["status"]): string {
     wild: "野地",
   };
   return labels[status] ?? "状态同步中";
+}
+
+function worldOwnershipTypeLabel(
+  type: NonNullable<MapTileState["ownership"]["ownership_type"]>,
+): string {
+  const labels = {
+    main_city: "主城",
+    occupation: "已占领领地",
+    purchase: "已购买领地",
+    sub_city: "分城",
+    system: "州域设施",
+  } as const;
+  return labels[type];
 }
 
 function worldTileMapMarker(tile: MapTileState, activePlayerId: string | null): string {

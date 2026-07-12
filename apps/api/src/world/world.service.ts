@@ -97,14 +97,16 @@ export class WorldService {
 
   async getAtlas(accountId: string): Promise<WorldAtlasResponse> {
     const player = await this.requirePlayer(accountId);
-    const [ownerships, marches] = await Promise.all([
+    const [ownerships, marches, cities] = await Promise.all([
       this.prisma.worldBlockOwnership.findMany({ where: { eraId: defaultEraId, status: "owned" } }),
       this.prisma.marchQueue.findMany({ where: { playerId: player.playerId, status: "marching" } }),
+      this.prisma.playerCity.findMany({ where: { eraId: defaultEraId } }),
     ]);
     const mine = new Set(
       ownerships.filter((item) => item.playerId === player.playerId).map((item) => item.tileId),
     );
     const owned = new Set(ownerships.map((item) => item.tileId));
+    const cityByTile = new Map(cities.map((city) => [city.tileId, city]));
     const layout: Record<string, [number, number]> = {
       // 九州已经在同一块大陆坐标系中分区，Atlas 不再为各州追加偏移。
       ji: [0, 0],
@@ -199,7 +201,11 @@ export class WorldService {
             mine.has(tile.tileId) ? "m" : owned.has(tile.tileId) ? "o" : "n",
           ),
           landmark_rows: encodeAtlasRows(tiles, mapWidth, mapHeight, (tile) =>
-            landmarkAtlasCode(tile.tileType),
+            cityByTile.get(tile.tileId)?.cityType === "main"
+              ? "h"
+              : cityByTile.get(tile.tileId)?.cityType === "sub"
+                ? "s"
+                : landmarkAtlasCode(tile.tileType),
           ),
           birth_rows: encodeAtlasRows(tiles, mapWidth, mapHeight, (tile) =>
             isBirthPlainTile(tile) ? "b" : ".",

@@ -1040,15 +1040,17 @@ function findNearestCoordinate(
   ratioX: number,
   ratioY: number,
 ): ProvinceCoordinate {
-  return (
-    coordinates
-      .slice()
-      .sort(
-        (left, right) =>
-          coordinateDistance(left, ratioX, ratioY, coordinates) -
-          coordinateDistance(right, ratioX, ratioY, coordinates),
-      )[0] ?? coordinates[0]!
-  );
+  const coordinate = coordinates
+    .slice()
+    .sort(
+      (left, right) =>
+        coordinateDistance(left, ratioX, ratioY, coordinates) -
+        coordinateDistance(right, ratioX, ratioY, coordinates),
+    )[0];
+  if (!coordinate) {
+    throw new Error("州域缺少可用区块");
+  }
+  return coordinate;
 }
 
 function getCommanderyIndexForCoordinate(coordinates: ProvinceCoordinate[], x: number): 0 | 1 | 2 {

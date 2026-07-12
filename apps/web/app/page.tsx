@@ -6252,6 +6252,19 @@ function WorldMapScreen({
     context.fillRect(0, 0, canvasSize.width, canvasSize.height);
     const showTileGrid = transform.cellSize >= 9;
     const showLandmarkLabel = transform.cellSize >= 18;
+    const provinceAt = new Map<string, string>();
+    for (const province of atlas?.provinces ?? []) {
+      for (let y = 0; y < province.layout_height; y += 1) {
+        for (let x = 0; x < province.layout_width; x += 1) {
+          if ((province.terrain_rows[y]?.[x] ?? ".") !== ".") {
+            provinceAt.set(
+              `${province.layout_x + x}:${province.layout_y + y}`,
+              province.province.province_id,
+            );
+          }
+        }
+      }
+    }
 
     for (const province of atlas?.provinces ?? []) {
       for (let y = 0; y < province.layout_height; y += 1) {
@@ -6278,6 +6291,25 @@ function WorldMapScreen({
             context.strokeStyle = "rgba(44, 37, 26, 0.2)";
             context.lineWidth = 0.65;
             context.strokeRect(drawX, drawY, transform.cellSize, transform.cellSize);
+          }
+          const provinceId = province.province.province_id;
+          context.strokeStyle = "rgba(45, 36, 26, 0.78)";
+          context.lineWidth = Math.max(1, transform.cellSize * 0.12);
+          if (
+            provinceAt.get(`${province.layout_x + x}:${province.layout_y + y - 1}`) !== provinceId
+          ) {
+            context.beginPath();
+            context.moveTo(drawX, drawY);
+            context.lineTo(drawX + transform.cellSize, drawY);
+            context.stroke();
+          }
+          if (
+            provinceAt.get(`${province.layout_x + x - 1}:${province.layout_y + y}`) !== provinceId
+          ) {
+            context.beginPath();
+            context.moveTo(drawX, drawY);
+            context.lineTo(drawX, drawY + transform.cellSize);
+            context.stroke();
           }
           if (control === "m" || control === "o") {
             context.fillStyle = control === "m" ? "#244f3e" : "#8f4b45";
@@ -6328,14 +6360,25 @@ function WorldMapScreen({
           }
         }
       }
-      if (transform.cellSize >= 6) {
-        context.fillStyle = "#211e1a";
-        context.font = "600 14px Songti SC, SimSun, serif";
+      if (transform.cellSize >= 4) {
+        const cells = Array.from(provinceAt.entries()).filter(
+          ([, id]) => id === province.province.province_id,
+        );
+        const centerX =
+          cells.reduce((total, [key]) => total + Number(key.split(":")[0]), 0) / cells.length;
+        const centerY =
+          cells.reduce((total, [key]) => total + Number(key.split(":")[1]), 0) / cells.length;
+        context.fillStyle = "rgba(33, 30, 26, 0.4)";
+        context.font = `600 ${Math.max(16, Math.min(42, transform.cellSize * 4))}px Songti SC, SimSun, serif`;
+        context.textAlign = "center";
+        context.textBaseline = "middle";
         context.fillText(
           province.province.name,
-          transform.originX + province.layout_x * transform.cellSize + 6,
-          transform.originY + province.layout_y * transform.cellSize + 18,
+          transform.originX + (centerX + 0.5) * transform.cellSize,
+          transform.originY + (centerY + 0.5) * transform.cellSize,
         );
+        context.textAlign = "start";
+        context.textBaseline = "alphabetic";
       }
     }
   }, [atlas, canvasSize, selectedCoordinate, transform]);
@@ -6549,7 +6592,9 @@ function WorldMapScreen({
                 ))}
               </div>
               <div className="world-inspector-actions">
-                {selectedMarch ? (
+                {!city ? (
+                  <span>尚未建城，只能查看地块。请选择安全平原建立主城后再出征。</span>
+                ) : selectedMarch ? (
                   <Button disabled={busy} onClick={() => onOccupy(selectedMarch)}>
                     清野并占领
                   </Button>

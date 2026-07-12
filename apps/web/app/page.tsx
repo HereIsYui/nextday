@@ -6260,6 +6260,9 @@ function WorldMapScreen({
         const landmarkRow = province.landmark_rows[y] ?? "";
         for (let x = 0; x < province.layout_width; x += 1) {
           const terrain = terrainRow[x] ?? "p";
+          if (terrain === ".") {
+            continue;
+          }
           const control = controlRow[x] ?? "n";
           const landmark = landmarkRow[x] ?? ".";
           const drawX = transform.originX + (province.layout_x + x) * transform.cellSize;
@@ -6325,14 +6328,6 @@ function WorldMapScreen({
           }
         }
       }
-      context.strokeStyle = "rgba(44, 37, 26, 0.72)";
-      context.lineWidth = Math.max(1, Math.min(2, transform.cellSize * 0.18));
-      context.strokeRect(
-        transform.originX + province.layout_x * transform.cellSize,
-        transform.originY + province.layout_y * transform.cellSize,
-        province.layout_width * transform.cellSize,
-        province.layout_height * transform.cellSize,
-      );
       if (transform.cellSize >= 6) {
         context.fillStyle = "#211e1a";
         context.font = "600 14px Songti SC, SimSun, serif";
@@ -6353,13 +6348,17 @@ function WorldMapScreen({
     const rectangle = event.currentTarget.getBoundingClientRect();
     const worldX = (event.clientX - rectangle.left - transform.originX) / transform.cellSize;
     const worldY = (event.clientY - rectangle.top - transform.originY) / transform.cellSize;
-    const province = atlas.provinces.find(
-      (item) =>
-        worldX >= item.layout_x &&
-        worldX < item.layout_x + item.layout_width &&
-        worldY >= item.layout_y &&
-        worldY < item.layout_y + item.layout_height,
-    );
+    const province = atlas.provinces.find((item) => {
+      const localY = Math.floor(worldY - item.layout_y);
+      const localX = Math.floor(worldX - item.layout_x);
+      return (
+        localX >= 0 &&
+        localX < item.layout_width &&
+        localY >= 0 &&
+        localY < item.layout_height &&
+        (item.terrain_rows[localY]?.[localX] ?? ".") !== "."
+      );
+    });
     if (!province) return;
     const x = Math.floor(worldX - province.layout_x);
     const y = Math.floor(worldY - province.layout_y);

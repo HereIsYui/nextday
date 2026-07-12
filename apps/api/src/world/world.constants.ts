@@ -6,7 +6,7 @@ import type {
 } from "@nextday/shared";
 import { provinceConfigs } from "../game/game.constants";
 
-export const worldConfigVersion = "world_city_era_r1_06_8888";
+export const worldConfigVersion = "world_city_era_r1_07_shaped_8888";
 export const worldSeasonId = "season_city_era_001";
 export const worldSeasonName = "九州城池纪元先遣季";
 export const recommendedBirthProvinceId = "ji";
@@ -199,6 +199,14 @@ export interface MapTileConfig {
   nodes: TerritoryNodeConfig[];
 }
 
+interface ProvinceCoordinate {
+  column: number;
+  rowStart: number;
+  rowWidth: number;
+  x: number;
+  y: number;
+}
+
 export interface WorldProvinceConfig {
   provinceId: string;
   name: string;
@@ -327,25 +335,24 @@ export function worldBlockTileId(provinceId: string, x: number, y: number): stri
 
 function generateProvinceTiles(province: WorldProvinceConfig, provinceIndex: number) {
   const plan = requireProvinceBlockPlan(province.provinceId);
-  const birthPlainCoordinates = buildBirthPlainCoordinates(plan);
-  const terrainLayout = buildTerrainLayout(province.provinceId, plan, birthPlainCoordinates);
-  const towerOrigin = {
-    x: Math.max(2, Math.floor(plan.width * 0.66) - 2),
-    y: Math.max(2, Math.floor(plan.height * 0.48) - 2),
-  };
-  const capitalOrigin = {
-    x: Math.max(1, Math.floor(plan.width * 0.5) - 1),
-    y: Math.max(1, Math.floor(plan.height * 0.5) + 3),
-  };
+  const coordinates = buildProvinceCoordinates(plan);
+  const birthPlainCoordinates = buildBirthPlainCoordinates(plan, coordinates);
+  const terrainLayout = buildTerrainLayout(
+    province.provinceId,
+    plan,
+    birthPlainCoordinates,
+    coordinates,
+  );
+  const towerOrigin = findLandmarkOrigin(coordinates, plan, 4, 4, 0.66, 0.48);
+  const capitalOrigin = findLandmarkOrigin(coordinates, plan, 2, 2, 0.5, 0.72);
   const passY = Math.max(1, Math.floor(plan.height * 0.32));
 
-  return Array.from({ length: plan.blockCount }, (_, index): MapTileConfig => {
-    const x = index % plan.width;
-    const y = Math.floor(index / plan.width);
-    const commandery = province.commanderies[getCommanderyIndex(x, plan.width)];
+  return coordinates.map(({ column, rowStart, rowWidth, x, y }): MapTileConfig => {
+    const commandery = province.commanderies[getCommanderyIndex(column, rowWidth)];
     const isTower = inRect(x, y, towerOrigin.x, towerOrigin.y, 4, 4);
     const isCapital = inRect(x, y, capitalOrigin.x, capitalOrigin.y, 2, 2);
-    const isPass = !isTower && !isCapital && (x === 0 || x === plan.width - 1) && y === passY;
+    const isPass =
+      !isTower && !isCapital && (x === rowStart || x === rowStart + rowWidth - 1) && y === passY;
     const coordinateKey = toCoordinateKey(x, y);
     const terrainType = terrainLayout.get(coordinateKey) ?? "plain";
     const isBirthPlain = birthPlainCoordinates.has(coordinateKey);
@@ -630,6 +637,7 @@ function buildTerrainLayout(
   provinceId: string,
   plan: ProvinceBlockPlan,
   birthPlainCoordinates: Set<string>,
+  coordinates: ProvinceCoordinate[],
 ): Map<string, WorldTerrainType> {
   const terrainTypes: WorldTerrainType[] = ["plain", "swamp", "forest", "mountain", "desert"];
   const targetCounts = allocateTerrainCounts(plan);
@@ -644,10 +652,7 @@ function buildTerrainLayout(
   const anchors = new Map(
     terrainTypes.map((terrain) => [terrain, createTerrainAnchors(provinceId, plan, terrain)]),
   );
-  const candidates = Array.from({ length: plan.blockCount }, (_, index) => ({
-    x: index % plan.width,
-    y: Math.floor(index / plan.width),
-  }))
+  const candidates = coordinates
     .filter(({ x, y }) => !birthPlainCoordinates.has(toCoordinateKey(x, y)))
     .sort((left, right) => {
       const leftHash = stableHash(`${provinceId}:order:${left.x}:${left.y}`);
@@ -703,27 +708,126 @@ function allocateTerrainCounts(plan: ProvinceBlockPlan): Record<WorldTerrainType
   >;
 }
 
-function buildBirthPlainCoordinates(plan: ProvinceBlockPlan): Set<string> {
+function buildBirthPlainCoordinates(
+  plan: ProvinceBlockPlan,
+  coordinates: ProvinceCoordinate[],
+): Set<string> {
   const centers: Array<[number, number]> = [
     [0.16, 0.23],
     [0.5, 0.68],
     [0.82, 0.3],
   ];
-  const coordinates = new Set<string>();
+  const birthCoordinates = new Set<string>();
+  const rows = groupCoordinatesByRow(coordinates);
   for (const [ratioX, ratioY] of centers) {
-    const centerX = Math.round((plan.width - 1) * ratioX);
     const centerY = Math.round((plan.height - 1) * ratioY);
     for (let offsetY = -2; offsetY <= 2; offsetY += 1) {
+      const row = rows.get(centerY + offsetY);
+      if (!row) {
+        continue;
+      }
+      const centerX = row[0].rowStart + Math.round((row[0].rowWidth - 1) * ratioX);
       for (let offsetX = -2; offsetX <= 2; offsetX += 1) {
         const x = centerX + offsetX;
-        const y = centerY + offsetY;
-        if (x >= 0 && x < plan.width && y >= 0 && y < plan.height) {
-          coordinates.add(toCoordinateKey(x, y));
+        if (row.some((coordinate) => coordinate.x === x)) {
+          birthCoordinates.add(toCoordinateKey(x, centerY + offsetY));
         }
       }
     }
   }
-  return coordinates;
+  return birthCoordinates;
+}
+
+function buildProvinceCoordinates(plan: ProvinceBlockPlan): ProvinceCoordinate[] {
+  const widths = Array.from({ length: plan.height }, (_, y) => {
+    const progress = plan.height <= 1 ? 0.5 : y / (plan.height - 1);
+    const edge = Math.abs(progress - 0.5) * 2;
+    const trim = Math.round(edge * 3);
+    const ripple = (stableHash(`${plan.provinceId}:row-width:${y}`) % 3) - 1;
+    return Math.max(8, plan.width - trim + ripple);
+  });
+  let balance = plan.blockCount - widths.reduce((total, width) => total + width, 0);
+  const adjustmentOrder = Array.from({ length: plan.height }, (_, y) => y).sort((left, right) => {
+    const leftDistance = Math.abs(left - (plan.height - 1) / 2);
+    const rightDistance = Math.abs(right - (plan.height - 1) / 2);
+    return leftDistance - rightDistance || left - right;
+  });
+
+  for (let index = 0; balance !== 0; index = (index + 1) % adjustmentOrder.length) {
+    const rowIndex = adjustmentOrder[index] ?? 0;
+    if (balance > 0) {
+      widths[rowIndex] += 1;
+      balance -= 1;
+    } else if ((widths[rowIndex] ?? 0) > 8) {
+      widths[rowIndex] -= 1;
+      balance += 1;
+    }
+  }
+
+  return widths.flatMap((rowWidth, y) => {
+    const progress = plan.height <= 1 ? 0.5 : y / (plan.height - 1);
+    const edge = Math.abs(progress - 0.5) * 2;
+    const drift = (stableHash(`${plan.provinceId}:row-start:${y}`) % 3) - 1;
+    const rowStart = Math.max(0, Math.round(edge * 3) + drift);
+    return Array.from(
+      { length: rowWidth },
+      (_, column): ProvinceCoordinate => ({
+        column,
+        rowStart,
+        rowWidth,
+        x: rowStart + column,
+        y,
+      }),
+    );
+  });
+}
+
+function findLandmarkOrigin(
+  coordinates: ProvinceCoordinate[],
+  plan: ProvinceBlockPlan,
+  width: number,
+  height: number,
+  ratioX: number,
+  ratioY: number,
+): { x: number; y: number } {
+  const rows = groupCoordinatesByRow(coordinates);
+  const preferredY = Math.round((plan.height - height) * ratioY);
+  const preferredX = Math.round(plan.width * ratioX);
+  let best: { distance: number; x: number; y: number } | null = null;
+
+  for (let y = 0; y <= plan.height - height; y += 1) {
+    const landmarkRows = Array.from({ length: height }, (_, offset) => rows.get(y + offset));
+    if (landmarkRows.some((row) => !row?.length)) {
+      continue;
+    }
+    const left = Math.max(...landmarkRows.map((row) => row?.[0]?.x ?? 0));
+    const right = Math.min(
+      ...landmarkRows.map((row) => row?.[row.length - 1]?.x ?? Number.NEGATIVE_INFINITY),
+    );
+    if (right - left + 1 < width) {
+      continue;
+    }
+    const x = Math.max(left, Math.min(right - width + 1, preferredX));
+    const distance = Math.abs(x - preferredX) + Math.abs(y - preferredY) * 2;
+    if (!best || distance < best.distance) {
+      best = { distance, x, y };
+    }
+  }
+
+  if (!best) {
+    throw new Error(`无法在${plan.provinceId}找到连续 ${width}×${height} 战略区域`);
+  }
+  return best;
+}
+
+function groupCoordinatesByRow(
+  coordinates: ProvinceCoordinate[],
+): Map<number, ProvinceCoordinate[]> {
+  const rows = new Map<number, ProvinceCoordinate[]>();
+  for (const coordinate of coordinates) {
+    rows.set(coordinate.y, [...(rows.get(coordinate.y) ?? []), coordinate]);
+  }
+  return rows;
 }
 
 function createTerrainAnchors(

@@ -69,9 +69,34 @@ describe("R1 九州战略总览", () => {
       expect(province.landmark_rows).toHaveLength(province.layout_height);
       expect(province.terrain_rows.every((row) => row.length === province.layout_width)).toBe(true);
       expect(province.landmark_rows.join("")).toContain("t");
+      expect(province.terrain_rows.some((row) => row.includes("."))).toBe(true);
       expect(
         data.provinces.some(
           (other) => other !== province && atlasProvincesShareBorder(province, other),
+        ),
+      ).toBe(true);
+    }
+
+    const occupiedCells = new Map<string, string>();
+    for (const province of data.provinces) {
+      for (const cell of atlasProvinceOccupiedCells(province)) {
+        expect(occupiedCells.has(cell.key)).toBe(false);
+        occupiedCells.set(cell.key, cell.provinceId);
+      }
+    }
+    expect(occupiedCells.size).toBe(8888);
+    for (const province of data.provinces) {
+      expect(
+        atlasProvinceOccupiedCells(province).some((cell) =>
+          [
+            `${cell.x + 1}:${cell.y}`,
+            `${cell.x - 1}:${cell.y}`,
+            `${cell.x}:${cell.y + 1}`,
+            `${cell.x}:${cell.y - 1}`,
+          ].some((neighbor) => {
+            const owner = occupiedCells.get(neighbor);
+            return owner !== undefined && owner !== cell.provinceId;
+          }),
         ),
       ).toBe(true);
     }
@@ -111,6 +136,28 @@ function atlasProvincesShareBorder(
     ((left.layout_y + left.layout_height === right.layout_y ||
       right.layout_y + right.layout_height === left.layout_y) &&
       horizontalOverlap > 0)
+  );
+}
+
+function atlasProvinceOccupiedCells(province: {
+  province: { province_id: string };
+  layout_x: number;
+  layout_y: number;
+  terrain_rows: string[];
+}) {
+  return province.terrain_rows.flatMap((row, y) =>
+    Array.from(row).flatMap((terrain, x) =>
+      terrain === "."
+        ? []
+        : [
+            {
+              key: `${province.layout_x + x}:${province.layout_y + y}`,
+              provinceId: province.province.province_id,
+              x: province.layout_x + x,
+              y: province.layout_y + y,
+            },
+          ],
+    ),
   );
 }
 

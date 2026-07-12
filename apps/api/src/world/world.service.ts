@@ -107,15 +107,15 @@ export class WorldService {
     const owned = new Set(ownerships.map((item) => item.tileId));
     const layout: Record<string, [number, number]> = {
       // 各州在战略总览中共用边界，形成可连续阅读的九州版图。
-      ji: [38, 0],
-      yan: [68, 0],
-      qing: [95, 0],
+      ji: [42, 0],
+      yan: [76, 0],
+      qing: [107, 0],
       liang: [0, 30],
-      yu: [38, 30],
-      xu: [68, 24],
-      yang: [106, 22],
+      yu: [42, 30],
+      xu: [76, 24],
+      yang: [118, 22],
       yong: [0, 66],
-      jing: [64, 44],
+      jing: [44, 57],
     };
     const homeProvinceId =
       (

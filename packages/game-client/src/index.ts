@@ -154,6 +154,8 @@ import type {
   ResolveExploreEventResponse,
   ResolveRiskRecordRequest,
   ResolveRiskRecordResponse,
+  ResolveWorldClearanceRequest,
+  ResolveWorldClearanceResponse,
   ResourcePointListResponse,
   ReviewDelayedSettlementRequest,
   ReviewDelayedSettlementResponse,
@@ -569,6 +571,17 @@ export class GameClient {
     return this.post<DefendWorldResponse, DefendWorldRequest>("/api/world/defend", body, {
       idempotencyKey,
     });
+  }
+
+  resolveWorldClearance(
+    body: ResolveWorldClearanceRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<ResolveWorldClearanceResponse>> {
+    return this.post<ResolveWorldClearanceResponse, ResolveWorldClearanceRequest>(
+      "/api/world/clear-wild/resolve",
+      body,
+      { idempotencyKey },
+    );
   }
 
   purchaseWorldBlock(

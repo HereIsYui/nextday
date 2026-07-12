@@ -53,7 +53,7 @@ describe("R1 基础行军队列", () => {
       .post("/api/world/march")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", idempotencyKey)
-      .send({ target_tile_id: targetTile.tile_id, march_type: "clear_wild" })
+      .send({ target_tile_id: targetTile.tile_id, march_type: "scout" })
       .expect(201);
 
     expect(response.body.data.march).toMatchObject({
@@ -61,7 +61,7 @@ describe("R1 基础行军队列", () => {
       target_name: targetTile.tile_name,
       province_id: "ji",
       commandery_id: targetTile.commandery_id,
-      march_type: "clear_wild",
+      march_type: "scout",
       status: "marching",
     });
     expect(response.body.data.march.source_city_name).toBe("冀北仙城");
@@ -75,7 +75,7 @@ describe("R1 基础行军队列", () => {
       .post("/api/world/march")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", idempotencyKey)
-      .send({ target_tile_id: targetTile.tile_id, march_type: "clear_wild" })
+      .send({ target_tile_id: targetTile.tile_id, march_type: "scout" })
       .expect(201);
 
     expect(duplicate.body.data.march.march_id).toBe(response.body.data.march.march_id);

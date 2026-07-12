@@ -4,6 +4,8 @@ import type {
   DefendWorldResponse,
   PurchaseWorldBlockRequest,
   PurchaseWorldBlockResponse,
+  ResolveWorldClearanceRequest,
+  ResolveWorldClearanceResponse,
   StartWorldMarchRequest,
   StartWorldMarchResponse,
   TerritoryOverviewResponse,
@@ -81,6 +83,19 @@ export class WorldController {
       body,
       idempotencyKey: requireIdempotencyKey(request),
       endpoint: "POST /api/world/defend",
+    });
+  }
+
+  @Post("clear-wild/resolve")
+  resolveClearance(
+    @Body() body: ResolveWorldClearanceRequest,
+    @Req() request: Request,
+  ): Promise<ResolveWorldClearanceResponse> {
+    return this.worldService.resolveClearance({
+      accountId: requireAccountId(request),
+      body,
+      idempotencyKey: requireIdempotencyKey(request),
+      endpoint: "POST /api/world/clear-wild/resolve",
     });
   }
 

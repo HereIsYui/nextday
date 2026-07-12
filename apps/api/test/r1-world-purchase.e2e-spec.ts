@@ -27,14 +27,15 @@ describe("R1 区块购买制", () => {
     await app.close();
   });
 
-  it("拒绝占领行军与旧占领接口，清野抵达不会产生区块产权", async () => {
+  it("清野成功只解锁个人购买资格，不会直接产生区块产权", async () => {
     const { token, playerId } = await createPlayer(app, "清野");
     const city = await settleMainCity(app, token, "拓荒仙城");
-    const targetTile = await findMapTile(
+    const targetTile = await positionCityAtClearanceFrontier(
       app,
+      prisma,
       token,
+      playerId,
       city.province_id,
-      (tile) => tile.tile_type === "wild" && !tile.ownership.owner_player_id,
     );
 
     await request(app.getHttpServer())
@@ -44,41 +45,68 @@ describe("R1 区块购买制", () => {
       .send({ target_tile_id: targetTile.tile_id, march_type: "occupy" })
       .expect(400);
 
-    const march = await request(app.getHttpServer())
-      .post("/api/world/march")
-      .set("Authorization", `Bearer ${token}`)
-      .set("Idempotency-Key", `idem_purchase_clear_${nonce()}`)
-      .send({ target_tile_id: targetTile.tile_id, march_type: "clear_wild" })
-      .expect(201);
-    await prisma.marchQueue.update({
-      where: { marchId: march.body.data.march.march_id as string },
-      data: { arrivesAt: new Date(Date.now() - 1000) },
-    });
-
     await request(app.getHttpServer())
       .post("/api/world/occupy")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_purchase_removed_api_${nonce()}`)
-      .send({ march_id: march.body.data.march.march_id })
+      .send({ march_id: "removed" })
       .expect(404);
+
+    await request(app.getHttpServer())
+      .post("/api/world/blocks/purchase")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_purchase_before_clear_${nonce()}`)
+      .send({ tile_id: targetTile.tile_id })
+      .expect(400);
+
+    const clearance = await clearTile(app, prisma, token, targetTile.tile_id);
+    expect(clearance.body.data).toMatchObject({
+      cleared: true,
+      clearance: { tile_id: targetTile.tile_id, status: "cleared" },
+      battle: { battle_type: "world_clearance", result: "win" },
+      march: { status: "resolved" },
+    });
+    expect(
+      clearance.body.data.map.tiles.find((tile: TestMapTile) => tile.tile_id === targetTile.tile_id)
+        ?.purchase_state,
+    ).toMatchObject({ purchasable: true, clearance_status: "cleared" });
 
     const ownership = await prisma.worldBlockOwnership.findUnique({
       where: { eraId_tileId: { eraId: "era_mvp_001", tileId: targetTile.tile_id } },
     });
     expect(ownership).toBeNull();
     expect(await prisma.worldBlockOwnership.count({ where: { playerId } })).toBe(1);
+
+    const other = await createPlayer(app, "旁观");
+    await settleMainCity(app, other.token, "旁观仙城");
+    await positionCityNextToTarget(app, prisma, other.token, other.playerId, targetTile);
+    const otherView = (await getMap(app, other.token, targetTile.province_id)).find(
+      (tile) => tile.tile_id === targetTile.tile_id,
+    );
+    expect(otherView?.purchase_state).toMatchObject({
+      adjacent_owned: true,
+      clearance_status: "required",
+      purchasable: false,
+    });
   });
 
   it("只允许购买相邻无主区块，并保持扣款与产权幂等", async () => {
     const { token, playerId } = await createPlayer(app, "买地");
     const city = await settleMainCity(app, token, "拓土仙城");
+    const clearanceTarget = await positionCityAtClearanceFrontier(
+      app,
+      prisma,
+      token,
+      playerId,
+      city.province_id,
+    );
     await prisma.playerWallet.update({
       where: { playerId },
       data: { spiritStone: 5000n },
     });
     const tiles = await getMap(app, token, city.province_id);
     const ownedTile = tiles.find((tile) => tile.tile_id === city.tile_id);
-    const adjacentTile = tiles.find((tile) => tile.purchase_state.purchasable);
+    const adjacentTile = tiles.find((tile) => tile.tile_id === clearanceTarget.tile_id);
     const farTile = tiles.find(
       (tile) =>
         !tile.ownership.owner_player_id &&
@@ -102,6 +130,11 @@ describe("R1 区块购买制", () => {
       .set("Idempotency-Key", `idem_purchase_far_${nonce()}`)
       .send({ tile_id: farTile?.tile_id })
       .expect(400);
+
+    if (!adjacentTile) {
+      throw new Error("未找到可清野购买的相邻区块");
+    }
+    await clearTile(app, prisma, token, adjacentTile.tile_id);
 
     const walletBefore = await prisma.playerWallet.findUniqueOrThrow({ where: { playerId } });
     const idempotencyKey = `idem_purchase_success_${nonce()}`;
@@ -161,13 +194,82 @@ describe("R1 区块购买制", () => {
       }),
     ).toMatchObject({ soldierCount: 10, defensePower: 20 });
   });
+
+  it("清野失败不会解锁购买资格，玩家可以重新整军出发", async () => {
+    const { token, playerId } = await createPlayer(app, "败退");
+    const city = await settleMainCity(app, token, "边荒仙城");
+    const target = await positionCityAtClearanceFrontier(
+      app,
+      prisma,
+      token,
+      playerId,
+      city.province_id,
+    );
+    const march = await request(app.getHttpServer())
+      .post("/api/world/march")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_purchase_failed_clear_${nonce()}`)
+      .send({ target_tile_id: target.tile_id, march_type: "clear_wild" })
+      .expect(201);
+    await prisma.marchQueue.update({
+      where: { marchId: march.body.data.march.march_id as string },
+      data: {
+        arrivesAt: new Date(Date.now() - 1000),
+        teamSnapshot: {
+          leader_name: "败退测试先锋",
+          soldier_count: 1,
+          supply_cost: 1,
+          team_power: 1,
+        },
+      },
+    });
+    const resolved = await request(app.getHttpServer())
+      .post("/api/world/clear-wild/resolve")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_purchase_failed_resolve_${nonce()}`)
+      .send({ march_id: march.body.data.march.march_id })
+      .expect(201);
+    expect(resolved.body.data).toMatchObject({
+      cleared: false,
+      clearance: { status: "failed", tile_id: target.tile_id },
+      battle: { result: "lose" },
+    });
+    expect(
+      resolved.body.data.map.tiles.find((tile: TestMapTile) => tile.tile_id === target.tile_id)
+        ?.purchase_state,
+    ).toMatchObject({ clearance_status: "required", purchasable: false });
+
+    await request(app.getHttpServer())
+      .post("/api/world/blocks/purchase")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_purchase_failed_buy_${nonce()}`)
+      .send({ tile_id: target.tile_id })
+      .expect(400);
+    await request(app.getHttpServer())
+      .post("/api/world/march")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_purchase_retry_clear_${nonce()}`)
+      .send({ target_tile_id: target.tile_id, march_type: "clear_wild" })
+      .expect(201);
+  });
 });
 
 interface TestMapTile {
+  commandery_id: string;
+  danger_level: number;
+  province_id: string;
+  terrain_type: string;
   tile_id: string;
   tile_type: string;
+  x: number;
+  y: number;
   ownership: { owner_player_id: string | null };
-  purchase_state: { purchasable: boolean; reason: string };
+  purchase_state: {
+    adjacent_owned: boolean;
+    clearance_status: "not_required" | "required" | "cleared";
+    purchasable: boolean;
+    reason: string;
+  };
 }
 
 async function createPlayer(
@@ -226,17 +328,125 @@ async function getMap(
   return response.body.data.tiles as TestMapTile[];
 }
 
-async function findMapTile(
+async function positionCityAtClearanceFrontier(
   app: INestApplication,
+  prisma: PrismaClient,
   token: string,
+  playerId: string,
   provinceId: string,
-  predicate: (tile: TestMapTile) => boolean,
 ): Promise<TestMapTile> {
-  const tile = (await getMap(app, token, provinceId)).find(predicate);
-  if (!tile) {
-    throw new Error("未找到符合条件的测试区块");
+  const tiles = await getMap(app, token, provinceId);
+  const target = tiles.find(
+    (tile) =>
+      !tile.ownership.owner_player_id &&
+      tile.danger_level > 1 &&
+      !["tower", "capital", "pass"].includes(tile.tile_type) &&
+      tiles.filter(
+        (candidate) =>
+          !candidate.ownership.owner_player_id &&
+          !["tower", "capital", "pass"].includes(candidate.tile_type) &&
+          Math.abs(candidate.x - tile.x) + Math.abs(candidate.y - tile.y) === 1,
+      ).length >= 2,
+  );
+  if (!target) {
+    throw new Error("未找到可用于清野测试的危险边界区块");
   }
-  return tile;
+  return positionCityNextToTarget(app, prisma, token, playerId, target);
+}
+
+async function positionCityNextToTarget(
+  app: INestApplication,
+  prisma: PrismaClient,
+  token: string,
+  playerId: string,
+  target: TestMapTile,
+): Promise<TestMapTile> {
+  const tiles = await getMap(app, token, target.province_id);
+  const source = tiles.find(
+    (candidate) =>
+      !candidate.ownership.owner_player_id &&
+      !["tower", "capital", "pass"].includes(candidate.tile_type) &&
+      Math.abs(candidate.x - target.x) + Math.abs(candidate.y - target.y) === 1,
+  );
+  if (!source) {
+    throw new Error("未找到清野测试主城落点");
+  }
+  const mainCity = await prisma.playerCity.findFirstOrThrow({
+    where: { playerId, cityType: "main" },
+  });
+  const ownership = await prisma.worldBlockOwnership.findFirstOrThrow({
+    where: { playerId, ownershipType: "main_city" },
+  });
+  await prisma.$transaction([
+    prisma.playerCity.update({
+      where: { cityId: mainCity.cityId },
+      data: {
+        commanderyId: source.commandery_id,
+        provinceId: source.province_id,
+        tileId: source.tile_id,
+      },
+    }),
+    prisma.worldBlockOwnership.update({
+      where: { ownershipId: ownership.ownershipId },
+      data: {
+        commanderyId: source.commandery_id,
+        provinceId: source.province_id,
+        terrainType: source.terrain_type,
+        tileId: source.tile_id,
+      },
+    }),
+  ]);
+  const refreshedTarget = (await getMap(app, token, target.province_id)).find(
+    (tile) => tile.tile_id === target.tile_id,
+  );
+  if (
+    !refreshedTarget?.purchase_state.adjacent_owned ||
+    refreshedTarget.purchase_state.clearance_status !== "required"
+  ) {
+    throw new Error("清野测试区块未形成有效边界");
+  }
+  return refreshedTarget;
+}
+
+async function clearTile(
+  app: INestApplication,
+  prisma: PrismaClient,
+  token: string,
+  tileId: string,
+) {
+  const march = await request(app.getHttpServer())
+    .post("/api/world/march")
+    .set("Authorization", `Bearer ${token}`)
+    .set("Idempotency-Key", `idem_purchase_clear_${nonce()}`)
+    .send({ target_tile_id: tileId, march_type: "clear_wild" })
+    .expect(201);
+  await prisma.marchQueue.update({
+    where: { marchId: march.body.data.march.march_id as string },
+    data: {
+      arrivesAt: new Date(Date.now() - 1000),
+      teamSnapshot: {
+        leader_name: "清野测试先锋",
+        soldier_count: 30,
+        supply_cost: 12,
+        team_power: 999,
+      },
+    },
+  });
+  const idempotencyKey = `idem_purchase_clear_resolve_${nonce()}`;
+  const clearance = await request(app.getHttpServer())
+    .post("/api/world/clear-wild/resolve")
+    .set("Authorization", `Bearer ${token}`)
+    .set("Idempotency-Key", idempotencyKey)
+    .send({ march_id: march.body.data.march.march_id })
+    .expect(201);
+  const duplicate = await request(app.getHttpServer())
+    .post("/api/world/clear-wild/resolve")
+    .set("Authorization", `Bearer ${token}`)
+    .set("Idempotency-Key", idempotencyKey)
+    .send({ march_id: march.body.data.march.march_id })
+    .expect(201);
+  expect(duplicate.body.data.record_id).toBe(clearance.body.data.record_id);
+  return clearance;
 }
 
 function nonce(): string {

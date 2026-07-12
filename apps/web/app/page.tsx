@@ -1700,6 +1700,35 @@ export default function HomePage() {
     });
   }
 
+  async function handleResolveWorldClearance(march: MarchQueueState) {
+    if (march.status !== "arrived" || march.march_type !== "clear_wild") {
+      setMessage("请选择已抵达的清野队伍");
+      return;
+    }
+
+    await runAction("完成清野", async () => {
+      const response = await client.resolveWorldClearance(
+        { march_id: march.march_id },
+        createIdempotencyKey(`web_world_clearance_${march.march_id}`),
+      );
+      ensureOk(response);
+      setWorldMap(response.data.map);
+      setWorldMarches(response.data.marches);
+      rememberExperience(undefined, {
+        summary: response.data.cleared
+          ? `${march.target_name}的野怪已经清除，现在可以消耗灵石购买该区块。`
+          : `${march.target_name}清野失败，我方战力 ${response.data.clearance.team_power}，守域战力 ${response.data.clearance.enemy_power}。`,
+        tags: response.data.cleared ? ["清野", "购买资格已解锁"] : ["清野", "整军再战"],
+        title: response.data.cleared ? "清野成功" : "清野失败",
+        tone: response.data.cleared ? "success" : "warning",
+      });
+      await refreshWorldState(
+        response.data.cleared ? `已清理${march.target_name}` : `${march.target_name}清野失败`,
+        march.province_id,
+      );
+    });
+  }
+
   async function handlePurchaseWorldBlock(tile: MapTileState) {
     if (!worldMainCity) {
       setMessage("请先建立主城");
@@ -3272,6 +3301,7 @@ export default function HomePage() {
           onLoadTile={loadWorldViewportTile}
           onPlantHerb={handlePlantHerb}
           onPurchase={handlePurchaseWorldBlock}
+          onResolveClearance={handleResolveWorldClearance}
           onSettle={(provinceId) => {
             const option = cityOverview?.birth_options.find(
               (item) => item.province_id === provinceId && item.available,
@@ -3799,9 +3829,16 @@ export default function HomePage() {
                                       </div>
                                       <div className="production-actions strategic-primary-action">
                                         {selectedWorldTileArrivedMarch ? (
-                                          <span className="action-note">
-                                            清野队伍已抵达。清野只解除危险，土地仍需另行购买。
-                                          </span>
+                                          <Button
+                                            disabled={busy}
+                                            onClick={() =>
+                                              handleResolveWorldClearance(
+                                                selectedWorldTileArrivedMarch,
+                                              )
+                                            }
+                                          >
+                                            完成清野
+                                          </Button>
                                         ) : selectedWorldTile.ownership.owner_player_id ===
                                             activePlayerId &&
                                           selectedWorldTile.terrain_type === "plain" &&
@@ -4431,7 +4468,12 @@ export default function HomePage() {
                                     </div>
                                     {march.status === "arrived" &&
                                     march.march_type === "clear_wild" ? (
-                                      <span className="action-note">已抵达，等待清野结算</span>
+                                      <Button
+                                        disabled={busy}
+                                        onClick={() => handleResolveWorldClearance(march)}
+                                      >
+                                        完成清野
+                                      </Button>
                                     ) : (
                                       <StatusBadge
                                         tone={march.status === "resolved" ? "success" : "neutral"}
@@ -6120,6 +6162,7 @@ function WorldMapScreen({
   onLoadTile,
   onPlantHerb,
   onPurchase,
+  onResolveClearance,
   onSettle,
   onStartMarch,
   onUpgradeBuilding,
@@ -6145,6 +6188,7 @@ function WorldMapScreen({
   onLoadTile: (provinceId: string, x: number, y: number) => Promise<MapTileState | null>;
   onPlantHerb: (plotId: string) => void | Promise<void>;
   onPurchase: (tile: MapTileState) => void | Promise<void>;
+  onResolveClearance: (march: MarchQueueState) => void | Promise<void>;
   onSettle: (provinceId: string) => void;
   onStartMarch: (tile: MapTileState, marchType: MarchType) => void | Promise<void>;
   onUpgradeBuilding: (building: CityBuildingState) => void | Promise<void>;
@@ -6527,7 +6571,10 @@ function WorldMapScreen({
 
   const selectedMarch = selectedTile
     ? marches?.marches.find(
-        (march) => march.target_tile_id === selectedTile.tile_id && march.status === "arrived",
+        (march) =>
+          march.target_tile_id === selectedTile.tile_id &&
+          march.status === "arrived" &&
+          march.march_type === "clear_wild",
       )
     : undefined;
   const preferredMarchType = selectedTile ? worldTilePreferredMarchType(selectedTile) : null;
@@ -6639,7 +6686,22 @@ function WorldMapScreen({
                     <span>尚未建城。请选择标有安全出生池的平原建立主城后再出征。</span>
                   )
                 ) : selectedMarch ? (
-                  <span>清野队伍已抵达。完成清野后仍需消耗灵石购买区块。</span>
+                  <Button
+                    disabled={busy}
+                    onClick={async () => {
+                      await onResolveClearance(selectedMarch);
+                      const refreshedTile = await onLoadTile(
+                        selectedTile.province_id,
+                        selectedTile.x,
+                        selectedTile.y,
+                      );
+                      if (refreshedTile) {
+                        setSelectedTile(refreshedTile);
+                      }
+                    }}
+                  >
+                    完成清野
+                  </Button>
                 ) : selectedTile.ownership.owner_player_id === activePlayerId &&
                   selectedTile.terrain_type === "plain" &&
                   selectedTile.ownership.ownership_type !== "sub_city" ? (
@@ -10114,7 +10176,7 @@ function worldTilePreferredMarchType(tile: MapTileState): MarchType | null {
   if (tile.owner.owner_province_id) {
     return null;
   }
-  if (tile.status === "wild" || tile.tile_type === "wild" || tile.danger_level > 0) {
+  if (tile.purchase_state.adjacent_owned && tile.purchase_state.clearance_status === "required") {
     return "clear_wild";
   }
   return "scout";

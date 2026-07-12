@@ -121,7 +121,14 @@ describe("R1 九州城池地图只读接口", () => {
         occupiable: boolean;
         protected: boolean;
         ownership: { owner_player_id: string | null };
-        purchase_state: { purchasable: boolean; reason: string; cost_spirit_stone: string };
+        purchase_state: {
+          adjacent_owned: boolean;
+          clearance_status: "not_required" | "required" | "cleared";
+          purchasable: boolean;
+          reason: string;
+          cost_spirit_stone: string;
+          requires_clearance: boolean;
+        };
         nodes: Array<{
           node_type: string;
           occupiable: boolean;
@@ -167,6 +174,9 @@ describe("R1 九州城池地图只读接口", () => {
       expect(Number.isInteger(tile.y)).toBe(true);
       expect(tile.nodes.length).toBeGreaterThan(0);
       expect(tile.purchase_state.reason.length).toBeGreaterThan(0);
+      expect(["not_required", "required", "cleared"]).toContain(
+        tile.purchase_state.clearance_status,
+      );
     }
 
     const towerTiles = data.tiles.filter((tile) => tile.landmark_group_id === "ji_tower");

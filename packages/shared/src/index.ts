@@ -632,6 +632,8 @@ export interface WorldBlockPurchaseState {
   reason: string;
   cost_spirit_stone: string;
   adjacent_owned: boolean;
+  requires_clearance: boolean;
+  clearance_status: "not_required" | "required" | "cleared";
 }
 
 export interface MapTileState {
@@ -884,6 +886,32 @@ export interface StartWorldMarchResponse {
   record_id: string;
   march: MarchQueueState;
   marches: WorldMarchListResponse;
+}
+
+export interface ResolveWorldClearanceRequest {
+  march_id: string;
+}
+
+export interface WorldBlockClearanceState {
+  clearance_id: string;
+  tile_id: string;
+  province_id: string;
+  commandery_id: string;
+  status: "cleared" | "failed";
+  team_power: number;
+  enemy_power: number;
+  battle_id: string;
+  resolved_at: string;
+}
+
+export interface ResolveWorldClearanceResponse {
+  record_id: string;
+  cleared: boolean;
+  clearance: WorldBlockClearanceState;
+  battle: BattleSummary;
+  march: MarchQueueState;
+  marches: WorldMarchListResponse;
+  map: WorldMapResponse;
 }
 
 export interface TerritoryGarrisonState {

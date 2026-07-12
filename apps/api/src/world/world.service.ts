@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import type {
+  BattleRoundLog,
+  BattleSummary,
   CityDefenseSnapshot,
   CityResourceSnapshot,
   DefendWorldRequest,
@@ -13,6 +15,8 @@ import type {
   ProvinceWarState,
   PurchaseWorldBlockRequest,
   PurchaseWorldBlockResponse,
+  ResolveWorldClearanceRequest,
+  ResolveWorldClearanceResponse,
   StartWorldMarchRequest,
   StartWorldMarchResponse,
   TerritoryBlockState,
@@ -22,6 +26,7 @@ import type {
   WalletSnapshot,
   WorldAtlasCellState,
   WorldAtlasResponse,
+  WorldBlockClearanceState,
   WorldCommanderyState,
   WorldMapResponse,
   WorldMapView,
@@ -39,10 +44,12 @@ import type {
   PlayerCity,
   Prisma,
   TerritoryGarrison,
+  WorldBlockClearance,
   WorldBlockOwnership,
 } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
 import { defaultEraId } from "../game/game.constants";
+import { toBattleSummary } from "../game/game.mappers";
 import { hashRequestBody } from "../platform/utils/hash";
 import {
   buildCityExpansionState,
@@ -69,6 +76,7 @@ import {
 } from "./world.constants";
 
 const marchConfigVersion = "world_march_r1_001";
+const clearanceConfigVersion = "world_clearance_r1_001";
 const garrisonConfigVersion = "world_garrison_r1_001";
 const validMarchTypes = new Set<MarchType>(["scout", "clear_wild", "reinforce", "siege"]);
 
@@ -357,6 +365,9 @@ export class WorldService {
       });
       const sourceCity = resolveSourceCity(cities, normalizedBody.source_city_id);
       const targetTile = requireMarchTarget(sourceCity, normalizedBody.target_tile_id);
+      if (normalizedBody.march_type === "clear_wild") {
+        await assertClearanceMarchTarget(tx, player.playerId, targetTile);
+      }
       const now = new Date();
       const activeMarchCount = await tx.marchQueue.count({
         where: { playerId: player.playerId, status: "marching", arrivesAt: { gt: now } },
@@ -412,6 +423,188 @@ export class WorldService {
         },
       });
 
+      await tx.idempotencyRecord.create({
+        data: {
+          idempotencyKey: input.idempotencyKey,
+          accountId: input.accountId,
+          endpoint: input.endpoint,
+          requestHash,
+          responseData: responseData as unknown as Prisma.InputJsonValue,
+          statusCode: 200,
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        },
+      });
+
+      return responseData;
+    });
+  }
+
+  async resolveClearance(input: {
+    accountId: string;
+    body: ResolveWorldClearanceRequest;
+    idempotencyKey: string;
+    endpoint: string;
+  }): Promise<ResolveWorldClearanceResponse> {
+    const normalizedBody = normalizeResolveWorldClearanceBody(input.body);
+    const requestHash = hashRequestBody(normalizedBody);
+    const existingRecord = await this.prisma.idempotencyRecord.findUnique({
+      where: { idempotencyKey: input.idempotencyKey },
+    });
+    if (existingRecord) {
+      if (
+        existingRecord.accountId !== input.accountId ||
+        existingRecord.endpoint !== input.endpoint ||
+        existingRecord.requestHash !== requestHash
+      ) {
+        throw new BadRequestException("幂等键已被其他请求使用");
+      }
+      return existingRecord.responseData as unknown as ResolveWorldClearanceResponse;
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const player = await tx.player.findUnique({ where: { accountId: input.accountId } });
+      if (!player) {
+        throw new BadRequestException("请先创建角色");
+      }
+      const march = await tx.marchQueue.findUnique({
+        where: { marchId: normalizedBody.march_id },
+      });
+      if (!march || march.playerId !== player.playerId) {
+        throw new BadRequestException("清野行军不存在");
+      }
+      if (march.marchType !== "clear_wild") {
+        throw new BadRequestException("该行军不能进行清野结算");
+      }
+      if (march.status === "resolved" || march.resolvedAt) {
+        throw new BadRequestException("该清野行军已处理");
+      }
+      if (getComputedMarchStatus(march) !== "arrived") {
+        throw new BadRequestException("清野队伍尚未抵达");
+      }
+
+      const targetTile = requireMapTile(march.targetTileId);
+      if (!requiresWorldClearance(targetTile)) {
+        throw new BadRequestException("该区块无需清野");
+      }
+      const existingOwner = await tx.worldBlockOwnership.findUnique({
+        where: { eraId_tileId: { eraId: defaultEraId, tileId: targetTile.tileId } },
+      });
+      if (existingOwner) {
+        throw new BadRequestException("该区块已有归属，无需继续清野");
+      }
+      const sourceCity = await tx.playerCity.findUnique({
+        where: { cityId: march.sourceCityId },
+      });
+      if (!sourceCity) {
+        throw new BadRequestException("行军来源城池不存在");
+      }
+
+      const team = normalizeTeamSnapshot(march.teamSnapshot);
+      const enemyPower = 60 + targetTile.dangerLevel * 20;
+      const cleared = team.team_power >= enemyPower;
+      const enemyName = `${targetTile.tileName}守域妖兽`;
+      const damageDone = cleared ? enemyPower + 10 : team.team_power;
+      const damageTaken = cleared ? Math.max(10, Math.floor(enemyPower / 3)) : enemyPower;
+      const battleLog = createWorldClearanceBattleLog({
+        cityName: sourceCity.cityName,
+        cleared,
+        damageDone,
+        damageTaken,
+        enemyName,
+      });
+      const battle = await tx.battleLog.create({
+        data: {
+          battleId: `battle_world_clearance_${randomUUID()}`,
+          playerId: player.playerId,
+          eraId: defaultEraId,
+          battleType: "world_clearance",
+          provinceId: targetTile.provinceId,
+          enemyId: `world_guard_${targetTile.terrainType}_${targetTile.dangerLevel}`,
+          enemyName,
+          result: cleared ? "win" : "lose",
+          rounds: battleLog.length,
+          damageDone,
+          damageTaken,
+          rewardSnapshot: {} as Prisma.InputJsonValue,
+          battleLog: battleLog as unknown as Prisma.InputJsonValue,
+        },
+      });
+      const clearance = await tx.worldBlockClearance.create({
+        data: {
+          clearanceId: `clearance_${randomUUID()}`,
+          playerId: player.playerId,
+          eraId: defaultEraId,
+          sourceMarchId: march.marchId,
+          tileId: targetTile.tileId,
+          provinceId: targetTile.provinceId,
+          commanderyId: targetTile.commanderyId,
+          status: cleared ? "cleared" : "failed",
+          teamPower: team.team_power,
+          enemyPower,
+          battleId: battle.battleId,
+          idempotencyKey: input.idempotencyKey,
+          configVersion: clearanceConfigVersion,
+        },
+      });
+      const updatedMarch = await tx.marchQueue.update({
+        where: { marchId: march.marchId },
+        data: { resolvedAt: new Date(), status: "resolved" },
+      });
+      const provinceTileIds = getWorldTilesByProvince(targetTile.provinceId).map(
+        (tile) => tile.tileId,
+      );
+      const [ownerships, garrisons, clearances, marches, cities] = await Promise.all([
+        tx.worldBlockOwnership.findMany({
+          where: { eraId: defaultEraId, provinceId: targetTile.provinceId, status: "owned" },
+          include: { player: true },
+        }),
+        tx.territoryGarrison.findMany({
+          where: { eraId: defaultEraId, tileId: { in: provinceTileIds } },
+          include: { player: true },
+        }),
+        tx.worldBlockClearance.findMany({
+          where: { playerId: player.playerId, eraId: defaultEraId, status: "cleared" },
+        }),
+        tx.marchQueue.findMany({
+          where: { playerId: player.playerId },
+          orderBy: [{ createdAt: "desc" }],
+          take: 20,
+        }),
+        tx.playerCity.findMany({ where: { playerId: player.playerId } }),
+      ]);
+      const cityMap = new Map(cities.map((city) => [city.cityId, city]));
+      const responseData: ResolveWorldClearanceResponse = {
+        record_id: `resolve_clearance_${randomUUID()}`,
+        cleared,
+        clearance: this.toClearanceState(clearance),
+        battle: toBattleSummary(battle),
+        march: this.toMarchState(updatedMarch, sourceCity),
+        marches: this.toMarchListResponse(marches, cityMap),
+        map: this.buildMapResponse({
+          clearedTileIds: new Set(clearances.map((item) => item.tileId)),
+          garrisons,
+          ownerships,
+          playerId: player.playerId,
+          provinceId: targetTile.provinceId,
+          view: "detail",
+          viewport: viewportAroundTile(targetTile),
+        }),
+      };
+
+      await tx.auditLog.create({
+        data: {
+          auditLogId: `audit_${randomUUID()}`,
+          accountId: input.accountId,
+          playerId: player.playerId,
+          action: "world_clearance_resolve",
+          targetType: "map_tile",
+          targetId: targetTile.tileId,
+          afterSnapshot: responseData.clearance as unknown as Prisma.InputJsonValue,
+          reason: cleared ? "清野成功，解锁个人购买资格" : "清野失败，未获得购买资格",
+          idempotencyKey: input.idempotencyKey,
+          configVersion: clearanceConfigVersion,
+        },
+      });
       await tx.idempotencyRecord.create({
         data: {
           idempotencyKey: input.idempotencyKey,
@@ -506,7 +699,7 @@ export class WorldService {
         },
       });
       const provinceId = ownership.provinceId;
-      const [ownerships, garrisons] = await Promise.all([
+      const [ownerships, garrisons, clearances] = await Promise.all([
         tx.worldBlockOwnership.findMany({
           where: { eraId: defaultEraId, provinceId, status: "owned" },
           include: { player: true },
@@ -518,6 +711,9 @@ export class WorldService {
           },
           include: { player: true },
         }),
+        tx.worldBlockClearance.findMany({
+          where: { playerId: player.playerId, eraId: defaultEraId, status: "cleared" },
+        }),
       ]);
       const cityState = this.toCityState(updatedCity);
       if (!cityState) {
@@ -528,6 +724,7 @@ export class WorldService {
         garrison: this.toGarrisonState(garrison, player.playerId),
         city: cityState,
         map: this.buildMapResponse({
+          clearedTileIds: new Set(clearances.map((item) => item.tileId)),
           garrisons,
           ownerships,
           playerId: player.playerId,
@@ -638,6 +835,19 @@ export class WorldService {
       if (!adjacentOwned) {
         throw new BadRequestException("只能购买与已有领地相邻的无主区块");
       }
+      if (requiresWorldClearance(targetTile)) {
+        const clearance = await tx.worldBlockClearance.findFirst({
+          where: {
+            playerId: player.playerId,
+            eraId: defaultEraId,
+            tileId: targetTile.tileId,
+            status: "cleared",
+          },
+        });
+        if (!clearance) {
+          throw new BadRequestException("该区块仍有野怪驻守，请先完成清野");
+        }
+      }
 
       const cost = BigInt(targetTile.purchaseBaseCost);
       const wallet = await tx.playerWallet.findUniqueOrThrow({
@@ -684,7 +894,7 @@ export class WorldService {
         },
         include: { player: true },
       });
-      const [ownerships, garrisons, updatedWallet] = await Promise.all([
+      const [ownerships, garrisons, clearances, updatedWallet] = await Promise.all([
         tx.worldBlockOwnership.findMany({
           where: { eraId: defaultEraId, provinceId: targetTile.provinceId, status: "owned" },
           include: { player: true },
@@ -698,9 +908,13 @@ export class WorldService {
           },
           include: { player: true },
         }),
+        tx.worldBlockClearance.findMany({
+          where: { playerId: player.playerId, eraId: defaultEraId, status: "cleared" },
+        }),
         tx.playerWallet.findUniqueOrThrow({ where: { playerId: player.playerId } }),
       ]);
       const map = this.buildMapResponse({
+        clearedTileIds: new Set(clearances.map((item) => item.tileId)),
         garrisons,
         ownerships,
         playerId: player.playerId,
@@ -716,7 +930,11 @@ export class WorldService {
             targetTile,
             ownership,
             null,
-            mapPurchaseContext(ownerships, player.playerId),
+            mapPurchaseContext(
+              ownerships,
+              player.playerId,
+              new Set(clearances.map((item) => item.tileId)),
+            ),
           ),
         map,
         wallet: this.toWalletSnapshot(updatedWallet),
@@ -770,7 +988,7 @@ export class WorldService {
       ? await this.prisma.player.findUnique({ where: { accountId: input.accountId } })
       : null;
     const provinceTileIds = getWorldTilesByProvince(provinceId).map((tile) => tile.tileId);
-    const [ownerships, garrisons] = await Promise.all([
+    const [ownerships, garrisons, clearances] = await Promise.all([
       this.prisma.worldBlockOwnership.findMany({
         where: { eraId: defaultEraId, provinceId, status: "owned" },
         include: { player: true },
@@ -779,9 +997,15 @@ export class WorldService {
         where: { eraId: defaultEraId, tileId: { in: provinceTileIds } },
         include: { player: true },
       }),
+      player
+        ? this.prisma.worldBlockClearance.findMany({
+            where: { playerId: player.playerId, eraId: defaultEraId, status: "cleared" },
+          })
+        : Promise.resolve([]),
     ]);
 
     return this.buildMapResponse({
+      clearedTileIds: new Set(clearances.map((item) => item.tileId)),
       garrisons,
       ownerships,
       playerId: player?.playerId ?? null,
@@ -792,6 +1016,7 @@ export class WorldService {
   }
 
   private buildMapResponse(input: {
+    clearedTileIds?: Set<string>;
     garrisons: TerritoryGarrisonWithPlayer[];
     ownerships: WorldBlockOwnershipWithPlayer[];
     playerId: string | null;
@@ -809,7 +1034,11 @@ export class WorldService {
     const ownershipMap = new Map(
       input.ownerships.map((ownership) => [ownership.tileId, ownership]),
     );
-    const purchaseContext = mapPurchaseContext(input.ownerships, input.playerId);
+    const purchaseContext = mapPurchaseContext(
+      input.ownerships,
+      input.playerId,
+      input.clearedTileIds,
+    );
     const provinceTiles = getWorldTilesByProvince(province.provinceId);
     const viewport = normalizeMapViewport(input.viewport, provinceTiles);
     const tiles = provinceTiles
@@ -1029,6 +1258,20 @@ export class WorldService {
     };
   }
 
+  private toClearanceState(clearance: WorldBlockClearance): WorldBlockClearanceState {
+    return {
+      clearance_id: clearance.clearanceId,
+      tile_id: clearance.tileId,
+      province_id: clearance.provinceId,
+      commandery_id: clearance.commanderyId,
+      status: clearance.status === "cleared" ? "cleared" : "failed",
+      team_power: clearance.teamPower,
+      enemy_power: clearance.enemyPower,
+      battle_id: clearance.battleId,
+      resolved_at: clearance.resolvedAt.toISOString(),
+    };
+  }
+
   private toTerritoryBlockState(ownership: WorldBlockOwnership): TerritoryBlockState | null {
     const tile = findWorldTile(ownership.tileId);
     if (!tile) {
@@ -1226,6 +1469,16 @@ function normalizePurchaseWorldBlockBody(
   return { tile_id: tileId };
 }
 
+function normalizeResolveWorldClearanceBody(
+  body: ResolveWorldClearanceRequest,
+): ResolveWorldClearanceRequest {
+  const marchId = body?.march_id?.trim();
+  if (!marchId) {
+    throw new BadRequestException("请选择已抵达的清野行军");
+  }
+  return { march_id: marchId };
+}
+
 function normalizeWorldMapView(view: WorldMapView | undefined): WorldMapView {
   return view === "mini" ? "mini" : "detail";
 }
@@ -1375,12 +1628,59 @@ function requireMapTile(targetTileId: string): MapTileConfig {
   return targetTile;
 }
 
+function requiresWorldClearance(tile: MapTileConfig): boolean {
+  return (
+    tile.dangerLevel > 1 &&
+    tile.ownerProvinceId === null &&
+    tile.tileType !== "tower" &&
+    tile.tileType !== "capital" &&
+    tile.tileType !== "pass"
+  );
+}
+
+async function assertClearanceMarchTarget(
+  tx: Prisma.TransactionClient,
+  playerId: string,
+  tile: MapTileConfig,
+): Promise<void> {
+  assertPurchasableTile(tile);
+  if (!requiresWorldClearance(tile)) {
+    throw new BadRequestException("该区块没有需要清理的野怪");
+  }
+  const [owner, ownerships, clearance] = await Promise.all([
+    tx.worldBlockOwnership.findUnique({
+      where: { eraId_tileId: { eraId: defaultEraId, tileId: tile.tileId } },
+    }),
+    tx.worldBlockOwnership.findMany({
+      where: { playerId, eraId: defaultEraId, status: "owned" },
+    }),
+    tx.worldBlockClearance.findFirst({
+      where: { playerId, eraId: defaultEraId, tileId: tile.tileId, status: "cleared" },
+    }),
+  ]);
+  if (owner) {
+    throw new BadRequestException("该区块已有归属");
+  }
+  if (clearance) {
+    throw new BadRequestException("该区块已经清理，可以直接购买");
+  }
+  const adjacentOwned = ownerships.some((ownership) => {
+    const ownedTile = findWorldTile(ownership.tileId);
+    return ownedTile ? areAdjacentWorldTiles(ownedTile, tile) : false;
+  });
+  if (!adjacentOwned) {
+    throw new BadRequestException("只能清理与已有领地相邻的区块");
+  }
+}
+
 interface PurchaseContext {
+  clearedTileIds: Set<string>;
   playerId: string | null;
   myOwnedTiles: MapTileConfig[];
 }
 
 const emptyPurchaseContext: PurchaseContext = {
+  clearedTileIds: new Set(),
   playerId: null,
   myOwnedTiles: [],
 };
@@ -1388,12 +1688,14 @@ const emptyPurchaseContext: PurchaseContext = {
 function mapPurchaseContext(
   ownerships: WorldBlockOwnershipWithPlayer[],
   playerId: string | null,
+  clearedTileIds: Set<string> = new Set(),
 ): PurchaseContext {
   if (!playerId) {
     return emptyPurchaseContext;
   }
 
   return {
+    clearedTileIds,
     playerId,
     myOwnedTiles: ownerships
       .filter((ownership) => ownership.playerId === playerId)
@@ -1408,31 +1710,43 @@ function buildPurchaseState(
   context: PurchaseContext,
 ): MapTileState["purchase_state"] {
   const cost = tile.purchaseBaseCost.toString();
+  const requiresClearance = requiresWorldClearance(tile);
+  const clearanceStatus: MapTileState["purchase_state"]["clearance_status"] = !requiresClearance
+    ? "not_required"
+    : context.clearedTileIds.has(tile.tileId)
+      ? "cleared"
+      : "required";
 
   if (!context.playerId) {
     return {
+      clearance_status: clearanceStatus,
       purchasable: false,
       reason: "请先创建角色并建立主城",
       cost_spirit_stone: cost,
       adjacent_owned: false,
+      requires_clearance: requiresClearance,
     };
   }
 
   if (ownership) {
     return {
+      clearance_status: clearanceStatus,
       purchasable: false,
       reason: ownership.playerId === context.playerId ? "已归你所有" : "已有城主",
       cost_spirit_stone: cost,
       adjacent_owned: false,
+      requires_clearance: requiresClearance,
     };
   }
 
   if (context.myOwnedTiles.length === 0) {
     return {
+      clearance_status: clearanceStatus,
       purchasable: false,
       reason: "请先建立主城",
       cost_spirit_stone: cost,
       adjacent_owned: false,
+      requires_clearance: requiresClearance,
     };
   }
 
@@ -1451,27 +1765,44 @@ function buildPurchaseState(
     tile.tileType === "pass"
   ) {
     return {
+      clearance_status: clearanceStatus,
       purchasable: false,
       reason: "战略或保护区块暂不可购买",
       cost_spirit_stone: cost,
       adjacent_owned: adjacentOwned,
+      requires_clearance: requiresClearance,
     };
   }
 
   if (!adjacentOwned) {
     return {
+      clearance_status: clearanceStatus,
       purchasable: false,
       reason: "需与已有领地相邻",
       cost_spirit_stone: cost,
       adjacent_owned: false,
+      requires_clearance: requiresClearance,
+    };
+  }
+
+  if (clearanceStatus === "required") {
+    return {
+      clearance_status: clearanceStatus,
+      purchasable: false,
+      reason: "区块仍有野怪驻守，需先派队清野",
+      cost_spirit_stone: cost,
+      adjacent_owned: true,
+      requires_clearance: true,
     };
   }
 
   return {
+    clearance_status: clearanceStatus,
     purchasable: true,
     reason: "可购买并纳入领地",
     cost_spirit_stone: cost,
     adjacent_owned: true,
+    requires_clearance: requiresClearance,
   };
 }
 
@@ -1554,6 +1885,39 @@ function normalizeTeamSnapshot(value: Prisma.JsonValue) {
     team_power: toNumber(record.team_power, 120),
     supply_cost: toNumber(record.supply_cost, 12),
   };
+}
+
+function createWorldClearanceBattleLog(input: {
+  cityName: string;
+  enemyName: string;
+  damageDone: number;
+  damageTaken: number;
+  cleared: boolean;
+}): BattleRoundLog[] {
+  const firstDamage = Math.floor(input.damageDone * 0.55);
+  return [
+    {
+      round: 1,
+      actor: `${input.cityName}先锋`,
+      skill: "列阵破荒",
+      damage: firstDamage,
+      target_hp: Math.max(0, input.damageDone - firstDamage),
+    },
+    {
+      round: 2,
+      actor: input.enemyName,
+      skill: "守域妖息",
+      damage: input.damageTaken,
+      target_hp: Math.max(0, 100 - input.damageTaken),
+    },
+    {
+      round: 3,
+      actor: `${input.cityName}先锋`,
+      skill: "清野合击",
+      damage: input.damageDone - firstDamage,
+      target_hp: input.cleared ? 0 : Math.max(1, input.damageTaken - input.damageDone),
+    },
+  ];
 }
 
 function normalizeCityResources(value: Prisma.JsonValue): CityResourceSnapshot {

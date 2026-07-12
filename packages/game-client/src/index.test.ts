@@ -94,6 +94,7 @@ describe("game-client HTTP 客户端", () => {
       "idem_march",
     );
     await client.defendWorld({ soldier_count: 10, tile_id: "ji_block_1_0" }, "idem_defend");
+    await client.resolveWorldClearance({ march_id: "march_1" }, "idem_clearance");
     await client.purchaseWorldBlock({ tile_id: "ji_block_1_0" }, "idem_purchase");
 
     expect(calls).toEqual([
@@ -111,6 +112,11 @@ describe("game-client HTTP 客户端", () => {
         body: { soldier_count: 10, tile_id: "ji_block_1_0" },
         idempotencyKey: "idem_defend",
         url: "https://example.test/api/world/defend",
+      },
+      {
+        body: { march_id: "march_1" },
+        idempotencyKey: "idem_clearance",
+        url: "https://example.test/api/world/clear-wild/resolve",
       },
       {
         body: { tile_id: "ji_block_1_0" },

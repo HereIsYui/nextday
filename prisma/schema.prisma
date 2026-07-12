@@ -106,6 +106,7 @@ model Player {
   cities                    PlayerCity[]
   herbGardenPlots           CityHerbGardenPlot[]
   marchQueues               MarchQueue[]
+  worldBlockClearances      WorldBlockClearance[]
   worldBlockOwnerships      WorldBlockOwnership[]
   territoryGarrisons        TerritoryGarrison[]
 
@@ -217,6 +218,7 @@ model MarchQueue {
 
   player     Player     @relation(fields: [playerId], references: [playerId])
   sourceCity PlayerCity @relation(fields: [sourceCityId], references: [cityId])
+  clearance  WorldBlockClearance?
 
   @@index([playerId])
   @@index([eraId])
@@ -227,6 +229,33 @@ model MarchQueue {
   @@index([arrivesAt])
   @@index([createdAt])
   @@map("march_queue")
+}
+
+model WorldBlockClearance {
+  clearanceId    String   @id @map("clearance_id")
+  playerId       String   @map("player_id")
+  eraId          String   @default("era_mvp_001") @map("era_id")
+  sourceMarchId  String   @unique @map("source_march_id")
+  tileId         String   @map("tile_id")
+  provinceId     String   @map("province_id")
+  commanderyId   String   @map("commandery_id")
+  status         String
+  teamPower      Int      @map("team_power")
+  enemyPower     Int      @map("enemy_power")
+  battleId       String   @map("battle_id")
+  idempotencyKey String?  @unique @map("idempotency_key")
+  configVersion  String   @map("config_version")
+  resolvedAt     DateTime @default(now()) @map("resolved_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  player      Player     @relation(fields: [playerId], references: [playerId])
+  sourceMarch MarchQueue @relation(fields: [sourceMarchId], references: [marchId])
+
+  @@index([playerId, tileId, status])
+  @@index([eraId, tileId, status])
+  @@index([provinceId, commanderyId])
+  @@index([resolvedAt])
+  @@map("world_block_clearance")
 }
 
 model WorldBlockOwnership {

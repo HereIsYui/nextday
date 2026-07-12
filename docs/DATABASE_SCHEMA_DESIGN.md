@@ -1118,6 +1118,27 @@ P2 表结构为设计占位，正式 migration 可按功能阶段拆分落地。
 | owned_at | datetime | index | 获得产权时间 |
 | updated_at | datetime |  | 更新 |
 
+`world_block_clearance`
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| clearance_id | varchar | PK | 清野尝试记录 |
+| player_id | varchar | index | 发起清野的玩家 |
+| era_id | varchar | index | 纪元 |
+| source_march_id | varchar | unique | 已抵达的清野行军 |
+| tile_id | varchar | index | 目标区块 |
+| province_id | varchar | index | 州 |
+| commandery_id | varchar | index | 郡 |
+| status | varchar | index | cleared / failed |
+| team_power | int |  | 结算时队伍战力 |
+| enemy_power | int |  | 守域野怪战力 |
+| battle_id | varchar | index | 清野战报 |
+| idempotency_key | varchar | unique | 清野结算幂等键 |
+| config_version | varchar |  | 清野配置版本 |
+| resolved_at | datetime | index | 结算时间 |
+
+清野记录按玩家生效。甲玩家清野成功不会为乙玩家解锁购买资格，且任何清野记录都不得直接创建 `world_block_ownership`。
+
 `strategic_control_record`
 
 | 字段 | 类型 | 约束 | 说明 |

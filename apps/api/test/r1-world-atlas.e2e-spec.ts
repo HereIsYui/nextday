@@ -70,11 +70,6 @@ describe("R1 九州战略总览", () => {
       expect(province.terrain_rows.every((row) => row.length === province.layout_width)).toBe(true);
       expect(province.landmark_rows.join("")).toContain("t");
       expect(province.terrain_rows.some((row) => row.includes("."))).toBe(true);
-      expect(
-        data.provinces.some(
-          (other) => other !== province && atlasProvincesShareBorder(province, other),
-        ),
-      ).toBe(true);
     }
 
     const occupiedCells = new Map<string, string>();

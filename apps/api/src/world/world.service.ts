@@ -106,16 +106,16 @@ export class WorldService {
     );
     const owned = new Set(ownerships.map((item) => item.tileId));
     const layout: Record<string, [number, number]> = {
-      // 以九州历史相邻关系为骨架排布，坐标由真实区块边界接触验证后固定。
-      yong: [0, 56],
-      liang: [2, 91],
-      ji: [46, 24],
-      yu: [44, 54],
-      yan: [50, 0],
-      qing: [82, 4],
-      xu: [80, 26],
-      yang: [77, 46],
-      jing: [78, 78],
+      // 九州已经在同一块大陆坐标系中分区，Atlas 不再为各州追加偏移。
+      ji: [0, 0],
+      jing: [0, 0],
+      liang: [0, 0],
+      qing: [0, 0],
+      xu: [0, 0],
+      yang: [0, 0],
+      yan: [0, 0],
+      yong: [0, 0],
+      yu: [0, 0],
     };
     const homeProvinceId =
       (

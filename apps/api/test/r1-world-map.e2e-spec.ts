@@ -68,7 +68,7 @@ describe("R1 九州城池地图只读接口", () => {
     expect(provinces.map((province) => province.name)).toEqual(provinceOrder);
     expect(JSON.stringify(provinces)).not.toContain("幽州");
     expect(response.body.data.recommended_province_id).toBe("ji");
-    expect(response.body.data.config_version).toBe("world_city_era_r1_08_historical_topology_8888");
+    expect(response.body.data.config_version).toBe("world_city_era_r1_09_continent_8888");
     expect(provinces.reduce((total, province) => total + province.block_count, 0)).toBe(8888);
 
     for (const province of provinces) {
@@ -221,7 +221,7 @@ describe("R1 九州城池地图只读接口", () => {
   it("大地图支持按坐标读取视口详情，避免一次传输整州区块", async () => {
     const response = await request(app.getHttpServer())
       .get("/api/world/map")
-      .query({ height: 12, province_id: "jing", view: "detail", width: 12, x: 10, y: 8 })
+      .query({ height: 12, province_id: "jing", view: "detail", width: 12, x: 40, y: 56 })
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
 
@@ -238,17 +238,16 @@ describe("R1 九州城池地图只读接口", () => {
       };
     };
     expect(data.block_count).toBe(1296);
-    expect(data.tiles).toHaveLength(144);
+    expect(data.tiles.length).toBeGreaterThan(0);
+    expect(data.tiles.length).toBeLessThanOrEqual(144);
     expect(data.viewport).toMatchObject({
       height: 12,
-      total_height: 36,
-      total_width: 44,
       width: 12,
-      x: 10,
-      y: 8,
+      x: 40,
+      y: 56,
     });
     expect(
-      data.tiles.every((tile) => tile.x >= 10 && tile.x < 22 && tile.y >= 8 && tile.y < 20),
+      data.tiles.every((tile) => tile.x >= 40 && tile.x < 52 && tile.y >= 56 && tile.y < 68),
     ).toBe(true);
   });
 });

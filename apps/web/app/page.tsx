@@ -67,7 +67,6 @@ import type {
   StoryScrollDetailResponse,
   StoryScrollListResponse,
   TaskState,
-  TerritoryOccupationState,
   TerritoryOverviewResponse,
   TitleCollectionResponse,
   TowerListResponse,
@@ -538,9 +537,7 @@ export default function HomePage() {
   );
   const arrivedWorldMarches =
     worldMarches?.marches.filter(
-      (march) =>
-        march.status === "arrived" &&
-        (march.march_type === "clear_wild" || march.march_type === "occupy"),
+      (march) => march.status === "arrived" && march.march_type === "clear_wild",
     ) ?? [];
   const marchingWorldMarches =
     worldMarches?.marches.filter((march) => march.status === "marching") ?? [];
@@ -548,7 +545,7 @@ export default function HomePage() {
     ? (arrivedWorldMarches.find((march) => march.target_tile_id === selectedWorldTile.tile_id) ??
       null)
     : null;
-  const myWorldOccupations = worldMap?.my_occupations ?? [];
+  const myTerritoryBlocks = worldTerritory?.blocks ?? [];
   const availablePills = useMemo(
     () =>
       (
@@ -1700,31 +1697,6 @@ export default function HomePage() {
         tone: "neutral",
       });
       await refreshWorldState(`队伍已前往${response.data.march.target_name}`);
-    });
-  }
-
-  async function handleOccupyWorld(march: MarchQueueState) {
-    if (march.status !== "arrived") {
-      setMessage("队伍尚未抵达");
-      return;
-    }
-
-    await runAction("清野占领", async () => {
-      const response = await client.occupyWorld(
-        { march_id: march.march_id },
-        createIdempotencyKey(`web_world_occupy_${march.march_id}`),
-      );
-      ensureOk(response);
-      setWorldMap(response.data.map);
-      rememberExperience(undefined, {
-        summary: `${response.data.occupation.tile_name}已纳入领地，开始提供${worldOccupationProductionSummary(
-          response.data.occupation,
-        )}。`,
-        tags: ["领地", "占领成功"],
-        title: "占领地块",
-        tone: "success",
-      });
-      await refreshWorldState(`已占领${response.data.occupation.tile_name}`);
     });
   }
 
@@ -3298,7 +3270,6 @@ export default function HomePage() {
           onForge={handleCraftForge}
           onHarvestHerb={handleHarvestHerb}
           onLoadTile={loadWorldViewportTile}
-          onOccupy={handleOccupyWorld}
           onPlantHerb={handlePlantHerb}
           onPurchase={handlePurchaseWorldBlock}
           onSettle={(provinceId) => {
@@ -3585,7 +3556,7 @@ export default function HomePage() {
                       <section className="panel world-command-panel" aria-label="九州城池">
                         <div className="section-title">
                           <h2>九州城池</h2>
-                          <span>出生建城 · 行军占领 · 领地经营</span>
+                          <span>出生建城 · 清野购地 · 领地经营</span>
                         </div>
                         <section
                           className="strategic-map-stage"
@@ -3828,14 +3799,9 @@ export default function HomePage() {
                                       </div>
                                       <div className="production-actions strategic-primary-action">
                                         {selectedWorldTileArrivedMarch ? (
-                                          <Button
-                                            disabled={busy}
-                                            onClick={() =>
-                                              handleOccupyWorld(selectedWorldTileArrivedMarch)
-                                            }
-                                          >
-                                            清野并占领
-                                          </Button>
+                                          <span className="action-note">
+                                            清野队伍已抵达。清野只解除危险，土地仍需另行购买。
+                                          </span>
                                         ) : selectedWorldTile.ownership.owner_player_id ===
                                             activePlayerId &&
                                           selectedWorldTile.terrain_type === "plain" &&
@@ -4464,14 +4430,8 @@ export default function HomePage() {
                                       </span>
                                     </div>
                                     {march.status === "arrived" &&
-                                    (march.march_type === "clear_wild" ||
-                                      march.march_type === "occupy") ? (
-                                      <Button
-                                        disabled={busy}
-                                        onClick={() => handleOccupyWorld(march)}
-                                      >
-                                        清野占领
-                                      </Button>
+                                    march.march_type === "clear_wild" ? (
+                                      <span className="action-note">已抵达，等待清野结算</span>
                                     ) : (
                                       <StatusBadge
                                         tone={march.status === "resolved" ? "success" : "neutral"}
@@ -4498,32 +4458,32 @@ export default function HomePage() {
                               <div>
                                 <strong>我的领地</strong>
                                 <span>
-                                  {myWorldOccupations.length
-                                    ? `${myWorldOccupations.length} 处领地持续产出`
-                                    : "占领野地后会在这里汇总"}
+                                  {myTerritoryBlocks.length
+                                    ? `${myTerritoryBlocks.length} 处产权地块持续产出`
+                                    : "购买相邻区块后会在这里汇总"}
                                 </span>
                               </div>
-                              <StatusBadge tone={myWorldOccupations.length ? "success" : "neutral"}>
-                                {myWorldOccupations.length ? "已扩张" : "暂无领地"}
+                              <StatusBadge tone={myTerritoryBlocks.length ? "success" : "neutral"}>
+                                {myTerritoryBlocks.length ? "已扩张" : "暂无领地"}
                               </StatusBadge>
                             </div>
                             <div className="task-list">
-                              {myWorldOccupations.length ? (
-                                myWorldOccupations.slice(0, 5).map((occupation) => (
-                                  <article className="task-row" key={occupation.occupation_id}>
+                              {myTerritoryBlocks.length ? (
+                                myTerritoryBlocks.slice(0, 5).map((block) => (
+                                  <article className="task-row" key={block.tile_id}>
                                     <div>
-                                      <strong>{occupation.tile_name}</strong>
+                                      <strong>{block.tile_name}</strong>
                                       <span>
-                                        {occupation.province_name} · {occupation.commandery_name}
+                                        {block.province_name} · {block.commandery_name}
                                       </span>
-                                      <span>{worldOccupationProductionSummary(occupation)}</span>
+                                      <span>{worldTerritoryProductionSummary(block)}</span>
                                     </div>
-                                    <StatusBadge tone="success">已占领</StatusBadge>
+                                    <StatusBadge tone="success">拥有产权</StatusBadge>
                                   </article>
                                 ))
                               ) : (
                                 <span className="action-note">
-                                  推荐先清理主城附近野地，建立第一处资源点。
+                                  推荐先购买主城附近的无主区块，建立第一处资源地。
                                 </span>
                               )}
                             </div>
@@ -6158,7 +6118,6 @@ function WorldMapScreen({
   onForge,
   onHarvestHerb,
   onLoadTile,
-  onOccupy,
   onPlantHerb,
   onPurchase,
   onSettle,
@@ -6184,7 +6143,6 @@ function WorldMapScreen({
   onForge: () => void | Promise<void>;
   onHarvestHerb: (plotId: string) => void | Promise<void>;
   onLoadTile: (provinceId: string, x: number, y: number) => Promise<MapTileState | null>;
-  onOccupy: (march: MarchQueueState) => void | Promise<void>;
   onPlantHerb: (plotId: string) => void | Promise<void>;
   onPurchase: (tile: MapTileState) => void | Promise<void>;
   onSettle: (provinceId: string) => void;
@@ -6658,12 +6616,10 @@ function WorldMapScreen({
                 ) ? (
                   <span>我方队伍行军中</span>
                 ) : null}
-                {selectedTile.occupation ? (
+                {selectedTile.garrison ? (
                   <>
-                    <span>守备 {selectedTile.occupation.defense.guard_power}</span>
-                    <span>驻军 {selectedTile.occupation.defense.stationed_soldiers}</span>
-                    <span>时产灵石 {selectedTile.occupation.production.spirit_stone_per_hour}</span>
-                    <span>时产粮草 {selectedTile.occupation.production.grain_per_hour}</span>
+                    <span>守备 {selectedTile.garrison.defense_power}</span>
+                    <span>驻军 {selectedTile.garrison.soldier_count}</span>
                   </>
                 ) : null}
                 {selectedTile.terrain_effects.slice(0, 3).map((effect) => (
@@ -6683,9 +6639,7 @@ function WorldMapScreen({
                     <span>尚未建城。请选择标有安全出生池的平原建立主城后再出征。</span>
                   )
                 ) : selectedMarch ? (
-                  <Button disabled={busy} onClick={() => onOccupy(selectedMarch)}>
-                    清野并占领
-                  </Button>
+                  <span>清野队伍已抵达。完成清野后仍需消耗灵石购买区块。</span>
                 ) : selectedTile.ownership.owner_player_id === activePlayerId &&
                   selectedTile.terrain_type === "plain" &&
                   selectedTile.ownership.ownership_type !== "sub_city" ? (
@@ -10064,7 +10018,6 @@ function actionFeedbackSuccessMessage(label: string): string {
 function worldMarchTypeLabel(type: MarchType): string {
   const labels: Record<MarchType, string> = {
     clear_wild: "清野",
-    occupy: "占领",
     reinforce: "增援",
     scout: "侦察",
     siege: "围城",
@@ -10100,7 +10053,7 @@ function worldTileStatusLabel(status: MapTileState["status"]): string {
   const labels: Record<MapTileState["status"], string> = {
     contested: "争夺中",
     locked: "未开放",
-    occupied: "已占领",
+    occupied: "已有归属",
     peace: "安定",
     protected: "保护中",
     wild: "野地",
@@ -10113,7 +10066,6 @@ function worldOwnershipTypeLabel(
 ): string {
   const labels = {
     main_city: "主城",
-    occupation: "已占领领地",
     purchase: "已购买领地",
     sub_city: "分城",
     system: "州域设施",
@@ -10162,11 +10114,8 @@ function worldTilePreferredMarchType(tile: MapTileState): MarchType | null {
   if (tile.owner.owner_province_id) {
     return null;
   }
-  if (tile.status === "wild" || tile.tile_type === "wild" || tile.owner.owner_player_id === null) {
+  if (tile.status === "wild" || tile.tile_type === "wild" || tile.danger_level > 0) {
     return "clear_wild";
-  }
-  if (tile.occupiable) {
-    return "occupy";
   }
   return "scout";
 }
@@ -10180,17 +10129,17 @@ function worldCongestionLabel(congestion: CityBirthOptionState["congestion"]): s
   return labels[congestion];
 }
 
-function worldOccupationProductionSummary(occupation: TerritoryOccupationState): string {
+function worldTerritoryProductionSummary(
+  block: TerritoryOverviewResponse["blocks"][number],
+): string {
   const parts = [
-    occupation.production.spirit_stone_per_hour
-      ? `灵石 ${occupation.production.spirit_stone_per_hour}/时`
-      : "",
-    occupation.production.grain_per_hour ? `粮草 ${occupation.production.grain_per_hour}/时` : "",
-    occupation.production.ore_per_hour ? `矿材 ${occupation.production.ore_per_hour}/时` : "",
-    occupation.production.wood_per_hour ? `灵木 ${occupation.production.wood_per_hour}/时` : "",
-    occupation.production.herb_per_hour ? `灵草 ${occupation.production.herb_per_hour}/时` : "",
+    block.hourly_output.spirit_stone ? `灵石 ${block.hourly_output.spirit_stone}/时` : "",
+    block.hourly_output.grain ? `粮草 ${block.hourly_output.grain}/时` : "",
+    block.hourly_output.ore ? `矿材 ${block.hourly_output.ore}/时` : "",
+    block.hourly_output.wood ? `灵木 ${block.hourly_output.wood}/时` : "",
+    block.hourly_output.herb ? `灵草 ${block.hourly_output.herb}/时` : "",
   ].filter(Boolean);
-  return parts.length ? parts.join("、") : "州势与领地收益";
+  return parts.length ? parts.join("、") : "暂无持续产出";
 }
 
 function activityStatusLabel(status: string): string {

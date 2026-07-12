@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Inject, Post, Query, Req, UseGuards } from "@nestjs/common";
 import type {
-  OccupyWorldRequest,
-  OccupyWorldResponse,
+  DefendWorldRequest,
+  DefendWorldResponse,
   PurchaseWorldBlockRequest,
   PurchaseWorldBlockResponse,
   StartWorldMarchRequest,
@@ -74,13 +74,13 @@ export class WorldController {
     });
   }
 
-  @Post("occupy")
-  occupy(@Body() body: OccupyWorldRequest, @Req() request: Request): Promise<OccupyWorldResponse> {
-    return this.worldService.occupy({
+  @Post("defend")
+  defend(@Body() body: DefendWorldRequest, @Req() request: Request): Promise<DefendWorldResponse> {
+    return this.worldService.defend({
       accountId: requireAccountId(request),
       body,
       idempotencyKey: requireIdempotencyKey(request),
-      endpoint: "POST /api/world/occupy",
+      endpoint: "POST /api/world/defend",
     });
   }
 

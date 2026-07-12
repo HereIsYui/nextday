@@ -68,6 +68,8 @@ import type {
   CreateTransferRequestResponse,
   CultivationClaimResponse,
   DailyRouteResponse,
+  DefendWorldRequest,
+  DefendWorldResponse,
   EntitlementOverviewResponse,
   EquipAppearancePlusRequest,
   EquipAppearancePlusResponse,
@@ -124,8 +126,6 @@ import type {
   MentorSummaryResponse,
   MergeDryRunReportResponse,
   MockFishpiLoginRequest,
-  OccupyWorldRequest,
-  OccupyWorldResponse,
   PillUseRequest,
   PillUseResponse,
   PlantHerbRequest,
@@ -562,11 +562,11 @@ export class GameClient {
     });
   }
 
-  occupyWorld(
-    body: OccupyWorldRequest,
+  defendWorld(
+    body: DefendWorldRequest,
     idempotencyKey: string,
-  ): Promise<ApiResponse<OccupyWorldResponse>> {
-    return this.post<OccupyWorldResponse, OccupyWorldRequest>("/api/world/occupy", body, {
+  ): Promise<ApiResponse<DefendWorldResponse>> {
+    return this.post<DefendWorldResponse, DefendWorldRequest>("/api/world/defend", body, {
       idempotencyKey,
     });
   }

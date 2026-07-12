@@ -1091,7 +1091,7 @@ P2 表结构为设计占位，正式 migration 可按功能阶段拆分落地。
 | source_tile_id | varchar | index | 出发地 |
 | target_tile_id | varchar | index | 目标地 |
 | target_node_id | varchar | index nullable | 目标节点 |
-| march_type | varchar | index | scout / clear / occupy / attack / defend / return |
+| march_type | varchar | index | scout / clear_wild / reinforce / siege / return |
 | army_snapshot | jsonb |  | 队伍、将领、道兵、技能和补给摘要 |
 | status | varchar | index | marching / arrived / resolving / returning / completed / canceled |
 | arrives_at | datetime | index | 到达时间 |
@@ -1099,24 +1099,39 @@ P2 表结构为设计占位，正式 migration 可按功能阶段拆分落地。
 | created_at | datetime | index | 创建 |
 | updated_at | datetime |  | 更新 |
 
-`occupation_record`
+`world_block_ownership`
 
 | 字段 | 类型 | 约束 | 说明 |
 | --- | --- | --- | --- |
-| occupation_id | varchar | PK | 占领记录 |
+| ownership_id | varchar | PK | 产权记录 |
+| player_id | varchar | index | 产权玩家 |
 | era_id | varchar | index | 纪元 |
-| tile_id | varchar | index | 地块 |
-| node_id | varchar | index nullable | 节点 |
-| attacker_player_id | varchar | index | 进攻玩家 |
-| previous_owner_player_id | varchar | index nullable | 原玩家归属 |
-| new_owner_player_id | varchar | index nullable | 新玩家归属 |
-| previous_owner_sect_id | varchar | index nullable | 原宗门归属 |
-| new_owner_sect_id | varchar | index nullable | 新宗门归属 |
-| occupation_type | varchar | index | clear / occupy / conquer / abandon / protect |
-| result | varchar | index | success / failed / protected / decayed |
+| tile_id | varchar | unique(era_id, tile_id) | 区块，同纪元唯一产权 |
+| province_id | varchar | index | 州 |
+| commandery_id | varchar | index | 郡 |
+| terrain_type | varchar | index | 地形 |
+| ownership_type | varchar | index | main_city / sub_city / purchase / system |
+| source_type | varchar | index | settle / sub_city / purchase / system |
+| source_id | varchar | nullable | 建城、购买或系统来源 ID |
+| purchase_cost | bigint |  | 普通灵石购买成本 |
+| idempotency_key | varchar | unique nullable | 购买幂等键 |
+| owned_at | datetime | index | 获得产权时间 |
+| updated_at | datetime |  | 更新 |
+
+`strategic_control_record`
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| control_id | varchar | PK | 战略控制记录 |
+| era_id | varchar | index | 纪元 |
+| tile_id | varchar | index | 关隘、州府或九塔区块 |
+| controller_type | varchar | index | sect / province_alliance |
+| controller_id | varchar | index | 控制宗门或州盟 |
+| control_type | varchar | index | pass / capital / tower |
+| status | varchar | index | active / contested / expired |
+| starts_at | datetime | index | 控制开始时间 |
+| expires_at | datetime | index | 周期控制结束时间 |
 | battle_report_id | varchar | index nullable | 关联战报 |
-| reward_summary | jsonb |  | 收益、掠夺和维护摘要 |
-| idempotency_key | varchar | unique nullable | 幂等键 |
 | created_at | datetime | index | 创建 |
 
 `siege_record`
@@ -1180,7 +1195,7 @@ P2 表结构为设计占位，正式 migration 可按功能阶段拆分落地。
 - 合服 dry-run 报告生成和执行预留审计。
 - P2 收藏展示装备、深度外观装备、导师申请 / 审批 / 出师、宗门外交提案 / 审批、跨宗门雇佣创建 / 接取 / 结算。
 - P2 转服申请、取消、dry-run 报告生成、人工审核和执行预留。
-- R1-R6 城池建造、产出领取、行军、侦查、占领、驻防、攻城、撤防和州战结算。
+- R1-R6 城池建造、产出领取、行军、侦查、区块购买、驻防、攻城、撤防和州战结算。
 
 事务边界建议：
 
@@ -1197,7 +1212,7 @@ P2 表结构为设计占位，正式 migration 可按功能阶段拆分落地。
 - P2 收藏和外观装备只更新展示状态，不得修改战斗属性、掉落倍率、贡献倍率和排行分数。
 - P2 导师、外交和雇佣结算必须把奖励托管、风控记录、收益衰减和审计日志纳入同一事务或可靠队列链路。
 - P2 转服执行前必须先写 dry-run 报告、审核记录和 GM 操作日志；真实迁移开放时，资产映射、排行冷却、宗门清理和幂等记录必须在可回滚事务链路中完成。
-- R1-R6 行军扣资源、写队列、写行为日志必须在同一事务；占领结算必须同时写战报、归属变化、占领记录和资源日志；主城攻破只能写可恢复状态，不能永久转移主城归属。
+- R1-R6 行军扣资源、写队列、写行为日志必须在同一事务；区块购买必须同时写钱包日志、唯一产权、幂等记录和审计日志；清野与攻城不得写入产权变化；主城和分城攻破只能写可恢复状态。
 
 ## 十五、验收场景
 
@@ -1213,4 +1228,4 @@ P2 表结构为设计占位，正式 migration 可按功能阶段拆分落地。
 - P2 章节卷轴、纪元史册、收藏、外观、导师、外交、雇佣和转服都有字段级表结构、主键、核心索引和幂等边界。
 - P2 收藏和外观表不含战力、掉落倍率、贡献倍率和排行加成字段。
 - P2 转服表能追溯 dry-run、审核、资产映射、排行冷却、宗门清理、执行状态和审计记录。
-- R1-R6 城池表能覆盖主城、分城、地图地块、行军队列、占领记录、攻城保护和州战积分。
+- R1-R6 城池表能覆盖主城、分城、地图地块、行军队列、区块产权、战略控制权、攻城保护和州战积分。

@@ -123,13 +123,13 @@ describe("R1 基础行军队列", () => {
       status: "arrived",
       remaining_seconds: 0,
     });
-    expect(arrived.body.data.marches[0].action_hint).toContain("清野或占领");
+    expect(arrived.body.data.marches[0].action_hint).toContain("目标地块");
 
     const secondMarch = await request(app.getHttpServer())
       .post("/api/world/march")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_r1_march_second_${Date.now()}_${randomSuffix()}`)
-      .send({ target_tile_id: resourceTile.tile_id, march_type: "occupy" })
+      .send({ target_tile_id: resourceTile.tile_id, march_type: "scout" })
       .expect(201);
 
     expect(secondMarch.body.data.march.target_tile_id).toBe(resourceTile.tile_id);

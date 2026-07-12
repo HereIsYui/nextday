@@ -106,7 +106,6 @@ model Player {
   cities                    PlayerCity[]
   herbGardenPlots           CityHerbGardenPlot[]
   marchQueues               MarchQueue[]
-  territoryOccupations      TerritoryOccupation[]
   worldBlockOwnerships      WorldBlockOwnership[]
   territoryGarrisons        TerritoryGarrison[]
 
@@ -218,7 +217,6 @@ model MarchQueue {
 
   player     Player     @relation(fields: [playerId], references: [playerId])
   sourceCity PlayerCity @relation(fields: [sourceCityId], references: [cityId])
-  occupation TerritoryOccupation?
 
   @@index([playerId])
   @@index([eraId])
@@ -229,37 +227,6 @@ model MarchQueue {
   @@index([arrivesAt])
   @@index([createdAt])
   @@map("march_queue")
-}
-
-model TerritoryOccupation {
-  occupationId      String   @id @map("occupation_id")
-  playerId          String   @map("player_id")
-  eraId             String   @default("era_mvp_001") @map("era_id")
-  sourceMarchId     String   @unique @map("source_march_id")
-  tileId            String   @map("tile_id")
-  nodeId            String?  @map("node_id")
-  provinceId        String   @map("province_id")
-  commanderyId      String   @map("commandery_id")
-  occupationType    String   @map("occupation_type")
-  status            String   @default("occupied")
-  productionSnapshot Json    @map("production_snapshot")
-  defenseSnapshot   Json     @map("defense_snapshot")
-  occupiedAt        DateTime @default(now()) @map("occupied_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
-  idempotencyKey    String?  @unique @map("idempotency_key")
-  configVersion     String   @map("config_version")
-
-  player      Player     @relation(fields: [playerId], references: [playerId])
-  sourceMarch MarchQueue @relation(fields: [sourceMarchId], references: [marchId])
-
-  @@index([playerId])
-  @@unique([playerId, tileId])
-  @@index([eraId])
-  @@index([provinceId, commanderyId])
-  @@index([occupationType])
-  @@index([status])
-  @@index([occupiedAt])
-  @@map("territory_occupation")
 }
 
 model WorldBlockOwnership {

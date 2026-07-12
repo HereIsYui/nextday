@@ -3,12 +3,12 @@ import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import type {
   CityDefenseSnapshot,
   CityResourceSnapshot,
+  DefendWorldRequest,
+  DefendWorldResponse,
   MapTileState,
   MarchQueueState,
   MarchQueueStatus,
   MarchType,
-  OccupyWorldRequest,
-  OccupyWorldResponse,
   PlayerCityStatus,
   ProvinceWarState,
   PurchaseWorldBlockRequest,
@@ -16,13 +16,8 @@ import type {
   StartWorldMarchRequest,
   StartWorldMarchResponse,
   TerritoryBlockState,
-  TerritoryDefenseSnapshot,
   TerritoryNodeState,
-  TerritoryOccupationState,
-  TerritoryOccupationStatus,
-  TerritoryOccupationType,
   TerritoryOverviewResponse,
-  TerritoryProductionSnapshot,
   TerritoryTerrainSummaryState,
   WalletSnapshot,
   WorldAtlasCellState,
@@ -43,7 +38,7 @@ import type {
   Player,
   PlayerCity,
   Prisma,
-  TerritoryOccupation,
+  TerritoryGarrison,
   WorldBlockOwnership,
 } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
@@ -74,12 +69,11 @@ import {
 } from "./world.constants";
 
 const marchConfigVersion = "world_march_r1_001";
-const occupationConfigVersion = "world_occupation_r1_001";
-const validMarchTypes = new Set<MarchType>(["scout", "clear_wild", "occupy", "reinforce"]);
-const occupationMarchTypes = new Set<MarchType>(["clear_wild", "occupy"]);
+const garrisonConfigVersion = "world_garrison_r1_001";
+const validMarchTypes = new Set<MarchType>(["scout", "clear_wild", "reinforce", "siege"]);
 
-type OccupationWithPlayer = TerritoryOccupation & { player: Player };
 type WorldBlockOwnershipWithPlayer = WorldBlockOwnership & { player: Player };
+type TerritoryGarrisonWithPlayer = TerritoryGarrison & { player: Player };
 
 @Injectable()
 export class WorldService {
@@ -434,18 +428,22 @@ export class WorldService {
     });
   }
 
-  async occupy(input: {
+  async defend(input: {
     accountId: string;
-    body: OccupyWorldRequest;
+    body: DefendWorldRequest;
     idempotencyKey: string;
     endpoint: string;
-  }): Promise<OccupyWorldResponse> {
-    const normalizedBody = normalizeOccupyWorldBody(input.body);
+  }): Promise<DefendWorldResponse> {
+    const tileId = input.body.tile_id?.trim();
+    const soldierCount = Math.floor(input.body.soldier_count);
+    if (!tileId || !Number.isFinite(soldierCount) || soldierCount <= 0) {
+      throw new BadRequestException("请选择领地并填写正整数驻军数量");
+    }
+    const normalizedBody: DefendWorldRequest = { tile_id: tileId, soldier_count: soldierCount };
     const requestHash = hashRequestBody(normalizedBody);
     const existingRecord = await this.prisma.idempotencyRecord.findUnique({
       where: { idempotencyKey: input.idempotencyKey },
     });
-
     if (existingRecord) {
       if (
         existingRecord.accountId !== input.accountId ||
@@ -454,132 +452,88 @@ export class WorldService {
       ) {
         throw new BadRequestException("幂等键已被其他请求使用");
       }
-
-      return existingRecord.responseData as unknown as OccupyWorldResponse;
+      return existingRecord.responseData as unknown as DefendWorldResponse;
     }
 
     return this.prisma.$transaction(async (tx) => {
-      const player = await tx.player.findUnique({
-        where: { accountId: input.accountId },
-      });
-
+      const player = await tx.player.findUnique({ where: { accountId: input.accountId } });
       if (!player) {
         throw new BadRequestException("请先创建角色");
       }
-
-      const march = await tx.marchQueue.findUnique({
-        where: { marchId: normalizedBody.march_id },
+      const city = await tx.playerCity.findFirst({
+        where: { playerId: player.playerId, cityType: "main" },
       });
-
-      if (!march || march.playerId !== player.playerId) {
-        throw new BadRequestException("行军队列不存在");
+      if (!city) {
+        throw new BadRequestException("请先建立主城");
       }
-
-      if (march.status === "resolved" || march.resolvedAt) {
-        throw new BadRequestException("该行军已处理");
-      }
-
-      if (getComputedMarchStatus(march) !== "arrived") {
-        throw new BadRequestException("队伍尚未抵达");
-      }
-
-      const marchType = normalizeMarchType(march.marchType);
-      if (!occupationMarchTypes.has(marchType)) {
-        throw new BadRequestException("该行军类型不能占领地块");
-      }
-
-      const targetTile = requireOccupationTarget(march.targetTileId);
-      const sourceCity = await tx.playerCity.findUnique({
-        where: { cityId: march.sourceCityId },
+      const ownership = await tx.worldBlockOwnership.findUnique({
+        where: { eraId_tileId: { eraId: defaultEraId, tileId } },
       });
-      if (!sourceCity) {
-        throw new BadRequestException("行军来源城池不存在");
+      if (!ownership || ownership.playerId !== player.playerId) {
+        throw new BadRequestException("只能驻防自己的领地");
       }
-      const ownedBlockCount = await tx.worldBlockOwnership.count({
-        where: { playerId: player.playerId, eraId: defaultEraId, status: "owned" },
+      const resources = normalizeCityResources(city.resourceSnapshot);
+      const availableSoldiers = Number(resources.soldier);
+      if (availableSoldiers < soldierCount) {
+        throw new BadRequestException("主城道兵不足");
+      }
+      const current = await tx.territoryGarrison.findUnique({
+        where: { eraId_tileId: { eraId: defaultEraId, tileId } },
       });
-      if (ownedBlockCount >= getTerritoryBlockLimit(sourceCity.cityLevel)) {
-        throw new BadRequestException("领地已达当前主城上限，扩建主城后再占领新区块");
-      }
-      const existingBlockOwner = await tx.worldBlockOwnership.findUnique({
-        where: { eraId_tileId: { eraId: defaultEraId, tileId: targetTile.tileId } },
-      });
-
-      if (existingBlockOwner) {
-        throw new BadRequestException(
-          existingBlockOwner.playerId === player.playerId ? "你已经拥有该区块" : "该区块已有归属",
-        );
-      }
-
-      const now = new Date();
-      const occupation = await tx.territoryOccupation.create({
-        data: {
-          occupationId: `occupation_${randomUUID()}`,
+      const garrison = await tx.territoryGarrison.upsert({
+        where: { eraId_tileId: { eraId: defaultEraId, tileId } },
+        create: {
+          garrisonId: `garrison_${randomUUID()}`,
           playerId: player.playerId,
           eraId: defaultEraId,
-          sourceMarchId: march.marchId,
-          tileId: targetTile.tileId,
-          nodeId: targetTile.nodes[0]?.nodeId ?? null,
-          provinceId: targetTile.provinceId,
-          commanderyId: targetTile.commanderyId,
-          occupationType: getOccupationType(targetTile),
-          status: "occupied",
-          productionSnapshot: createProductionSnapshot(
-            targetTile,
-          ) as unknown as Prisma.InputJsonValue,
-          defenseSnapshot: createOccupationDefenseSnapshot(
-            targetTile,
-          ) as unknown as Prisma.InputJsonValue,
-          occupiedAt: now,
-          idempotencyKey: input.idempotencyKey,
-          configVersion: occupationConfigVersion,
+          tileId,
+          sourceCityId: city.cityId,
+          soldierCount,
+          defensePower: soldierCount * 2,
+        },
+        update: {
+          soldierCount: (current?.soldierCount ?? 0) + soldierCount,
+          defensePower: (current?.defensePower ?? 0) + soldierCount * 2,
         },
       });
-      await tx.worldBlockOwnership.create({
+      const updatedCity = await tx.playerCity.update({
+        where: { cityId: city.cityId },
         data: {
-          ownershipId: `block_owner_${randomUUID()}`,
-          playerId: player.playerId,
-          eraId: defaultEraId,
-          tileId: targetTile.tileId,
-          provinceId: targetTile.provinceId,
-          commanderyId: targetTile.commanderyId,
-          terrainType: targetTile.terrainType,
-          ownershipType: "occupation",
-          status: "owned",
-          sourceType: "occupation",
-          sourceId: occupation.occupationId,
-          purchaseCost: 0n,
-          idempotencyKey: `${input.idempotencyKey}:block_ownership`,
-          configVersion: worldConfigVersion,
+          resourceSnapshot: {
+            ...resources,
+            soldier: String(availableSoldiers - soldierCount),
+          } as Prisma.InputJsonValue,
         },
       });
-      const updatedMarch = await tx.marchQueue.update({
-        where: { marchId: march.marchId },
-        data: { status: "resolved", resolvedAt: now },
-      });
-      const occupations = await tx.territoryOccupation.findMany({
-        where: {
-          playerId: player.playerId,
-          provinceId: targetTile.provinceId,
-          status: "occupied",
-        },
-        include: { player: true },
-      });
-      const ownerships = await tx.worldBlockOwnership.findMany({
-        where: { eraId: defaultEraId, provinceId: targetTile.provinceId, status: "owned" },
-        include: { player: true },
-      });
-      const responseData: OccupyWorldResponse = {
-        record_id: `occupy_${randomUUID()}`,
-        occupation: this.toOccupationState({ ...occupation, player }),
-        march: this.toMarchState(updatedMarch, sourceCity),
+      const provinceId = ownership.provinceId;
+      const [ownerships, garrisons] = await Promise.all([
+        tx.worldBlockOwnership.findMany({
+          where: { eraId: defaultEraId, provinceId, status: "owned" },
+          include: { player: true },
+        }),
+        tx.territoryGarrison.findMany({
+          where: {
+            eraId: defaultEraId,
+            tileId: { in: getWorldTilesByProvince(provinceId).map((tile) => tile.tileId) },
+          },
+          include: { player: true },
+        }),
+      ]);
+      const cityState = this.toCityState(updatedCity);
+      if (!cityState) {
+        throw new BadRequestException("主城状态读取失败");
+      }
+      const responseData: DefendWorldResponse = {
+        record_id: `defend_${randomUUID()}`,
+        garrison: this.toGarrisonState(garrison, player.playerId),
+        city: cityState,
         map: this.buildMapResponse({
-          occupations,
+          garrisons,
           ownerships,
           playerId: player.playerId,
-          provinceId: targetTile.provinceId,
+          provinceId,
           view: "detail",
-          viewport: viewportAroundTile(targetTile),
+          viewport: viewportAroundTile(requireMapTile(tileId)),
         }),
       };
 
@@ -588,16 +542,15 @@ export class WorldService {
           auditLogId: `audit_${randomUUID()}`,
           accountId: input.accountId,
           playerId: player.playerId,
-          action: "world_occupy_tile",
+          action: "world_defend_tile",
           targetType: "map_tile",
-          targetId: targetTile.tileId,
-          afterSnapshot: responseData.occupation as unknown as Prisma.InputJsonValue,
-          reason: "九州城池纪元清野占领",
+          targetId: tileId,
+          afterSnapshot: responseData.garrison as unknown as Prisma.InputJsonValue,
+          reason: "九州领地派遣驻军",
           idempotencyKey: input.idempotencyKey,
-          configVersion: occupationConfigVersion,
+          configVersion: garrisonConfigVersion,
         },
       });
-
       await tx.idempotencyRecord.create({
         data: {
           idempotencyKey: input.idempotencyKey,
@@ -731,23 +684,24 @@ export class WorldService {
         },
         include: { player: true },
       });
-      const [ownerships, occupations, updatedWallet] = await Promise.all([
+      const [ownerships, garrisons, updatedWallet] = await Promise.all([
         tx.worldBlockOwnership.findMany({
           where: { eraId: defaultEraId, provinceId: targetTile.provinceId, status: "owned" },
           include: { player: true },
         }),
-        tx.territoryOccupation.findMany({
+        tx.territoryGarrison.findMany({
           where: {
-            playerId: player.playerId,
-            provinceId: targetTile.provinceId,
-            status: "occupied",
+            eraId: defaultEraId,
+            tileId: {
+              in: getWorldTilesByProvince(targetTile.provinceId).map((tile) => tile.tileId),
+            },
           },
           include: { player: true },
         }),
         tx.playerWallet.findUniqueOrThrow({ where: { playerId: player.playerId } }),
       ]);
       const map = this.buildMapResponse({
-        occupations,
+        garrisons,
         ownerships,
         playerId: player.playerId,
         provinceId: targetTile.provinceId,
@@ -815,19 +769,20 @@ export class WorldService {
     const player = input.accountId
       ? await this.prisma.player.findUnique({ where: { accountId: input.accountId } })
       : null;
-    const occupations = player
-      ? await this.prisma.territoryOccupation.findMany({
-          where: { playerId: player.playerId, provinceId, status: "occupied" },
-          include: { player: true },
-        })
-      : [];
-    const ownerships = await this.prisma.worldBlockOwnership.findMany({
-      where: { eraId: defaultEraId, provinceId, status: "owned" },
-      include: { player: true },
-    });
+    const provinceTileIds = getWorldTilesByProvince(provinceId).map((tile) => tile.tileId);
+    const [ownerships, garrisons] = await Promise.all([
+      this.prisma.worldBlockOwnership.findMany({
+        where: { eraId: defaultEraId, provinceId, status: "owned" },
+        include: { player: true },
+      }),
+      this.prisma.territoryGarrison.findMany({
+        where: { eraId: defaultEraId, tileId: { in: provinceTileIds } },
+        include: { player: true },
+      }),
+    ]);
 
     return this.buildMapResponse({
-      occupations,
+      garrisons,
       ownerships,
       playerId: player?.playerId ?? null,
       provinceId,
@@ -837,7 +792,7 @@ export class WorldService {
   }
 
   private buildMapResponse(input: {
-    occupations: OccupationWithPlayer[];
+    garrisons: TerritoryGarrisonWithPlayer[];
     ownerships: WorldBlockOwnershipWithPlayer[];
     playerId: string | null;
     provinceId: string;
@@ -850,9 +805,7 @@ export class WorldService {
       throw new BadRequestException("未知州域");
     }
 
-    const occupationMap = new Map(
-      input.occupations.map((occupation) => [occupation.tileId, occupation]),
-    );
+    const garrisonMap = new Map(input.garrisons.map((garrison) => [garrison.tileId, garrison]));
     const ownershipMap = new Map(
       input.ownerships.map((ownership) => [ownership.tileId, ownership]),
     );
@@ -865,7 +818,7 @@ export class WorldService {
         this.toMapTileState(
           tile,
           ownershipMap.get(tile.tileId) ?? null,
-          occupationMap.get(tile.tileId) ?? null,
+          garrisonMap.get(tile.tileId) ?? null,
           purchaseContext,
         ),
       );
@@ -891,13 +844,6 @@ export class WorldService {
       mini_map_summary: miniMapSummary,
       visible_tile_count: tiles.filter((tile) => tile.visibility === "visible").length,
       occupiable_tile_count: tiles.filter((tile) => tile.occupiable).length,
-      my_occupations: input.occupations
-        .filter(
-          (occupation) =>
-            occupation.playerId === input.playerId &&
-            isTileInViewport(requireMapTile(occupation.tileId), viewport),
-        )
-        .map((occupation) => this.toOccupationState(occupation)),
       player_city_hint: province.birthAvailable
         ? `${province.name}已开放出生，系统会从安全平原无主区块中随机建立主城。`
         : `${province.name}暂不开放出生，可先作为州战目标预览。`,
@@ -974,7 +920,7 @@ export class WorldService {
   private toMapTileState(
     tile: (typeof worldTileConfigs)[number],
     ownership: WorldBlockOwnershipWithPlayer | null = null,
-    occupation: OccupationWithPlayer | null = null,
+    garrison: TerritoryGarrisonWithPlayer | null = null,
     purchaseContext: PurchaseContext = emptyPurchaseContext,
   ): MapTileState {
     const province = this.requireProvince(tile.provinceId);
@@ -1001,7 +947,7 @@ export class WorldService {
       x: tile.x,
       y: tile.y,
       visibility: "visible",
-      status: ownership || occupation ? "occupied" : tile.status,
+      status: ownership ? "occupied" : tile.status,
       controllable: tile.controllable,
       occupiable: tile.occupiable,
       protected: tile.protected,
@@ -1009,29 +955,16 @@ export class WorldService {
       travel_seconds: tile.travelSeconds,
       labels: tile.labels,
       state_summary: tile.stateSummary,
-      owner: this.toOwnerState(tile.ownerProvinceId, occupation, ownership),
+      owner: this.toOwnerState(tile.ownerProvinceId, ownership),
       ownership: this.toBlockOwnershipState(ownership),
-      occupation: occupation ? this.toOccupationState(occupation) : null,
-      garrison: occupation
-        ? {
-            tile_id: occupation.tileId,
-            owner_player_id: occupation.playerId,
-            soldier_count: normalizeOccupationDefenseSnapshot(occupation.defenseSnapshot)
-              .stationed_soldiers,
-            defense_power: normalizeOccupationDefenseSnapshot(occupation.defenseSnapshot)
-              .guard_power,
-            is_mine: false,
-            updated_at: occupation.updatedAt.toISOString(),
-          }
-        : null,
+      garrison: garrison ? this.toGarrisonState(garrison, purchaseContext.playerId) : null,
       purchase_state: buildPurchaseState(tile, ownership, purchaseContext),
-      nodes: tile.nodes.map((node) => this.toTerritoryNodeState(node, occupation, ownership)),
+      nodes: tile.nodes.map((node) => this.toTerritoryNodeState(node, ownership)),
     };
   }
 
   private toTerritoryNodeState(
     node: TerritoryNodeConfig,
-    occupation: OccupationWithPlayer | null = null,
     ownership: WorldBlockOwnershipWithPlayer | null = null,
   ): TerritoryNodeState {
     return {
@@ -1040,19 +973,18 @@ export class WorldService {
       node_type: node.nodeType,
       node_name: node.nodeName,
       level: node.level,
-      status: occupation || ownership ? "occupied" : node.status,
+      status: ownership ? "occupied" : node.status,
       occupiable: node.occupiable,
       contestable: node.contestable,
       protected: node.protected,
       production_summary: node.productionSummary,
       defense_summary: node.defenseSummary,
-      owner: this.toOwnerState(node.ownerProvinceId, occupation, ownership),
+      owner: this.toOwnerState(node.ownerProvinceId, ownership),
     };
   }
 
   private toOwnerState(
     ownerProvinceId: string | null,
-    occupation: OccupationWithPlayer | null = null,
     ownership: WorldBlockOwnershipWithPlayer | null = null,
   ): WorldOwnerState {
     const province = ownerProvinceId
@@ -1060,17 +992,14 @@ export class WorldService {
       : null;
 
     return {
-      owner_player_id: ownership?.playerId ?? occupation?.playerId ?? null,
-      owner_player_name: ownership?.player.name ?? occupation?.player.name ?? null,
+      owner_player_id: ownership?.playerId ?? null,
+      owner_player_name: ownership?.player.name ?? null,
       owner_sect_id: null,
       owner_sect_name: null,
-      owner_province_id:
-        ownership?.provinceId ?? occupation?.provinceId ?? province?.provinceId ?? null,
-      owner_province_name: occupation
-        ? this.requireProvince(occupation.provinceId).name
-        : ownership
-          ? this.requireProvince(ownership.provinceId).name
-          : (province?.name ?? null),
+      owner_province_id: ownership?.provinceId ?? province?.provinceId ?? null,
+      owner_province_name: ownership
+        ? this.requireProvince(ownership.provinceId).name
+        : (province?.name ?? null),
     };
   }
 
@@ -1083,6 +1012,20 @@ export class WorldService {
       owner_player_name: ownership?.player.name ?? null,
       ownership_type: ownership ? normalizeOwnershipType(ownership.ownershipType) : null,
       owned_at: ownership?.ownedAt.toISOString() ?? null,
+    };
+  }
+
+  private toGarrisonState(
+    garrison: TerritoryGarrison,
+    playerId: string | null,
+  ): MapTileState["garrison"] {
+    return {
+      tile_id: garrison.tileId,
+      owner_player_id: garrison.playerId,
+      soldier_count: garrison.soldierCount,
+      defense_power: garrison.defensePower,
+      is_mine: garrison.playerId === playerId,
+      updated_at: garrison.updatedAt.toISOString(),
     };
   }
 
@@ -1243,39 +1186,10 @@ export class WorldService {
       resolved_at: march.resolvedAt?.toISOString() ?? null,
       action_hint:
         status === "arrived"
-          ? "队伍已抵达，后续可接入清野或占领结算。"
+          ? march.marchType === "clear_wild"
+            ? "队伍已抵达，清野只解除危险，土地仍需另行购买。"
+            : "队伍已抵达，可以查看目标地块情报。"
           : "队伍正在行军，抵达后可处理目标地块。",
-    };
-  }
-
-  private toOccupationState(occupation: OccupationWithPlayer): TerritoryOccupationState {
-    const targetTile = requireMapTile(occupation.tileId);
-    const province = this.requireProvince(occupation.provinceId);
-    const commandery = province.commanderies.find(
-      (item) => item.commanderyId === occupation.commanderyId,
-    );
-
-    if (!commandery) {
-      throw new BadRequestException("占领郡域配置错误");
-    }
-
-    return {
-      occupation_id: occupation.occupationId,
-      tile_id: occupation.tileId,
-      node_id: occupation.nodeId,
-      tile_name: targetTile.tileName,
-      province_id: occupation.provinceId,
-      province_name: province.name,
-      commandery_id: occupation.commanderyId,
-      commandery_name: commandery.name,
-      occupation_type: normalizeOccupationType(occupation.occupationType),
-      status: normalizeOccupationStatus(occupation.status),
-      owner_player_id: occupation.playerId,
-      owner_player_name: occupation.player.name,
-      production: normalizeProductionSnapshot(occupation.productionSnapshot),
-      defense: normalizeOccupationDefenseSnapshot(occupation.defenseSnapshot),
-      occupied_at: occupation.occupiedAt.toISOString(),
-      updated_at: occupation.updatedAt.toISOString(),
     };
   }
 }
@@ -1298,16 +1212,6 @@ function normalizeStartMarchBody(body: StartWorldMarchRequest): Required<StartWo
     source_city_id: sourceCityId ?? "",
     march_type: marchType,
   };
-}
-
-function normalizeOccupyWorldBody(body: OccupyWorldRequest): OccupyWorldRequest {
-  const marchId = body?.march_id?.trim();
-
-  if (!marchId) {
-    throw new BadRequestException("请选择已抵达的行军队列");
-  }
-
-  return { march_id: marchId };
 }
 
 function normalizePurchaseWorldBlockBody(
@@ -1440,20 +1344,6 @@ function requireMarchTarget(sourceCity: PlayerCity, targetTileId: string): MapTi
 
   if (!targetTile.controllable) {
     throw new BadRequestException("该地块暂不可操作");
-  }
-
-  return targetTile;
-}
-
-function requireOccupationTarget(targetTileId: string): MapTileConfig {
-  const targetTile = requireMapTile(targetTileId);
-
-  if (!targetTile.occupiable || targetTile.protected || targetTile.status === "locked") {
-    throw new BadRequestException("该地块暂不可占领");
-  }
-
-  if (targetTile.tileType === "main_city" || targetTile.tileType === "capital") {
-    throw new BadRequestException("R1 阶段暂不开放占领该目标");
   }
 
   return targetTile;
@@ -1627,13 +1517,7 @@ function buildMiniMapSummary(input: {
 function normalizeOwnershipType(
   value: string,
 ): NonNullable<MapTileState["ownership"]["ownership_type"]> {
-  if (
-    value === "main_city" ||
-    value === "sub_city" ||
-    value === "purchase" ||
-    value === "occupation" ||
-    value === "system"
-  ) {
+  if (value === "main_city" || value === "sub_city" || value === "purchase" || value === "system") {
     return value;
   }
 
@@ -1659,113 +1543,6 @@ function getComputedMarchStatus(march: MarchQueue): MarchQueueStatus {
 
 function normalizeMarchType(value: string): MarchType {
   return validMarchTypes.has(value as MarchType) ? (value as MarchType) : "scout";
-}
-
-function getOccupationType(tile: MapTileConfig): TerritoryOccupationType {
-  if (tile.tileType === "wild") {
-    return "wild";
-  }
-
-  if (tile.tileType === "resource") {
-    return "resource";
-  }
-
-  if (tile.tileType === "pass") {
-    return "pass";
-  }
-
-  if (tile.tileType === "tower") {
-    return "tower";
-  }
-
-  if (tile.tileType === "capital") {
-    return "capital";
-  }
-
-  return "vein";
-}
-
-function normalizeOccupationType(value: string): TerritoryOccupationType {
-  if (
-    value === "wild" ||
-    value === "resource" ||
-    value === "vein" ||
-    value === "pass" ||
-    value === "capital" ||
-    value === "tower"
-  ) {
-    return value;
-  }
-
-  return "wild";
-}
-
-function normalizeOccupationStatus(value: string): TerritoryOccupationStatus {
-  if (
-    value === "occupied" ||
-    value === "contested" ||
-    value === "protected" ||
-    value === "abandoned"
-  ) {
-    return value;
-  }
-
-  return "occupied";
-}
-
-function createProductionSnapshot(tile: MapTileConfig): TerritoryProductionSnapshot {
-  const base = Math.max(1, tile.dangerLevel);
-
-  if (tile.tileType === "resource") {
-    return {
-      spirit_stone_per_hour: 18 + base * 2,
-      grain_per_hour: 20,
-      ore_per_hour: 12 + base,
-      wood_per_hour: 8,
-      herb_per_hour: 6,
-      province_score_per_day: 8 + base,
-    };
-  }
-
-  return {
-    spirit_stone_per_hour: 8 + base,
-    grain_per_hour: 12 + base,
-    ore_per_hour: 4,
-    wood_per_hour: 4,
-    herb_per_hour: 4,
-    province_score_per_day: 3 + base,
-  };
-}
-
-function createOccupationDefenseSnapshot(tile: MapTileConfig): TerritoryDefenseSnapshot {
-  return {
-    guard_power: 80 + tile.dangerLevel * 15,
-    stationed_soldiers: 30,
-    defense_hint: "先锋队已留下驻守，后续可接入驻防调整。",
-  };
-}
-
-function normalizeProductionSnapshot(value: Prisma.JsonValue): TerritoryProductionSnapshot {
-  const record = isRecord(value) ? value : {};
-
-  return {
-    spirit_stone_per_hour: toNumber(record.spirit_stone_per_hour, 0),
-    grain_per_hour: toNumber(record.grain_per_hour, 0),
-    ore_per_hour: toNumber(record.ore_per_hour, 0),
-    wood_per_hour: toNumber(record.wood_per_hour, 0),
-    herb_per_hour: toNumber(record.herb_per_hour, 0),
-    province_score_per_day: toNumber(record.province_score_per_day, 0),
-  };
-}
-
-function normalizeOccupationDefenseSnapshot(value: Prisma.JsonValue): TerritoryDefenseSnapshot {
-  const record = isRecord(value) ? value : {};
-
-  return {
-    guard_power: toNumber(record.guard_power, 0),
-    stationed_soldiers: toNumber(record.stationed_soldiers, 0),
-    defense_hint: toStringValue(record.defense_hint, "已留下驻守。"),
-  };
 }
 
 function normalizeTeamSnapshot(value: Prisma.JsonValue) {

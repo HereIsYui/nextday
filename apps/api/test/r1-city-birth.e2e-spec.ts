@@ -41,34 +41,37 @@ describe("R1 出生州选择与主城建立", () => {
     ).toEqual(["ji", "yan", "qing", "xu", "yang", "jing", "yu", "liang", "yong"]);
     expect(overview.body.data.birth_options[0]).toMatchObject({
       province_id: "ji",
-      available: true,
       recommended: true,
     });
+    expect(
+      overview.body.data.birth_options.some((option: { available: boolean }) => option.available),
+    ).toBe(true);
     expect(overview.body.data.birth_options[0].tile_name).toContain("安全平原随机建城");
     expect(overview.body.data.strategic_hint).toContain("安全平原");
   });
 
   it("玩家可以在出生州建立主城，重复幂等请求不会创建第二座主城", async () => {
     const { token, playerId } = await createR1CityPlayer(app, "主城");
+    const birthOption = await getAvailableBirthOption(app, token);
     const idempotencyKey = `idem_r1_city_settle_${Date.now()}_${randomSuffix()}`;
 
     const settle = await request(app.getHttpServer())
       .post("/api/city/settle")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", idempotencyKey)
-      .send({ province_id: "ji", commandery_id: "ji_commandery_1", city_name: "北境仙城" })
+      .send({ province_id: birthOption.province_id, city_name: "北境仙城" })
       .expect(201);
 
     expect(settle.body.data.city).toMatchObject({
       city_type: "main",
-      province_id: "ji",
-      province_name: "冀州",
+      province_id: birthOption.province_id,
+      province_name: birthOption.province_name,
       city_name: "北境仙城",
       city_level: 1,
       status: "protected",
     });
-    expect(settle.body.data.city.commandery_id).toMatch(/^ji_commandery_/);
-    expect(settle.body.data.city.tile_id).toMatch(/^ji_block_/);
+    expect(settle.body.data.city.commandery_id).toContain(`${birthOption.province_id}_commandery_`);
+    expect(settle.body.data.city.tile_id).toContain(`${birthOption.province_id}_block_`);
     expect(settle.body.data.city.protection_until).not.toBeNull();
     expect(settle.body.data.city.resources).toMatchObject({
       spirit_stone: "800",
@@ -82,7 +85,7 @@ describe("R1 出生州选择与主城建立", () => {
       .post("/api/city/settle")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", idempotencyKey)
-      .send({ province_id: "ji", commandery_id: "ji_commandery_1", city_name: "北境仙城" })
+      .send({ province_id: birthOption.province_id, city_name: "北境仙城" })
       .expect(201);
 
     expect(duplicate.body.data.city.city_id).toBe(settle.body.data.city.city_id);
@@ -97,7 +100,7 @@ describe("R1 出生州选择与主城建立", () => {
 
     const map = await request(app.getHttpServer())
       .get("/api/world/map")
-      .query({ province_id: "ji", view: "detail" })
+      .query({ province_id: birthOption.province_id, view: "detail" })
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
     const cityTile = map.body.data.tiles.find(
@@ -123,12 +126,13 @@ describe("R1 出生州选择与主城建立", () => {
       .expect(400);
 
     const settled = await createR1CityPlayer(app, "重复");
+    const settledBirthOption = await getAvailableBirthOption(app, settled.token);
 
     await request(app.getHttpServer())
       .post("/api/city/settle")
       .set("Authorization", `Bearer ${settled.token}`)
       .set("Idempotency-Key", `idem_r1_city_once_${Date.now()}_${randomSuffix()}`)
-      .send({ province_id: "yan", city_name: "礼阵仙城" })
+      .send({ province_id: settledBirthOption.province_id, city_name: "礼阵仙城" })
       .expect(201);
 
     await request(app.getHttpServer())
@@ -140,17 +144,18 @@ describe("R1 出生州选择与主城建立", () => {
 
     const first = await createR1CityPlayer(app, "同州甲");
     const second = await createR1CityPlayer(app, "同州乙");
+    const sharedBirthOption = await getAvailableBirthOption(app, first.token);
     const firstSettle = await request(app.getHttpServer())
       .post("/api/city/settle")
       .set("Authorization", `Bearer ${first.token}`)
       .set("Idempotency-Key", `idem_r1_city_same_a_${Date.now()}_${randomSuffix()}`)
-      .send({ province_id: "ji", city_name: "同州甲城" })
+      .send({ province_id: sharedBirthOption.province_id, city_name: "同州甲城" })
       .expect(201);
     const secondSettle = await request(app.getHttpServer())
       .post("/api/city/settle")
       .set("Authorization", `Bearer ${second.token}`)
       .set("Idempotency-Key", `idem_r1_city_same_b_${Date.now()}_${randomSuffix()}`)
-      .send({ province_id: "ji", city_name: "同州乙城" })
+      .send({ province_id: sharedBirthOption.province_id, city_name: "同州乙城" })
       .expect(201);
 
     expect(secondSettle.body.data.city.tile_id).not.toBe(firstSettle.body.data.city.tile_id);
@@ -175,6 +180,23 @@ async function createR1CityPlayer(
     .expect(201);
 
   return { token, playerId: createResponse.body.data.profile.player.player_id as string };
+}
+
+async function getAvailableBirthOption(
+  app: INestApplication,
+  token: string,
+): Promise<{ province_id: string; province_name: string }> {
+  const overview = await request(app.getHttpServer())
+    .get("/api/city/overview")
+    .set("Authorization", `Bearer ${token}`)
+    .expect(200);
+  const option = overview.body.data.birth_options.find(
+    (item: { available: boolean }) => item.available,
+  ) as { province_id: string; province_name: string } | undefined;
+  if (!option) {
+    throw new Error("当前开发世界没有可用出生州");
+  }
+  return option;
 }
 
 function randomSuffix(): string {

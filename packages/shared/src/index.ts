@@ -623,7 +623,7 @@ export interface WorldBlockOwnershipState {
   ownership_id: string | null;
   owner_player_id: string | null;
   owner_player_name: string | null;
-  ownership_type: "main_city" | "sub_city" | "purchase" | "occupation" | "system" | null;
+  ownership_type: "main_city" | "sub_city" | "purchase" | "system" | null;
   owned_at: string | null;
 }
 
@@ -659,7 +659,6 @@ export interface MapTileState {
   state_summary: string;
   owner: WorldOwnerState;
   ownership: WorldBlockOwnershipState;
-  occupation: TerritoryOccupationState | null;
   garrison: TerritoryGarrisonState | null;
   purchase_state: WorldBlockPurchaseState;
   nodes: TerritoryNodeState[];
@@ -696,7 +695,6 @@ export interface WorldMapResponse {
   mini_map_summary: WorldMiniMapSummary;
   visible_tile_count: number;
   occupiable_tile_count: number;
-  my_occupations: TerritoryOccupationState[];
   player_city_hint: string;
   config_version: string;
 }
@@ -839,7 +837,7 @@ export interface EstablishSubCityResponse {
 
 export type MarchQueueStatus = "marching" | "arrived" | "resolved" | "cancelled";
 
-export type MarchType = "scout" | "clear_wild" | "occupy" | "reinforce" | "siege";
+export type MarchType = "scout" | "clear_wild" | "reinforce" | "siege";
 
 export interface MarchTeamSnapshot {
   leader_name: string;
@@ -888,25 +886,6 @@ export interface StartWorldMarchResponse {
   marches: WorldMarchListResponse;
 }
 
-export type TerritoryOccupationType = "wild" | "resource" | "vein" | "pass" | "capital" | "tower";
-
-export type TerritoryOccupationStatus = "occupied" | "contested" | "protected" | "abandoned";
-
-export interface TerritoryProductionSnapshot {
-  spirit_stone_per_hour: number;
-  grain_per_hour: number;
-  ore_per_hour: number;
-  wood_per_hour: number;
-  herb_per_hour: number;
-  province_score_per_day: number;
-}
-
-export interface TerritoryDefenseSnapshot {
-  guard_power: number;
-  stationed_soldiers: number;
-  defense_hint: string;
-}
-
 export interface TerritoryGarrisonState {
   tile_id: string;
   owner_player_id: string;
@@ -939,36 +918,6 @@ export interface SiegeWorldResponse {
   attacker_power: number;
   defender_power: number;
   city: PlayerCityState | null;
-  map: WorldMapResponse;
-}
-
-export interface TerritoryOccupationState {
-  occupation_id: string;
-  tile_id: string;
-  node_id: string | null;
-  tile_name: string;
-  province_id: string;
-  province_name: string;
-  commandery_id: string;
-  commandery_name: string;
-  occupation_type: TerritoryOccupationType;
-  status: TerritoryOccupationStatus;
-  owner_player_id: string;
-  owner_player_name: string;
-  production: TerritoryProductionSnapshot;
-  defense: TerritoryDefenseSnapshot;
-  occupied_at: string;
-  updated_at: string;
-}
-
-export interface OccupyWorldRequest {
-  march_id: string;
-}
-
-export interface OccupyWorldResponse {
-  record_id: string;
-  occupation: TerritoryOccupationState;
-  march: MarchQueueState;
   map: WorldMapResponse;
 }
 

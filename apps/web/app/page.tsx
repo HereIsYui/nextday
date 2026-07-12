@@ -1768,6 +1768,42 @@ export default function HomePage() {
     });
   }
 
+  async function handleDefendWorld(tile: MapTileState, targetSoldierCount: number) {
+    if (tile.ownership.owner_player_id !== activePlayerId) {
+      setMessage("只能调整自己领地的驻军");
+      return;
+    }
+
+    await runAction(targetSoldierCount === 0 ? "撤回驻军" : "调整驻军", async () => {
+      const response = await client.defendWorld(
+        { soldier_count: targetSoldierCount, tile_id: tile.tile_id },
+        createIdempotencyKey(`web_world_defend_${tile.tile_id}_${targetSoldierCount}`),
+      );
+      ensureOk(response);
+      setWorldMap(response.data.map);
+      setCityOverview((previous) =>
+        previous ? { ...previous, main_city: response.data.city } : previous,
+      );
+      rememberExperience(undefined, {
+        summary:
+          response.data.operation === "withdraw"
+            ? `${tile.tile_name}的驻军已全部撤回主城。`
+            : response.data.operation === "decrease"
+              ? `${tile.tile_name}驻军已调整为 ${targetSoldierCount}，撤回的道兵已返回主城。`
+              : response.data.operation === "unchanged"
+                ? `${tile.tile_name}维持 ${targetSoldierCount} 名驻军。`
+                : `${tile.tile_name}驻军已增加至 ${targetSoldierCount}。`,
+        tags: ["领地", targetSoldierCount === 0 ? "撤防" : "驻防调整"],
+        title: targetSoldierCount === 0 ? "撤回驻军" : "调整驻防",
+        tone: "success",
+      });
+      await refreshWorldState(
+        targetSoldierCount === 0 ? `已撤回${tile.tile_name}驻军` : `${tile.tile_name}驻军已调整`,
+        tile.province_id,
+      );
+    });
+  }
+
   async function handleExpandMainCity() {
     if (!worldMainCity || !cityExpansion) {
       setMessage("主城领地状态同步中");
@@ -3295,6 +3331,7 @@ export default function HomePage() {
           onClaimCultivation={handleClaimCultivation}
           onCollectTerritory={handleCollectTerritory}
           onEstablishSubCity={handleEstablishSubCity}
+          onDefend={handleDefendWorld}
           onExpandCity={handleExpandMainCity}
           onForge={handleCraftForge}
           onHarvestHerb={handleHarvestHerb}
@@ -6155,6 +6192,7 @@ function WorldMapScreen({
   onBreakthrough,
   onClaimCultivation,
   onCollectTerritory,
+  onDefend,
   onEstablishSubCity,
   onExpandCity,
   onForge,
@@ -6181,6 +6219,7 @@ function WorldMapScreen({
   onBreakthrough: () => void | Promise<void>;
   onClaimCultivation: () => void | Promise<void>;
   onCollectTerritory: () => void | Promise<void>;
+  onDefend: (tile: MapTileState, targetSoldierCount: number) => void | Promise<void>;
   onEstablishSubCity: (tile: MapTileState) => void | Promise<void>;
   onExpandCity: () => void | Promise<void>;
   onForge: () => void | Promise<void>;
@@ -6210,7 +6249,12 @@ function WorldMapScreen({
     y: number;
   } | null>(null);
   const [loadingTile, setLoadingTile] = useState(false);
+  const [garrisonTargetCount, setGarrisonTargetCount] = useState(0);
   const [selectedBuildingId, setSelectedBuildingId] = useState<CityInteriorBuildingId>("city_hall");
+
+  useEffect(() => {
+    setGarrisonTargetCount(selectedTile?.garrison?.soldier_count ?? 0);
+  }, [selectedTile?.garrison?.soldier_count]);
 
   const selectedBuilding =
     cityInteriorBuildings.find((building) => building.id === selectedBuildingId) ??
@@ -6702,15 +6746,70 @@ function WorldMapScreen({
                   >
                     完成清野
                   </Button>
-                ) : selectedTile.ownership.owner_player_id === activePlayerId &&
-                  selectedTile.terrain_type === "plain" &&
-                  selectedTile.ownership.ownership_type !== "sub_city" ? (
-                  <Button
-                    disabled={busy || (city?.city_level ?? 0) < 2}
-                    onClick={() => onEstablishSubCity(selectedTile)}
-                  >
-                    建立分城
-                  </Button>
+                ) : selectedTile.ownership.owner_player_id === activePlayerId ? (
+                  <div className="world-garrison-controls">
+                    {selectedTile.terrain_type === "plain" &&
+                    selectedTile.ownership.ownership_type !== "sub_city" ? (
+                      <Button
+                        disabled={busy || (city?.city_level ?? 0) < 2}
+                        onClick={() => onEstablishSubCity(selectedTile)}
+                      >
+                        建立分城
+                      </Button>
+                    ) : null}
+                    <label>
+                      目标驻军
+                      <input
+                        min={0}
+                        onChange={(event) =>
+                          setGarrisonTargetCount(
+                            Math.max(0, Math.floor(Number(event.target.value) || 0)),
+                          )
+                        }
+                        step={1}
+                        type="number"
+                        value={garrisonTargetCount}
+                      />
+                    </label>
+                    <Button
+                      disabled={busy}
+                      onClick={async () => {
+                        await onDefend(selectedTile, garrisonTargetCount);
+                        const refreshedTile = await onLoadTile(
+                          selectedTile.province_id,
+                          selectedTile.x,
+                          selectedTile.y,
+                        );
+                        if (refreshedTile) {
+                          setSelectedTile(refreshedTile);
+                        }
+                      }}
+                    >
+                      调整驻防
+                    </Button>
+                    {selectedTile.garrison ? (
+                      <Button
+                        disabled={busy}
+                        onClick={async () => {
+                          await onDefend(selectedTile, 0);
+                          setGarrisonTargetCount(0);
+                          const refreshedTile = await onLoadTile(
+                            selectedTile.province_id,
+                            selectedTile.x,
+                            selectedTile.y,
+                          );
+                          if (refreshedTile) {
+                            setSelectedTile(refreshedTile);
+                          }
+                        }}
+                      >
+                        全部撤回
+                      </Button>
+                    ) : null}
+                    <span>
+                      主城可调度 {city.resources.soldier} 名道兵，调低驻军会自动返还主城。
+                    </span>
+                  </div>
                 ) : selectedTile.purchase_state.purchasable ? (
                   <Button disabled={busy} onClick={() => onPurchase(selectedTile)}>
                     购买区块

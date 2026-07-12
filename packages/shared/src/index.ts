@@ -930,6 +930,8 @@ export interface DefendWorldRequest {
 
 export interface DefendWorldResponse {
   record_id: string;
+  operation: "increase" | "decrease" | "withdraw" | "unchanged";
+  target_soldier_count: number;
   garrison: TerritoryGarrisonState | null;
   city: PlayerCityState;
   map: WorldMapResponse;

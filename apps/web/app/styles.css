@@ -4913,6 +4913,35 @@ details.event-boundary {
   width: 100%;
 }
 
+.text-game-shell.world-screen .world-garrison-controls {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.text-game-shell.world-screen .world-garrison-controls label {
+  color: #5c5448;
+  display: grid;
+  font-size: 13px;
+  gap: 4px;
+  line-height: 1.4;
+  min-width: 0;
+}
+
+.text-game-shell.world-screen .world-garrison-controls input {
+  background: rgba(255, 253, 247, 0.92);
+  border: 1px solid #9b8e78;
+  color: #211e1a;
+  min-height: 36px;
+  min-width: 0;
+  padding: 6px 8px;
+  width: 100%;
+}
+
+.text-game-shell.world-screen .world-garrison-controls > span {
+  overflow-wrap: anywhere;
+}
+
 .text-game-shell.world-screen.city-screen .city-screen-stage {
   display: grid;
   min-height: 0;

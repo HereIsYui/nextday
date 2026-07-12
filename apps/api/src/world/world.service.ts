@@ -628,11 +628,14 @@ export class WorldService {
     endpoint: string;
   }): Promise<DefendWorldResponse> {
     const tileId = input.body.tile_id?.trim();
-    const soldierCount = Math.floor(input.body.soldier_count);
-    if (!tileId || !Number.isFinite(soldierCount) || soldierCount <= 0) {
-      throw new BadRequestException("请选择领地并填写正整数驻军数量");
+    const targetSoldierCount = Math.floor(input.body.soldier_count);
+    if (!tileId || !Number.isFinite(targetSoldierCount) || targetSoldierCount < 0) {
+      throw new BadRequestException("请选择领地并填写不小于零的驻军数量");
     }
-    const normalizedBody: DefendWorldRequest = { tile_id: tileId, soldier_count: soldierCount };
+    const normalizedBody: DefendWorldRequest = {
+      tile_id: tileId,
+      soldier_count: targetSoldierCount,
+    };
     const requestHash = hashRequestBody(normalizedBody);
     const existingRecord = await this.prisma.idempotencyRecord.findUnique({
       where: { idempotencyKey: input.idempotencyKey },
@@ -667,34 +670,45 @@ export class WorldService {
       }
       const resources = normalizeCityResources(city.resourceSnapshot);
       const availableSoldiers = Number(resources.soldier);
-      if (availableSoldiers < soldierCount) {
-        throw new BadRequestException("主城道兵不足");
-      }
       const current = await tx.territoryGarrison.findUnique({
         where: { eraId_tileId: { eraId: defaultEraId, tileId } },
       });
-      const garrison = await tx.territoryGarrison.upsert({
-        where: { eraId_tileId: { eraId: defaultEraId, tileId } },
-        create: {
-          garrisonId: `garrison_${randomUUID()}`,
-          playerId: player.playerId,
-          eraId: defaultEraId,
-          tileId,
-          sourceCityId: city.cityId,
-          soldierCount,
-          defensePower: soldierCount * 2,
-        },
-        update: {
-          soldierCount: (current?.soldierCount ?? 0) + soldierCount,
-          defensePower: (current?.defensePower ?? 0) + soldierCount * 2,
-        },
-      });
+      if (current && current.playerId !== player.playerId) {
+        throw new BadRequestException("驻防归属异常，请刷新地图后重试");
+      }
+      const currentSoldierCount = current?.soldierCount ?? 0;
+      const soldierDelta = targetSoldierCount - currentSoldierCount;
+      if (soldierDelta > 0 && availableSoldiers < soldierDelta) {
+        throw new BadRequestException("主城道兵不足");
+      }
+      const garrison =
+        targetSoldierCount === 0
+          ? current
+            ? await tx.territoryGarrison.delete({ where: { garrisonId: current.garrisonId } })
+            : null
+          : await tx.territoryGarrison.upsert({
+              where: { eraId_tileId: { eraId: defaultEraId, tileId } },
+              create: {
+                garrisonId: `garrison_${randomUUID()}`,
+                playerId: player.playerId,
+                eraId: defaultEraId,
+                tileId,
+                sourceCityId: city.cityId,
+                soldierCount: targetSoldierCount,
+                defensePower: targetSoldierCount * 2,
+              },
+              update: {
+                soldierCount: targetSoldierCount,
+                defensePower: targetSoldierCount * 2,
+                sourceCityId: city.cityId,
+              },
+            });
       const updatedCity = await tx.playerCity.update({
         where: { cityId: city.cityId },
         data: {
           resourceSnapshot: {
             ...resources,
-            soldier: String(availableSoldiers - soldierCount),
+            soldier: String(availableSoldiers - soldierDelta),
           } as Prisma.InputJsonValue,
         },
       });
@@ -721,7 +735,12 @@ export class WorldService {
       }
       const responseData: DefendWorldResponse = {
         record_id: `defend_${randomUUID()}`,
-        garrison: this.toGarrisonState(garrison, player.playerId),
+        operation: resolveGarrisonOperation(currentSoldierCount, targetSoldierCount),
+        target_soldier_count: targetSoldierCount,
+        garrison:
+          targetSoldierCount > 0 && garrison
+            ? this.toGarrisonState(garrison, player.playerId)
+            : null,
         city: cityState,
         map: this.buildMapResponse({
           clearedTileIds: new Set(clearances.map((item) => item.tileId)),
@@ -743,7 +762,14 @@ export class WorldService {
           targetType: "map_tile",
           targetId: tileId,
           afterSnapshot: responseData.garrison as unknown as Prisma.InputJsonValue,
-          reason: "九州领地派遣驻军",
+          reason:
+            targetSoldierCount === 0
+              ? "九州领地撤回驻军"
+              : soldierDelta > 0
+                ? "九州领地增加驻军"
+                : soldierDelta < 0
+                  ? "九州领地撤回部分驻军"
+                  : "九州领地确认驻军配置",
           idempotencyKey: input.idempotencyKey,
           configVersion: garrisonConfigVersion,
         },
@@ -1885,6 +1911,19 @@ function normalizeTeamSnapshot(value: Prisma.JsonValue) {
     team_power: toNumber(record.team_power, 120),
     supply_cost: toNumber(record.supply_cost, 12),
   };
+}
+
+function resolveGarrisonOperation(
+  currentSoldierCount: number,
+  targetSoldierCount: number,
+): DefendWorldResponse["operation"] {
+  if (targetSoldierCount === currentSoldierCount) {
+    return "unchanged";
+  }
+  if (targetSoldierCount === 0) {
+    return "withdraw";
+  }
+  return targetSoldierCount > currentSoldierCount ? "increase" : "decrease";
 }
 
 function createWorldClearanceBattleLog(input: {

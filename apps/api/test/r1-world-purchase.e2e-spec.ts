@@ -177,6 +177,10 @@ describe("R1 区块购买制", () => {
       defense_power: 20,
       is_mine: true,
     });
+    expect(defend.body.data).toMatchObject({
+      operation: "increase",
+      target_soldier_count: 10,
+    });
     expect(defend.body.data.city.resources.soldier).toBe("50");
 
     const duplicateDefend = await request(app.getHttpServer())
@@ -193,6 +197,71 @@ describe("R1 区块购买制", () => {
         },
       }),
     ).toMatchObject({ soldierCount: 10, defensePower: 20 });
+
+    const unchangedDefend = await request(app.getHttpServer())
+      .post("/api/world/defend")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_purchase_defend_unchanged_${nonce()}`)
+      .send({ tile_id: adjacentTile?.tile_id, soldier_count: 10 })
+      .expect(201);
+    expect(unchangedDefend.body.data).toMatchObject({
+      operation: "unchanged",
+      target_soldier_count: 10,
+      city: { resources: { soldier: "50" } },
+    });
+
+    const decreaseKey = `idem_purchase_defend_decrease_${nonce()}`;
+    const decreasedDefend = await request(app.getHttpServer())
+      .post("/api/world/defend")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", decreaseKey)
+      .send({ tile_id: adjacentTile?.tile_id, soldier_count: 4 })
+      .expect(201);
+    expect(decreasedDefend.body.data).toMatchObject({
+      operation: "decrease",
+      target_soldier_count: 4,
+      garrison: { soldier_count: 4, defense_power: 8 },
+      city: { resources: { soldier: "56" } },
+    });
+
+    const withdrawKey = `idem_purchase_defend_withdraw_${nonce()}`;
+    const withdrawnDefend = await request(app.getHttpServer())
+      .post("/api/world/defend")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", withdrawKey)
+      .send({ tile_id: adjacentTile?.tile_id, soldier_count: 0 })
+      .expect(201);
+    expect(withdrawnDefend.body.data).toMatchObject({
+      operation: "withdraw",
+      target_soldier_count: 0,
+      garrison: null,
+      city: { resources: { soldier: "60" } },
+    });
+    expect(
+      await prisma.territoryGarrison.findUnique({
+        where: {
+          eraId_tileId: { eraId: "era_mvp_001", tileId: adjacentTile?.tile_id ?? "" },
+        },
+      }),
+    ).toBeNull();
+
+    const duplicateWithdraw = await request(app.getHttpServer())
+      .post("/api/world/defend")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", withdrawKey)
+      .send({ tile_id: adjacentTile?.tile_id, soldier_count: 0 })
+      .expect(201);
+    expect(duplicateWithdraw.body.data.record_id).toBe(withdrawnDefend.body.data.record_id);
+    expect(duplicateWithdraw.body.data.city.resources.soldier).toBe("60");
+
+    const other = await createPlayer(app, "越界驻防");
+    const otherCity = await settleMainCity(app, other.token, "远邻仙城");
+    await request(app.getHttpServer())
+      .post("/api/world/defend")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_purchase_defend_other_${nonce()}`)
+      .send({ tile_id: otherCity.tile_id, soldier_count: 1 })
+      .expect(400);
   });
 
   it("清野失败不会解锁购买资格，玩家可以重新整军出发", async () => {

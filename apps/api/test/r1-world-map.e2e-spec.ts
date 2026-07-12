@@ -68,7 +68,7 @@ describe("R1 九州城池地图只读接口", () => {
     expect(provinces.map((province) => province.name)).toEqual(provinceOrder);
     expect(JSON.stringify(provinces)).not.toContain("幽州");
     expect(response.body.data.recommended_province_id).toBe("ji");
-    expect(response.body.data.config_version).toBe("world_city_era_r1_07_shaped_8888");
+    expect(response.body.data.config_version).toBe("world_city_era_r1_08_historical_topology_8888");
     expect(provinces.reduce((total, province) => total + province.block_count, 0)).toBe(8888);
 
     for (const province of provinces) {
@@ -242,7 +242,7 @@ describe("R1 九州城池地图只读接口", () => {
     expect(data.viewport).toMatchObject({
       height: 12,
       total_height: 36,
-      total_width: 40,
+      total_width: 44,
       width: 12,
       x: 10,
       y: 8,

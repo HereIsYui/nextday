@@ -106,16 +106,16 @@ export class WorldService {
     );
     const owned = new Set(ownerships.map((item) => item.tileId));
     const layout: Record<string, [number, number]> = {
-      // 各州在战略总览中共用边界，形成可连续阅读的九州版图。
-      ji: [42, 0],
-      yan: [76, 0],
-      qing: [107, 0],
-      liang: [0, 30],
-      yu: [42, 30],
-      xu: [76, 24],
-      yang: [118, 22],
-      yong: [0, 66],
-      jing: [44, 57],
+      // 以九州历史相邻关系为骨架排布，坐标由真实区块边界接触验证后固定。
+      yong: [0, 56],
+      liang: [2, 91],
+      ji: [46, 24],
+      yu: [44, 54],
+      yan: [50, 0],
+      qing: [82, 4],
+      xu: [80, 26],
+      yang: [77, 46],
+      jing: [78, 78],
     };
     const homeProvinceId =
       (

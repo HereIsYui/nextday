@@ -6,7 +6,7 @@ import type {
 } from "@nextday/shared";
 import { provinceConfigs } from "../game/game.constants";
 
-export const worldConfigVersion = "world_city_era_r1_07_shaped_8888";
+export const worldConfigVersion = "world_city_era_r1_08_historical_topology_8888";
 export const worldSeasonId = "season_city_era_001";
 export const worldSeasonName = "九州城池纪元先遣季";
 export const recommendedBirthProvinceId = "ji";
@@ -68,8 +68,17 @@ export interface ProvinceBlockPlan {
   blockCount: number;
   width: number;
   height: number;
+  shape: ProvinceShapeProfile;
   role: string;
   terrainWeights: Record<WorldTerrainType, number>;
+}
+
+interface ProvinceShapeProfile {
+  bottomTrim: number;
+  leftInsetBottom: number;
+  leftInsetTop: number;
+  ripple: number;
+  topTrim: number;
 }
 
 export const provinceBlockPlans: ProvinceBlockPlan[] = [
@@ -78,6 +87,7 @@ export const provinceBlockPlans: ProvinceBlockPlan[] = [
     height: 30,
     provinceId: "ji",
     role: "新手、北境、城防教学",
+    shape: { bottomTrim: 5, leftInsetBottom: 1, leftInsetTop: 3, ripple: 2, topTrim: 2 },
     terrainWeights: { desert: 6, forest: 18, mountain: 22, plain: 42, swamp: 12 },
     width: 30,
   },
@@ -86,6 +96,7 @@ export const provinceBlockPlans: ProvinceBlockPlan[] = [
     height: 24,
     provinceId: "yan",
     role: "宗门、礼法、协防",
+    shape: { bottomTrim: 2, leftInsetBottom: 4, leftInsetTop: 1, ripple: 2, topTrim: 5 },
     terrainWeights: { desert: 6, forest: 20, mountain: 12, plain: 48, swamp: 14 },
     width: 27,
   },
@@ -94,6 +105,7 @@ export const provinceBlockPlans: ProvinceBlockPlan[] = [
     height: 22,
     provinceId: "qing",
     role: "潮汐、水脉、丹材",
+    shape: { bottomTrim: 6, leftInsetBottom: 2, leftInsetTop: 0, ripple: 2, topTrim: 2 },
     terrainWeights: { desert: 5, forest: 20, mountain: 10, plain: 30, swamp: 35 },
     width: 32,
   },
@@ -102,6 +114,7 @@ export const provinceBlockPlans: ProvinceBlockPlan[] = [
     height: 20,
     provinceId: "xu",
     role: "古战场、前线争夺",
+    shape: { bottomTrim: 4, leftInsetBottom: 2, leftInsetTop: 2, ripple: 2, topTrim: 4 },
     terrainWeights: { desert: 20, forest: 10, mountain: 24, plain: 34, swamp: 12 },
     width: 38,
   },
@@ -110,6 +123,7 @@ export const provinceBlockPlans: ProvinceBlockPlan[] = [
     height: 32,
     provinceId: "yang",
     role: "商路、水网、资源流通",
+    shape: { bottomTrim: 1, leftInsetBottom: 5, leftInsetTop: 0, ripple: 3, topTrim: 7 },
     terrainWeights: { desert: 5, forest: 28, mountain: 8, plain: 30, swamp: 29 },
     width: 33,
   },
@@ -118,6 +132,7 @@ export const provinceBlockPlans: ProvinceBlockPlan[] = [
     height: 36,
     provinceId: "jing",
     role: "泽林、灵植、秘境",
+    shape: { bottomTrim: 4, leftInsetBottom: 1, leftInsetTop: 4, ripple: 3, topTrim: 3 },
     terrainWeights: { desert: 4, forest: 38, mountain: 14, plain: 20, swamp: 24 },
     width: 36,
   },
@@ -126,6 +141,7 @@ export const provinceBlockPlans: ProvinceBlockPlan[] = [
     height: 27,
     provinceId: "yu",
     role: "九州中枢、州府密集",
+    shape: { bottomTrim: 4, leftInsetBottom: 2, leftInsetTop: 2, ripple: 2, topTrim: 4 },
     terrainWeights: { desert: 6, forest: 18, mountain: 10, plain: 52, swamp: 14 },
     width: 28,
   },
@@ -134,6 +150,7 @@ export const provinceBlockPlans: ProvinceBlockPlan[] = [
     height: 36,
     provinceId: "liang",
     role: "山川地脉、矿脉防御",
+    shape: { bottomTrim: 2, leftInsetBottom: 1, leftInsetTop: 6, ripple: 3, topTrim: 8 },
     terrainWeights: { desert: 14, forest: 14, mountain: 52, plain: 12, swamp: 8 },
     width: 38,
   },
@@ -142,6 +159,7 @@ export const provinceBlockPlans: ProvinceBlockPlan[] = [
     height: 35,
     provinceId: "yong",
     role: "古都圣迹、终局资源",
+    shape: { bottomTrim: 8, leftInsetBottom: 4, leftInsetTop: 0, ripple: 3, topTrim: 2 },
     terrainWeights: { desert: 34, forest: 8, mountain: 34, plain: 18, swamp: 6 },
     width: 40,
   },
@@ -741,9 +759,10 @@ function buildBirthPlainCoordinates(
 function buildProvinceCoordinates(plan: ProvinceBlockPlan): ProvinceCoordinate[] {
   const widths = Array.from({ length: plan.height }, (_, y) => {
     const progress = plan.height <= 1 ? 0.5 : y / (plan.height - 1);
-    const edge = Math.abs(progress - 0.5) * 2;
-    const trim = Math.round(edge * 3);
-    const ripple = (stableHash(`${plan.provinceId}:row-width:${y}`) % 3) - 1;
+    const trim = Math.round(plan.shape.topTrim * (1 - progress) + plan.shape.bottomTrim * progress);
+    const ripple =
+      (stableHash(`${plan.provinceId}:row-width:${y}`) % (plan.shape.ripple * 2 + 1)) -
+      plan.shape.ripple;
     return Math.max(8, plan.width - trim + ripple);
   });
   let balance = plan.blockCount - widths.reduce((total, width) => total + width, 0);
@@ -766,9 +785,12 @@ function buildProvinceCoordinates(plan: ProvinceBlockPlan): ProvinceCoordinate[]
 
   return widths.flatMap((rowWidth, y) => {
     const progress = plan.height <= 1 ? 0.5 : y / (plan.height - 1);
-    const edge = Math.abs(progress - 0.5) * 2;
     const drift = (stableHash(`${plan.provinceId}:row-start:${y}`) % 3) - 1;
-    const rowStart = Math.max(0, Math.round(edge * 3) + drift);
+    const rowStart = Math.max(
+      0,
+      Math.round(plan.shape.leftInsetTop * (1 - progress) + plan.shape.leftInsetBottom * progress) +
+        drift,
+    );
     return Array.from(
       { length: rowWidth },
       (_, column): ProvinceCoordinate => ({

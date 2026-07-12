@@ -1011,7 +1011,19 @@ export class WorldService {
       state_summary: tile.stateSummary,
       owner: this.toOwnerState(tile.ownerProvinceId, occupation, ownership),
       ownership: this.toBlockOwnershipState(ownership),
-      garrison: null,
+      occupation: occupation ? this.toOccupationState(occupation) : null,
+      garrison: occupation
+        ? {
+            tile_id: occupation.tileId,
+            owner_player_id: occupation.playerId,
+            soldier_count: normalizeOccupationDefenseSnapshot(occupation.defenseSnapshot)
+              .stationed_soldiers,
+            defense_power: normalizeOccupationDefenseSnapshot(occupation.defenseSnapshot)
+              .guard_power,
+            is_mine: false,
+            updated_at: occupation.updatedAt.toISOString(),
+          }
+        : null,
       purchase_state: buildPurchaseState(tile, ownership, purchaseContext),
       nodes: tile.nodes.map((node) => this.toTerritoryNodeState(node, occupation, ownership)),
     };

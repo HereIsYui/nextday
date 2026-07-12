@@ -659,6 +659,7 @@ export interface MapTileState {
   state_summary: string;
   owner: WorldOwnerState;
   ownership: WorldBlockOwnershipState;
+  occupation: TerritoryOccupationState | null;
   garrison: TerritoryGarrisonState | null;
   purchase_state: WorldBlockPurchaseState;
   nodes: TerritoryNodeState[];

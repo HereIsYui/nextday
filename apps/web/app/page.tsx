@@ -6658,6 +6658,14 @@ function WorldMapScreen({
                 ) ? (
                   <span>我方队伍行军中</span>
                 ) : null}
+                {selectedTile.occupation ? (
+                  <>
+                    <span>守备 {selectedTile.occupation.defense.guard_power}</span>
+                    <span>驻军 {selectedTile.occupation.defense.stationed_soldiers}</span>
+                    <span>时产灵石 {selectedTile.occupation.production.spirit_stone_per_hour}</span>
+                    <span>时产粮草 {selectedTile.occupation.production.grain_per_hour}</span>
+                  </>
+                ) : null}
                 {selectedTile.terrain_effects.slice(0, 3).map((effect) => (
                   <span key={effect}>{effect}</span>
                 ))}

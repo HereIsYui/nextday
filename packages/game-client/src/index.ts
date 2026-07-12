@@ -212,6 +212,7 @@ import type {
   WorldBossResponse,
   WorldMapResponse,
   WorldMapView,
+  WorldMapViewportRequest,
   WorldMarchListResponse,
   WorldProvinceListResponse,
 } from "@nextday/shared";
@@ -453,7 +454,11 @@ export class GameClient {
     return this.get<WorldAtlasResponse>("/api/world/atlas");
   }
 
-  worldMap(provinceId?: string, view?: WorldMapView): Promise<ApiResponse<WorldMapResponse>> {
+  worldMap(
+    provinceId?: string,
+    view?: WorldMapView,
+    viewport?: WorldMapViewportRequest,
+  ): Promise<ApiResponse<WorldMapResponse>> {
     const params = new URLSearchParams();
     if (provinceId) {
       params.set("province_id", provinceId);
@@ -461,6 +466,10 @@ export class GameClient {
     if (view) {
       params.set("view", view);
     }
+    if (viewport?.x !== undefined) params.set("x", String(viewport.x));
+    if (viewport?.y !== undefined) params.set("y", String(viewport.y));
+    if (viewport?.width !== undefined) params.set("width", String(viewport.width));
+    if (viewport?.height !== undefined) params.set("height", String(viewport.height));
     const query = params.toString();
     return this.get<WorldMapResponse>(`/api/world/map${query ? `?${query}` : ""}`);
   }

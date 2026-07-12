@@ -30,6 +30,8 @@ import type {
   WorldCommanderyState,
   WorldMapResponse,
   WorldMapView,
+  WorldMapViewportRequest,
+  WorldMapViewportState,
   WorldMarchListResponse,
   WorldMiniMapSummary,
   WorldOwnerState,
@@ -104,15 +106,15 @@ export class WorldService {
     );
     const owned = new Set(ownerships.map((item) => item.tileId));
     const layout: Record<string, [number, number]> = {
-      ji: [0, 0],
-      yan: [1, 0],
-      qing: [2, 0],
-      liang: [0, 1],
-      yu: [1, 1],
-      xu: [2, 1],
-      yong: [0, 2],
-      jing: [1, 2],
-      yang: [2, 2],
+      ji: [44, 0],
+      yan: [80, 7],
+      qing: [112, 0],
+      liang: [0, 35],
+      yu: [45, 40],
+      xu: [78, 36],
+      yang: [120, 38],
+      yong: [0, 75],
+      jing: [50, 76],
     };
     const homeProvinceId =
       (
@@ -175,13 +177,22 @@ export class WorldService {
           province: this.toProvinceState(province),
           layout_x: layoutX,
           layout_y: layoutY,
-          layout_width: layoutWidth,
-          layout_height: layoutHeight,
+          layout_width: mapWidth,
+          layout_height: mapHeight,
           my_blocks: tiles.filter((tile) => mine.has(tile.tileId)).length,
           neutral_blocks: tiles.filter((tile) => !owned.has(tile.tileId)).length,
           owned_blocks: tiles.filter((tile) => owned.has(tile.tileId)).length,
           has_active_march: marches.some((march) => march.provinceId === province.provinceId),
           cells,
+          terrain_rows: encodeAtlasRows(tiles, mapWidth, mapHeight, (tile) =>
+            terrainAtlasCode(tile.terrainType),
+          ),
+          control_rows: encodeAtlasRows(tiles, mapWidth, mapHeight, (tile) =>
+            mine.has(tile.tileId) ? "m" : owned.has(tile.tileId) ? "o" : "n",
+          ),
+          landmark_rows: encodeAtlasRows(tiles, mapWidth, mapHeight, (tile) =>
+            landmarkAtlasCode(tile.tileType),
+          ),
         };
       }),
       home_province_id: homeProvinceId,
@@ -547,6 +558,7 @@ export class WorldService {
           playerId: player.playerId,
           provinceId: targetTile.provinceId,
           view: "detail",
+          viewport: viewportAroundTile(targetTile),
         }),
       };
 
@@ -719,6 +731,7 @@ export class WorldService {
         playerId: player.playerId,
         provinceId: targetTile.provinceId,
         view: "detail",
+        viewport: viewportAroundTile(targetTile),
       });
       const responseData: PurchaseWorldBlockResponse = {
         record_id: `purchase_block_${randomUUID()}`,
@@ -769,6 +782,7 @@ export class WorldService {
     accountId?: string;
     provinceId?: string;
     view?: WorldMapView;
+    viewport?: WorldMapViewportRequest;
   }): Promise<WorldMapResponse> {
     const provinceId = input.provinceId?.trim() || recommendedBirthProvinceId;
     const province = worldProvinceConfigs.find((item) => item.provinceId === provinceId);
@@ -797,6 +811,7 @@ export class WorldService {
       playerId: player?.playerId ?? null,
       provinceId,
       view: normalizeWorldMapView(input.view),
+      viewport: input.viewport,
     });
   }
 
@@ -806,6 +821,7 @@ export class WorldService {
     playerId: string | null;
     provinceId: string;
     view: WorldMapView;
+    viewport?: WorldMapViewportRequest;
   }): WorldMapResponse {
     const province = worldProvinceConfigs.find((item) => item.provinceId === input.provinceId);
 
@@ -821,14 +837,17 @@ export class WorldService {
     );
     const purchaseContext = mapPurchaseContext(input.ownerships, input.playerId);
     const provinceTiles = getWorldTilesByProvince(province.provinceId);
-    const tiles = provinceTiles.map((tile) =>
-      this.toMapTileState(
-        tile,
-        ownershipMap.get(tile.tileId) ?? null,
-        occupationMap.get(tile.tileId) ?? null,
-        purchaseContext,
-      ),
-    );
+    const viewport = normalizeMapViewport(input.viewport, provinceTiles);
+    const tiles = provinceTiles
+      .filter((tile) => isTileInViewport(tile, viewport))
+      .map((tile) =>
+        this.toMapTileState(
+          tile,
+          ownershipMap.get(tile.tileId) ?? null,
+          occupationMap.get(tile.tileId) ?? null,
+          purchaseContext,
+        ),
+      );
     const miniMapSummary = buildMiniMapSummary({
       ownerships: input.ownerships,
       playerId: input.playerId,
@@ -847,11 +866,16 @@ export class WorldService {
       ),
       tiles,
       block_count: provinceTiles.length,
+      viewport,
       mini_map_summary: miniMapSummary,
       visible_tile_count: tiles.filter((tile) => tile.visibility === "visible").length,
       occupiable_tile_count: tiles.filter((tile) => tile.occupiable).length,
       my_occupations: input.occupations
-        .filter((occupation) => occupation.playerId === input.playerId)
+        .filter(
+          (occupation) =>
+            occupation.playerId === input.playerId &&
+            isTileInViewport(requireMapTile(occupation.tileId), viewport),
+        )
         .map((occupation) => this.toOccupationState(occupation)),
       player_city_hint: province.birthAvailable
         ? `${province.name}已开放出生，系统会从安全平原无主区块中随机建立主城。`
@@ -1267,6 +1291,91 @@ function normalizePurchaseWorldBlockBody(
 
 function normalizeWorldMapView(view: WorldMapView | undefined): WorldMapView {
   return view === "mini" ? "mini" : "detail";
+}
+
+function normalizeMapViewport(
+  request: WorldMapViewportRequest | undefined,
+  tiles: MapTileConfig[],
+): WorldMapViewportState {
+  const totalWidth = Math.max(...tiles.map((tile) => tile.x + 1));
+  const totalHeight = Math.max(...tiles.map((tile) => tile.y + 1));
+  const x = clampViewportCoordinate(request?.x, totalWidth - 1);
+  const y = clampViewportCoordinate(request?.y, totalHeight - 1);
+  const width = clampViewportSize(request?.width, totalWidth, totalWidth - x);
+  const height = clampViewportSize(request?.height, totalHeight, totalHeight - y);
+  return {
+    x,
+    y,
+    width,
+    height,
+    total_width: totalWidth,
+    total_height: totalHeight,
+  };
+}
+
+function viewportAroundTile(tile: MapTileConfig): WorldMapViewportRequest {
+  return {
+    height: 12,
+    width: 12,
+    x: Math.max(0, tile.x - 6),
+    y: Math.max(0, tile.y - 6),
+  };
+}
+
+function clampViewportCoordinate(value: number | undefined, maximum: number): number {
+  if (value === undefined || !Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(maximum, Math.floor(value)));
+}
+
+function clampViewportSize(value: number | undefined, fallback: number, maximum: number): number {
+  if (value === undefined || !Number.isFinite(value)) {
+    return Math.max(1, fallback);
+  }
+  return Math.max(1, Math.min(maximum, Math.floor(value)));
+}
+
+function isTileInViewport(tile: MapTileConfig, viewport: WorldMapViewportState): boolean {
+  return (
+    tile.x >= viewport.x &&
+    tile.x < viewport.x + viewport.width &&
+    tile.y >= viewport.y &&
+    tile.y < viewport.y + viewport.height
+  );
+}
+
+function encodeAtlasRows(
+  tiles: MapTileConfig[],
+  width: number,
+  height: number,
+  encode: (tile: MapTileConfig) => string,
+): string[] {
+  const tileMap = new Map(tiles.map((tile) => [`${tile.x}:${tile.y}`, tile]));
+  return Array.from({ length: height }, (_, y) =>
+    Array.from({ length: width }, (_, x) => {
+      const tile = tileMap.get(`${x}:${y}`);
+      return tile ? encode(tile) : ".";
+    }).join(""),
+  );
+}
+
+function terrainAtlasCode(terrain: MapTileConfig["terrainType"]): string {
+  const codes: Record<MapTileConfig["terrainType"], string> = {
+    desert: "d",
+    forest: "f",
+    mountain: "m",
+    plain: "p",
+    swamp: "s",
+  };
+  return codes[terrain];
+}
+
+function landmarkAtlasCode(tileType: MapTileConfig["tileType"]): string {
+  if (tileType === "tower") return "t";
+  if (tileType === "capital") return "c";
+  if (tileType === "pass") return "p";
+  return ".";
 }
 
 function resolveSourceCity(cities: PlayerCity[], sourceCityId: string): PlayerCity {

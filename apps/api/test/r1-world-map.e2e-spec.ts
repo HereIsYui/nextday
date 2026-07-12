@@ -8,15 +8,15 @@ import { configureApp } from "../src/platform/configure-app";
 
 const provinceOrder = ["冀州", "兖州", "青州", "徐州", "扬州", "荆州", "豫州", "梁州", "雍州"];
 const provinceBlockCounts: Record<string, number> = {
-  ji: 360,
-  yan: 260,
-  qing: 280,
-  xu: 300,
-  yang: 420,
-  jing: 520,
-  yu: 300,
-  liang: 560,
-  yong: 600,
+  ji: 900,
+  yan: 648,
+  qing: 704,
+  xu: 760,
+  yang: 1056,
+  jing: 1296,
+  yu: 756,
+  liang: 1368,
+  yong: 1400,
 };
 
 describe("R1 九州城池地图只读接口", () => {
@@ -68,8 +68,8 @@ describe("R1 九州城池地图只读接口", () => {
     expect(provinces.map((province) => province.name)).toEqual(provinceOrder);
     expect(JSON.stringify(provinces)).not.toContain("幽州");
     expect(response.body.data.recommended_province_id).toBe("ji");
-    expect(response.body.data.config_version).toBe("world_city_era_r1_05_3600");
-    expect(provinces.reduce((total, province) => total + province.block_count, 0)).toBe(3600);
+    expect(response.body.data.config_version).toBe("world_city_era_r1_06_8888");
+    expect(provinces.reduce((total, province) => total + province.block_count, 0)).toBe(8888);
 
     for (const province of provinces) {
       expect(province.commanderies).toHaveLength(3);
@@ -113,6 +113,7 @@ describe("R1 九州城池地图只读接口", () => {
         terrain_type: string;
         terrain_label: string;
         terrain_effects: string[];
+        labels: string[];
         landmark_group_id: string | null;
         tile_name: string;
         x: number;
@@ -134,7 +135,7 @@ describe("R1 九州城池地图只读接口", () => {
 
     expect(data.province).toMatchObject({ province_id: "ji", name: "冀州" });
     expect(data.view).toBe("detail");
-    expect(data.block_count).toBe(360);
+    expect(data.block_count).toBe(900);
     expect(data.commanderies).toHaveLength(3);
     expect(data.commanderies.reduce((total, commandery) => total + commandery.tile_count, 0)).toBe(
       data.tiles.length,
@@ -148,14 +149,14 @@ describe("R1 九州城池地图只读接口", () => {
     expect(data.visible_tile_count).toBe(data.tiles.length);
     expect(data.occupiable_tile_count).toBeGreaterThan(300);
     expect(data.player_city_hint).toContain("安全平原");
-    expect(data.mini_map_summary.total_blocks).toBe(360);
+    expect(data.mini_map_summary.total_blocks).toBe(900);
     expect(data.mini_map_summary.tower_blocks).toBe(16);
     expect(
       Object.values(data.mini_map_summary.terrain_counts).reduce(
         (total, count) => total + count,
         0,
       ),
-    ).toBe(360);
+    ).toBe(900);
 
     for (const tile of data.tiles) {
       expect(tile.tile_id.length).toBeGreaterThan(0);
@@ -178,6 +179,12 @@ describe("R1 九州城池地图只读接口", () => {
     expect(data.tiles.find((tile) => tile.tile_type === "tower")?.nodes[0]?.node_type).toBe(
       "tower",
     );
+    const birthPlainZones = new Set(
+      data.tiles
+        .filter((tile) => tile.labels.includes("安全出生池"))
+        .map((tile) => Math.floor(tile.x / 10)),
+    );
+    expect(birthPlainZones.size).toBeGreaterThanOrEqual(3);
   });
 
   it("小地图返回势力分布摘要", async () => {
@@ -188,10 +195,10 @@ describe("R1 九州城池地图只读接口", () => {
       .expect(200);
 
     expect(response.body.data.view).toBe("mini");
-    expect(response.body.data.block_count).toBe(560);
+    expect(response.body.data.block_count).toBe(1368);
     expect(response.body.data.mini_map_summary).toMatchObject({
       province_id: "liang",
-      total_blocks: 560,
+      total_blocks: 1368,
       tower_blocks: 16,
     });
   });
@@ -209,6 +216,40 @@ describe("R1 九州城池地图只读接口", () => {
       .query({ province_id: "you" })
       .set("Authorization", `Bearer ${token}`)
       .expect(400);
+  });
+
+  it("大地图支持按坐标读取视口详情，避免一次传输整州区块", async () => {
+    const response = await request(app.getHttpServer())
+      .get("/api/world/map")
+      .query({ height: 12, province_id: "jing", view: "detail", width: 12, x: 10, y: 8 })
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    const data = response.body.data as {
+      block_count: number;
+      tiles: Array<{ x: number; y: number }>;
+      viewport: {
+        height: number;
+        total_height: number;
+        total_width: number;
+        width: number;
+        x: number;
+        y: number;
+      };
+    };
+    expect(data.block_count).toBe(1296);
+    expect(data.tiles).toHaveLength(144);
+    expect(data.viewport).toMatchObject({
+      height: 12,
+      total_height: 36,
+      total_width: 36,
+      width: 12,
+      x: 10,
+      y: 8,
+    });
+    expect(
+      data.tiles.every((tile) => tile.x >= 10 && tile.x < 22 && tile.y >= 8 && tile.y < 20),
+    ).toBe(true);
   });
 });
 

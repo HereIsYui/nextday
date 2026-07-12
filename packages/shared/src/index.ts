@@ -691,12 +691,29 @@ export interface WorldMapResponse {
   commanderies: WorldCommanderyState[];
   tiles: MapTileState[];
   block_count: number;
+  viewport: WorldMapViewportState;
   mini_map_summary: WorldMiniMapSummary;
   visible_tile_count: number;
   occupiable_tile_count: number;
   my_occupations: TerritoryOccupationState[];
   player_city_hint: string;
   config_version: string;
+}
+
+export interface WorldMapViewportState {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  total_width: number;
+  total_height: number;
+}
+
+export interface WorldMapViewportRequest {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
 }
 
 export type WorldAtlasCellControl = "neutral" | "mine" | "other" | "landmark";
@@ -720,6 +737,9 @@ export interface WorldAtlasProvinceState {
   owned_blocks: number;
   has_active_march: boolean;
   cells: WorldAtlasCellState[];
+  terrain_rows: string[];
+  control_rows: string[];
+  landmark_rows: string[];
 }
 
 export interface WorldAtlasResponse {

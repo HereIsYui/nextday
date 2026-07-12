@@ -4692,3 +4692,176 @@ details.event-boundary {
 .text-game-shell .practice-workbench.map-primary-hidden {
   display: none;
 }
+
+/* R1-06：玩家主界面仅保留全屏世界画布与独立城内视角。 */
+.shell.app-shell.world-screen {
+  background: #e8dfcb;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100dvh;
+  max-width: none;
+  min-height: 720px;
+  padding: 0;
+}
+
+.text-game-shell.world-screen .world-screen-hud {
+  align-items: center;
+  background: rgba(250, 247, 238, 0.96);
+  border-bottom: 1px solid #5e5547;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 12px 18px;
+  z-index: 2;
+}
+
+.text-game-shell.world-screen .world-screen-hud > div:first-child {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.text-game-shell.world-screen .world-screen-hud span,
+.text-game-shell.world-screen .world-screen-hud small {
+  color: #62594c;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.text-game-shell.world-screen .world-screen-hud strong {
+  color: #211e1a;
+  font-family: "Songti SC", SimSun, serif;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.text-game-shell.world-screen .world-screen-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.text-game-shell.world-screen .world-screen-actions button,
+.text-game-shell.world-screen .city-screen .world-screen-hud button {
+  background: #fdf8ee;
+  border: 1px solid #5e5547;
+  color: #211e1a;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.2;
+  min-height: 34px;
+  padding: 7px 10px;
+  white-space: nowrap;
+}
+
+.text-game-shell.world-screen .world-screen-actions button:hover,
+.text-game-shell.world-screen .city-screen .world-screen-hud button:hover {
+  background: #211e1a;
+  color: #ffffff;
+}
+
+.text-game-shell.world-screen .world-canvas-stage {
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.text-game-shell.world-screen .world-canvas {
+  cursor: grab;
+  display: block;
+  height: 100%;
+  touch-action: none;
+  width: 100%;
+}
+
+.text-game-shell.world-screen .world-canvas:active {
+  cursor: grabbing;
+}
+
+.text-game-shell.world-screen .world-canvas-legend {
+  background: rgba(250, 247, 238, 0.9);
+  border: 1px solid rgba(94, 85, 71, 0.7);
+  bottom: 16px;
+  display: flex;
+  gap: 10px;
+  left: 16px;
+  padding: 7px 9px;
+  pointer-events: none;
+  position: absolute;
+}
+
+.text-game-shell.world-screen .world-canvas-legend span {
+  color: #62594c;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.text-game-shell.world-screen .world-floating-inspector {
+  background: rgba(250, 247, 238, 0.97);
+  border: 1px solid #5e5547;
+  display: grid;
+  gap: 9px;
+  max-height: calc(100% - 32px);
+  min-width: 0;
+  overflow: auto;
+  padding: 14px;
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  width: min(300px, calc(100% - 32px));
+}
+
+.text-game-shell.world-screen .world-floating-inspector strong {
+  color: #211e1a;
+  font-family: "Songti SC", SimSun, serif;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.text-game-shell.world-screen .world-floating-inspector span,
+.text-game-shell.world-screen .world-floating-inspector p {
+  color: #5c5448;
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.text-game-shell.world-screen .world-inspector-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.text-game-shell.world-screen .world-inspector-tags span {
+  border: 1px solid #b7aa93;
+  font-size: 12px;
+  padding: 3px 5px;
+}
+
+.text-game-shell.world-screen .world-inspector-actions {
+  display: grid;
+  gap: 7px;
+}
+
+.text-game-shell.world-screen .world-inspector-actions .nextday-button {
+  width: 100%;
+}
+
+.text-game-shell.world-screen.city-screen .city-screen-stage {
+  display: grid;
+  min-height: 0;
+  overflow: auto;
+  padding: 18px;
+}
+
+.text-game-shell.world-screen.city-screen .city-screen-stage > .city-interior-canvas {
+  min-height: 0;
+}
+
+.text-game-shell.world-screen.city-screen .city-screen-stage {
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+}

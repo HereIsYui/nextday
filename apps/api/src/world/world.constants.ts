@@ -6,11 +6,11 @@ import type {
 } from "@nextday/shared";
 import { provinceConfigs } from "../game/game.constants";
 
-export const worldConfigVersion = "world_city_era_r1_05_3600";
+export const worldConfigVersion = "world_city_era_r1_06_8888";
 export const worldSeasonId = "season_city_era_001";
 export const worldSeasonName = "九州城池纪元先遣季";
 export const recommendedBirthProvinceId = "ji";
-export const worldTotalBlockCount = 3600;
+export const worldTotalBlockCount = 8888;
 export const towerBlockCountPerProvince = 16;
 
 const birthProvinceIds = new Set(provinceConfigs.map((province) => province.provinceId));
@@ -74,76 +74,76 @@ export interface ProvinceBlockPlan {
 
 export const provinceBlockPlans: ProvinceBlockPlan[] = [
   {
-    blockCount: 360,
-    height: 20,
+    blockCount: 900,
+    height: 30,
     provinceId: "ji",
     role: "新手、北境、城防教学",
     terrainWeights: { desert: 6, forest: 18, mountain: 22, plain: 42, swamp: 12 },
-    width: 18,
+    width: 30,
   },
   {
-    blockCount: 260,
-    height: 20,
+    blockCount: 648,
+    height: 24,
     provinceId: "yan",
     role: "宗门、礼法、协防",
     terrainWeights: { desert: 6, forest: 20, mountain: 12, plain: 48, swamp: 14 },
-    width: 13,
+    width: 27,
   },
   {
-    blockCount: 280,
-    height: 20,
+    blockCount: 704,
+    height: 22,
     provinceId: "qing",
     role: "潮汐、水脉、丹材",
     terrainWeights: { desert: 5, forest: 20, mountain: 10, plain: 30, swamp: 35 },
-    width: 14,
+    width: 32,
   },
   {
-    blockCount: 300,
+    blockCount: 760,
     height: 20,
     provinceId: "xu",
     role: "古战场、前线争夺",
     terrainWeights: { desert: 20, forest: 10, mountain: 24, plain: 34, swamp: 12 },
-    width: 15,
+    width: 38,
   },
   {
-    blockCount: 420,
-    height: 21,
+    blockCount: 1056,
+    height: 32,
     provinceId: "yang",
     role: "商路、水网、资源流通",
     terrainWeights: { desert: 5, forest: 28, mountain: 8, plain: 30, swamp: 29 },
-    width: 20,
+    width: 33,
   },
   {
-    blockCount: 520,
-    height: 26,
+    blockCount: 1296,
+    height: 36,
     provinceId: "jing",
     role: "泽林、灵植、秘境",
     terrainWeights: { desert: 4, forest: 38, mountain: 14, plain: 20, swamp: 24 },
-    width: 20,
+    width: 36,
   },
   {
-    blockCount: 300,
-    height: 20,
+    blockCount: 756,
+    height: 27,
     provinceId: "yu",
     role: "九州中枢、州府密集",
     terrainWeights: { desert: 6, forest: 18, mountain: 10, plain: 52, swamp: 14 },
-    width: 15,
+    width: 28,
   },
   {
-    blockCount: 560,
-    height: 28,
+    blockCount: 1368,
+    height: 36,
     provinceId: "liang",
     role: "山川地脉、矿脉防御",
     terrainWeights: { desert: 14, forest: 14, mountain: 52, plain: 12, swamp: 8 },
-    width: 20,
+    width: 38,
   },
   {
-    blockCount: 600,
-    height: 30,
+    blockCount: 1400,
+    height: 35,
     provinceId: "yong",
     role: "古都圣迹、终局资源",
     terrainWeights: { desert: 34, forest: 8, mountain: 34, plain: 18, swamp: 6 },
-    width: 20,
+    width: 40,
   },
 ];
 
@@ -327,6 +327,8 @@ export function worldBlockTileId(provinceId: string, x: number, y: number): stri
 
 function generateProvinceTiles(province: WorldProvinceConfig, provinceIndex: number) {
   const plan = requireProvinceBlockPlan(province.provinceId);
+  const birthPlainCoordinates = buildBirthPlainCoordinates(plan);
+  const terrainLayout = buildTerrainLayout(province.provinceId, plan, birthPlainCoordinates);
   const towerOrigin = {
     x: Math.max(2, Math.floor(plan.width * 0.66) - 2),
     y: Math.max(2, Math.floor(plan.height * 0.48) - 2),
@@ -344,7 +346,9 @@ function generateProvinceTiles(province: WorldProvinceConfig, provinceIndex: num
     const isTower = inRect(x, y, towerOrigin.x, towerOrigin.y, 4, 4);
     const isCapital = inRect(x, y, capitalOrigin.x, capitalOrigin.y, 2, 2);
     const isPass = !isTower && !isCapital && (x === 0 || x === plan.width - 1) && y === passY;
-    const terrainType = chooseTerrain(province.provinceId, plan, x, y, index);
+    const coordinateKey = toCoordinateKey(x, y);
+    const terrainType = terrainLayout.get(coordinateKey) ?? "plain";
+    const isBirthPlain = birthPlainCoordinates.has(coordinateKey);
     const strategic = buildStrategicTileConfig({
       capitalName: capitalNameMap[province.provinceId],
       commanderyId: commandery.commanderyId,
@@ -364,7 +368,7 @@ function generateProvinceTiles(province: WorldProvinceConfig, provinceIndex: num
       return strategic;
     }
 
-    const dangerLevel = getBaseDangerLevel(provinceIndex, terrainType, x, y, plan);
+    const dangerLevel = getBaseDangerLevel(provinceIndex, terrainType, x, y, plan, isBirthPlain);
     const tileId = blockTileId(province.provinceId, x, y);
     const nodeType = getResourceNodeType(terrainType);
 
@@ -372,7 +376,7 @@ function generateProvinceTiles(province: WorldProvinceConfig, provinceIndex: num
       commanderyId: commandery.commanderyId,
       controllable: true,
       dangerLevel,
-      labels: [getTerrainLabel(terrainType), dangerLevel <= 1 ? "安全出生池" : "可购买"],
+      labels: [getTerrainLabel(terrainType), isBirthPlain ? "安全出生池" : "可购买"],
       landmarkGroupId: null,
       nodes: [
         createNode({
@@ -393,10 +397,9 @@ function generateProvinceTiles(province: WorldProvinceConfig, provinceIndex: num
       protected: false,
       provinceId: province.provinceId,
       purchaseBaseCost: getPurchaseBaseCost(terrainType, dangerLevel),
-      stateSummary:
-        dangerLevel <= 1
-          ? `${getTerrainLabel(terrainType)}安全区块，可作为随机主城出生池。`
-          : `${getTerrainLabel(terrainType)}区块，${terrainProductionSummary(terrainType)}。`,
+      stateSummary: isBirthPlain
+        ? `${getTerrainLabel(terrainType)}安全区块，可作为随机主城出生池。`
+        : `${getTerrainLabel(terrainType)}区块，${terrainProductionSummary(terrainType)}。`,
       status: "wild",
       terrainEffects: getTerrainEffects(terrainType),
       terrainLabel: getTerrainLabel(terrainType),
@@ -598,32 +601,15 @@ function createNode(input: {
   };
 }
 
-function chooseTerrain(
-  provinceId: string,
-  plan: ProvinceBlockPlan,
-  x: number,
-  y: number,
-  index: number,
-): WorldTerrainType {
-  if (isBirthPlainCoordinate(x, y, plan)) {
-    return "plain";
-  }
-
-  const weightedTerrains = Object.entries(plan.terrainWeights).flatMap(([terrain, weight]) =>
-    Array.from({ length: weight }, () => terrain as WorldTerrainType),
-  );
-  const hash = stableHash(`${provinceId}:${x}:${y}:${index}`);
-  return weightedTerrains[hash % weightedTerrains.length] ?? "plain";
-}
-
 function getBaseDangerLevel(
   provinceIndex: number,
   terrainType: WorldTerrainType,
   x: number,
   y: number,
   plan: ProvinceBlockPlan,
+  isBirthPlain: boolean,
 ): number {
-  if (isBirthPlainCoordinate(x, y, plan)) {
+  if (isBirthPlain) {
     return 1;
   }
 
@@ -640,10 +626,145 @@ function getBaseDangerLevel(
   return Math.min(8, 2 + Math.floor(provinceIndex / 3) + distanceScore + terrainRisk[terrainType]);
 }
 
-function isBirthPlainCoordinate(x: number, y: number, plan: ProvinceBlockPlan): boolean {
-  return (
-    x < Math.max(5, Math.floor(plan.width * 0.5)) && y < Math.max(4, Math.floor(plan.height * 0.5))
+function buildTerrainLayout(
+  provinceId: string,
+  plan: ProvinceBlockPlan,
+  birthPlainCoordinates: Set<string>,
+): Map<string, WorldTerrainType> {
+  const terrainTypes: WorldTerrainType[] = ["plain", "swamp", "forest", "mountain", "desert"];
+  const targetCounts = allocateTerrainCounts(plan);
+  const layout = new Map<string, WorldTerrainType>();
+  const remaining = { ...targetCounts };
+
+  for (const coordinate of birthPlainCoordinates) {
+    layout.set(coordinate, "plain");
+    remaining.plain -= 1;
+  }
+
+  const anchors = new Map(
+    terrainTypes.map((terrain) => [terrain, createTerrainAnchors(provinceId, plan, terrain)]),
   );
+  const candidates = Array.from({ length: plan.blockCount }, (_, index) => ({
+    x: index % plan.width,
+    y: Math.floor(index / plan.width),
+  }))
+    .filter(({ x, y }) => !birthPlainCoordinates.has(toCoordinateKey(x, y)))
+    .sort((left, right) => {
+      const leftHash = stableHash(`${provinceId}:order:${left.x}:${left.y}`);
+      const rightHash = stableHash(`${provinceId}:order:${right.x}:${right.y}`);
+      return leftHash - rightHash;
+    });
+
+  for (const coordinate of candidates) {
+    const terrain = terrainTypes
+      .filter((item) => remaining[item] > 0)
+      .sort((left, right) => {
+        const leftScore = terrainScore(
+          provinceId,
+          left,
+          coordinate.x,
+          coordinate.y,
+          anchors.get(left) ?? [],
+        );
+        const rightScore = terrainScore(
+          provinceId,
+          right,
+          coordinate.x,
+          coordinate.y,
+          anchors.get(right) ?? [],
+        );
+        return leftScore - rightScore;
+      })[0];
+    if (!terrain) {
+      throw new Error(`地形配额分配失败：${provinceId}`);
+    }
+    layout.set(toCoordinateKey(coordinate.x, coordinate.y), terrain);
+    remaining[terrain] -= 1;
+  }
+
+  return layout;
+}
+
+function allocateTerrainCounts(plan: ProvinceBlockPlan): Record<WorldTerrainType, number> {
+  const terrainTypes: WorldTerrainType[] = ["plain", "swamp", "forest", "mountain", "desert"];
+  const entries = terrainTypes.map((terrain) => {
+    const exact = (plan.blockCount * plan.terrainWeights[terrain]) / 100;
+    return { terrain, count: Math.floor(exact), remainder: exact % 1 };
+  });
+  let remaining = plan.blockCount - entries.reduce((total, entry) => total + entry.count, 0);
+  for (const entry of [...entries].sort((left, right) => right.remainder - left.remainder)) {
+    if (remaining <= 0) break;
+    entry.count += 1;
+    remaining -= 1;
+  }
+  return Object.fromEntries(entries.map((entry) => [entry.terrain, entry.count])) as Record<
+    WorldTerrainType,
+    number
+  >;
+}
+
+function buildBirthPlainCoordinates(plan: ProvinceBlockPlan): Set<string> {
+  const centers: Array<[number, number]> = [
+    [0.16, 0.23],
+    [0.5, 0.68],
+    [0.82, 0.3],
+  ];
+  const coordinates = new Set<string>();
+  for (const [ratioX, ratioY] of centers) {
+    const centerX = Math.round((plan.width - 1) * ratioX);
+    const centerY = Math.round((plan.height - 1) * ratioY);
+    for (let offsetY = -2; offsetY <= 2; offsetY += 1) {
+      for (let offsetX = -2; offsetX <= 2; offsetX += 1) {
+        const x = centerX + offsetX;
+        const y = centerY + offsetY;
+        if (x >= 0 && x < plan.width && y >= 0 && y < plan.height) {
+          coordinates.add(toCoordinateKey(x, y));
+        }
+      }
+    }
+  }
+  return coordinates;
+}
+
+function createTerrainAnchors(
+  provinceId: string,
+  plan: ProvinceBlockPlan,
+  terrain: WorldTerrainType,
+): Array<{ x: number; y: number }> {
+  const anchorCount = Math.max(3, Math.min(6, Math.round(plan.terrainWeights[terrain] / 10)));
+  const slots: Array<[number, number]> = [
+    [0.12, 0.14],
+    [0.46, 0.16],
+    [0.8, 0.2],
+    [0.22, 0.52],
+    [0.62, 0.56],
+    [0.14, 0.84],
+    [0.48, 0.82],
+    [0.82, 0.78],
+  ];
+  const offset = stableHash(`${provinceId}:${terrain}:anchors`) % slots.length;
+  return Array.from({ length: anchorCount }, (_, index) => {
+    const [ratioX, ratioY] = slots[(offset + index * 2) % slots.length] ?? [0.5, 0.5];
+    return {
+      x: Math.round((plan.width - 1) * ratioX),
+      y: Math.round((plan.height - 1) * ratioY),
+    };
+  });
+}
+
+function terrainScore(
+  provinceId: string,
+  terrain: WorldTerrainType,
+  x: number,
+  y: number,
+  anchors: Array<{ x: number; y: number }>,
+): number {
+  const distance = Math.min(...anchors.map((anchor) => (anchor.x - x) ** 2 + (anchor.y - y) ** 2));
+  return distance * 1000 + (stableHash(`${provinceId}:${terrain}:${x}:${y}`) % 300);
+}
+
+function toCoordinateKey(x: number, y: number): string {
+  return `${x}:${y}`;
 }
 
 function getCommanderyIndex(x: number, width: number): 0 | 1 | 2 {

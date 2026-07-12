@@ -10,6 +10,7 @@ import type {
   WorldAtlasResponse,
   WorldMapResponse,
   WorldMapView,
+  WorldMapViewportRequest,
   WorldMarchListResponse,
   WorldProvinceListResponse,
 } from "@nextday/shared";
@@ -36,9 +37,18 @@ export class WorldController {
   map(
     @Query("province_id") provinceId: string | undefined,
     @Query("view") view: WorldMapView | undefined,
+    @Query("x") x: string | undefined,
+    @Query("y") y: string | undefined,
+    @Query("width") width: string | undefined,
+    @Query("height") height: string | undefined,
     @Req() request: Request,
   ): Promise<WorldMapResponse> {
-    return this.worldService.getMap({ accountId: requireAccountId(request), provinceId, view });
+    return this.worldService.getMap({
+      accountId: requireAccountId(request),
+      provinceId,
+      view,
+      viewport: normalizeViewportQuery({ height, width, x, y }),
+    });
   }
 
   @Get("marches")
@@ -86,6 +96,17 @@ export class WorldController {
       endpoint: "POST /api/world/blocks/purchase",
     });
   }
+}
+
+function normalizeViewportQuery(
+  input: Record<string, string | undefined>,
+): WorldMapViewportRequest {
+  return {
+    ...(input.x ? { x: Number(input.x) } : {}),
+    ...(input.y ? { y: Number(input.y) } : {}),
+    ...(input.width ? { width: Number(input.width) } : {}),
+    ...(input.height ? { height: Number(input.height) } : {}),
+  };
 }
 
 function requireAccountId(request: Request): string {

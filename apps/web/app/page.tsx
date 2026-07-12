@@ -84,6 +84,7 @@ import { Button, StatusBadge } from "@nextday/ui";
 import {
   type FormEvent,
   type MouseEvent,
+  type PointerEvent,
   type ReactNode,
   useEffect,
   useMemo,
@@ -2891,6 +2892,22 @@ export default function HomePage() {
     setStrategicMapScope("province");
   }
 
+  async function loadWorldViewportTile(
+    provinceId: string,
+    x: number,
+    y: number,
+  ): Promise<MapTileState | null> {
+    const response = await client.worldMap(provinceId, "detail", {
+      height: 12,
+      width: 12,
+      x: Math.max(0, x - 6),
+      y: Math.max(0, y - 6),
+    });
+    ensureOk(response);
+    setWorldMap(response.data);
+    return response.data.tiles.find((tile) => tile.x === x && tile.y === y) ?? null;
+  }
+
   function handleFeatureChange(feature: ActiveFeature, options: { focus?: boolean } = {}) {
     const shouldFocus = options.focus ?? true;
     setActiveFeature(feature);
@@ -3255,6 +3272,39 @@ export default function HomePage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (activeProfile?.player) {
+    return (
+      <>
+        <DesktopOnlyNotice />
+        <WorldMapScreen
+          activePlayerId={activePlayerId}
+          atlas={worldAtlas}
+          buildings={cityBuildings}
+          busy={busy}
+          city={worldMainCity}
+          cityExpansion={cityExpansion}
+          garden={herbGarden}
+          marches={worldMarches}
+          onAlchemy={handleCraftAlchemy}
+          onBreakthrough={handleBreakthrough}
+          onClaimCultivation={handleClaimCultivation}
+          onCollectTerritory={handleCollectTerritory}
+          onEstablishSubCity={handleEstablishSubCity}
+          onExpandCity={handleExpandMainCity}
+          onForge={handleCraftForge}
+          onHarvestHerb={handleHarvestHerb}
+          onLoadTile={loadWorldViewportTile}
+          onOccupy={handleOccupyWorld}
+          onPlantHerb={handlePlantHerb}
+          onPurchase={handlePurchaseWorldBlock}
+          onStartMarch={handleStartWorldMarch}
+          onUpgradeBuilding={handleUpgradeCityBuilding}
+          territoryCollect={territoryCollect}
+        />
+      </>
+    );
   }
 
   return (
@@ -3626,7 +3676,6 @@ export default function HomePage() {
                                 onExpandCity={handleExpandMainCity}
                                 onForge={handleCraftForge}
                                 onHarvestHerb={handleHarvestHerb}
-                                onOpenFeature={handleFeatureChange}
                                 onPlantHerb={handlePlantHerb}
                                 onSelectBuilding={setSelectedCityInteriorBuildingId}
                                 onUpgradeBuilding={handleUpgradeCityBuilding}
@@ -6080,6 +6129,422 @@ export default function HomePage() {
   );
 }
 
+function WorldMapScreen({
+  activePlayerId,
+  atlas,
+  buildings,
+  busy,
+  city,
+  cityExpansion,
+  garden,
+  marches,
+  onAlchemy,
+  onBreakthrough,
+  onClaimCultivation,
+  onCollectTerritory,
+  onEstablishSubCity,
+  onExpandCity,
+  onForge,
+  onHarvestHerb,
+  onLoadTile,
+  onOccupy,
+  onPlantHerb,
+  onPurchase,
+  onStartMarch,
+  onUpgradeBuilding,
+  territoryCollect,
+}: {
+  activePlayerId: string | null;
+  atlas: WorldAtlasResponse | null;
+  buildings: CityBuildingState[];
+  busy: boolean;
+  city: CityOverviewResponse["main_city"];
+  cityExpansion: TerritoryOverviewResponse["expansion"] | null;
+  garden: HerbGardenState | null;
+  marches: WorldMarchListResponse | null;
+  onAlchemy: () => void | Promise<void>;
+  onBreakthrough: () => void | Promise<void>;
+  onClaimCultivation: () => void | Promise<void>;
+  onCollectTerritory: () => void | Promise<void>;
+  onEstablishSubCity: (tile: MapTileState) => void | Promise<void>;
+  onExpandCity: () => void | Promise<void>;
+  onForge: () => void | Promise<void>;
+  onHarvestHerb: (plotId: string) => void | Promise<void>;
+  onLoadTile: (provinceId: string, x: number, y: number) => Promise<MapTileState | null>;
+  onOccupy: (march: MarchQueueState) => void | Promise<void>;
+  onPlantHerb: (plotId: string) => void | Promise<void>;
+  onPurchase: (tile: MapTileState) => void | Promise<void>;
+  onStartMarch: (tile: MapTileState, marchType: MarchType) => void | Promise<void>;
+  onUpgradeBuilding: (building: CityBuildingState) => void | Promise<void>;
+  territoryCollect: CityManagementResponse["territory_collect"] | null;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const dragRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
+  const didDragRef = useRef(false);
+  const tileCacheRef = useRef(new Map<string, MapTileState>());
+  const [mode, setMode] = useState<"world" | "city">("world");
+  const [canvasSize, setCanvasSize] = useState({ height: 720, width: 1280 });
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [selectedTile, setSelectedTile] = useState<MapTileState | null>(null);
+  const [selectedCoordinate, setSelectedCoordinate] = useState<{
+    provinceName: string;
+    provinceId: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [loadingTile, setLoadingTile] = useState(false);
+  const [selectedBuildingId, setSelectedBuildingId] = useState<CityInteriorBuildingId>("city_hall");
+
+  const selectedBuilding =
+    cityInteriorBuildings.find((building) => building.id === selectedBuildingId) ??
+    cityInteriorBuildings[0];
+  const worldBounds = useMemo(() => {
+    const provinces = atlas?.provinces ?? [];
+    return {
+      height:
+        Math.max(1, ...provinces.map((province) => province.layout_y + province.layout_height)) + 4,
+      width:
+        Math.max(1, ...provinces.map((province) => province.layout_x + province.layout_width)) + 4,
+    };
+  }, [atlas]);
+  const transform = useMemo(() => {
+    const base = Math.max(
+      2,
+      Math.min(
+        (canvasSize.width - 52) / worldBounds.width,
+        (canvasSize.height - 52) / worldBounds.height,
+      ),
+    );
+    const cellSize = base * zoom;
+    return {
+      cellSize,
+      originX: (canvasSize.width - worldBounds.width * cellSize) / 2 + pan.x,
+      originY: (canvasSize.height - worldBounds.height * cellSize) / 2 + pan.y,
+    };
+  }, [canvasSize, pan, worldBounds, zoom]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const resize = () =>
+      setCanvasSize({
+        height: Math.max(420, canvas.clientHeight),
+        width: Math.max(720, canvas.clientWidth),
+      });
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const pixelRatio = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(canvasSize.width * pixelRatio);
+    canvas.height = Math.floor(canvasSize.height * pixelRatio);
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    context.fillStyle = "#e8dfcb";
+    context.fillRect(0, 0, canvasSize.width, canvasSize.height);
+
+    for (const province of atlas?.provinces ?? []) {
+      for (let y = 0; y < province.layout_height; y += 1) {
+        const terrainRow = province.terrain_rows[y] ?? "";
+        const controlRow = province.control_rows[y] ?? "";
+        const landmarkRow = province.landmark_rows[y] ?? "";
+        for (let x = 0; x < province.layout_width; x += 1) {
+          const terrain = terrainRow[x] ?? "p";
+          const control = controlRow[x] ?? "n";
+          const landmark = landmarkRow[x] ?? ".";
+          const drawX = transform.originX + (province.layout_x + x) * transform.cellSize;
+          const drawY = transform.originY + (province.layout_y + y) * transform.cellSize;
+          context.fillStyle = worldCanvasTerrainColor(terrain);
+          context.fillRect(drawX, drawY, transform.cellSize + 0.35, transform.cellSize + 0.35);
+          if (control === "m" || control === "o") {
+            context.fillStyle = control === "m" ? "#244f3e" : "#8f4b45";
+            const inset = Math.max(1, transform.cellSize * 0.2);
+            context.fillRect(
+              drawX + inset,
+              drawY + inset,
+              Math.max(1, transform.cellSize - inset * 2),
+              Math.max(1, transform.cellSize - inset * 2),
+            );
+          }
+          if (landmark !== "." && transform.cellSize >= 4) {
+            context.fillStyle =
+              landmark === "t" ? "#211e1a" : landmark === "c" ? "#745735" : "#4d4a43";
+            context.fillRect(
+              drawX + transform.cellSize * 0.25,
+              drawY + transform.cellSize * 0.25,
+              Math.max(1, transform.cellSize * 0.5),
+              Math.max(1, transform.cellSize * 0.5),
+            );
+          }
+        }
+      }
+      context.strokeStyle = "rgba(44, 37, 26, 0.72)";
+      context.lineWidth = Math.max(1, Math.min(2, transform.cellSize * 0.18));
+      context.strokeRect(
+        transform.originX + province.layout_x * transform.cellSize,
+        transform.originY + province.layout_y * transform.cellSize,
+        province.layout_width * transform.cellSize,
+        province.layout_height * transform.cellSize,
+      );
+      if (transform.cellSize >= 6) {
+        context.fillStyle = "#211e1a";
+        context.font = "600 14px Songti SC, SimSun, serif";
+        context.fillText(
+          province.province.name,
+          transform.originX + province.layout_x * transform.cellSize + 6,
+          transform.originY + province.layout_y * transform.cellSize + 18,
+        );
+      }
+    }
+  }, [atlas, canvasSize, transform]);
+
+  async function selectCanvasTile(event: MouseEvent<HTMLCanvasElement>) {
+    if (!atlas || dragRef.current || didDragRef.current) {
+      didDragRef.current = false;
+      return;
+    }
+    const rectangle = event.currentTarget.getBoundingClientRect();
+    const worldX = (event.clientX - rectangle.left - transform.originX) / transform.cellSize;
+    const worldY = (event.clientY - rectangle.top - transform.originY) / transform.cellSize;
+    const province = atlas.provinces.find(
+      (item) =>
+        worldX >= item.layout_x &&
+        worldX < item.layout_x + item.layout_width &&
+        worldY >= item.layout_y &&
+        worldY < item.layout_y + item.layout_height,
+    );
+    if (!province) return;
+    const x = Math.floor(worldX - province.layout_x);
+    const y = Math.floor(worldY - province.layout_y);
+    setSelectedCoordinate({
+      provinceId: province.province.province_id,
+      provinceName: province.province.name,
+      x,
+      y,
+    });
+    setSelectedTile(null);
+    const cacheKey = `${province.province.province_id}:${x}:${y}`;
+    const cachedTile = tileCacheRef.current.get(cacheKey);
+    if (cachedTile) {
+      setSelectedTile(cachedTile);
+      return;
+    }
+    setLoadingTile(true);
+    try {
+      const tile = await onLoadTile(province.province.province_id, x, y);
+      if (tile) {
+        tileCacheRef.current.set(cacheKey, tile);
+      }
+      setSelectedTile(tile);
+    } finally {
+      setLoadingTile(false);
+    }
+  }
+
+  function beginDrag(event: PointerEvent<HTMLCanvasElement>) {
+    didDragRef.current = false;
+    dragRef.current = { panX: pan.x, panY: pan.y, x: event.clientX, y: event.clientY };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function moveDrag(event: PointerEvent<HTMLCanvasElement>) {
+    const drag = dragRef.current;
+    if (!drag) return;
+    if (Math.abs(event.clientX - drag.x) + Math.abs(event.clientY - drag.y) > 4) {
+      didDragRef.current = true;
+    }
+    setPan({ x: drag.panX + event.clientX - drag.x, y: drag.panY + event.clientY - drag.y });
+  }
+
+  function endDrag(event: PointerEvent<HTMLCanvasElement>) {
+    dragRef.current = null;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+  }
+
+  if (mode === "city" && city) {
+    return (
+      <main className="shell app-shell text-game-shell world-screen city-screen">
+        <header className="world-screen-hud">
+          <div>
+            <span>我的城池</span>
+            <strong>{city.city_name}</strong>
+          </div>
+          <button onClick={() => setMode("world")} type="button">
+            返回九州地图
+          </button>
+        </header>
+        <section className="city-screen-stage">
+          <CityInteriorStage
+            buildings={buildings}
+            busy={busy}
+            city={city}
+            cityExpansion={cityExpansion}
+            garden={garden}
+            onAlchemy={onAlchemy}
+            onBreakthrough={onBreakthrough}
+            onClaimCultivation={onClaimCultivation}
+            onCollectTerritory={onCollectTerritory}
+            onExpandCity={onExpandCity}
+            onForge={onForge}
+            onHarvestHerb={onHarvestHerb}
+            onPlantHerb={onPlantHerb}
+            onSelectBuilding={setSelectedBuildingId}
+            onUpgradeBuilding={onUpgradeBuilding}
+            selectedBuilding={selectedBuilding}
+            territoryCollect={territoryCollect}
+          />
+        </section>
+      </main>
+    );
+  }
+
+  const selectedMarch = selectedTile
+    ? marches?.marches.find(
+        (march) => march.target_tile_id === selectedTile.tile_id && march.status === "arrived",
+      )
+    : undefined;
+  const preferredMarchType = selectedTile ? worldTilePreferredMarchType(selectedTile) : null;
+
+  return (
+    <main className="shell app-shell text-game-shell world-screen">
+      <header className="world-screen-hud">
+        <div>
+          <span>九州城池纪元</span>
+          <strong>{city?.city_name ?? "尚未建城"}</strong>
+          <small>
+            {city
+              ? `${city.province_name} · 灵石 ${city.resources.spirit_stone} · 道兵 ${city.resources.soldier}`
+              : "选择州域，在安全平原建立主城"}
+          </small>
+        </div>
+        <div className="world-screen-actions">
+          {city ? (
+            <button onClick={() => setMode("city")} type="button">
+              进入城内
+            </button>
+          ) : null}
+          <button
+            onClick={() => {
+              setPan({ x: 0, y: 0 });
+              setZoom(1);
+            }}
+            type="button"
+          >
+            复位视野
+          </button>
+        </div>
+      </header>
+      <section className="world-canvas-stage" aria-label="九州战略地图">
+        <canvas
+          aria-label="九州全部区块地图"
+          className="world-canvas"
+          onClick={selectCanvasTile}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              setSelectedCoordinate(null);
+              setSelectedTile(null);
+            }
+          }}
+          onPointerDown={beginDrag}
+          onPointerMove={moveDrag}
+          onPointerUp={endDrag}
+          onWheel={(event) => {
+            event.preventDefault();
+            setZoom((current) =>
+              Math.max(0.55, Math.min(5, current + (event.deltaY < 0 ? 0.12 : -0.12))),
+            );
+          }}
+          ref={canvasRef}
+          tabIndex={0}
+        />
+        <div className="world-canvas-legend" aria-label="地图图例">
+          <span>拖动移动</span>
+          <span>滚轮缩放</span>
+          <span>点击区块查看详情</span>
+        </div>
+        <aside className="world-floating-inspector" aria-live="polite">
+          {loadingTile ? (
+            <p>正在读取附近区块…</p>
+          ) : selectedTile ? (
+            <>
+              <strong>{selectedTile.tile_name}</strong>
+              <span>
+                {selectedTile.terrain_label} · 危险 {selectedTile.danger_level} ·{" "}
+                {selectedTile.owner.owner_player_name ?? "无主"}
+              </span>
+              <p>{selectedTile.state_summary}</p>
+              <div className="world-inspector-tags">
+                {selectedTile.terrain_effects.slice(0, 3).map((effect) => (
+                  <span key={effect}>{effect}</span>
+                ))}
+              </div>
+              <div className="world-inspector-actions">
+                {selectedMarch ? (
+                  <Button disabled={busy} onClick={() => onOccupy(selectedMarch)}>
+                    清野并占领
+                  </Button>
+                ) : selectedTile.ownership.owner_player_id === activePlayerId &&
+                  selectedTile.terrain_type === "plain" &&
+                  selectedTile.ownership.ownership_type !== "sub_city" ? (
+                  <Button
+                    disabled={busy || (city?.city_level ?? 0) < 2}
+                    onClick={() => onEstablishSubCity(selectedTile)}
+                  >
+                    建立分城
+                  </Button>
+                ) : selectedTile.purchase_state.purchasable ? (
+                  <Button disabled={busy} onClick={() => onPurchase(selectedTile)}>
+                    购买区块
+                  </Button>
+                ) : preferredMarchType ? (
+                  <Button
+                    disabled={busy}
+                    onClick={() => onStartMarch(selectedTile, preferredMarchType)}
+                  >
+                    {worldMarchTypeLabel(preferredMarchType)}
+                  </Button>
+                ) : (
+                  <span>{selectedTile.purchase_state.reason}</span>
+                )}
+              </div>
+            </>
+          ) : selectedCoordinate ? (
+            <>
+              <strong>{selectedCoordinate.provinceName}区块</strong>
+              <p>
+                坐标 {selectedCoordinate.x + 1}-{selectedCoordinate.y + 1} 暂无可读详情。
+              </p>
+            </>
+          ) : (
+            <>
+              <strong>九州全图</strong>
+              <p>全图直接绘制所有区块；点击任意区块后只加载附近的详情分片。</p>
+            </>
+          )}
+        </aside>
+      </section>
+    </main>
+  );
+}
+
+function worldCanvasTerrainColor(code: string): string {
+  return (
+    (
+      { d: "#c7aa70", f: "#55795c", m: "#8c8171", p: "#b8be85", s: "#6d8d7b" } as Record<
+        string,
+        string
+      >
+    )[code] ?? "#b8be85"
+  );
+}
+
 function DesktopOnlyNotice() {
   return (
     <section className="desktop-only-notice" aria-label="桌面端提示">
@@ -6105,7 +6570,6 @@ function CityInteriorStage({
   onExpandCity,
   onForge,
   onHarvestHerb,
-  onOpenFeature,
   onPlantHerb,
   onSelectBuilding,
   onUpgradeBuilding,
@@ -6124,7 +6588,6 @@ function CityInteriorStage({
   onExpandCity: () => void | Promise<void>;
   onForge: () => void | Promise<void>;
   onHarvestHerb: (plotId: string) => void | Promise<void>;
-  onOpenFeature: (feature: ActiveFeature) => void;
   onPlantHerb: (plotId: string) => void | Promise<void>;
   onSelectBuilding: (buildingId: CityInteriorBuildingId) => void;
   onUpgradeBuilding: (building: CityBuildingState) => void | Promise<void>;
@@ -6219,9 +6682,6 @@ function CityInteriorStage({
             <Button disabled={busy} onClick={onAlchemy}>
               炼制当前丹方
             </Button>
-            <button onClick={() => onOpenFeature("alchemy")} type="button">
-              查看丹方与材料
-            </button>
           </div>
         ) : null}
 
@@ -6237,29 +6697,17 @@ function CityInteriorStage({
               <Button disabled={busy} onClick={onForge}>
                 炼制当前器方
               </Button>
-              <button onClick={() => onOpenFeature("forge")} type="button">
-                查看器方与法宝
-              </button>
             </div>
           </>
         ) : null}
 
         {selectedBuilding.id === "training" ? (
-          <div className="production-actions strategic-primary-action">
-            <Button disabled={busy} onClick={() => onOpenFeature("skills")}>
-              进入演武配置
-            </Button>
-          </div>
+          <p className="action-note">技能预设将在演武房的独立配置界面中开放。</p>
         ) : null}
 
         {selectedBuilding.id === "barracks" ? (
           <>
             <p>当前可调度道兵 {city.resources.soldier}，行军与驻防会从这里整训。</p>
-            <div className="production-actions strategic-primary-action">
-              <Button disabled={busy} onClick={() => onOpenFeature("world")}>
-                查看行军与领地
-              </Button>
-            </div>
           </>
         ) : null}
 
@@ -9144,7 +9592,13 @@ async function loadWorldState(
     provinceResponse.data.recommended_province_id ||
     provinceResponse.data.provinces[0]?.province_id ||
     "";
-  const mapResponse = await client.worldMap(selectedProvinceId || undefined, view);
+  // 全图由 Atlas 的紧凑行数据绘制；初始化只保留一个小分片给旧状态和详情回退使用。
+  const mapResponse = await client.worldMap(selectedProvinceId || undefined, view, {
+    height: 12,
+    width: 12,
+    x: 0,
+    y: 0,
+  });
   ensureOk(mapResponse);
 
   return {

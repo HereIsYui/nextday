@@ -41,6 +41,11 @@ describe("R1 九州战略总览", () => {
         layout_y: number;
         neutral_blocks: number;
         owned_blocks: number;
+        layout_width: number;
+        layout_height: number;
+        terrain_rows: string[];
+        control_rows: string[];
+        landmark_rows: string[];
         cells: Array<{
           terrain_type: string;
           control: string;
@@ -50,7 +55,7 @@ describe("R1 九州战略总览", () => {
     };
 
     expect(data.provinces).toHaveLength(9);
-    expect(data.provinces.reduce((total, item) => total + item.province.block_count, 0)).toBe(3600);
+    expect(data.provinces.reduce((total, item) => total + item.province.block_count, 0)).toBe(8888);
 
     for (const province of data.provinces) {
       expect(province.cells.length).toBeGreaterThan(0);
@@ -59,6 +64,11 @@ describe("R1 九州战略总览", () => {
       expect(province.layout_x).toBeGreaterThanOrEqual(0);
       expect(province.layout_y).toBeGreaterThanOrEqual(0);
       expect(province.cells.some((cell) => cell.landmark === "tower")).toBe(true);
+      expect(province.terrain_rows).toHaveLength(province.layout_height);
+      expect(province.control_rows).toHaveLength(province.layout_height);
+      expect(province.landmark_rows).toHaveLength(province.layout_height);
+      expect(province.terrain_rows.every((row) => row.length === province.layout_width)).toBe(true);
+      expect(province.landmark_rows.join("")).toContain("t");
     }
   });
 

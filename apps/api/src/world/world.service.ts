@@ -183,6 +183,13 @@ export class WorldService {
           my_blocks: tiles.filter((tile) => mine.has(tile.tileId)).length,
           neutral_blocks: tiles.filter((tile) => !owned.has(tile.tileId)).length,
           owned_blocks: tiles.filter((tile) => owned.has(tile.tileId)).length,
+          player_count: new Set(
+            ownerships
+              .filter((ownership) => ownership.provinceId === province.provinceId)
+              .map((ownership) => ownership.playerId),
+          ).size,
+          resource_summary:
+            province.commanderies[0]?.resourceTheme.slice(0, 2).join("、") ?? "灵材",
           has_active_march: marches.some((march) => march.provinceId === province.provinceId),
           cells,
           terrain_rows: encodeAtlasRows(tiles, mapWidth, mapHeight, (tile) =>
@@ -193,6 +200,9 @@ export class WorldService {
           ),
           landmark_rows: encodeAtlasRows(tiles, mapWidth, mapHeight, (tile) =>
             landmarkAtlasCode(tile.tileType),
+          ),
+          birth_rows: encodeAtlasRows(tiles, mapWidth, mapHeight, (tile) =>
+            isBirthPlainTile(tile) ? "b" : ".",
           ),
         };
       }),

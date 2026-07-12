@@ -735,11 +735,14 @@ export interface WorldAtlasProvinceState {
   my_blocks: number;
   neutral_blocks: number;
   owned_blocks: number;
+  player_count: number;
+  resource_summary: string;
   has_active_march: boolean;
   cells: WorldAtlasCellState[];
   terrain_rows: string[];
   control_rows: string[];
   landmark_rows: string[];
+  birth_rows: string[];
 }
 
 export interface WorldAtlasResponse {

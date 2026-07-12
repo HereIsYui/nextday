@@ -6284,6 +6284,7 @@ function WorldMapScreen({
         const terrainRow = province.terrain_rows[y] ?? "";
         const controlRow = province.control_rows[y] ?? "";
         const landmarkRow = province.landmark_rows[y] ?? "";
+        const birthRow = province.birth_rows[y] ?? "";
         for (let x = 0; x < province.layout_width; x += 1) {
           const terrain = terrainRow[x] ?? "p";
           if (terrain === ".") {
@@ -6291,6 +6292,7 @@ function WorldMapScreen({
           }
           const control = controlRow[x] ?? "n";
           const landmark = landmarkRow[x] ?? ".";
+          const birthTile = !city && birthRow[x] === "b";
           const drawX = transform.originX + (province.layout_x + x) * transform.cellSize;
           const drawY = transform.originY + (province.layout_y + y) * transform.cellSize;
           context.fillStyle = worldCanvasTerrainColor(terrain);
@@ -6300,6 +6302,15 @@ function WorldMapScreen({
             transform.cellSize + (showTileGrid ? 0 : 0.35),
             transform.cellSize + (showTileGrid ? 0 : 0.35),
           );
+          if (birthTile) {
+            context.fillStyle = "rgba(244, 229, 145, 0.72)";
+            context.fillRect(
+              drawX + transform.cellSize * 0.24,
+              drawY + transform.cellSize * 0.24,
+              Math.max(1, transform.cellSize * 0.52),
+              Math.max(1, transform.cellSize * 0.52),
+            );
+          }
           if (showTileGrid) {
             context.strokeStyle = "rgba(44, 37, 26, 0.2)";
             context.lineWidth = 0.65;
@@ -6394,7 +6405,7 @@ function WorldMapScreen({
         context.textBaseline = "alphabetic";
       }
     }
-  }, [atlas, canvasSize, selectedCoordinate, transform]);
+  }, [atlas, canvasSize, city, selectedCoordinate, transform]);
 
   async function selectCanvasTile(event: MouseEvent<HTMLCanvasElement>) {
     if (!atlas || dragRef.current || didDragRef.current) {
@@ -6588,6 +6599,17 @@ function WorldMapScreen({
           <span>滚轮缩放至区块层</span>
           <span>点击区块查看详情</span>
         </div>
+        <aside className="world-province-summary" aria-label="州域概览">
+          <strong>九州概览</strong>
+          {(atlas?.provinces ?? []).map((province) => (
+            <div key={province.province.province_id}>
+              <span>{province.province.name}</span>
+              <small>
+                {province.player_count} 位城主 · {province.resource_summary}
+              </small>
+            </div>
+          ))}
+        </aside>
         <aside className="world-floating-inspector" aria-live="polite">
           {loadingTile ? (
             <p>正在读取附近区块…</p>

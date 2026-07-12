@@ -86,6 +86,7 @@ import {
   type MouseEvent,
   type PointerEvent,
   type ReactNode,
+  type WheelEvent,
   useEffect,
   useMemo,
   useRef,
@@ -6249,6 +6250,8 @@ function WorldMapScreen({
     context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
     context.fillStyle = "#e8dfcb";
     context.fillRect(0, 0, canvasSize.width, canvasSize.height);
+    const showTileGrid = transform.cellSize >= 9;
+    const showLandmarkLabel = transform.cellSize >= 18;
 
     for (const province of atlas?.provinces ?? []) {
       for (let y = 0; y < province.layout_height; y += 1) {
@@ -6262,7 +6265,17 @@ function WorldMapScreen({
           const drawX = transform.originX + (province.layout_x + x) * transform.cellSize;
           const drawY = transform.originY + (province.layout_y + y) * transform.cellSize;
           context.fillStyle = worldCanvasTerrainColor(terrain);
-          context.fillRect(drawX, drawY, transform.cellSize + 0.35, transform.cellSize + 0.35);
+          context.fillRect(
+            drawX,
+            drawY,
+            transform.cellSize + (showTileGrid ? 0 : 0.35),
+            transform.cellSize + (showTileGrid ? 0 : 0.35),
+          );
+          if (showTileGrid) {
+            context.strokeStyle = "rgba(44, 37, 26, 0.2)";
+            context.lineWidth = 0.65;
+            context.strokeRect(drawX, drawY, transform.cellSize, transform.cellSize);
+          }
           if (control === "m" || control === "o") {
             context.fillStyle = control === "m" ? "#244f3e" : "#8f4b45";
             const inset = Math.max(1, transform.cellSize * 0.2);
@@ -6281,6 +6294,33 @@ function WorldMapScreen({
               drawY + transform.cellSize * 0.25,
               Math.max(1, transform.cellSize * 0.5),
               Math.max(1, transform.cellSize * 0.5),
+            );
+            if (showLandmarkLabel) {
+              context.fillStyle = "#ffffff";
+              context.font = `600 ${Math.max(10, Math.min(14, transform.cellSize * 0.58))}px Songti SC, SimSun, serif`;
+              context.textAlign = "center";
+              context.textBaseline = "middle";
+              context.fillText(
+                landmark === "t" ? "塔" : landmark === "c" ? "府" : "关",
+                drawX + transform.cellSize / 2,
+                drawY + transform.cellSize / 2,
+              );
+              context.textAlign = "start";
+              context.textBaseline = "alphabetic";
+            }
+          }
+          if (
+            selectedCoordinate?.provinceId === province.province.province_id &&
+            selectedCoordinate.x === x &&
+            selectedCoordinate.y === y
+          ) {
+            context.strokeStyle = "#d74f2a";
+            context.lineWidth = Math.max(2, transform.cellSize * 0.12);
+            context.strokeRect(
+              drawX + 1,
+              drawY + 1,
+              transform.cellSize - 2,
+              transform.cellSize - 2,
             );
           }
         }
@@ -6303,7 +6343,7 @@ function WorldMapScreen({
         );
       }
     }
-  }, [atlas, canvasSize, transform]);
+  }, [atlas, canvasSize, selectedCoordinate, transform]);
 
   async function selectCanvasTile(event: MouseEvent<HTMLCanvasElement>) {
     if (!atlas || dragRef.current || didDragRef.current) {
@@ -6366,6 +6406,35 @@ function WorldMapScreen({
   function endDrag(event: PointerEvent<HTMLCanvasElement>) {
     dragRef.current = null;
     event.currentTarget.releasePointerCapture(event.pointerId);
+  }
+
+  function zoomAtPointer(event: WheelEvent<HTMLCanvasElement>) {
+    event.preventDefault();
+    const rectangle = event.currentTarget.getBoundingClientRect();
+    const nextZoom = Math.max(0.55, Math.min(5, zoom + (event.deltaY < 0 ? 0.16 : -0.16)));
+    const worldX = (event.clientX - rectangle.left - transform.originX) / transform.cellSize;
+    const worldY = (event.clientY - rectangle.top - transform.originY) / transform.cellSize;
+    const nextCellSize =
+      Math.max(
+        2,
+        Math.min(
+          (canvasSize.width - 52) / worldBounds.width,
+          (canvasSize.height - 52) / worldBounds.height,
+        ),
+      ) * nextZoom;
+    setZoom(nextZoom);
+    setPan({
+      x:
+        event.clientX -
+        rectangle.left -
+        worldX * nextCellSize -
+        (canvasSize.width - worldBounds.width * nextCellSize) / 2,
+      y:
+        event.clientY -
+        rectangle.top -
+        worldY * nextCellSize -
+        (canvasSize.height - worldBounds.height * nextCellSize) / 2,
+    });
   }
 
   if (mode === "city" && city) {
@@ -6455,18 +6524,13 @@ function WorldMapScreen({
           onPointerDown={beginDrag}
           onPointerMove={moveDrag}
           onPointerUp={endDrag}
-          onWheel={(event) => {
-            event.preventDefault();
-            setZoom((current) =>
-              Math.max(0.55, Math.min(5, current + (event.deltaY < 0 ? 0.12 : -0.12))),
-            );
-          }}
+          onWheel={zoomAtPointer}
           ref={canvasRef}
           tabIndex={0}
         />
         <div className="world-canvas-legend" aria-label="地图图例">
           <span>拖动移动</span>
-          <span>滚轮缩放</span>
+          <span>滚轮缩放至区块层</span>
           <span>点击区块查看详情</span>
         </div>
         <aside className="world-floating-inspector" aria-live="polite">

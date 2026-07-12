@@ -69,6 +69,11 @@ describe("R1 九州战略总览", () => {
       expect(province.landmark_rows).toHaveLength(province.layout_height);
       expect(province.terrain_rows.every((row) => row.length === province.layout_width)).toBe(true);
       expect(province.landmark_rows.join("")).toContain("t");
+      expect(
+        data.provinces.some(
+          (other) => other !== province && atlasProvincesShareBorder(province, other),
+        ),
+      ).toBe(true);
     }
   });
 
@@ -87,6 +92,27 @@ describe("R1 九州战略总览", () => {
     }
   });
 });
+
+function atlasProvincesShareBorder(
+  left: { layout_x: number; layout_y: number; layout_width: number; layout_height: number },
+  right: { layout_x: number; layout_y: number; layout_width: number; layout_height: number },
+): boolean {
+  const horizontalOverlap =
+    Math.min(left.layout_x + left.layout_width, right.layout_x + right.layout_width) -
+    Math.max(left.layout_x, right.layout_x);
+  const verticalOverlap =
+    Math.min(left.layout_y + left.layout_height, right.layout_y + right.layout_height) -
+    Math.max(left.layout_y, right.layout_y);
+
+  return (
+    ((left.layout_x + left.layout_width === right.layout_x ||
+      right.layout_x + right.layout_width === left.layout_x) &&
+      verticalOverlap > 0) ||
+    ((left.layout_y + left.layout_height === right.layout_y ||
+      right.layout_y + right.layout_height === left.layout_y) &&
+      horizontalOverlap > 0)
+  );
+}
 
 async function createPlayerToken(app: INestApplication): Promise<string> {
   const nonce = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;

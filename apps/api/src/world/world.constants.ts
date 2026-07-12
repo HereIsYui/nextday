@@ -364,7 +364,7 @@ function generateProvinceTiles(
   coordinates: ProvinceCoordinate[],
 ) {
   const plan = requireProvinceBlockPlan(province.provinceId);
-  const birthPlainCoordinates = buildBirthPlainCoordinates(coordinates);
+  const birthPlainCoordinates = buildBirthPlainCoordinates(province.provinceId, coordinates);
   const terrainLayout = buildTerrainLayout(
     province.provinceId,
     plan,
@@ -738,22 +738,50 @@ function allocateTerrainCounts(plan: ProvinceBlockPlan): Record<WorldTerrainType
   >;
 }
 
-function buildBirthPlainCoordinates(coordinates: ProvinceCoordinate[]): Set<string> {
-  const centers: Array<[number, number]> = [
-    [0.16, 0.23],
-    [0.5, 0.68],
-    [0.82, 0.3],
-  ];
+function buildBirthPlainCoordinates(
+  provinceId: string,
+  coordinates: ProvinceCoordinate[],
+): Set<string> {
   const birthCoordinates = new Set<string>();
-  for (const [ratioX, ratioY] of centers) {
+  const centers: ProvinceCoordinate[] = [
+    coordinates
+      .slice()
+      .sort(
+        (left, right) =>
+          stableHash(`${provinceId}:birth:${left.x}:${left.y}`) -
+          stableHash(`${provinceId}:birth:${right.x}:${right.y}`),
+      )[0],
+  ].filter((coordinate): coordinate is ProvinceCoordinate => Boolean(coordinate));
+
+  while (centers.length < 5) {
+    const next = coordinates
+      .filter(
+        (coordinate) =>
+          !centers.some((center) => center.x === coordinate.x && center.y === coordinate.y),
+      )
+      .sort((left, right) => {
+        const leftDistance = Math.min(
+          ...centers.map((center) => (left.x - center.x) ** 2 + (left.y - center.y) ** 2),
+        );
+        const rightDistance = Math.min(
+          ...centers.map((center) => (right.x - center.x) ** 2 + (right.y - center.y) ** 2),
+        );
+        return rightDistance - leftDistance;
+      })[0];
+    if (!next) break;
+    centers.push(next);
+  }
+
+  for (const center of centers) {
     for (const coordinate of coordinates
       .slice()
       .sort(
         (left, right) =>
-          coordinateDistance(left, ratioX, ratioY, coordinates) -
-          coordinateDistance(right, ratioX, ratioY, coordinates),
+          (left.x - center.x) ** 2 +
+          (left.y - center.y) ** 2 -
+          ((right.x - center.x) ** 2 + (right.y - center.y) ** 2),
       )
-      .slice(0, 25)) {
+      .slice(0, 20)) {
       birthCoordinates.add(toCoordinateKey(coordinate.x, coordinate.y));
     }
   }

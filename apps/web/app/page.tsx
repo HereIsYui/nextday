@@ -3282,6 +3282,7 @@ export default function HomePage() {
         <WorldMapScreen
           activePlayerId={activePlayerId}
           atlas={worldAtlas}
+          birthOptions={cityOverview?.birth_options ?? []}
           buildings={cityBuildings}
           busy={busy}
           city={worldMainCity}
@@ -3300,6 +3301,14 @@ export default function HomePage() {
           onOccupy={handleOccupyWorld}
           onPlantHerb={handlePlantHerb}
           onPurchase={handlePurchaseWorldBlock}
+          onSettle={(provinceId) => {
+            const option = cityOverview?.birth_options.find(
+              (item) => item.province_id === provinceId && item.available,
+            );
+            if (option) {
+              void handleSettleMainCity(option);
+            }
+          }}
           onStartMarch={handleStartWorldMarch}
           onUpgradeBuilding={handleUpgradeCityBuilding}
           territoryCollect={territoryCollect}
@@ -6133,6 +6142,7 @@ export default function HomePage() {
 function WorldMapScreen({
   activePlayerId,
   atlas,
+  birthOptions,
   buildings,
   busy,
   city,
@@ -6151,12 +6161,14 @@ function WorldMapScreen({
   onOccupy,
   onPlantHerb,
   onPurchase,
+  onSettle,
   onStartMarch,
   onUpgradeBuilding,
   territoryCollect,
 }: {
   activePlayerId: string | null;
   atlas: WorldAtlasResponse | null;
+  birthOptions: CityBirthOptionState[];
   buildings: CityBuildingState[];
   busy: boolean;
   city: CityOverviewResponse["main_city"];
@@ -6175,6 +6187,7 @@ function WorldMapScreen({
   onOccupy: (march: MarchQueueState) => void | Promise<void>;
   onPlantHerb: (plotId: string) => void | Promise<void>;
   onPurchase: (tile: MapTileState) => void | Promise<void>;
+  onSettle: (provinceId: string) => void;
   onStartMarch: (tile: MapTileState, marchType: MarchType) => void | Promise<void>;
   onUpgradeBuilding: (building: CityBuildingState) => void | Promise<void>;
   territoryCollect: CityManagementResponse["territory_collect"] | null;
@@ -6593,7 +6606,16 @@ function WorldMapScreen({
               </div>
               <div className="world-inspector-actions">
                 {!city ? (
-                  <span>尚未建城，只能查看地块。请选择安全平原建立主城后再出征。</span>
+                  selectedTile.labels.includes("安全出生池") &&
+                  birthOptions.some(
+                    (option) => option.province_id === selectedTile.province_id && option.available,
+                  ) ? (
+                    <Button disabled={busy} onClick={() => onSettle(selectedTile.province_id)}>
+                      在此建立主城
+                    </Button>
+                  ) : (
+                    <span>尚未建城。请选择标有安全出生池的平原建立主城后再出征。</span>
+                  )
                 ) : selectedMarch ? (
                   <Button disabled={busy} onClick={() => onOccupy(selectedMarch)}>
                     清野并占领

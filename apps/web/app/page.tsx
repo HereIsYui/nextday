@@ -6286,6 +6286,7 @@ function WorldMapScreen({
         const controlRow = province.control_rows[y] ?? "";
         const landmarkRow = province.landmark_rows[y] ?? "";
         const birthRow = province.birth_rows[y] ?? "";
+        const marchRow = province.march_rows[y] ?? "";
         for (let x = 0; x < province.layout_width; x += 1) {
           const terrain = terrainRow[x] ?? "p";
           if (terrain === ".") {
@@ -6310,6 +6311,15 @@ function WorldMapScreen({
               drawY + transform.cellSize * 0.24,
               Math.max(1, transform.cellSize * 0.52),
               Math.max(1, transform.cellSize * 0.52),
+            );
+          }
+          if (marchRow[x] === "m") {
+            context.fillStyle = "#1e4f78";
+            context.fillRect(
+              drawX + transform.cellSize * 0.34,
+              drawY + transform.cellSize * 0.1,
+              Math.max(2, transform.cellSize * 0.32),
+              Math.max(2, transform.cellSize * 0.32),
             );
           }
           if (showTileGrid) {
@@ -6641,6 +6651,12 @@ function WorldMapScreen({
               <div className="world-inspector-tags">
                 {selectedTile.ownership.ownership_type ? (
                   <span>{worldOwnershipTypeLabel(selectedTile.ownership.ownership_type)}</span>
+                ) : null}
+                {marches?.marches.some(
+                  (march) =>
+                    march.target_tile_id === selectedTile.tile_id && march.status === "marching",
+                ) ? (
+                  <span>我方队伍行军中</span>
                 ) : null}
                 {selectedTile.terrain_effects.slice(0, 3).map((effect) => (
                   <span key={effect}>{effect}</span>

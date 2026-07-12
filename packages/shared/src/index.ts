@@ -743,6 +743,7 @@ export interface WorldAtlasProvinceState {
   control_rows: string[];
   landmark_rows: string[];
   birth_rows: string[];
+  march_rows: string[];
 }
 
 export interface WorldAtlasResponse {

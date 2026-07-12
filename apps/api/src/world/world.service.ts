@@ -107,6 +107,7 @@ export class WorldService {
     );
     const owned = new Set(ownerships.map((item) => item.tileId));
     const cityByTile = new Map(cities.map((city) => [city.tileId, city]));
+    const marchingTargets = new Set(marches.map((march) => march.targetTileId));
     const layout: Record<string, [number, number]> = {
       // 九州已经在同一块大陆坐标系中分区，Atlas 不再为各州追加偏移。
       ji: [0, 0],
@@ -209,6 +210,9 @@ export class WorldService {
           ),
           birth_rows: encodeAtlasRows(tiles, mapWidth, mapHeight, (tile) =>
             isBirthPlainTile(tile) ? "b" : ".",
+          ),
+          march_rows: encodeAtlasRows(tiles, mapWidth, mapHeight, (tile) =>
+            marchingTargets.has(tile.tileId) ? "m" : ".",
           ),
         };
       }),

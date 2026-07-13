@@ -3350,6 +3350,7 @@ export default function HomePage() {
           onStartMarch={handleStartWorldMarch}
           onUpgradeBuilding={handleUpgradeCityBuilding}
           territoryCollect={territoryCollect}
+          territory={worldTerritory}
         />
       </>
     );
@@ -6205,6 +6206,7 @@ function WorldMapScreen({
   onStartMarch,
   onUpgradeBuilding,
   territoryCollect,
+  territory,
 }: {
   activePlayerId: string | null;
   atlas: WorldAtlasResponse | null;
@@ -6232,6 +6234,7 @@ function WorldMapScreen({
   onStartMarch: (tile: MapTileState, marchType: MarchType) => void | Promise<void>;
   onUpgradeBuilding: (building: CityBuildingState) => void | Promise<void>;
   territoryCollect: CityManagementResponse["territory_collect"] | null;
+  territory: TerritoryOverviewResponse | null;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const dragRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
@@ -6522,6 +6525,49 @@ function WorldMapScreen({
         tileCacheRef.current.set(cacheKey, tile);
       }
       setSelectedTile(tile);
+    } finally {
+      setLoadingTile(false);
+    }
+  }
+
+  async function focusTerritoryBlock(block: TerritoryOverviewResponse["blocks"][number]) {
+    const province = atlas?.provinces.find(
+      (item) => item.province.province_id === block.province_id,
+    );
+    if (!province) return;
+    setSelectedCoordinate({
+      provinceId: block.province_id,
+      provinceName: block.province_name,
+      x: block.x,
+      y: block.y,
+    });
+    setLoadingTile(true);
+    try {
+      const tile = await onLoadTile(block.province_id, block.x, block.y);
+      if (tile) {
+        tileCacheRef.current.set(`${block.province_id}:${block.x}:${block.y}`, tile);
+        setSelectedTile(tile);
+      }
+      const nextZoom = Math.max(2.2, zoom);
+      const baseCellSize = Math.max(
+        2,
+        Math.min(
+          (canvasSize.width - 52) / worldBounds.width,
+          (canvasSize.height - 52) / worldBounds.height,
+        ),
+      );
+      const nextCellSize = baseCellSize * nextZoom;
+      setZoom(nextZoom);
+      setPan({
+        x:
+          canvasSize.width / 2 -
+          (province.layout_x + block.x + 0.5) * nextCellSize -
+          (canvasSize.width - worldBounds.width * nextCellSize) / 2,
+        y:
+          canvasSize.height / 2 -
+          (province.layout_y + block.y + 0.5) * nextCellSize -
+          (canvasSize.height - worldBounds.height * nextCellSize) / 2,
+      });
     } finally {
       setLoadingTile(false);
     }
@@ -6835,8 +6881,30 @@ function WorldMapScreen({
             </>
           ) : (
             <>
-              <strong>九州全图</strong>
-              <p>全图直接绘制所有区块；点击任意区块后只加载附近的详情分片。</p>
+              <strong>我的领地</strong>
+              {territory?.blocks.length ? (
+                <div className="world-territory-locator">
+                  <span>
+                    领地 {territory.owned_block_count}/{territory.block_limit} · 驻军{" "}
+                    {territory.total_garrison_soldiers} · 守备 {territory.total_garrison_power}
+                  </span>
+                  {territory.blocks.map((block) => (
+                    <button
+                      key={block.tile_id}
+                      onClick={() => focusTerritoryBlock(block)}
+                      type="button"
+                    >
+                      <strong>{block.tile_name}</strong>
+                      <span>
+                        {block.terrain_label} ·{" "}
+                        {block.garrison ? `驻军 ${block.garrison.soldier_count}` : "未驻防"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p>全图直接绘制所有区块；点击安全平原后可以建立主城。</p>
+              )}
             </>
           )}
         </aside>

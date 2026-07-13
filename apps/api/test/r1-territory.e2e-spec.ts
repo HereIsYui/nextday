@@ -39,6 +39,7 @@ describe("R1 领地产出与主城扩建", () => {
 
     const playerIds = testPlayerIds.splice(0, testPlayerIds.length);
     await prisma.$transaction([
+      prisma.territoryGarrison.deleteMany({ where: { playerId: { in: playerIds } } }),
       prisma.worldBlockOwnership.deleteMany({ where: { playerId: { in: playerIds } } }),
       prisma.playerCity.deleteMany({ where: { playerId: { in: playerIds } } }),
     ]);
@@ -71,11 +72,27 @@ describe("R1 领地产出与主城扩建", () => {
     }
 
     await createOwnedTestBlock(prisma, playerId, plainTile);
+    await request(app.getHttpServer())
+      .post("/api/world/defend")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_r1_territory_defend_${nonce()}`)
+      .send({ tile_id: plainTile.tile_id, soldier_count: 8 })
+      .expect(201);
 
     const afterPurchase = await getTerritory(app, token);
     expect(afterPurchase.owned_block_count).toBe(2);
     expect(afterPurchase.hourly_output.grain).toBeGreaterThan(before.hourly_output.grain);
     expect(afterPurchase.expansion).toMatchObject({ eligible: true, owned_plain_blocks: 2 });
+    expect(afterPurchase.total_garrison_soldiers).toBe(8);
+    expect(afterPurchase.total_garrison_power).toBe(16);
+    expect(afterPurchase.blocks).toContainEqual(
+      expect.objectContaining({
+        tile_id: plainTile.tile_id,
+        x: expect.any(Number),
+        y: expect.any(Number),
+        garrison: expect.objectContaining({ soldier_count: 8, defense_power: 16 }),
+      }),
+    );
 
     await createOwnedTestBlock(prisma, playerId, mountainTile);
     const afterMountain = await getTerritory(app, token);
@@ -214,9 +231,17 @@ async function getTerritory(app: INestApplication, token: string) {
     .expect(200);
   return response.body.data as {
     owned_block_count: number;
+    total_garrison_soldiers: number;
+    total_garrison_power: number;
     block_limit: number;
     hourly_output: { grain: number; ore: number };
     terrain_summary: Array<{ terrain_type: string; block_count: number }>;
+    blocks: Array<{
+      tile_id: string;
+      x: number;
+      y: number;
+      garrison: { soldier_count: number; defense_power: number } | null;
+    }>;
     expansion: { eligible: boolean; required_plain_blocks: number; owned_plain_blocks: number };
   };
 }

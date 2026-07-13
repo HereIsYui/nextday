@@ -4942,6 +4942,39 @@ details.event-boundary {
   overflow-wrap: anywhere;
 }
 
+.text-game-shell.world-screen .world-territory-locator {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.text-game-shell.world-screen .world-territory-locator > button {
+  align-items: start;
+  background: rgba(255, 253, 247, 0.78);
+  border: 1px solid #b7aa93;
+  color: #211e1a;
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  min-height: 42px;
+  min-width: 0;
+  padding: 7px 8px;
+  text-align: left;
+  width: 100%;
+}
+
+.text-game-shell.world-screen .world-territory-locator > button:hover {
+  background: #f1eadb;
+  border-color: #675b48;
+}
+
+.text-game-shell.world-screen .world-territory-locator > button strong,
+.text-game-shell.world-screen .world-territory-locator > button span {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .text-game-shell.world-screen.city-screen .city-screen-stage {
   display: grid;
   min-height: 0;

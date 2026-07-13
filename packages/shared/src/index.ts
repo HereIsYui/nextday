@@ -980,6 +980,8 @@ export interface TerritoryTerrainSummaryState {
 export interface TerritoryBlockState {
   tile_id: string;
   tile_name: string;
+  x: number;
+  y: number;
   province_id: string;
   province_name: string;
   commandery_id: string;
@@ -989,6 +991,7 @@ export interface TerritoryBlockState {
   ownership_type: NonNullable<WorldBlockOwnershipState["ownership_type"]>;
   owned_at: string;
   hourly_output: TerritoryHourlyOutputState;
+  garrison: TerritoryGarrisonState | null;
   city_expansion_eligible: boolean;
 }
 
@@ -1014,6 +1017,8 @@ export interface CityExpansionState {
 export interface TerritoryOverviewResponse {
   main_city: PlayerCityState | null;
   owned_block_count: number;
+  total_garrison_soldiers: number;
+  total_garrison_power: number;
   block_limit: number;
   remaining_block_capacity: number;
   hourly_output: TerritoryHourlyOutputState;

@@ -240,7 +240,7 @@ export class WorldService {
 
   async getTerritory(accountId: string): Promise<TerritoryOverviewResponse> {
     const player = await this.requirePlayer(accountId);
-    const [city, ownerships] = await Promise.all([
+    const [city, ownerships, garrisons] = await Promise.all([
       this.prisma.playerCity.findFirst({
         where: { playerId: player.playerId, cityType: "main" },
         orderBy: { createdAt: "asc" },
@@ -249,12 +249,17 @@ export class WorldService {
         where: { playerId: player.playerId, eraId: defaultEraId, status: "owned" },
         orderBy: { ownedAt: "asc" },
       }),
+      this.prisma.territoryGarrison.findMany({
+        where: { playerId: player.playerId, eraId: defaultEraId },
+      }),
     ]);
 
     if (!city) {
       return {
         main_city: null,
         owned_block_count: 0,
+        total_garrison_soldiers: 0,
+        total_garrison_power: 0,
         block_limit: 0,
         remaining_block_capacity: 0,
         hourly_output: emptyTerritoryHourlyOutput(),
@@ -266,8 +271,11 @@ export class WorldService {
       };
     }
 
+    const garrisonByTileId = new Map(garrisons.map((garrison) => [garrison.tileId, garrison]));
     const blocks = ownerships
-      .map((ownership) => this.toTerritoryBlockState(ownership))
+      .map((ownership) =>
+        this.toTerritoryBlockState(ownership, garrisonByTileId.get(ownership.tileId) ?? null),
+      )
       .filter((block): block is TerritoryBlockState => Boolean(block));
     const hourlyOutput = emptyTerritoryHourlyOutput();
     const terrainSummary = new Map<
@@ -308,6 +316,11 @@ export class WorldService {
     return {
       main_city: this.toCityState(city),
       owned_block_count: blocks.length,
+      total_garrison_soldiers: garrisons.reduce(
+        (total, garrison) => total + garrison.soldierCount,
+        0,
+      ),
+      total_garrison_power: garrisons.reduce((total, garrison) => total + garrison.defensePower, 0),
       block_limit: blockLimit,
       remaining_block_capacity: remainingBlockCapacity,
       hourly_output: hourlyOutput,
@@ -1298,7 +1311,10 @@ export class WorldService {
     };
   }
 
-  private toTerritoryBlockState(ownership: WorldBlockOwnership): TerritoryBlockState | null {
+  private toTerritoryBlockState(
+    ownership: WorldBlockOwnership,
+    garrison: TerritoryGarrison | null,
+  ): TerritoryBlockState | null {
     const tile = findWorldTile(ownership.tileId);
     if (!tile) {
       return null;
@@ -1314,6 +1330,8 @@ export class WorldService {
     return {
       tile_id: tile.tileId,
       tile_name: tile.tileName,
+      x: tile.x,
+      y: tile.y,
       province_id: province.provinceId,
       province_name: province.name,
       commandery_id: commandery.commanderyId,
@@ -1323,6 +1341,7 @@ export class WorldService {
       ownership_type: normalizeOwnershipType(ownership.ownershipType),
       owned_at: ownership.ownedAt.toISOString(),
       hourly_output: getTerrainHourlyOutput(tile.terrainType),
+      garrison: garrison ? this.toGarrisonState(garrison, ownership.playerId) : null,
       city_expansion_eligible: tile.terrainType === "plain",
     };
   }

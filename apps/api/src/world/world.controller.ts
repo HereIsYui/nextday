@@ -6,6 +6,10 @@ import type {
   PurchaseWorldBlockResponse,
   ResolveWorldClearanceRequest,
   ResolveWorldClearanceResponse,
+  ScoutWorldRequest,
+  ScoutWorldResponse,
+  SiegeWorldRequest,
+  SiegeWorldResponse,
   StartWorldMarchRequest,
   StartWorldMarchResponse,
   TerritoryOverviewResponse,
@@ -96,6 +100,32 @@ export class WorldController {
       body,
       idempotencyKey: requireIdempotencyKey(request),
       endpoint: "POST /api/world/clear-wild/resolve",
+    });
+  }
+
+  @Post("siege/resolve")
+  resolveSiege(
+    @Body() body: SiegeWorldRequest,
+    @Req() request: Request,
+  ): Promise<SiegeWorldResponse> {
+    return this.worldService.resolveSiege({
+      accountId: requireAccountId(request),
+      body,
+      idempotencyKey: requireIdempotencyKey(request),
+      endpoint: "POST /api/world/siege/resolve",
+    });
+  }
+
+  @Post("scout/resolve")
+  resolveScout(
+    @Body() body: ScoutWorldRequest,
+    @Req() request: Request,
+  ): Promise<ScoutWorldResponse> {
+    return this.worldService.resolveScout({
+      accountId: requireAccountId(request),
+      body,
+      idempotencyKey: requireIdempotencyKey(request),
+      endpoint: "POST /api/world/scout/resolve",
     });
   }
 

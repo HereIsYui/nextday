@@ -1752,6 +1752,67 @@ export default function HomePage() {
     });
   }
 
+  async function handleResolveWorldSiege(march: MarchQueueState) {
+    if (march.status !== "arrived" || march.march_type !== "siege") {
+      setMessage("请选择已抵达的围城队伍");
+      return;
+    }
+    await runAction("结算围城", async () => {
+      const response = await client.resolveWorldSiege(
+        { march_id: march.march_id },
+        createIdempotencyKey(`web_world_siege_${march.march_id}`),
+      );
+      ensureOk(response);
+      setWorldMap(response.data.map);
+      rememberExperience(undefined, {
+        summary: response.data.siege.captured
+          ? `攻破${response.data.siege.target_city_name}，分城与所在区块已归入你的领地。`
+          : response.data.won
+            ? `围城取胜，城墙受损 ${response.data.siege.wall_damage}，掠得灵石 ${response.data.siege.plunder.spirit_stone}、粮草 ${response.data.siege.plunder.grain}。主城产权未发生变化。`
+            : `围城失利，我方战力 ${response.data.attacker_power}，守方战力 ${response.data.defender_power}。`,
+        tags: response.data.siege.captured
+          ? ["围城", "分城易主"]
+          : response.data.won
+            ? ["围城", "城防受损"]
+            : ["围城", "整军再战"],
+        title: response.data.siege.captured
+          ? "夺取分城"
+          : response.data.won
+            ? "围城取胜"
+            : "围城失利",
+        tone: response.data.won ? "success" : "warning",
+      });
+      await refreshWorldState(
+        response.data.won ? `已完成对${march.target_name}的围城` : `${march.target_name}围城失利`,
+        march.province_id,
+      );
+    });
+  }
+
+  async function handleResolveWorldScout(march: MarchQueueState) {
+    if (march.status !== "arrived" || march.march_type !== "scout") {
+      setMessage("请选择已抵达的侦察队伍");
+      return;
+    }
+    await runAction("查看侦察情报", async () => {
+      const response = await client.resolveWorldScout(
+        { march_id: march.march_id },
+        createIdempotencyKey(`web_world_scout_${march.march_id}`),
+      );
+      ensureOk(response);
+      const intel = response.data.intel;
+      rememberExperience(undefined, {
+        summary: intel.city_name
+          ? `${intel.city_name} · ${intel.city_type === "main" ? "主城" : "分城"} ${intel.city_level} 级 · 城防${worldScoutWallLabel(intel.wall_condition)} · 驻军${worldScoutGarrisonLabel(intel.garrison_estimate)} · 资源${worldScoutResourceLabel(intel.resource_estimate)}。`
+          : `${intel.tile_name}暂无城池，驻军${worldScoutGarrisonLabel(intel.garrison_estimate)}。`,
+        tags: ["侦察", intel.protected ? "保护中" : "可继续行动"],
+        title: "侦察回报",
+        tone: "neutral",
+      });
+      await refreshWorldState(`已取得${march.target_name}的侦察情报`, march.province_id);
+    });
+  }
+
   async function handlePurchaseWorldBlock(tile: MapTileState) {
     if (!worldMainCity) {
       setMessage("请先建立主城");
@@ -3417,6 +3478,8 @@ export default function HomePage() {
           onPlantHerb={handlePlantHerb}
           onPurchase={handlePurchaseWorldBlock}
           onResolveClearance={handleResolveWorldClearance}
+          onResolveScout={handleResolveWorldScout}
+          onResolveSiege={handleResolveWorldSiege}
           onSettle={(provinceId) => {
             const option = cityOverview?.birth_options.find(
               (item) => item.province_id === provinceId && item.available,
@@ -6290,6 +6353,8 @@ function WorldMapScreen({
   onPlantHerb,
   onPurchase,
   onResolveClearance,
+  onResolveScout,
+  onResolveSiege,
   onSettle,
   onStartMarch,
   onSaveArmyPreset,
@@ -6327,6 +6392,8 @@ function WorldMapScreen({
   onPlantHerb: (plotId: string) => void | Promise<void>;
   onPurchase: (tile: MapTileState) => void | Promise<void>;
   onResolveClearance: (march: MarchQueueState) => void | Promise<void>;
+  onResolveScout: (march: MarchQueueState) => void | Promise<void>;
+  onResolveSiege: (march: MarchQueueState) => void | Promise<void>;
   onSettle: (provinceId: string) => void;
   onStartMarch: (tile: MapTileState, marchType: MarchType) => void | Promise<void>;
   onSaveArmyPreset: (input: {
@@ -6850,7 +6917,9 @@ function WorldMapScreen({
         (march) =>
           march.target_tile_id === selectedTile.tile_id &&
           march.status === "arrived" &&
-          march.march_type === "clear_wild",
+          (march.march_type === "clear_wild" ||
+            march.march_type === "siege" ||
+            march.march_type === "scout"),
       )
     : undefined;
   const preferredMarchType = selectedTile ? worldTilePreferredMarchType(selectedTile) : null;
@@ -6994,7 +7063,13 @@ function WorldMapScreen({
                   <Button
                     disabled={busy}
                     onClick={async () => {
-                      await onResolveClearance(selectedMarch);
+                      if (selectedMarch.march_type === "siege") {
+                        await onResolveSiege(selectedMarch);
+                      } else if (selectedMarch.march_type === "scout") {
+                        await onResolveScout(selectedMarch);
+                      } else {
+                        await onResolveClearance(selectedMarch);
+                      }
                       const refreshedTile = await onLoadTile(
                         selectedTile.province_id,
                         selectedTile.x,
@@ -7005,7 +7080,11 @@ function WorldMapScreen({
                       }
                     }}
                   >
-                    完成清野
+                    {selectedMarch.march_type === "siege"
+                      ? "结算围城"
+                      : selectedMarch.march_type === "scout"
+                        ? "查看情报"
+                        : "完成清野"}
                   </Button>
                 ) : selectedTile.ownership.owner_player_id === activePlayerId ? (
                   <div className="world-garrison-controls">
@@ -10746,6 +10825,18 @@ function worldMarchTypeLabel(type: MarchType): string {
   return labels[type];
 }
 
+function worldScoutWallLabel(value: "unknown" | "weak" | "steady" | "strong"): string {
+  return { strong: "坚固", steady: "尚稳", unknown: "不明", weak: "薄弱" }[value];
+}
+
+function worldScoutGarrisonLabel(value: "unknown" | "few" | "moderate" | "many"): string {
+  return { few: "稀少", many: "众多", moderate: "适中", unknown: "不明" }[value];
+}
+
+function worldScoutResourceLabel(value: "unknown" | "scarce" | "normal" | "rich"): string {
+  return { normal: "尚可", rich: "充盈", scarce: "匮乏", unknown: "不明" }[value];
+}
+
 function armyFormationLabel(formation: ArmyFormation): string {
   return (
     {
@@ -10841,7 +10932,10 @@ function worldTilePreferredMarchType(tile: MapTileState): MarchType | null {
     return null;
   }
   if (tile.ownership.owner_player_id || tile.owner.owner_player_id) {
-    return null;
+    return tile.ownership.ownership_type === "main_city" ||
+      tile.ownership.ownership_type === "sub_city"
+      ? "siege"
+      : null;
   }
   if (tile.owner.owner_province_id) {
     return null;

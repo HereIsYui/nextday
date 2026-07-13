@@ -938,6 +938,31 @@ export interface ResolveWorldClearanceResponse {
   map: WorldMapResponse;
 }
 
+export interface ScoutWorldRequest {
+  march_id: string;
+}
+
+export interface WorldScoutIntelState {
+  tile_id: string;
+  tile_name: string;
+  owner_player_name: string | null;
+  city_name: string | null;
+  city_type: PlayerCityType | null;
+  city_level: number | null;
+  city_status: PlayerCityStatus | null;
+  wall_condition: "unknown" | "weak" | "steady" | "strong";
+  garrison_estimate: "unknown" | "few" | "moderate" | "many";
+  resource_estimate: "unknown" | "scarce" | "normal" | "rich";
+  protected: boolean;
+  scouted_at: string;
+}
+
+export interface ScoutWorldResponse {
+  record_id: string;
+  march: MarchQueueState;
+  intel: WorldScoutIntelState;
+}
+
 export interface TerritoryGarrisonState {
   tile_id: string;
   owner_player_id: string;
@@ -969,12 +994,31 @@ export interface SiegeWorldRequest {
   march_id: string;
 }
 
+export interface SiegeRecordState {
+  siege_id: string;
+  target_city_id: string;
+  target_tile_id: string;
+  target_city_name: string;
+  status: "won" | "lost" | "captured";
+  attacker_power: number;
+  defender_power: number;
+  wall_damage: number;
+  wall_durability_after: number;
+  reward_rate_percent: number;
+  captured: boolean;
+  ownership_transferred: boolean;
+  plunder: Omit<CityResourceSnapshot, "herb" | "soldier">;
+  protection_until: string | null;
+  resolved_at: string;
+}
+
 export interface SiegeWorldResponse {
   record_id: string;
   march: MarchQueueState;
   won: boolean;
   attacker_power: number;
   defender_power: number;
+  siege: SiegeRecordState;
   city: PlayerCityState | null;
   map: WorldMapResponse;
 }

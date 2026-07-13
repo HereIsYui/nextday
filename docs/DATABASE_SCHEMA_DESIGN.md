@@ -1174,6 +1174,8 @@ P2 表结构为设计占位，正式 migration 可按功能阶段拆分落地。
 | idempotency_key | varchar | unique | 幂等键 |
 | created_at | datetime | index | 创建 |
 
+R3-01 实现中，`siege_record.status` 使用 `won / lost / captured`。`captured` 只允许用于分城破防，并在同一事务中更新 `player_city.player_id` 与 `world_block_ownership.player_id`；主城记录不得进入 `captured`。
+
 `province_war_state`
 
 | 字段 | 类型 | 约束 | 说明 |

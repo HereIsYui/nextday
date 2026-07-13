@@ -153,6 +153,34 @@ model PlayerCity {
   @@map("player_city")
 }
 
+model SiegeRecord {
+  siegeId           String    @id @map("siege_id")
+  eraId             String    @default("era_mvp_001") @map("era_id")
+  targetCityId      String    @map("target_city_id")
+  targetTileId      String    @map("target_tile_id")
+  marchId           String    @map("march_id")
+  attackerPlayerId  String    @map("attacker_player_id")
+  defenderPlayerId  String    @map("defender_player_id")
+  status             String
+  attackerPower      Int       @map("attacker_power")
+  defenderPower      Int       @map("defender_power")
+  wallDamage         Int       @default(0) @map("wall_damage")
+  plunderSnapshot    Json      @map("plunder_snapshot")
+  cityStateBefore    Json      @map("city_state_before")
+  cityStateAfter     Json      @map("city_state_after")
+  rewardRatePercent  Int       @default(100) @map("reward_rate_percent")
+  protectionUntil    DateTime? @map("protection_until")
+  idempotencyKey     String    @unique @map("idempotency_key")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  resolvedAt         DateTime  @default(now()) @map("resolved_at")
+
+  @@index([targetCityId, createdAt])
+  @@index([attackerPlayerId, targetCityId, createdAt])
+  @@index([defenderPlayerId, createdAt])
+  @@index([status])
+  @@map("siege_record")
+}
+
 model CityBuilding {
   buildingId       String    @id @map("building_id")
   cityId           String    @map("city_id")

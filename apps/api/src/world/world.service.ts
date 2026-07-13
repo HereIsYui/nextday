@@ -18,6 +18,11 @@ import type {
   PurchaseWorldBlockResponse,
   ResolveWorldClearanceRequest,
   ResolveWorldClearanceResponse,
+  ScoutWorldRequest,
+  ScoutWorldResponse,
+  SiegeRecordState,
+  SiegeWorldRequest,
+  SiegeWorldResponse,
   StartWorldMarchRequest,
   StartWorldMarchResponse,
   TerritoryBlockState,
@@ -39,6 +44,7 @@ import type {
   WorldOwnerState,
   WorldProvinceListResponse,
   WorldProvinceState,
+  WorldScoutIntelState,
 } from "@nextday/shared";
 import type {
   CityArmyPreset,
@@ -46,6 +52,7 @@ import type {
   Player,
   PlayerCity,
   Prisma,
+  SiegeRecord,
   TerritoryGarrison,
   WorldBlockClearance,
   WorldBlockOwnership,
@@ -451,6 +458,15 @@ export class WorldService {
       });
       const sourceCity = resolveSourceCity(cities, normalizedBody.source_city_id);
       const targetTile = requireMarchTarget(sourceCity, normalizedBody.target_tile_id);
+      if (normalizedBody.march_type === "siege") {
+        const targetCity = await tx.playerCity.findUnique({ where: { tileId: targetTile.tileId } });
+        if (!targetCity || targetCity.playerId === player.playerId) {
+          throw new BadRequestException("围城只能选择其他玩家的城池");
+        }
+        if (targetCity.protectionUntil && targetCity.protectionUntil.getTime() > Date.now()) {
+          throw new BadRequestException("目标城池处于保护期");
+        }
+      }
       if (normalizedBody.march_type === "clear_wild") {
         await assertClearanceMarchTarget(tx, player.playerId, targetTile);
       }
@@ -713,6 +729,316 @@ export class WorldService {
         },
       });
 
+      return responseData;
+    });
+  }
+
+  async resolveScout(input: {
+    accountId: string;
+    body: ScoutWorldRequest;
+    idempotencyKey: string;
+    endpoint: string;
+  }): Promise<ScoutWorldResponse> {
+    const marchId = input.body.march_id?.trim();
+    if (!marchId) throw new BadRequestException("请选择已抵达的侦察队伍");
+    const requestHash = hashRequestBody({ march_id: marchId });
+    const existingRecord = await this.prisma.idempotencyRecord.findUnique({
+      where: { idempotencyKey: input.idempotencyKey },
+    });
+    if (existingRecord) {
+      if (
+        existingRecord.accountId !== input.accountId ||
+        existingRecord.endpoint !== input.endpoint ||
+        existingRecord.requestHash !== requestHash
+      ) {
+        throw new BadRequestException("幂等键已被其他请求使用");
+      }
+      return existingRecord.responseData as unknown as ScoutWorldResponse;
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const player = await tx.player.findUnique({ where: { accountId: input.accountId } });
+      if (!player) throw new BadRequestException("请先创建角色");
+      const march = await tx.marchQueue.findUnique({ where: { marchId } });
+      if (!march || march.playerId !== player.playerId || march.marchType !== "scout") {
+        throw new BadRequestException("侦察行军不存在");
+      }
+      if (march.status === "resolved" || march.resolvedAt) {
+        throw new BadRequestException("该侦察行军已处理");
+      }
+      if (getComputedMarchStatus(march) !== "arrived") {
+        throw new BadRequestException("侦察队伍尚未抵达");
+      }
+      const sourceCity = await tx.playerCity.findUnique({ where: { cityId: march.sourceCityId } });
+      if (!sourceCity) throw new BadRequestException("行军来源城池不存在");
+      const [targetCity, ownership, garrison] = await Promise.all([
+        tx.playerCity.findUnique({ where: { tileId: march.targetTileId } }),
+        tx.worldBlockOwnership.findUnique({
+          where: { eraId_tileId: { eraId: defaultEraId, tileId: march.targetTileId } },
+          include: { player: true },
+        }),
+        tx.territoryGarrison.findUnique({
+          where: { eraId_tileId: { eraId: defaultEraId, tileId: march.targetTileId } },
+        }),
+      ]);
+      const targetTile = requireMapTile(march.targetTileId);
+      const now = new Date();
+      const updatedMarch = await tx.marchQueue.update({
+        where: { marchId },
+        data: { resolvedAt: now, status: "resolved" },
+      });
+      const intel = buildScoutIntel({
+        garrisonPower: garrison?.defensePower ?? 0,
+        now,
+        ownership,
+        targetCity,
+        targetTile,
+      });
+      const responseData: ScoutWorldResponse = {
+        record_id: `resolve_scout_${randomUUID()}`,
+        march: this.toMarchState(updatedMarch, sourceCity),
+        intel,
+      };
+      await tx.auditLog.create({
+        data: {
+          auditLogId: `audit_${randomUUID()}`,
+          accountId: input.accountId,
+          playerId: player.playerId,
+          action: "world_scout_resolve",
+          targetType: "map_tile",
+          targetId: targetTile.tileId,
+          afterSnapshot: intel as unknown as Prisma.InputJsonValue,
+          reason: "侦察区块与城防概况",
+          idempotencyKey: input.idempotencyKey,
+          configVersion: marchConfigVersion,
+        },
+      });
+      await tx.idempotencyRecord.create({
+        data: {
+          idempotencyKey: input.idempotencyKey,
+          accountId: input.accountId,
+          endpoint: input.endpoint,
+          requestHash,
+          responseData: responseData as unknown as Prisma.InputJsonValue,
+          statusCode: 200,
+          expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
+        },
+      });
+      return responseData;
+    });
+  }
+
+  async resolveSiege(input: {
+    accountId: string;
+    body: SiegeWorldRequest;
+    idempotencyKey: string;
+    endpoint: string;
+  }): Promise<SiegeWorldResponse> {
+    const marchId = input.body.march_id?.trim();
+    if (!marchId) throw new BadRequestException("请选择已抵达的围城队伍");
+    const normalizedBody: SiegeWorldRequest = { march_id: marchId };
+    const requestHash = hashRequestBody(normalizedBody);
+    const existingRecord = await this.prisma.idempotencyRecord.findUnique({
+      where: { idempotencyKey: input.idempotencyKey },
+    });
+    if (existingRecord) {
+      if (
+        existingRecord.accountId !== input.accountId ||
+        existingRecord.endpoint !== input.endpoint ||
+        existingRecord.requestHash !== requestHash
+      ) {
+        throw new BadRequestException("幂等键已被其他请求使用");
+      }
+      return existingRecord.responseData as unknown as SiegeWorldResponse;
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const player = await tx.player.findUnique({ where: { accountId: input.accountId } });
+      if (!player) throw new BadRequestException("请先创建角色");
+      const march = await tx.marchQueue.findUnique({ where: { marchId } });
+      if (!march || march.playerId !== player.playerId || march.marchType !== "siege") {
+        throw new BadRequestException("围城行军不存在");
+      }
+      if (march.status === "resolved" || march.resolvedAt) {
+        throw new BadRequestException("该围城行军已处理");
+      }
+      if (getComputedMarchStatus(march) !== "arrived") {
+        throw new BadRequestException("围城队伍尚未抵达");
+      }
+      const [sourceCity, targetCity] = await Promise.all([
+        tx.playerCity.findUnique({ where: { cityId: march.sourceCityId } }),
+        tx.playerCity.findUnique({ where: { tileId: march.targetTileId } }),
+      ]);
+      if (!sourceCity || !targetCity || targetCity.playerId === player.playerId) {
+        throw new BadRequestException("围城目标已不存在");
+      }
+      const now = new Date();
+      if (targetCity.protectionUntil && targetCity.protectionUntil.getTime() > now.getTime()) {
+        throw new BadRequestException("目标城池处于保护期");
+      }
+      const repeatedCount = await tx.siegeRecord.count({
+        where: {
+          attackerPlayerId: player.playerId,
+          targetCityId: targetCity.cityId,
+          createdAt: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) },
+        },
+      });
+      const rewardRatePercent = [100, 50, 20][repeatedCount] ?? 0;
+      if (rewardRatePercent === 0) {
+        throw new BadRequestException("今日对该城的围城收益已耗尽，请更换目标");
+      }
+
+      const team = normalizeTeamSnapshot(march.teamSnapshot);
+      const targetGarrison = await tx.territoryGarrison.findUnique({
+        where: { eraId_tileId: { eraId: defaultEraId, tileId: targetCity.tileId } },
+      });
+      const beforeDefense = normalizeCityDefense(targetCity.defenseSnapshot);
+      const beforeResources = normalizeCityResources(targetCity.resourceSnapshot);
+      const attackerPower = team.team_power;
+      const defenderPower =
+        (targetGarrison?.defensePower ?? beforeDefense.garrison_power) +
+        Math.floor(beforeDefense.wall_durability / 5);
+      const won = attackerPower > defenderPower;
+      const wallDamage = Math.min(
+        beforeDefense.wall_durability,
+        won
+          ? Math.max(80, Math.floor((attackerPower - defenderPower) / 2) + 100)
+          : Math.max(20, Math.floor(attackerPower / 10)),
+      );
+      const wallDurabilityAfter = Math.max(0, beforeDefense.wall_durability - wallDamage);
+      const breached = won && wallDurabilityAfter === 0;
+      const captured = breached && targetCity.cityType === "sub";
+      const plunder = calculateSiegePlunder(
+        beforeResources,
+        breached && !captured ? rewardRatePercent : 0,
+      );
+      const afterResources = subtractSiegePlunder(beforeResources, plunder);
+      const attackerResources = addSiegePlunder(
+        normalizeCityResources(sourceCity.resourceSnapshot),
+        plunder,
+      );
+      const protectionUntil = breached ? new Date(now.getTime() + 6 * 60 * 60 * 1000) : null;
+      const updatedTargetCity = await tx.playerCity.update({
+        where: { cityId: targetCity.cityId },
+        data: {
+          ...(captured ? { playerId: player.playerId, ownerSectId: player.sectId } : {}),
+          status: captured ? "protected" : breached ? "besieged" : "damaged",
+          protectionUntil,
+          defenseSnapshot: {
+            ...beforeDefense,
+            wall_durability: wallDurabilityAfter,
+            protection_label: captured ? "分城易主保护中" : breached ? "城破休整中" : "城防受损",
+          } as Prisma.InputJsonValue,
+          resourceSnapshot: afterResources as unknown as Prisma.InputJsonValue,
+        },
+      });
+      await tx.playerCity.update({
+        where: { cityId: sourceCity.cityId },
+        data: { resourceSnapshot: attackerResources as unknown as Prisma.InputJsonValue },
+      });
+      if (captured) {
+        await tx.worldBlockOwnership.update({
+          where: { eraId_tileId: { eraId: defaultEraId, tileId: targetCity.tileId } },
+          data: {
+            playerId: player.playerId,
+            ownershipType: "sub_city",
+            sourceType: "siege_capture",
+            sourceId: targetCity.cityId,
+          },
+        });
+        await tx.territoryGarrison.deleteMany({
+          where: { eraId: defaultEraId, tileId: targetCity.tileId },
+        });
+      }
+      const updatedMarch = await tx.marchQueue.update({
+        where: { marchId: march.marchId },
+        data: { resolvedAt: now, status: "resolved" },
+      });
+      const siege = await tx.siegeRecord.create({
+        data: {
+          siegeId: `siege_${randomUUID()}`,
+          eraId: defaultEraId,
+          targetCityId: targetCity.cityId,
+          targetTileId: targetCity.tileId,
+          marchId: march.marchId,
+          attackerPlayerId: player.playerId,
+          defenderPlayerId: targetCity.playerId,
+          status: captured ? "captured" : won ? "won" : "lost",
+          attackerPower,
+          defenderPower,
+          wallDamage,
+          plunderSnapshot: plunder as unknown as Prisma.InputJsonValue,
+          cityStateBefore: this.toCityState(targetCity) as unknown as Prisma.InputJsonValue,
+          cityStateAfter: this.toCityState(updatedTargetCity) as unknown as Prisma.InputJsonValue,
+          rewardRatePercent,
+          protectionUntil,
+          idempotencyKey: input.idempotencyKey,
+          resolvedAt: now,
+        },
+      });
+      const targetTile = requireMapTile(targetCity.tileId);
+      const provinceTileIds = getWorldTilesByProvince(targetCity.provinceId).map(
+        (tile) => tile.tileId,
+      );
+      const [ownerships, garrisons, clearances] = await Promise.all([
+        tx.worldBlockOwnership.findMany({
+          where: { eraId: defaultEraId, provinceId: targetCity.provinceId, status: "owned" },
+          include: { player: true },
+        }),
+        tx.territoryGarrison.findMany({
+          where: { eraId: defaultEraId, tileId: { in: provinceTileIds } },
+          include: { player: true },
+        }),
+        tx.worldBlockClearance.findMany({
+          where: { playerId: player.playerId, eraId: defaultEraId, status: "cleared" },
+        }),
+      ]);
+      const responseData: SiegeWorldResponse = {
+        record_id: `resolve_siege_${randomUUID()}`,
+        march: this.toMarchState(updatedMarch, sourceCity),
+        won,
+        attacker_power: attackerPower,
+        defender_power: defenderPower,
+        siege: this.toSiegeRecordState(siege, updatedTargetCity),
+        city: this.toCityState(updatedTargetCity),
+        map: this.buildMapResponse({
+          clearedTileIds: new Set(clearances.map((item) => item.tileId)),
+          garrisons,
+          ownerships,
+          playerId: player.playerId,
+          provinceId: targetCity.provinceId,
+          view: "detail",
+          viewport: viewportAroundTile(targetTile),
+        }),
+      };
+      await tx.auditLog.create({
+        data: {
+          auditLogId: `audit_${randomUUID()}`,
+          accountId: input.accountId,
+          playerId: player.playerId,
+          action: "world_siege_resolve",
+          targetType: "player_city",
+          targetId: targetCity.cityId,
+          afterSnapshot: responseData.siege as unknown as Prisma.InputJsonValue,
+          reason: captured
+            ? "攻破分城并接管分城区块"
+            : breached
+              ? "攻破主城城防并掠夺普通资源，主城产权保持不变"
+              : "围城造成城防损伤，产权保持不变",
+          idempotencyKey: input.idempotencyKey,
+          configVersion: marchConfigVersion,
+        },
+      });
+      await tx.idempotencyRecord.create({
+        data: {
+          idempotencyKey: input.idempotencyKey,
+          accountId: input.accountId,
+          endpoint: input.endpoint,
+          requestHash,
+          responseData: responseData as unknown as Prisma.InputJsonValue,
+          statusCode: 200,
+          expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
+        },
+      });
       return responseData;
     });
   }
@@ -1515,6 +1841,27 @@ export class WorldService {
     };
   }
 
+  private toSiegeRecordState(siege: SiegeRecord, city: PlayerCity): SiegeRecordState {
+    const plunder = normalizeSiegePlunder(siege.plunderSnapshot);
+    return {
+      siege_id: siege.siegeId,
+      target_city_id: siege.targetCityId,
+      target_tile_id: siege.targetTileId,
+      target_city_name: city.cityName,
+      status: siege.status === "captured" ? "captured" : siege.status === "won" ? "won" : "lost",
+      attacker_power: siege.attackerPower,
+      defender_power: siege.defenderPower,
+      wall_damage: siege.wallDamage,
+      wall_durability_after: normalizeCityDefense(city.defenseSnapshot).wall_durability,
+      reward_rate_percent: siege.rewardRatePercent,
+      captured: siege.status === "captured",
+      ownership_transferred: siege.status === "captured",
+      plunder,
+      protection_until: siege.protectionUntil?.toISOString() ?? null,
+      resolved_at: siege.resolvedAt.toISOString(),
+    };
+  }
+
   private toWalletSnapshot(wallet: {
     playerId: string;
     spiritStone: bigint;
@@ -2249,6 +2596,118 @@ function normalizeCityResources(value: Prisma.JsonValue): CityResourceSnapshot {
     wood: toStringValue(record.wood, "0"),
     herb: toStringValue(record.herb, "0"),
     soldier: toStringValue(record.soldier, "0"),
+  };
+}
+
+function buildScoutIntel(input: {
+  garrisonPower: number;
+  now: Date;
+  ownership: WorldBlockOwnershipWithPlayer | null;
+  targetCity: PlayerCity | null;
+  targetTile: MapTileConfig;
+}): WorldScoutIntelState {
+  const defense = input.targetCity ? normalizeCityDefense(input.targetCity.defenseSnapshot) : null;
+  const resources = input.targetCity
+    ? normalizeCityResources(input.targetCity.resourceSnapshot)
+    : null;
+  const resourceTotal = resources
+    ? Number(resources.spirit_stone) +
+      Number(resources.grain) +
+      Number(resources.ore) +
+      Number(resources.wood)
+    : 0;
+  const wallRate = defense?.wall_durability_cap
+    ? defense.wall_durability / defense.wall_durability_cap
+    : 0;
+  return {
+    tile_id: input.targetTile.tileId,
+    tile_name: input.targetTile.tileName,
+    owner_player_name: input.ownership?.player.name ?? null,
+    city_name: input.targetCity?.cityName ?? null,
+    city_type: input.targetCity ? (input.targetCity.cityType === "sub" ? "sub" : "main") : null,
+    city_level: input.targetCity?.cityLevel ?? null,
+    city_status: input.targetCity ? normalizeCityStatus(input.targetCity.status) : null,
+    wall_condition: !defense
+      ? "unknown"
+      : wallRate < 0.35
+        ? "weak"
+        : wallRate < 0.75
+          ? "steady"
+          : "strong",
+    garrison_estimate:
+      input.garrisonPower <= 0 ? "few" : input.garrisonPower < 200 ? "moderate" : "many",
+    resource_estimate: !resources
+      ? "unknown"
+      : resourceTotal < 800
+        ? "scarce"
+        : resourceTotal < 3000
+          ? "normal"
+          : "rich",
+    protected: Boolean(
+      input.targetCity?.protectionUntil &&
+        input.targetCity.protectionUntil.getTime() > input.now.getTime(),
+    ),
+    scouted_at: input.now.toISOString(),
+  };
+}
+
+type SiegePlunder = SiegeRecordState["plunder"];
+
+function calculateSiegePlunder(
+  resources: CityResourceSnapshot,
+  rewardRatePercent: number,
+): SiegePlunder {
+  const calculate = (value: string) => {
+    const total = Number(value);
+    const protectedAmount = Math.floor(total * 0.5);
+    return Math.max(
+      0,
+      Math.floor((Math.max(0, total - protectedAmount) * 0.1 * rewardRatePercent) / 100),
+    );
+  };
+  return {
+    spirit_stone: String(calculate(resources.spirit_stone)),
+    grain: String(calculate(resources.grain)),
+    ore: String(calculate(resources.ore)),
+    wood: String(calculate(resources.wood)),
+  };
+}
+
+function normalizeSiegePlunder(value: Prisma.JsonValue): SiegePlunder {
+  const record = isRecord(value) ? value : {};
+  return {
+    spirit_stone: toStringValue(record.spirit_stone, "0"),
+    grain: toStringValue(record.grain, "0"),
+    ore: toStringValue(record.ore, "0"),
+    wood: toStringValue(record.wood, "0"),
+  };
+}
+
+function subtractSiegePlunder(
+  resources: CityResourceSnapshot,
+  plunder: SiegePlunder,
+): CityResourceSnapshot {
+  return changeSiegeResources(resources, plunder, -1);
+}
+
+function addSiegePlunder(
+  resources: CityResourceSnapshot,
+  plunder: SiegePlunder,
+): CityResourceSnapshot {
+  return changeSiegeResources(resources, plunder, 1);
+}
+
+function changeSiegeResources(
+  resources: CityResourceSnapshot,
+  plunder: SiegePlunder,
+  direction: 1 | -1,
+): CityResourceSnapshot {
+  return {
+    ...resources,
+    spirit_stone: String(Number(resources.spirit_stone) + direction * Number(plunder.spirit_stone)),
+    grain: String(Number(resources.grain) + direction * Number(plunder.grain)),
+    ore: String(Number(resources.ore) + direction * Number(plunder.ore)),
+    wood: String(Number(resources.wood) + direction * Number(plunder.wood)),
   };
 }
 

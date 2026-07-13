@@ -169,6 +169,8 @@ import type {
   SaveConvenienceStrategyRequest,
   SaveConvenienceStrategyResponse,
   SaveSkillLoadoutRequest,
+  ScoutWorldRequest,
+  ScoutWorldResponse,
   SectDetailResponse,
   SectDiplomacyMutationResponse,
   SectDiplomacySummaryResponse,
@@ -188,6 +190,8 @@ import type {
   SettleMainCityRequest,
   SettleMainCityResponse,
   SettleSectHireRequest,
+  SiegeWorldRequest,
+  SiegeWorldResponse,
   SkillLoadoutResponse,
   StartWorldMarchRequest,
   StartWorldMarchResponse,
@@ -613,6 +617,24 @@ export class GameClient {
       body,
       { idempotencyKey },
     );
+  }
+
+  resolveWorldSiege(
+    body: SiegeWorldRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<SiegeWorldResponse>> {
+    return this.post<SiegeWorldResponse, SiegeWorldRequest>("/api/world/siege/resolve", body, {
+      idempotencyKey,
+    });
+  }
+
+  resolveWorldScout(
+    body: ScoutWorldRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<ScoutWorldResponse>> {
+    return this.post<ScoutWorldResponse, ScoutWorldRequest>("/api/world/scout/resolve", body, {
+      idempotencyKey,
+    });
   }
 
   purchaseWorldBlock(

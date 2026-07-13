@@ -439,6 +439,13 @@ export class CityService {
         throw new BadRequestException("请先创建角色");
       }
       const initialCity = await this.requireMainCity(player.playerId, tx);
+      if (
+        initialCity.status === "besieged" &&
+        initialCity.protectionUntil &&
+        initialCity.protectionUntil.getTime() > Date.now()
+      ) {
+        throw new BadRequestException("主城正在围困休整，暂时无法收取领地产出");
+      }
       const city = await this.settleCompletedBuildingUpgrades(tx, initialCity);
       const buildings = await this.ensureCityBuildings(tx, city.cityId);
       const ownerships = await tx.worldBlockOwnership.findMany({
@@ -1120,6 +1127,28 @@ export class CityService {
     });
     if (!city) {
       throw new BadRequestException("请先建立主城");
+    }
+    if (
+      city.status === "besieged" &&
+      city.protectionUntil &&
+      city.protectionUntil.getTime() <= Date.now()
+    ) {
+      const defense = normalizeDefenseSnapshot(city.defenseSnapshot);
+      return tx.playerCity.update({
+        where: { cityId: city.cityId },
+        data: {
+          status: "damaged",
+          protectionUntil: null,
+          defenseSnapshot: {
+            ...defense,
+            wall_durability: Math.max(
+              defense.wall_durability,
+              Math.floor(defense.wall_durability_cap * 0.3),
+            ),
+            protection_label: "围困结束，城防修复中",
+          } as Prisma.InputJsonValue,
+        },
+      });
     }
     return city;
   }

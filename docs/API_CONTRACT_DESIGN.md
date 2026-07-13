@@ -593,6 +593,7 @@ P3 接口规则：
 | `TerritoryNode` | 地块内生产设施或战略节点，如资源点、灵脉、关隘、州府、九塔 |
 | `WorldBlockOwnership` | 出生分配或购买获得的区块产权，同纪元区块唯一 |
 | `TerritoryOverviewResponse` | 自有区块坐标、地形产出、逐块驻军、领地总驻军以及相邻扩张候选 |
+| `WorldAtlasProvinceState` | 州域城主、无主区、地形资源、我的城池、驻军、行军和可建城平原摘要 |
 | `StrategicControlRecord` | 关隘、州府、九塔的周期控制权变化记录 |
 | `MarchQueue` | 行军队列、出发地、目标地、队伍、到达时间和状态 |
 | `SiegeRecord` | 攻城、围困、城防破损、附庸和恢复记录 |

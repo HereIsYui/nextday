@@ -6623,6 +6623,41 @@ function WorldMapScreen({
     }
   }
 
+  function focusProvince(province: WorldAtlasResponse["provinces"][number]) {
+    const occupiedCoordinates = province.terrain_rows.flatMap((row, y) =>
+      Array.from(row).flatMap((terrain, x) => (terrain === "." ? [] : [{ x, y }])),
+    );
+    if (!occupiedCoordinates.length) return;
+    const centerX =
+      occupiedCoordinates.reduce((total, coordinate) => total + coordinate.x, 0) /
+      occupiedCoordinates.length;
+    const centerY =
+      occupiedCoordinates.reduce((total, coordinate) => total + coordinate.y, 0) /
+      occupiedCoordinates.length;
+    const nextZoom = 1.65;
+    const baseCellSize = Math.max(
+      2,
+      Math.min(
+        (canvasSize.width - 52) / worldBounds.width,
+        (canvasSize.height - 52) / worldBounds.height,
+      ),
+    );
+    const nextCellSize = baseCellSize * nextZoom;
+    setZoom(nextZoom);
+    setPan({
+      x:
+        canvasSize.width / 2 -
+        (province.layout_x + centerX) * nextCellSize -
+        (canvasSize.width - worldBounds.width * nextCellSize) / 2,
+      y:
+        canvasSize.height / 2 -
+        (province.layout_y + centerY) * nextCellSize -
+        (canvasSize.height - worldBounds.height * nextCellSize) / 2,
+    });
+    setSelectedCoordinate(null);
+    setSelectedTile(null);
+  }
+
   function beginDrag(event: PointerEvent<HTMLCanvasElement>) {
     didDragRef.current = false;
     dragRef.current = { panX: pan.x, panY: pan.y, x: event.clientX, y: event.clientY };
@@ -6786,12 +6821,25 @@ function WorldMapScreen({
         <aside className="world-province-summary" aria-label="州域概览">
           <strong>九州概览</strong>
           {(atlas?.provinces ?? []).map((province) => (
-            <div key={province.province.province_id}>
-              <span>{province.province.name}</span>
+            <button
+              key={province.province.province_id}
+              onClick={() => focusProvince(province)}
+              type="button"
+            >
+              <span>
+                {province.province.name}
+                {province.province.province_id === atlas?.home_province_id ? " · 本州" : ""}
+              </span>
               <small>
-                {province.player_count} 位城主 · {province.resource_summary}
+                {province.player_count} 位城主 · 无主 {province.neutral_blocks} ·
+                {province.resource_summary}
               </small>
-            </div>
+              <small>
+                {city
+                  ? `我的城池 ${province.my_city_count} · 领地 ${province.my_blocks} · 驻军 ${province.my_garrison_soldiers} · 行军 ${province.active_march_count}`
+                  : `可建城平原 ${province.available_birth_blocks} 块`}
+              </small>
+            </button>
           ))}
         </aside>
         <aside className="world-floating-inspector" aria-live="polite">

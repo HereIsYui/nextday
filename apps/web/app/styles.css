@@ -4859,7 +4859,9 @@ details.event-boundary {
   padding: 10px;
   position: absolute;
   top: 16px;
-  width: 190px;
+  max-height: calc(100% - 32px);
+  overflow: auto;
+  width: 250px;
 }
 
 .text-game-shell.world-screen .world-province-summary > strong {
@@ -4868,14 +4870,25 @@ details.event-boundary {
   font-size: 15px;
 }
 
-.text-game-shell.world-screen .world-province-summary > div {
-  align-items: baseline;
+.text-game-shell.world-screen .world-province-summary > button {
+  background: transparent;
+  color: #211e1a;
   border-top: 1px solid rgba(94, 85, 71, 0.2);
-  display: flex;
-  gap: 6px;
-  justify-content: space-between;
+  border-bottom: 0;
+  border-left: 0;
+  border-right: 0;
+  cursor: pointer;
+  display: grid;
+  gap: 3px;
+  justify-items: start;
   min-width: 0;
-  padding-top: 5px;
+  padding: 6px 0 0;
+  text-align: left;
+  width: 100%;
+}
+
+.text-game-shell.world-screen .world-province-summary > button:hover {
+  background: rgba(232, 223, 203, 0.72);
 }
 
 .text-game-shell.world-screen .world-province-summary span,
@@ -4886,7 +4899,8 @@ details.event-boundary {
 }
 
 .text-game-shell.world-screen .world-province-summary small {
-  text-align: right;
+  overflow-wrap: anywhere;
+  text-align: left;
 }
 
 .text-game-shell.world-screen .world-floating-inspector {

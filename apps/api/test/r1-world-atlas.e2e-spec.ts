@@ -43,6 +43,12 @@ describe("R1 九州战略总览", () => {
         owned_blocks: number;
         layout_width: number;
         layout_height: number;
+        player_count: number;
+        my_city_count: number;
+        my_garrison_soldiers: number;
+        active_march_count: number;
+        available_birth_blocks: number;
+        terrain_distribution: Record<string, number>;
         terrain_rows: string[];
         control_rows: string[];
         landmark_rows: string[];
@@ -70,6 +76,14 @@ describe("R1 九州战略总览", () => {
       expect(province.terrain_rows.every((row) => row.length === province.layout_width)).toBe(true);
       expect(province.landmark_rows.join("")).toContain("t");
       expect(province.terrain_rows.some((row) => row.includes("."))).toBe(true);
+      expect(province.player_count).toBeGreaterThanOrEqual(0);
+      expect(province.my_city_count).toBe(0);
+      expect(province.my_garrison_soldiers).toBe(0);
+      expect(province.active_march_count).toBe(0);
+      expect(province.available_birth_blocks).toBeGreaterThan(0);
+      expect(
+        Object.values(province.terrain_distribution).reduce((total, count) => total + count, 0),
+      ).toBe(province.province.block_count);
     }
 
     const occupiedCells = new Map<string, string>();

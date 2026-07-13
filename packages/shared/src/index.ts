@@ -737,6 +737,11 @@ export interface WorldAtlasProvinceState {
   neutral_blocks: number;
   owned_blocks: number;
   player_count: number;
+  my_city_count: number;
+  my_garrison_soldiers: number;
+  active_march_count: number;
+  available_birth_blocks: number;
+  terrain_distribution: Record<WorldTerrainType, number>;
   resource_summary: string;
   has_active_march: boolean;
   cells: WorldAtlasCellState[];

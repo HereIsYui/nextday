@@ -100,10 +100,13 @@ export class WorldService {
 
   async getAtlas(accountId: string): Promise<WorldAtlasResponse> {
     const player = await this.requirePlayer(accountId);
-    const [ownerships, marches, cities] = await Promise.all([
+    const [ownerships, marches, cities, garrisons] = await Promise.all([
       this.prisma.worldBlockOwnership.findMany({ where: { eraId: defaultEraId, status: "owned" } }),
       this.prisma.marchQueue.findMany({ where: { playerId: player.playerId, status: "marching" } }),
       this.prisma.playerCity.findMany({ where: { eraId: defaultEraId } }),
+      this.prisma.territoryGarrison.findMany({
+        where: { playerId: player.playerId, eraId: defaultEraId },
+      }),
     ]);
     const mine = new Set(
       ownerships.filter((item) => item.playerId === player.playerId).map((item) => item.tileId),
@@ -194,6 +197,18 @@ export class WorldService {
               .filter((ownership) => ownership.provinceId === province.provinceId)
               .map((ownership) => ownership.playerId),
           ).size,
+          my_city_count: cities.filter(
+            (city) => city.playerId === player.playerId && city.provinceId === province.provinceId,
+          ).length,
+          my_garrison_soldiers: garrisons
+            .filter((garrison) => tiles.some((tile) => tile.tileId === garrison.tileId))
+            .reduce((total, garrison) => total + garrison.soldierCount, 0),
+          active_march_count: marches.filter((march) => march.provinceId === province.provinceId)
+            .length,
+          available_birth_blocks: tiles.filter(
+            (tile) => isBirthPlainTile(tile) && !owned.has(tile.tileId),
+          ).length,
+          terrain_distribution: countTerrainDistribution(tiles),
           resource_summary:
             province.commanderies[0]?.resourceTheme.slice(0, 2).join("、") ?? "灵材",
           has_active_march: marches.some((march) => march.provinceId === province.provinceId),
@@ -2060,6 +2075,18 @@ function compareExpansionCandidates(
     (candidate.state.purchasable ? 30 : 0) -
     Number(candidate.state.cost_spirit_stone) / 1000;
   return score(right) - score(left) || left.tile.tileId.localeCompare(right.tile.tileId);
+}
+
+function countTerrainDistribution(
+  tiles: MapTileConfig[],
+): WorldAtlasResponse["provinces"][number]["terrain_distribution"] {
+  return tiles.reduce(
+    (counts, tile) => {
+      counts[tile.terrainType] += 1;
+      return counts;
+    },
+    { desert: 0, forest: 0, mountain: 0, plain: 0, swamp: 0 },
+  );
 }
 
 function createWorldClearanceBattleLog(input: {

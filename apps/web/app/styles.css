@@ -4744,6 +4744,33 @@ details.event-boundary {
   gap: 8px;
 }
 
+.text-game-shell.world-screen .world-map-layers {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 5px;
+  justify-content: center;
+  min-width: 0;
+}
+
+.text-game-shell.world-screen .world-map-layers button {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #62594c;
+  cursor: pointer;
+  font-size: 12px;
+  min-height: 30px;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
+.text-game-shell.world-screen .world-map-layers button:hover,
+.text-game-shell.world-screen .world-map-layers button[aria-pressed="true"] {
+  background: #eee5d4;
+  border-color: #8f8068;
+  color: #211e1a;
+}
+
 .text-game-shell.world-screen .world-screen-actions button,
 .text-game-shell.world-screen .city-screen .world-screen-hud button {
   background: #fdf8ee;

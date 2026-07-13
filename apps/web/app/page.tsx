@@ -94,6 +94,14 @@ import {
 
 type HealthText = "检测中" | "正常" | "不可用";
 type RouteValue = "qi" | "body";
+type WorldMapLayer = "all" | "mine" | "cities" | "expansion" | "garrison";
+const worldMapLayers: Array<{ id: WorldMapLayer; label: string }> = [
+  { id: "all", label: "全部" },
+  { id: "mine", label: "我的领地" },
+  { id: "cities", label: "城池" },
+  { id: "expansion", label: "扩张候选" },
+  { id: "garrison", label: "驻防" },
+];
 type ActiveTab =
   | "overview"
   | "story"
@@ -6244,6 +6252,7 @@ function WorldMapScreen({
   const [canvasSize, setCanvasSize] = useState({ height: 720, width: 1280 });
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [mapLayer, setMapLayer] = useState<WorldMapLayer>("all");
   const [selectedTile, setSelectedTile] = useState<MapTileState | null>(null);
   const [selectedCoordinate, setSelectedCoordinate] = useState<{
     provinceName: string;
@@ -6315,6 +6324,19 @@ function WorldMapScreen({
     context.fillRect(0, 0, canvasSize.width, canvasSize.height);
     const showTileGrid = transform.cellSize >= 9;
     const showLandmarkLabel = transform.cellSize >= 18;
+    const myTerritoryCoordinates = new Set(
+      (territory?.blocks ?? []).map((block) => `${block.province_id}:${block.x}:${block.y}`),
+    );
+    const expansionCoordinates = new Set(
+      (territory?.expansion_candidates ?? []).map(
+        (candidate) => `${candidate.province_id}:${candidate.x}:${candidate.y}`,
+      ),
+    );
+    const garrisonCoordinates = new Set(
+      (territory?.blocks ?? [])
+        .filter((block) => block.garrison)
+        .map((block) => `${block.province_id}:${block.x}:${block.y}`),
+    );
     const provinceAt = new Map<string, string>();
     for (const province of atlas?.provinces ?? []) {
       for (let y = 0; y < province.layout_height; y += 1) {
@@ -6444,6 +6466,30 @@ function WorldMapScreen({
               context.textBaseline = "alphabetic";
             }
           }
+          if (mapLayer !== "all") {
+            const coordinateKey = `${province.province.province_id}:${x}:${y}`;
+            const matchesLayer =
+              mapLayer === "mine"
+                ? myTerritoryCoordinates.has(coordinateKey)
+                : mapLayer === "cities"
+                  ? landmark === "h" || landmark === "s"
+                  : mapLayer === "expansion"
+                    ? expansionCoordinates.has(coordinateKey)
+                    : garrisonCoordinates.has(coordinateKey);
+            if (matchesLayer) {
+              context.strokeStyle = "#d74f2a";
+              context.lineWidth = Math.max(1.5, transform.cellSize * 0.14);
+              context.strokeRect(
+                drawX + 1,
+                drawY + 1,
+                Math.max(1, transform.cellSize - 2),
+                Math.max(1, transform.cellSize - 2),
+              );
+            } else {
+              context.fillStyle = "rgba(232, 223, 203, 0.66)";
+              context.fillRect(drawX, drawY, transform.cellSize, transform.cellSize);
+            }
+          }
           if (
             selectedCoordinate?.provinceId === province.province.province_id &&
             selectedCoordinate.x === x &&
@@ -6481,7 +6527,7 @@ function WorldMapScreen({
         context.textBaseline = "alphabetic";
       }
     }
-  }, [atlas, canvasSize, city, selectedCoordinate, transform]);
+  }, [atlas, canvasSize, city, mapLayer, selectedCoordinate, territory, transform]);
 
   async function selectCanvasTile(event: MouseEvent<HTMLCanvasElement>) {
     if (!atlas || dragRef.current || didDragRef.current) {
@@ -6685,6 +6731,18 @@ function WorldMapScreen({
               : "选择州域，在安全平原建立主城"}
           </small>
         </div>
+        <nav className="world-map-layers" aria-label="地图图层">
+          {worldMapLayers.map((layer) => (
+            <button
+              aria-pressed={mapLayer === layer.id}
+              key={layer.id}
+              onClick={() => setMapLayer(layer.id)}
+              type="button"
+            >
+              {layer.label}
+            </button>
+          ))}
+        </nav>
         <div className="world-screen-actions">
           {city ? (
             <button onClick={() => setMode("city")} type="button">

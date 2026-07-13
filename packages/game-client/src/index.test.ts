@@ -96,6 +96,16 @@ describe("game-client HTTP 客户端", () => {
     await client.defendWorld({ soldier_count: 10, tile_id: "ji_block_1_0" }, "idem_defend");
     await client.resolveWorldClearance({ march_id: "march_1" }, "idem_clearance");
     await client.purchaseWorldBlock({ tile_id: "ji_block_1_0" }, "idem_purchase");
+    await client.trainCitySoldiers({ soldier_count: 20 }, "idem_train");
+    await client.saveCityArmyPreset(
+      {
+        preset_type: "march",
+        commander_id: "city_vanguard",
+        soldier_count: 40,
+        formation: "assault",
+      },
+      "idem_army_preset",
+    );
 
     expect(calls).toEqual([
       {
@@ -122,6 +132,21 @@ describe("game-client HTTP 客户端", () => {
         body: { tile_id: "ji_block_1_0" },
         idempotencyKey: "idem_purchase",
         url: "https://example.test/api/world/blocks/purchase",
+      },
+      {
+        body: { soldier_count: 20 },
+        idempotencyKey: "idem_train",
+        url: "https://example.test/api/city/army/train",
+      },
+      {
+        body: {
+          preset_type: "march",
+          commander_id: "city_vanguard",
+          soldier_count: 40,
+          formation: "assault",
+        },
+        idempotencyKey: "idem_army_preset",
+        url: "https://example.test/api/city/army/preset",
       },
     ]);
   });

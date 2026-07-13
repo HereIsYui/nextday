@@ -1,6 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import type {
+  ArmyFormation,
+  ArmyPresetType,
+  CityArmyPresetState,
+  CityArmyState,
   CityBirthOptionState,
   CityBuildingState,
   CityBuildingType,
@@ -24,15 +28,25 @@ import type {
   PlayerCityState,
   PlayerCityStatus,
   PlayerCityType,
+  SaveCityArmyPresetRequest,
+  SaveCityArmyPresetResponse,
   SettleMainCityRequest,
   SettleMainCityResponse,
   TerritoryCollectState,
   TerritoryHourlyOutputState,
+  TrainCitySoldiersRequest,
+  TrainCitySoldiersResponse,
   UpgradeCityBuildingRequest,
   UpgradeCityBuildingResponse,
   WorldTerrainType,
 } from "@nextday/shared";
-import type { CityBuilding, CityHerbGardenPlot, PlayerCity, Prisma } from "@prisma/client";
+import type {
+  CityArmyPreset,
+  CityBuilding,
+  CityHerbGardenPlot,
+  PlayerCity,
+  Prisma,
+} from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
 import { defaultEraId } from "../game/game.constants";
 import { hashRequestBody } from "../platform/utils/hash";
@@ -62,6 +76,15 @@ import {
   worldTileConfigs,
 } from "../world/world.constants";
 import {
+  armyCommanderConfigs,
+  armyConfigVersion,
+  defaultPresetName,
+  getArmyPower,
+  getSoldierCapacity,
+  soldierTrainGrainCost,
+  soldierTrainSpiritStoneCost,
+} from "./army.constants";
+import {
   cityConfigVersion,
   cityProtectionHours,
   herbGardenConfigVersion,
@@ -86,6 +109,160 @@ export class CityService {
   async getManagement(accountId: string): Promise<CityManagementResponse> {
     const player = await this.requirePlayer(accountId);
     return this.prisma.$transaction((tx) => this.buildManagement(player.playerId, tx));
+  }
+
+  async getArmy(accountId: string): Promise<CityArmyState> {
+    const player = await this.requirePlayer(accountId);
+    return this.prisma.$transaction((tx) => this.buildArmyState(player.playerId, tx));
+  }
+
+  async trainSoldiers(input: {
+    accountId: string;
+    body: TrainCitySoldiersRequest;
+    idempotencyKey: string;
+    endpoint: string;
+  }): Promise<TrainCitySoldiersResponse> {
+    const body = normalizeTrainSoldiersBody(input.body);
+    const requestHash = hashRequestBody(body);
+    const existingRecord = await this.prisma.idempotencyRecord.findUnique({
+      where: { idempotencyKey: input.idempotencyKey },
+    });
+    if (existingRecord) {
+      this.assertMatchingIdempotencyRecord(existingRecord, input, requestHash);
+      return existingRecord.responseData as unknown as TrainCitySoldiersResponse;
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const player = await tx.player.findUnique({ where: { accountId: input.accountId } });
+      if (!player) throw new BadRequestException("请先创建角色");
+      const city = await this.requireMainCity(player.playerId, tx);
+      const buildings = await this.ensureCityBuildings(tx, city.cityId);
+      const barracks = requireBuilding(buildings, "barracks");
+      const resources = normalizeResourceSnapshot(city.resourceSnapshot);
+      const soldierCapacity = getSoldierCapacity(barracks.level);
+      const availableSoldiers = Number(resources.soldier);
+      if (availableSoldiers + body.soldier_count > soldierCapacity) {
+        throw new BadRequestException(`兵营最多容纳 ${soldierCapacity} 名道兵`);
+      }
+      const cost = {
+        spirit_stone: body.soldier_count * soldierTrainSpiritStoneCost,
+        grain: body.soldier_count * soldierTrainGrainCost,
+      };
+      if (
+        Number(resources.spirit_stone) < cost.spirit_stone ||
+        Number(resources.grain) < cost.grain
+      ) {
+        throw new BadRequestException("主城灵石或粮草不足，无法训练道兵");
+      }
+      const updatedCity = await tx.playerCity.update({
+        where: { cityId: city.cityId },
+        data: {
+          resourceSnapshot: {
+            ...resources,
+            spirit_stone: String(Number(resources.spirit_stone) - cost.spirit_stone),
+            grain: String(Number(resources.grain) - cost.grain),
+            soldier: String(availableSoldiers + body.soldier_count),
+          } as Prisma.InputJsonValue,
+        },
+      });
+      const responseData: TrainCitySoldiersResponse = {
+        record_id: `city_train_soldiers_${randomUUID()}`,
+        trained_soldiers: body.soldier_count,
+        cost,
+        city: this.toCityState(updatedCity),
+        army: await this.buildArmyState(player.playerId, tx, updatedCity),
+      };
+      await this.createCityActionRecord(tx, {
+        accountId: input.accountId,
+        action: "city_train_soldiers",
+        afterSnapshot: responseData,
+        endpoint: input.endpoint,
+        idempotencyKey: input.idempotencyKey,
+        playerId: player.playerId,
+        reason: `兵营训练 ${body.soldier_count} 名道兵`,
+        requestHash,
+        targetId: city.cityId,
+      });
+      return responseData;
+    });
+  }
+
+  async saveArmyPreset(input: {
+    accountId: string;
+    body: SaveCityArmyPresetRequest;
+    idempotencyKey: string;
+    endpoint: string;
+  }): Promise<SaveCityArmyPresetResponse> {
+    const body = normalizeArmyPresetBody(input.body);
+    const requestHash = hashRequestBody(body);
+    const existingRecord = await this.prisma.idempotencyRecord.findUnique({
+      where: { idempotencyKey: input.idempotencyKey },
+    });
+    if (existingRecord) {
+      this.assertMatchingIdempotencyRecord(existingRecord, input, requestHash);
+      return existingRecord.responseData as unknown as SaveCityArmyPresetResponse;
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const player = await tx.player.findUnique({ where: { accountId: input.accountId } });
+      if (!player) throw new BadRequestException("请先创建角色");
+      const city = await this.requireMainCity(player.playerId, tx);
+      const buildings = await this.ensureCityBuildings(tx, city.cityId);
+      const barracks = requireBuilding(buildings, "barracks");
+      const commander = requireArmyCommander(body.commander_id, barracks.level);
+      const availableSoldiers = Number(normalizeResourceSnapshot(city.resourceSnapshot).soldier);
+      if (body.soldier_count > availableSoldiers) {
+        throw new BadRequestException("当前可调度道兵不足，先在兵营训练或撤回驻军");
+      }
+      const power = getArmyPower({
+        soldierCount: body.soldier_count,
+        commanderPowerBonusPercent: commander.powerBonusPercent,
+        formation: body.formation,
+      });
+      const preset = await tx.cityArmyPreset.upsert({
+        where: {
+          playerId_presetType: { playerId: player.playerId, presetType: body.preset_type },
+        },
+        create: {
+          presetId: `army_preset_${randomUUID()}`,
+          playerId: player.playerId,
+          cityId: city.cityId,
+          presetType: body.preset_type,
+          presetName: body.preset_name ?? defaultPresetName(body.preset_type),
+          commanderId: commander.commanderId,
+          soldierCount: body.soldier_count,
+          formation: body.formation,
+          power,
+        },
+        update: {
+          cityId: city.cityId,
+          presetName: body.preset_name ?? defaultPresetName(body.preset_type),
+          commanderId: commander.commanderId,
+          soldierCount: body.soldier_count,
+          formation: body.formation,
+          power,
+        },
+      });
+      const presetState = this.toArmyPresetState(preset);
+      if (!presetState) throw new BadRequestException("军队预设保存失败");
+      const responseData: SaveCityArmyPresetResponse = {
+        record_id: `city_army_preset_${randomUUID()}`,
+        preset: presetState,
+        army: await this.buildArmyState(player.playerId, tx, city),
+      };
+      await this.createCityActionRecord(tx, {
+        accountId: input.accountId,
+        action: "city_army_preset_save",
+        afterSnapshot: responseData,
+        endpoint: input.endpoint,
+        idempotencyKey: input.idempotencyKey,
+        playerId: player.playerId,
+        reason: `保存${body.preset_type === "march" ? "行军" : "驻防"}预设`,
+        requestHash,
+        targetId: preset.presetId,
+      });
+      return responseData;
+    });
   }
 
   async getHerbGarden(accountId: string): Promise<HerbGardenState> {
@@ -810,6 +987,82 @@ export class CityService {
     };
   }
 
+  private async buildArmyState(
+    playerId: string,
+    tx: Prisma.TransactionClient,
+    knownCity?: PlayerCity,
+  ): Promise<CityArmyState> {
+    const city =
+      knownCity ??
+      (await tx.playerCity.findFirst({
+        where: { playerId, cityType: "main" },
+        orderBy: { createdAt: "asc" },
+      }));
+    if (!city) {
+      return {
+        city_id: null,
+        available_soldiers: 0,
+        soldier_capacity: 0,
+        train_cost_per_soldier: {
+          spirit_stone: soldierTrainSpiritStoneCost,
+          grain: soldierTrainGrainCost,
+        },
+        commanders: [],
+        march_preset: null,
+        garrison_preset: null,
+        config_version: armyConfigVersion,
+      };
+    }
+    const [buildings, presets] = await Promise.all([
+      this.ensureCityBuildings(tx, city.cityId),
+      tx.cityArmyPreset.findMany({ where: { playerId }, orderBy: { presetType: "asc" } }),
+    ]);
+    const barracks = requireBuilding(buildings, "barracks");
+    return {
+      city_id: city.cityId,
+      available_soldiers: Number(normalizeResourceSnapshot(city.resourceSnapshot).soldier),
+      soldier_capacity: getSoldierCapacity(barracks.level),
+      train_cost_per_soldier: {
+        spirit_stone: soldierTrainSpiritStoneCost,
+        grain: soldierTrainGrainCost,
+      },
+      commanders: armyCommanderConfigs.map((commander) => ({
+        commander_id: commander.commanderId,
+        commander_name: commander.commanderName,
+        role: commander.role,
+        power_bonus_percent: commander.powerBonusPercent,
+        unlocked: barracks.level >= commander.requiredBarracksLevel,
+        unlock_reason:
+          barracks.level >= commander.requiredBarracksLevel
+            ? "已可任命"
+            : `兵营达到 ${commander.requiredBarracksLevel} 级后可任命`,
+      })),
+      march_preset: this.toArmyPresetState(
+        presets.find((preset) => preset.presetType === "march") ?? null,
+      ),
+      garrison_preset: this.toArmyPresetState(
+        presets.find((preset) => preset.presetType === "garrison") ?? null,
+      ),
+      config_version: armyConfigVersion,
+    };
+  }
+
+  private toArmyPresetState(preset: CityArmyPreset | null): CityArmyPresetState | null {
+    if (!preset) return null;
+    const commander = armyCommanderConfigs.find((item) => item.commanderId === preset.commanderId);
+    return {
+      preset_id: preset.presetId,
+      preset_type: preset.presetType === "garrison" ? "garrison" : "march",
+      preset_name: preset.presetName,
+      commander_id: preset.commanderId,
+      commander_name: commander?.commanderName ?? "主城先锋",
+      soldier_count: preset.soldierCount,
+      formation: normalizeArmyFormation(preset.formation),
+      power: preset.power,
+      updated_at: preset.updatedAt.toISOString(),
+    };
+  }
+
   private async requireMainCity(
     playerId: string,
     tx: Prisma.TransactionClient,
@@ -1400,6 +1653,46 @@ function normalizeUpgradeBuildingBody(
   }
 
   return { building_type: buildingType };
+}
+
+function normalizeTrainSoldiersBody(body: TrainCitySoldiersRequest): TrainCitySoldiersRequest {
+  const soldierCount = Math.floor(body?.soldier_count);
+  if (!Number.isFinite(soldierCount) || soldierCount <= 0 || soldierCount > 200) {
+    throw new BadRequestException("单次训练道兵数量必须为 1 至 200");
+  }
+  return { soldier_count: soldierCount };
+}
+
+function normalizeArmyPresetBody(body: SaveCityArmyPresetRequest): SaveCityArmyPresetRequest {
+  const presetType: ArmyPresetType | null =
+    body?.preset_type === "march" || body?.preset_type === "garrison" ? body.preset_type : null;
+  const formation = normalizeArmyFormation(body?.formation);
+  const soldierCount = Math.floor(body?.soldier_count);
+  if (!presetType) throw new BadRequestException("请选择行军或驻防预设");
+  if (!body?.commander_id?.trim()) throw new BadRequestException("请选择带队将领");
+  if (!Number.isFinite(soldierCount) || soldierCount <= 0) {
+    throw new BadRequestException("预设道兵数量必须为正整数");
+  }
+  return {
+    preset_type: presetType,
+    preset_name: body.preset_name?.trim().slice(0, 20) || undefined,
+    commander_id: body.commander_id.trim(),
+    soldier_count: soldierCount,
+    formation,
+  };
+}
+
+function normalizeArmyFormation(value: unknown): ArmyFormation {
+  return value === "assault" || value === "defense" || value === "scout" ? value : "balanced";
+}
+
+function requireArmyCommander(commanderId: string, barracksLevel: number) {
+  const commander = armyCommanderConfigs.find((item) => item.commanderId === commanderId);
+  if (!commander) throw new BadRequestException("未知将领");
+  if (barracksLevel < commander.requiredBarracksLevel) {
+    throw new BadRequestException(`兵营达到 ${commander.requiredBarracksLevel} 级后可任命该将领`);
+  }
+  return commander;
 }
 
 function normalizeBuildingType(value: string): CityBuildingType {

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import type {
+  ArmyFormation,
   BattleRoundLog,
   BattleSummary,
   CityDefenseSnapshot,
@@ -40,6 +41,7 @@ import type {
   WorldProvinceState,
 } from "@nextday/shared";
 import type {
+  CityArmyPreset,
   MarchQueue,
   Player,
   PlayerCity,
@@ -48,6 +50,7 @@ import type {
   WorldBlockClearance,
   WorldBlockOwnership,
 } from "@prisma/client";
+import { armyCommanderConfigs, getArmyPower } from "../city/army.constants";
 import { PrismaService } from "../database/prisma.service";
 import { defaultEraId } from "../game/game.constants";
 import { toBattleSummary } from "../game/game.mappers";
@@ -450,6 +453,16 @@ export class WorldService {
         throw new BadRequestException("当前已有队伍行军中");
       }
 
+      const armyPreset = await resolveMarchArmyPreset(
+        tx,
+        player.playerId,
+        normalizedBody.preset_id,
+      );
+      const availableSoldiers = Number(normalizeCityResources(sourceCity.resourceSnapshot).soldier);
+      if (armyPreset && armyPreset.soldierCount > availableSoldiers) {
+        throw new BadRequestException("行军预设所需道兵不足，请先训练或调整预设");
+      }
+
       const travelSeconds = Math.max(60, targetTile.travelSeconds);
       const march = await tx.marchQueue.create({
         data: {
@@ -464,7 +477,7 @@ export class WorldService {
           commanderyId: targetTile.commanderyId,
           marchType: normalizedBody.march_type,
           status: "marching",
-          teamSnapshot: createTeamSnapshot(sourceCity),
+          teamSnapshot: createTeamSnapshot(sourceCity, armyPreset),
           travelSeconds,
           startedAt: now,
           arrivesAt: new Date(now.getTime() + travelSeconds * 1000),
@@ -708,6 +721,7 @@ export class WorldService {
     const normalizedBody: DefendWorldRequest = {
       tile_id: tileId,
       soldier_count: targetSoldierCount,
+      preset_id: input.body.preset_id?.trim() || undefined,
     };
     const requestHash = hashRequestBody(normalizedBody);
     const existingRecord = await this.prisma.idempotencyRecord.findUnique({
@@ -754,6 +768,25 @@ export class WorldService {
       if (soldierDelta > 0 && availableSoldiers < soldierDelta) {
         throw new BadRequestException("主城道兵不足");
       }
+      const garrisonPreset = normalizedBody.preset_id
+        ? await tx.cityArmyPreset.findFirst({
+            where: {
+              presetId: normalizedBody.preset_id,
+              playerId: player.playerId,
+              presetType: "garrison",
+            },
+          })
+        : null;
+      if (normalizedBody.preset_id && !garrisonPreset) {
+        throw new BadRequestException("驻防预设不存在");
+      }
+      if (garrisonPreset && garrisonPreset.soldierCount !== targetSoldierCount) {
+        throw new BadRequestException("目标驻军数必须与驻防预设一致");
+      }
+      const presetSnapshot = garrisonPreset
+        ? createGarrisonPresetSnapshot(garrisonPreset)
+        : ({} as Prisma.InputJsonValue);
+      const defensePower = garrisonPreset?.power ?? targetSoldierCount * 2;
       const garrison =
         targetSoldierCount === 0
           ? current
@@ -768,12 +801,14 @@ export class WorldService {
                 tileId,
                 sourceCityId: city.cityId,
                 soldierCount: targetSoldierCount,
-                defensePower: targetSoldierCount * 2,
+                defensePower,
+                presetSnapshot,
               },
               update: {
                 soldierCount: targetSoldierCount,
-                defensePower: targetSoldierCount * 2,
+                defensePower,
                 sourceCityId: city.cityId,
+                presetSnapshot,
               },
             });
       const updatedCity = await tx.playerCity.update({
@@ -1347,11 +1382,15 @@ export class WorldService {
     garrison: TerritoryGarrison,
     playerId: string | null,
   ): MapTileState["garrison"] {
+    const preset = normalizeGarrisonPresetSnapshot(garrison.presetSnapshot);
     return {
       tile_id: garrison.tileId,
       owner_player_id: garrison.playerId,
       soldier_count: garrison.soldierCount,
       defense_power: garrison.defensePower,
+      preset_id: preset.presetId,
+      commander_name: preset.commanderName,
+      formation: preset.formation,
       is_mine: garrison.playerId === playerId,
       updated_at: garrison.updatedAt.toISOString(),
     };
@@ -1576,6 +1615,7 @@ function normalizeStartMarchBody(body: StartWorldMarchRequest): Required<StartWo
   const targetTileId = body?.target_tile_id?.trim();
   const sourceCityId = body?.source_city_id?.trim();
   const marchType = body?.march_type ?? "scout";
+  const presetId = body?.preset_id?.trim() ?? "";
 
   if (!targetTileId) {
     throw new BadRequestException("请选择行军目标");
@@ -1589,6 +1629,7 @@ function normalizeStartMarchBody(body: StartWorldMarchRequest): Required<StartWo
     target_tile_id: targetTileId,
     source_city_id: sourceCityId ?? "",
     march_type: marchType,
+    preset_id: presetId,
   };
 }
 
@@ -1980,6 +2021,29 @@ function buildMiniMapSummary(input: {
   };
 }
 
+function createGarrisonPresetSnapshot(preset: CityArmyPreset): Prisma.InputJsonValue {
+  const commander = armyCommanderConfigs.find((item) => item.commanderId === preset.commanderId);
+  return {
+    preset_id: preset.presetId,
+    commander_id: preset.commanderId,
+    commander_name: commander?.commanderName ?? "主城先锋",
+    formation: normalizeArmyFormation(preset.formation),
+  };
+}
+
+function normalizeGarrisonPresetSnapshot(value: Prisma.JsonValue): {
+  presetId: string | null;
+  commanderName: string;
+  formation: ArmyFormation;
+} {
+  const record = isRecord(value) ? value : {};
+  return {
+    presetId: toNullableString(record.preset_id),
+    commanderName: toStringValue(record.commander_name, "主城守军"),
+    formation: normalizeArmyFormation(record.formation),
+  };
+}
+
 function normalizeOwnershipType(
   value: string,
 ): NonNullable<MapTileState["ownership"]["ownership_type"]> {
@@ -1990,9 +2054,42 @@ function normalizeOwnershipType(
   return "system";
 }
 
-function createTeamSnapshot(city: PlayerCity): Prisma.InputJsonValue {
+async function resolveMarchArmyPreset(
+  tx: Prisma.TransactionClient,
+  playerId: string,
+  presetId: string,
+): Promise<CityArmyPreset | null> {
+  if (presetId) {
+    const preset = await tx.cityArmyPreset.findFirst({
+      where: { presetId, playerId, presetType: "march" },
+    });
+    if (!preset) throw new BadRequestException("行军预设不存在");
+    return preset;
+  }
+  return tx.cityArmyPreset.findFirst({ where: { playerId, presetType: "march" } });
+}
+
+function createTeamSnapshot(
+  city: PlayerCity,
+  preset: CityArmyPreset | null,
+): Prisma.InputJsonValue {
+  if (preset) {
+    const commander = armyCommanderConfigs.find((item) => item.commanderId === preset.commanderId);
+    return {
+      preset_id: preset.presetId,
+      commander_id: preset.commanderId,
+      leader_name: commander?.commanderName ?? "主城先锋",
+      formation: normalizeArmyFormation(preset.formation),
+      soldier_count: preset.soldierCount,
+      supply_cost: Math.max(1, Math.ceil(preset.soldierCount * 0.4)),
+      team_power: preset.power,
+    };
+  }
   return {
+    preset_id: null,
+    commander_id: "city_vanguard",
     leader_name: `${city.cityName}先锋`,
+    formation: "balanced",
     soldier_count: 30,
     supply_cost: 12,
     team_power: 120 + city.cityLevel * 20,
@@ -2015,11 +2112,18 @@ function normalizeTeamSnapshot(value: Prisma.JsonValue) {
   const record = isRecord(value) ? value : {};
 
   return {
+    preset_id: toNullableString(record.preset_id),
+    commander_id: toStringValue(record.commander_id, "city_vanguard"),
     leader_name: toStringValue(record.leader_name, "主城先锋"),
+    formation: normalizeArmyFormation(record.formation),
     soldier_count: toNumber(record.soldier_count, 30),
     team_power: toNumber(record.team_power, 120),
     supply_cost: toNumber(record.supply_cost, 12),
   };
+}
+
+function normalizeArmyFormation(value: unknown): ArmyFormation {
+  return value === "assault" || value === "defense" || value === "scout" ? value : "balanced";
 }
 
 function resolveGarrisonOperation(
@@ -2164,4 +2268,8 @@ function toNumber(value: unknown, fallback: number): number {
 
 function toStringValue(value: unknown, fallback: string): string {
   return typeof value === "string" && value.length > 0 ? value : fallback;
+}
+
+function toNullableString(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
 }

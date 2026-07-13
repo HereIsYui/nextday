@@ -847,7 +847,10 @@ export type MarchQueueStatus = "marching" | "arrived" | "resolved" | "cancelled"
 export type MarchType = "scout" | "clear_wild" | "reinforce" | "siege";
 
 export interface MarchTeamSnapshot {
+  preset_id: string | null;
+  commander_id: string;
   leader_name: string;
+  formation: ArmyFormation;
   soldier_count: number;
   team_power: number;
   supply_cost: number;
@@ -885,6 +888,7 @@ export interface StartWorldMarchRequest {
   target_tile_id: string;
   source_city_id?: string;
   march_type?: MarchType;
+  preset_id?: string;
 }
 
 export interface StartWorldMarchResponse {
@@ -924,6 +928,9 @@ export interface TerritoryGarrisonState {
   owner_player_id: string;
   soldier_count: number;
   defense_power: number;
+  preset_id: string | null;
+  commander_name: string;
+  formation: ArmyFormation;
   is_mine: boolean;
   updated_at: string;
 }
@@ -931,6 +938,7 @@ export interface TerritoryGarrisonState {
 export interface DefendWorldRequest {
   tile_id: string;
   soldier_count: number;
+  preset_id?: string;
 }
 
 export interface DefendWorldResponse {
@@ -1143,6 +1151,67 @@ export interface UpgradeCityBuildingResponse {
   city: PlayerCityState;
   building: CityBuildingState;
   buildings: CityBuildingState[];
+}
+
+export type ArmyPresetType = "march" | "garrison";
+export type ArmyFormation = "balanced" | "assault" | "defense" | "scout";
+
+export interface ArmyCommanderState {
+  commander_id: string;
+  commander_name: string;
+  role: string;
+  power_bonus_percent: number;
+  unlocked: boolean;
+  unlock_reason: string;
+}
+
+export interface CityArmyPresetState {
+  preset_id: string;
+  preset_type: ArmyPresetType;
+  preset_name: string;
+  commander_id: string;
+  commander_name: string;
+  soldier_count: number;
+  formation: ArmyFormation;
+  power: number;
+  updated_at: string;
+}
+
+export interface CityArmyState {
+  city_id: string | null;
+  available_soldiers: number;
+  soldier_capacity: number;
+  train_cost_per_soldier: { spirit_stone: number; grain: number };
+  commanders: ArmyCommanderState[];
+  march_preset: CityArmyPresetState | null;
+  garrison_preset: CityArmyPresetState | null;
+  config_version: string;
+}
+
+export interface TrainCitySoldiersRequest {
+  soldier_count: number;
+}
+
+export interface TrainCitySoldiersResponse {
+  record_id: string;
+  trained_soldiers: number;
+  cost: { spirit_stone: number; grain: number };
+  city: PlayerCityState;
+  army: CityArmyState;
+}
+
+export interface SaveCityArmyPresetRequest {
+  preset_type: ArmyPresetType;
+  preset_name?: string;
+  commander_id: string;
+  soldier_count: number;
+  formation: ArmyFormation;
+}
+
+export interface SaveCityArmyPresetResponse {
+  record_id: string;
+  preset: CityArmyPresetState;
+  army: CityArmyState;
 }
 
 export type HerbGardenPlotStatus = "empty" | "growing" | "ready";

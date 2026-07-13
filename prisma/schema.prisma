@@ -109,6 +109,7 @@ model Player {
   worldBlockClearances      WorldBlockClearance[]
   worldBlockOwnerships      WorldBlockOwnership[]
   territoryGarrisons        TerritoryGarrison[]
+  armyPresets               CityArmyPreset[]
 
   @@index([accountId])
   @@index([sectId])
@@ -140,6 +141,7 @@ model PlayerCity {
   marchQueues MarchQueue[]
   buildings CityBuilding[]
   herbGardenPlots CityHerbGardenPlot[]
+  armyPresets CityArmyPreset[]
 
   @@index([playerId])
   @@index([eraId])
@@ -297,6 +299,7 @@ model TerritoryGarrison {
   sourceCityId    String   @map("source_city_id")
   soldierCount    Int      @map("soldier_count")
   defensePower    Int      @map("defense_power")
+  presetSnapshot  Json     @default("{}") @map("preset_snapshot")
   updatedAt       DateTime @updatedAt @map("updated_at")
   createdAt       DateTime @default(now()) @map("created_at")
 
@@ -306,6 +309,28 @@ model TerritoryGarrison {
   @@index([playerId])
   @@index([sourceCityId])
   @@map("territory_garrison")
+}
+
+model CityArmyPreset {
+  presetId      String   @id @map("preset_id")
+  playerId      String   @map("player_id")
+  cityId        String   @map("city_id")
+  presetType    String   @map("preset_type")
+  presetName    String   @map("preset_name")
+  commanderId   String   @map("commander_id")
+  soldierCount  Int      @map("soldier_count")
+  formation     String
+  power         Int
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  player Player     @relation(fields: [playerId], references: [playerId], onDelete: Cascade)
+  city   PlayerCity @relation(fields: [cityId], references: [cityId], onDelete: Cascade)
+
+  @@unique([playerId, presetType])
+  @@index([cityId])
+  @@index([playerId])
+  @@map("city_army_preset")
 }
 
 model PlayerProgress {

@@ -38,6 +38,7 @@ import type {
   CaveCollectResponse,
   ChooseFactionRouteRequest,
   ChooseFactionRouteResponse,
+  CityArmyState,
   CityManagementResponse,
   CityOverviewResponse,
   ClaimActivityRewardRequest,
@@ -163,6 +164,8 @@ import type {
   ReviewSectDiplomacyRequest,
   RollbackAdminConfigRequest,
   RollbackAdminConfigResponse,
+  SaveCityArmyPresetRequest,
+  SaveCityArmyPresetResponse,
   SaveConvenienceStrategyRequest,
   SaveConvenienceStrategyResponse,
   SaveSkillLoadoutRequest,
@@ -202,6 +205,8 @@ import type {
   TowerActionRequest,
   TowerActionResponse,
   TowerListResponse,
+  TrainCitySoldiersRequest,
+  TrainCitySoldiersResponse,
   TransferFactionRouteRequest,
   TransferFactionRouteResponse,
   TransferRuleResponse,
@@ -482,6 +487,32 @@ export class GameClient {
 
   cityManagement(): Promise<ApiResponse<CityManagementResponse>> {
     return this.get<CityManagementResponse>("/api/city/management");
+  }
+
+  cityArmy(): Promise<ApiResponse<CityArmyState>> {
+    return this.get<CityArmyState>("/api/city/army");
+  }
+
+  trainCitySoldiers(
+    body: TrainCitySoldiersRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<TrainCitySoldiersResponse>> {
+    return this.post<TrainCitySoldiersResponse, TrainCitySoldiersRequest>(
+      "/api/city/army/train",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  saveCityArmyPreset(
+    body: SaveCityArmyPresetRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<SaveCityArmyPresetResponse>> {
+    return this.post<SaveCityArmyPresetResponse, SaveCityArmyPresetRequest>(
+      "/api/city/army/preset",
+      body,
+      { idempotencyKey },
+    );
   }
 
   herbGarden(): Promise<ApiResponse<HerbGardenState>> {

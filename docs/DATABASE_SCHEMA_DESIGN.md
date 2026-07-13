@@ -1253,3 +1253,4 @@ P2 表结构为设计占位，正式 migration 可按功能阶段拆分落地。
 - P2 转服表能追溯 dry-run、审核、资产映射、排行冷却、宗门清理、执行状态和审计记录。
 - R1-R6 城池表能覆盖主城、分城、地图地块、行军队列、区块产权、战略控制权、攻城保护和州战积分。
 - R2 城池经营读取 `player_city.resource_snapshot`、`territory_collected_at` 与 `city_building`，资源领取受仓库容量限制，建筑升级同一主城仅允许一个活动队列。
+- `city_army_preset` 按玩家与预设类型唯一保存行军 / 驻防配置；`march_queue.team_snapshot` 与 `territory_garrison.preset_snapshot` 固化结算时使用的将领、阵型和兵力。

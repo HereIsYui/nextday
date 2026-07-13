@@ -575,6 +575,9 @@ P3 接口规则：
 | 城池 | `/api/city/settle` | POST | 选择出生州和郡域建立主城，需 `Idempotency-Key` |
 | 城池 | `/api/city/build` | POST | 建造或升级建筑，需 `Idempotency-Key` |
 | 城池 | `/api/city/territory/collect` | POST | 按离线时长和仓库容量领取领地产出，需 `Idempotency-Key` |
+| 军队 | `/api/city/army` | GET | 返回可用道兵、兵营容量、将领名册和行军 / 驻防预设 |
+| 军队 | `/api/city/army/train` | POST | 消耗普通灵石与粮草训练道兵，需 `Idempotency-Key` |
+| 军队 | `/api/city/army/preset` | POST | 保存行军或驻防预设，需 `Idempotency-Key` |
 | 行军 | `/api/world/marches` | GET | 查询当前和最近行军队列、抵达状态和后续处理提示 |
 | 行军 | `/api/world/march` | POST | 派遣队伍前往地块、资源点、分城、关隘或九塔，需 `Idempotency-Key` |
 | 清野 | `/api/world/clear-wild/resolve` | POST | 结算已抵达清野行军，成功后只解锁该玩家的购买资格，需 `Idempotency-Key` |
@@ -605,6 +608,7 @@ P3 接口规则：
 - 客户端只提交行军、购买、建造、驻防等意图；产权、战斗、资源产出和州战积分必须由服务端结算。
 - 玩家区块产权只能来自出生分配或普通灵石购买，行军、清野、攻城和州战不得强制转移产权。
 - 驻防请求中的 `soldier_count` 表示目标驻军数而非本次增量；重复幂等请求不得重复扣兵或返兵。
+- 行军和驻防可携带 `preset_id`；服务端校验预设归属、类型、将领解锁和道兵数量，并将将领、阵型与战力写入不可变快照。
 - 主城与分城失败只能进入城防破损、围困、停产、附庸或免战恢复等可恢复状态。
 - 关隘、州府和九塔使用独立周期控制权，不写入玩家区块产权。
 - 所有状态变更必须幂等，重复请求不能重复扣资源、重复创建队列或重复购买。

@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Inject, Post, Req, UseGuards } from "@nestjs/common";
 import type {
+  CityArmyState,
   CityManagementResponse,
   CityOverviewResponse,
   CollectTerritoryResponse,
@@ -11,8 +12,12 @@ import type {
   HerbGardenState,
   PlantHerbRequest,
   PlantHerbResponse,
+  SaveCityArmyPresetRequest,
+  SaveCityArmyPresetResponse,
   SettleMainCityRequest,
   SettleMainCityResponse,
+  TrainCitySoldiersRequest,
+  TrainCitySoldiersResponse,
   UpgradeCityBuildingRequest,
   UpgradeCityBuildingResponse,
 } from "@nextday/shared";
@@ -33,6 +38,37 @@ export class CityController {
   @Get("management")
   management(@Req() request: Request): Promise<CityManagementResponse> {
     return this.cityService.getManagement(requireAccountId(request));
+  }
+
+  @Get("army")
+  army(@Req() request: Request): Promise<CityArmyState> {
+    return this.cityService.getArmy(requireAccountId(request));
+  }
+
+  @Post("army/train")
+  trainSoldiers(
+    @Body() body: TrainCitySoldiersRequest,
+    @Req() request: Request,
+  ): Promise<TrainCitySoldiersResponse> {
+    return this.cityService.trainSoldiers({
+      accountId: requireAccountId(request),
+      body,
+      idempotencyKey: requireIdempotencyKey(request),
+      endpoint: "POST /api/city/army/train",
+    });
+  }
+
+  @Post("army/preset")
+  saveArmyPreset(
+    @Body() body: SaveCityArmyPresetRequest,
+    @Req() request: Request,
+  ): Promise<SaveCityArmyPresetResponse> {
+    return this.cityService.saveArmyPreset({
+      accountId: requireAccountId(request),
+      body,
+      idempotencyKey: requireIdempotencyKey(request),
+      endpoint: "POST /api/city/army/preset",
+    });
   }
 
   @Get("garden")

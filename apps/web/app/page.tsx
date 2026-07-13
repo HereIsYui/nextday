@@ -12,8 +12,11 @@ import type {
   AppearanceListResponse,
   AppearancePlusCatalogResponse,
   AppearancePlusState,
+  ArmyFormation,
+  ArmyPresetType,
   BagSummaryResponse,
   BattleSummary,
+  CityArmyState,
   CityBirthOptionState,
   CityBuildingState,
   CityManagementResponse,
@@ -470,6 +473,7 @@ export default function HomePage() {
   const [worldAtlas, setWorldAtlas] = useState<WorldAtlasResponse | null>(null);
   const [cityOverview, setCityOverview] = useState<CityOverviewResponse | null>(null);
   const [cityManagement, setCityManagement] = useState<CityManagementResponse | null>(null);
+  const [cityArmy, setCityArmy] = useState<CityArmyState | null>(null);
   const [herbGarden, setHerbGarden] = useState<HerbGardenState | null>(null);
   const [worldTerritory, setWorldTerritory] = useState<TerritoryOverviewResponse | null>(null);
   const [worldMarches, setWorldMarches] = useState<WorldMarchListResponse | null>(null);
@@ -1098,6 +1102,7 @@ export default function HomePage() {
         setWorldAtlas(state.atlas);
         setCityOverview(state.city);
         setCityManagement(state.management);
+        setCityArmy(state.army);
         setWorldTerritory(state.territory);
         setWorldMarches(state.marches);
         setWorldMap(state.map);
@@ -1637,6 +1642,7 @@ export default function HomePage() {
     setWorldAtlas(state.atlas);
     setCityOverview(state.city);
     setCityManagement(state.management);
+    setCityArmy(state.army);
     setWorldTerritory(state.territory);
     setWorldMarches(state.marches);
     setWorldMap(state.map);
@@ -1697,6 +1703,7 @@ export default function HomePage() {
       const response = await client.startWorldMarch(
         {
           march_type: marchType,
+          preset_id: cityArmy?.march_preset?.preset_id,
           target_tile_id: tile.tile_id,
         },
         createIdempotencyKey(`web_world_march_${tile.tile_id}_${marchType}`),
@@ -1783,7 +1790,11 @@ export default function HomePage() {
     });
   }
 
-  async function handleDefendWorld(tile: MapTileState, targetSoldierCount: number) {
+  async function handleDefendWorld(
+    tile: MapTileState,
+    targetSoldierCount: number,
+    presetId?: string,
+  ) {
     if (tile.ownership.owner_player_id !== activePlayerId) {
       setMessage("只能调整自己领地的驻军");
       return;
@@ -1791,7 +1802,7 @@ export default function HomePage() {
 
     await runAction(targetSoldierCount === 0 ? "撤回驻军" : "调整驻军", async () => {
       const response = await client.defendWorld(
-        { soldier_count: targetSoldierCount, tile_id: tile.tile_id },
+        { soldier_count: targetSoldierCount, tile_id: tile.tile_id, preset_id: presetId },
         createIdempotencyKey(`web_world_defend_${tile.tile_id}_${targetSoldierCount}`),
       );
       ensureOk(response);
@@ -1899,6 +1910,54 @@ export default function HomePage() {
         tone: "neutral",
       });
       await refreshWorldState(`${building.name}已开始升级`);
+    });
+  }
+
+  async function handleTrainCitySoldiers(soldierCount: number) {
+    await runAction("训练道兵", async () => {
+      const response = await client.trainCitySoldiers(
+        { soldier_count: soldierCount },
+        createIdempotencyKey(`web_city_train_${soldierCount}`),
+      );
+      ensureOk(response);
+      setCityArmy(response.data.army);
+      setCityOverview((previous) =>
+        previous ? { ...previous, main_city: response.data.city } : previous,
+      );
+      rememberExperience(undefined, {
+        summary: `兵营完成 ${soldierCount} 名道兵训练，消耗灵石 ${response.data.cost.spirit_stone}、粮草 ${response.data.cost.grain}。`,
+        tags: ["兵营", "道兵训练"],
+        title: "训练道兵",
+        tone: "success",
+      });
+      await refreshWorldState(`已训练 ${soldierCount} 名道兵`);
+    });
+  }
+
+  async function handleSaveArmyPreset(input: {
+    presetType: ArmyPresetType;
+    commanderId: string;
+    soldierCount: number;
+    formation: ArmyFormation;
+  }) {
+    await runAction(input.presetType === "march" ? "保存行军预设" : "保存驻防预设", async () => {
+      const response = await client.saveCityArmyPreset(
+        {
+          preset_type: input.presetType,
+          commander_id: input.commanderId,
+          soldier_count: input.soldierCount,
+          formation: input.formation,
+        },
+        createIdempotencyKey(`web_city_army_preset_${input.presetType}`),
+      );
+      ensureOk(response);
+      setCityArmy(response.data.army);
+      rememberExperience(undefined, {
+        summary: `${input.presetType === "march" ? "行军" : "驻防"}预设已保存：${response.data.preset.commander_name}统领 ${response.data.preset.soldier_count} 名道兵。`,
+        tags: ["兵营", "军队预设"],
+        title: input.presetType === "march" ? "整备出征队" : "整备守备队",
+        tone: "success",
+      });
     });
   }
 
@@ -3334,6 +3393,7 @@ export default function HomePage() {
         <WorldMapScreen
           activePlayerId={activePlayerId}
           atlas={worldAtlas}
+          army={cityArmy}
           birthOptions={cityOverview?.birth_options ?? []}
           buildings={cityBuildings}
           busy={busy}
@@ -3364,6 +3424,8 @@ export default function HomePage() {
             }
           }}
           onStartMarch={handleStartWorldMarch}
+          onSaveArmyPreset={handleSaveArmyPreset}
+          onTrainSoldiers={handleTrainCitySoldiers}
           onUpgradeBuilding={handleUpgradeCityBuilding}
           territoryCollect={territoryCollect}
           territory={worldTerritory}
@@ -3730,6 +3792,7 @@ export default function HomePage() {
                             {strategicMapScope === "city" && worldMainCity ? (
                               <CityInteriorStage
                                 buildings={cityBuildings}
+                                army={cityArmy}
                                 busy={busy}
                                 city={worldMainCity}
                                 cityExpansion={cityExpansion}
@@ -3743,7 +3806,9 @@ export default function HomePage() {
                                 onForge={handleCraftForge}
                                 onHarvestHerb={handleHarvestHerb}
                                 onPlantHerb={handlePlantHerb}
+                                onSaveArmyPreset={handleSaveArmyPreset}
                                 onSelectBuilding={setSelectedCityInteriorBuildingId}
+                                onTrainSoldiers={handleTrainCitySoldiers}
                                 onUpgradeBuilding={handleUpgradeCityBuilding}
                                 selectedBuilding={selectedCityInteriorBuilding}
                                 territoryCollect={territoryCollect}
@@ -6199,6 +6264,7 @@ export default function HomePage() {
 function WorldMapScreen({
   activePlayerId,
   atlas,
+  army,
   birthOptions,
   buildings,
   busy,
@@ -6222,12 +6288,15 @@ function WorldMapScreen({
   onResolveClearance,
   onSettle,
   onStartMarch,
+  onSaveArmyPreset,
+  onTrainSoldiers,
   onUpgradeBuilding,
   territoryCollect,
   territory,
 }: {
   activePlayerId: string | null;
   atlas: WorldAtlasResponse | null;
+  army: CityArmyState | null;
   birthOptions: CityBirthOptionState[];
   buildings: CityBuildingState[];
   busy: boolean;
@@ -6240,7 +6309,11 @@ function WorldMapScreen({
   onBreakthrough: () => void | Promise<void>;
   onClaimCultivation: () => void | Promise<void>;
   onCollectTerritory: () => void | Promise<void>;
-  onDefend: (tile: MapTileState, targetSoldierCount: number) => void | Promise<void>;
+  onDefend: (
+    tile: MapTileState,
+    targetSoldierCount: number,
+    presetId?: string,
+  ) => void | Promise<void>;
   onEstablishSubCity: (tile: MapTileState) => void | Promise<void>;
   onExpandCity: () => void | Promise<void>;
   onForge: () => void | Promise<void>;
@@ -6251,6 +6324,13 @@ function WorldMapScreen({
   onResolveClearance: (march: MarchQueueState) => void | Promise<void>;
   onSettle: (provinceId: string) => void;
   onStartMarch: (tile: MapTileState, marchType: MarchType) => void | Promise<void>;
+  onSaveArmyPreset: (input: {
+    presetType: ArmyPresetType;
+    commanderId: string;
+    soldierCount: number;
+    formation: ArmyFormation;
+  }) => void | Promise<void>;
+  onTrainSoldiers: (soldierCount: number) => void | Promise<void>;
   onUpgradeBuilding: (building: CityBuildingState) => void | Promise<void>;
   territoryCollect: CityManagementResponse["territory_collect"] | null;
   territory: TerritoryOverviewResponse | null;
@@ -6738,6 +6818,7 @@ function WorldMapScreen({
             cityExpansion={cityExpansion}
             garden={garden}
             management={management}
+            army={army}
             onAlchemy={onAlchemy}
             onBreakthrough={onBreakthrough}
             onClaimCultivation={onClaimCultivation}
@@ -6746,7 +6827,9 @@ function WorldMapScreen({
             onForge={onForge}
             onHarvestHerb={onHarvestHerb}
             onPlantHerb={onPlantHerb}
+            onSaveArmyPreset={onSaveArmyPreset}
             onSelectBuilding={setSelectedBuildingId}
+            onTrainSoldiers={onTrainSoldiers}
             onUpgradeBuilding={onUpgradeBuilding}
             selectedBuilding={selectedBuilding}
             territoryCollect={territoryCollect}
@@ -6879,6 +6962,10 @@ function WorldMapScreen({
                   <>
                     <span>守备 {selectedTile.garrison.defense_power}</span>
                     <span>驻军 {selectedTile.garrison.soldier_count}</span>
+                    <span>
+                      {selectedTile.garrison.commander_name} ·{" "}
+                      {armyFormationLabel(selectedTile.garrison.formation)}
+                    </span>
                   </>
                 ) : null}
                 {selectedTile.terrain_effects.slice(0, 3).map((effect) => (
@@ -6923,6 +7010,26 @@ function WorldMapScreen({
                         onClick={() => onEstablishSubCity(selectedTile)}
                       >
                         建立分城
+                      </Button>
+                    ) : null}
+                    {army?.garrison_preset ? (
+                      <Button
+                        disabled={busy}
+                        onClick={async () => {
+                          await onDefend(
+                            selectedTile,
+                            army.garrison_preset?.soldier_count ?? 0,
+                            army.garrison_preset?.preset_id,
+                          );
+                          const refreshedTile = await onLoadTile(
+                            selectedTile.province_id,
+                            selectedTile.x,
+                            selectedTile.y,
+                          );
+                          if (refreshedTile) setSelectedTile(refreshedTile);
+                        }}
+                      >
+                        套用驻防预设 · {army.garrison_preset.soldier_count} 人
                       </Button>
                     ) : null}
                     <label>
@@ -7078,6 +7185,7 @@ function DesktopOnlyNotice() {
 }
 
 function CityInteriorStage({
+  army,
   buildings,
   busy,
   city,
@@ -7092,11 +7200,14 @@ function CityInteriorStage({
   onForge,
   onHarvestHerb,
   onPlantHerb,
+  onSaveArmyPreset,
   onSelectBuilding,
+  onTrainSoldiers,
   onUpgradeBuilding,
   selectedBuilding,
   territoryCollect,
 }: {
+  army: CityArmyState | null;
   buildings: CityBuildingState[];
   busy: boolean;
   city: NonNullable<CityOverviewResponse["main_city"]>;
@@ -7111,11 +7222,33 @@ function CityInteriorStage({
   onForge: () => void | Promise<void>;
   onHarvestHerb: (plotId: string) => void | Promise<void>;
   onPlantHerb: (plotId: string) => void | Promise<void>;
+  onSaveArmyPreset: (input: {
+    presetType: ArmyPresetType;
+    commanderId: string;
+    soldierCount: number;
+    formation: ArmyFormation;
+  }) => void | Promise<void>;
   onSelectBuilding: (buildingId: CityInteriorBuildingId) => void;
+  onTrainSoldiers: (soldierCount: number) => void | Promise<void>;
   onUpgradeBuilding: (building: CityBuildingState) => void | Promise<void>;
   selectedBuilding: CityInteriorBuildingDefinition;
   territoryCollect: CityManagementResponse["territory_collect"] | null;
 }) {
+  const [soldierTrainCount, setSoldierTrainCount] = useState(10);
+  const [armyPresetType, setArmyPresetType] = useState<ArmyPresetType>("march");
+  const [armyCommanderId, setArmyCommanderId] = useState("city_vanguard");
+  const [armySoldierCount, setArmySoldierCount] = useState(30);
+  const [armyFormation, setArmyFormation] = useState<ArmyFormation>("balanced");
+
+  useEffect(() => {
+    const preset = armyPresetType === "march" ? army?.march_preset : army?.garrison_preset;
+    if (preset) {
+      setArmyCommanderId(preset.commander_id);
+      setArmySoldierCount(preset.soldier_count);
+      setArmyFormation(preset.formation);
+    }
+  }, [army, armyPresetType]);
+
   const selectedCityBuilding =
     selectedBuilding.id === "warehouse"
       ? buildings.find((building) => building.building_type === "warehouse")
@@ -7292,9 +7425,115 @@ function CityInteriorStage({
         ) : null}
 
         {selectedBuilding.id === "barracks" ? (
-          <>
-            <p>当前可调度道兵 {city.resources.soldier}，行军与驻防会从这里整训。</p>
-          </>
+          <section className="city-army-management">
+            <div className="strategic-inspector-tags">
+              <span>
+                道兵 {army?.available_soldiers ?? city.resources.soldier}/
+                {army?.soldier_capacity ?? "--"}
+              </span>
+              <span>
+                单兵消耗 灵石 {army?.train_cost_per_soldier.spirit_stone ?? 2} · 粮草{" "}
+                {army?.train_cost_per_soldier.grain ?? 8}
+              </span>
+            </div>
+            <div className="city-army-train-row">
+              <label>
+                训练数量
+                <input
+                  max={200}
+                  min={1}
+                  onChange={(event) =>
+                    setSoldierTrainCount(Math.max(1, Math.floor(Number(event.target.value) || 1)))
+                  }
+                  type="number"
+                  value={soldierTrainCount}
+                />
+              </label>
+              <Button disabled={busy} onClick={() => onTrainSoldiers(soldierTrainCount)}>
+                训练道兵
+              </Button>
+            </div>
+            <div className="city-army-preset-tabs">
+              <button
+                aria-pressed={armyPresetType === "march"}
+                onClick={() => setArmyPresetType("march")}
+                type="button"
+              >
+                行军预设
+              </button>
+              <button
+                aria-pressed={armyPresetType === "garrison"}
+                onClick={() => setArmyPresetType("garrison")}
+                type="button"
+              >
+                驻防预设
+              </button>
+            </div>
+            <label>
+              带队将领
+              <select
+                onChange={(event) => setArmyCommanderId(event.target.value)}
+                value={armyCommanderId}
+              >
+                {(army?.commanders ?? []).map((commander) => (
+                  <option
+                    disabled={!commander.unlocked}
+                    key={commander.commander_id}
+                    value={commander.commander_id}
+                  >
+                    {commander.commander_name} · {commander.unlock_reason}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              阵型
+              <select
+                onChange={(event) => setArmyFormation(event.target.value as ArmyFormation)}
+                value={armyFormation}
+              >
+                <option value="balanced">均衡阵</option>
+                <option value="assault">破阵阵</option>
+                <option value="defense">守御阵</option>
+                <option value="scout">轻行阵</option>
+              </select>
+            </label>
+            <label>
+              预设道兵
+              <input
+                max={army?.available_soldiers ?? 1}
+                min={1}
+                onChange={(event) =>
+                  setArmySoldierCount(Math.max(1, Math.floor(Number(event.target.value) || 1)))
+                }
+                type="number"
+                value={armySoldierCount}
+              />
+            </label>
+            <Button
+              disabled={busy || !armyCommanderId}
+              onClick={() =>
+                onSaveArmyPreset({
+                  presetType: armyPresetType,
+                  commanderId: armyCommanderId,
+                  soldierCount: armySoldierCount,
+                  formation: armyFormation,
+                })
+              }
+            >
+              保存{armyPresetType === "march" ? "行军" : "驻防"}预设
+            </Button>
+            <div className="city-army-preset-summary">
+              {[army?.march_preset, army?.garrison_preset].filter(Boolean).map((preset) =>
+                preset ? (
+                  <span key={preset.preset_id}>
+                    {preset.preset_name} · {preset.commander_name} · 道兵 {preset.soldier_count} ·
+                    战力 {preset.power}
+                  </span>
+                ) : null,
+              )}
+            </div>
+          </section>
         ) : null}
 
         {selectedBuilding.id === "fortification" ? (
@@ -10141,6 +10380,7 @@ async function loadWorldState(
     atlasResponse,
     cityResponse,
     managementResponse,
+    armyResponse,
     marchResponse,
     territoryResponse,
   ] = await Promise.all([
@@ -10148,6 +10388,7 @@ async function loadWorldState(
     client.worldAtlas(),
     client.cityOverview(),
     client.cityManagement(),
+    client.cityArmy(),
     client.worldMarches(),
     client.worldTerritory(),
   ]);
@@ -10155,6 +10396,7 @@ async function loadWorldState(
   ensureOk(atlasResponse);
   ensureOk(cityResponse);
   ensureOk(managementResponse);
+  ensureOk(armyResponse);
   ensureOk(marchResponse);
   ensureOk(territoryResponse);
 
@@ -10177,6 +10419,7 @@ async function loadWorldState(
     city: cityResponse.data,
     atlas: atlasResponse.data,
     management: managementResponse.data,
+    army: armyResponse.data,
     territory: territoryResponse.data,
     map: mapResponse.data,
     marches: marchResponse.data,
@@ -10445,6 +10688,17 @@ function worldMarchTypeLabel(type: MarchType): string {
     siege: "围城",
   };
   return labels[type];
+}
+
+function armyFormationLabel(formation: ArmyFormation): string {
+  return (
+    {
+      assault: "破阵阵",
+      balanced: "均衡阵",
+      defense: "守御阵",
+      scout: "轻行阵",
+    } as Record<ArmyFormation, string>
+  )[formation];
 }
 
 function worldMarchStatusLabel(status: MarchQueueState["status"]): string {

@@ -4130,6 +4130,70 @@ details.event-boundary {
   line-height: 1.4;
 }
 
+.text-game-shell .city-army-management {
+  border-top: 1px solid #d5cab5;
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+  padding-top: 9px;
+}
+
+.text-game-shell .city-army-management label {
+  display: grid;
+  font-size: 12px;
+  gap: 4px;
+  min-width: 0;
+}
+
+.text-game-shell .city-army-management input,
+.text-game-shell .city-army-management select {
+  background: #fffdf7;
+  border: 1px solid #a89b82;
+  color: #211e1a;
+  min-height: 36px;
+  min-width: 0;
+  padding: 6px 8px;
+  width: 100%;
+}
+
+.text-game-shell .city-army-train-row {
+  align-items: end;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.text-game-shell .city-army-preset-tabs {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.text-game-shell .city-army-preset-tabs button {
+  background: transparent;
+  border: 1px solid #a89b82;
+  color: #51483b;
+  min-height: 34px;
+}
+
+.text-game-shell .city-army-preset-tabs button[aria-pressed="true"] {
+  background: #e9dfca;
+  border-color: #665943;
+  color: #211e1a;
+}
+
+.text-game-shell .city-army-preset-summary {
+  display: grid;
+  gap: 4px;
+}
+
+.text-game-shell .city-army-preset-summary span {
+  border-left: 2px solid #66785d;
+  font-size: 12px;
+  line-height: 1.4;
+  padding-left: 7px;
+}
+
 .text-game-shell .city-garden-plots {
   border-top: 1px solid #d5cab5;
   display: grid;

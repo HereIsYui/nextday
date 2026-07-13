@@ -22,6 +22,7 @@ import type {
   CityManagementResponse,
   CityOverviewResponse,
   CollectionSummaryResponse,
+  CultivationStatus,
   DailyRouteResponse,
   EntitlementOverviewResponse,
   EquipmentListResponse,
@@ -3399,6 +3400,7 @@ export default function HomePage() {
           busy={busy}
           city={worldMainCity}
           cityExpansion={cityExpansion}
+          cultivation={overview?.cultivation ?? null}
           garden={herbGarden}
           management={cityManagement}
           marches={worldMarches}
@@ -3796,6 +3798,7 @@ export default function HomePage() {
                                 busy={busy}
                                 city={worldMainCity}
                                 cityExpansion={cityExpansion}
+                                cultivation={overview?.cultivation ?? null}
                                 garden={herbGarden}
                                 management={cityManagement}
                                 onAlchemy={handleCraftAlchemy}
@@ -6270,6 +6273,7 @@ function WorldMapScreen({
   busy,
   city,
   cityExpansion,
+  cultivation,
   garden,
   management,
   marches,
@@ -6302,6 +6306,7 @@ function WorldMapScreen({
   busy: boolean;
   city: CityOverviewResponse["main_city"];
   cityExpansion: TerritoryOverviewResponse["expansion"] | null;
+  cultivation: CultivationStatus | null;
   garden: HerbGardenState | null;
   management: CityManagementResponse | null;
   marches: WorldMarchListResponse | null;
@@ -6816,6 +6821,7 @@ function WorldMapScreen({
             busy={busy}
             city={city}
             cityExpansion={cityExpansion}
+            cultivation={cultivation}
             garden={garden}
             management={management}
             army={army}
@@ -7190,6 +7196,7 @@ function CityInteriorStage({
   busy,
   city,
   cityExpansion,
+  cultivation,
   garden,
   management,
   onAlchemy,
@@ -7212,6 +7219,7 @@ function CityInteriorStage({
   busy: boolean;
   city: NonNullable<CityOverviewResponse["main_city"]>;
   cityExpansion: TerritoryOverviewResponse["expansion"] | null;
+  cultivation: CultivationStatus | null;
   garden: HerbGardenState | null;
   management: CityManagementResponse | null;
   onAlchemy: () => void | Promise<void>;
@@ -7394,14 +7402,56 @@ function CityInteriorStage({
         ) : null}
 
         {selectedBuilding.id === "enlightenment" ? (
-          <div className="production-actions strategic-primary-action">
-            <Button disabled={busy} onClick={onClaimCultivation}>
-              吐纳收束修为
-            </Button>
-            <Button disabled={busy} onClick={onBreakthrough}>
-              尝试突破
-            </Button>
-          </div>
+          <section className="city-cultivation-overview">
+            <div className="strategic-inspector-tags">
+              <span>{cultivation?.current_realm_name ?? "尚未入道"}</span>
+              <span>第 {cultivation?.current_level ?? 1} 层</span>
+              <span>战力增益 {cultivation?.realm_power_bonus_percent ?? 0}%</span>
+            </div>
+            <p>
+              当前修为 {cultivation?.cultivation_value ?? "0"} · 层级进度所需{" "}
+              {cultivation?.current_level_required ?? "--"}
+            </p>
+            {cultivation?.next_realm_name ? (
+              <p>
+                下一境：{cultivation.next_realm_name} · 突破需修为{" "}
+                {cultivation.breakthrough_required}
+              </p>
+            ) : (
+              <p>已抵达当前纪元最高境界。</p>
+            )}
+            <div className="city-realm-unlock-list">
+              <strong>已掌握</strong>
+              {(cultivation?.unlocked_features ?? []).slice(-4).map((feature) => (
+                <span key={feature.feature_id}>
+                  {feature.label} · {feature.description}
+                </span>
+              ))}
+            </div>
+            {cultivation?.next_unlock_features.length ? (
+              <div className="city-realm-unlock-list next">
+                <strong>下一境开放</strong>
+                {cultivation.next_unlock_features.map((feature) => (
+                  <span key={feature.feature_id}>
+                    {feature.label} · {feature.description}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            <div className="production-actions strategic-primary-action">
+              <Button disabled={busy} onClick={onClaimCultivation}>
+                吐纳收束修为
+              </Button>
+              <Button
+                disabled={
+                  busy || !cultivation || cultivation.maximum_realm === cultivation.current_realm
+                }
+                onClick={onBreakthrough}
+              >
+                尝试突破
+              </Button>
+            </div>
+          </section>
         ) : null}
 
         {selectedBuilding.id === "alchemy" ? (
@@ -7492,10 +7542,16 @@ function CityInteriorStage({
                 onChange={(event) => setArmyFormation(event.target.value as ArmyFormation)}
                 value={armyFormation}
               >
-                <option value="balanced">均衡阵</option>
-                <option value="assault">破阵阵</option>
-                <option value="defense">守御阵</option>
-                <option value="scout">轻行阵</option>
+                {(army?.formations ?? []).map((formation) => (
+                  <option
+                    disabled={!formation.unlocked}
+                    key={formation.formation}
+                    value={formation.formation}
+                  >
+                    {formation.label}
+                    {formation.unlocked ? "" : ` · 第 ${formation.required_realm} 境解锁`}
+                  </option>
+                ))}
               </select>
             </label>
             <label>

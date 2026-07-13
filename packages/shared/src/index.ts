@@ -464,6 +464,10 @@ export interface CreatePlayerResponse {
 export interface CultivationStatus {
   cultivation_value: string;
   current_realm: number;
+  current_realm_name: string;
+  next_realm_name: string | null;
+  maximum_realm: number;
+  realm_power_bonus_percent: number;
   current_stage: number;
   current_level: number;
   current_level_required: string;
@@ -471,6 +475,17 @@ export interface CultivationStatus {
   catchup_bonus_rate: number;
   last_cultivation_at: string;
   can_breakthrough: boolean;
+  breakthrough_required: string;
+  unlocked_features: RealmUnlockFeatureState[];
+  next_unlock_features: RealmUnlockFeatureState[];
+}
+
+export interface RealmUnlockFeatureState {
+  feature_id: string;
+  label: string;
+  description: string;
+  required_realm: number;
+  unlocked: boolean;
 }
 
 export interface CultivationClaimResponse {
@@ -1179,10 +1194,18 @@ export interface CityArmyPresetState {
 
 export interface CityArmyState {
   city_id: string | null;
+  current_realm: number;
+  current_realm_name: string;
   available_soldiers: number;
   soldier_capacity: number;
   train_cost_per_soldier: { spirit_stone: number; grain: number };
   commanders: ArmyCommanderState[];
+  formations: Array<{
+    formation: ArmyFormation;
+    label: string;
+    required_realm: number;
+    unlocked: boolean;
+  }>;
   march_preset: CityArmyPresetState | null;
   garrison_preset: CityArmyPresetState | null;
   config_version: string;

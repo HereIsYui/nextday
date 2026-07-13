@@ -133,8 +133,8 @@ export function getCityBuildingName(buildingType: CityBuildingType): string {
   return cityBuildingNames[buildingType];
 }
 
-export function getMaximumBuildingLevel(cityLevel: number): number {
-  return Math.max(1, cityLevel * 2);
+export function getMaximumBuildingLevel(cityLevel: number, currentRealm = 9): number {
+  return Math.max(1, Math.min(cityLevel * 2, currentRealm + 1));
 }
 
 export function getBuildingUpgradeCost(

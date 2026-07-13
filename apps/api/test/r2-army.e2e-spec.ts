@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
+import { PrismaClient } from "@prisma/client";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AppModule } from "../src/app.module";
@@ -10,6 +11,8 @@ describe("R2-02 军队训练与预设", () => {
   let app: INestApplication;
   let token: string;
   let cityTileId: string;
+  let playerId: string;
+  const prisma = new PrismaClient();
 
   beforeAll(async () => {
     process.env.JWT_SECRET = process.env.JWT_SECRET || "r2-army-secret";
@@ -25,12 +28,13 @@ describe("R2-02 军队训练与预设", () => {
       .send({ device_id: `r2_army_${key}`, nickname: "兵府道友" })
       .expect(201);
     token = login.body.data.token as string;
-    await request(app.getHttpServer())
+    const created = await request(app.getHttpServer())
       .post("/api/player/create")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_r2_army_create_${key}`)
       .send({ name: `兵府${key}`.slice(0, 16), route: "qi" })
       .expect(201);
+    playerId = created.body.data.profile.player.player_id as string;
     const settled = await request(app.getHttpServer())
       .post("/api/city/settle")
       .set("Authorization", `Bearer ${token}`)
@@ -41,6 +45,7 @@ describe("R2-02 军队训练与预设", () => {
   });
 
   afterAll(async () => {
+    await prisma.$disconnect();
     await app.close();
   });
 
@@ -87,6 +92,8 @@ describe("R2-02 军队训练与预设", () => {
       })
       .expect(400);
 
+    await prisma.player.update({ where: { playerId }, data: { currentRealm: 3 } });
+
     const marchPreset = await savePreset(app, token, {
       preset_type: "march",
       commander_id: "city_vanguard",
@@ -99,8 +106,8 @@ describe("R2-02 军队训练与预设", () => {
       soldier_count: 30,
       formation: "defense",
     });
-    expect(marchPreset.power).toBe(88);
-    expect(garrisonPreset.power).toBe(69);
+    expect(marchPreset.power).toBe(102);
+    expect(garrisonPreset.power).toBe(79);
 
     const map = await request(app.getHttpServer())
       .get("/api/world/map")
@@ -133,7 +140,7 @@ describe("R2-02 军队训练与预设", () => {
       leader_name: "主城先锋",
       formation: "assault",
       soldier_count: 40,
-      team_power: 88,
+      team_power: 102,
     });
 
     const defended = await request(app.getHttpServer())
@@ -151,7 +158,7 @@ describe("R2-02 军队训练与预设", () => {
       commander_name: "主城先锋",
       formation: "defense",
       soldier_count: 30,
-      defense_power: 69,
+      defense_power: 79,
     });
   });
 });

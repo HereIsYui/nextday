@@ -54,6 +54,7 @@ import { armyCommanderConfigs, getArmyPower } from "../city/army.constants";
 import { PrismaService } from "../database/prisma.service";
 import { defaultEraId } from "../game/game.constants";
 import { toBattleSummary } from "../game/game.mappers";
+import { getRealmConfig } from "../game/realm-progression.constants";
 import { hashRequestBody } from "../platform/utils/hash";
 import {
   buildCityExpansionState,
@@ -434,6 +435,15 @@ export class WorldService {
       if (!player) {
         throw new BadRequestException("请先创建角色");
       }
+      const requiredRealm =
+        normalizedBody.march_type === "siege"
+          ? 3
+          : normalizedBody.march_type === "reinforce"
+            ? 2
+            : 1;
+      if (player.currentRealm < requiredRealm) {
+        throw new BadRequestException(`该行军行动需要达到第 ${requiredRealm} 境`);
+      }
 
       const cities = await tx.playerCity.findMany({
         where: { playerId: player.playerId },
@@ -477,7 +487,7 @@ export class WorldService {
           commanderyId: targetTile.commanderyId,
           marchType: normalizedBody.march_type,
           status: "marching",
-          teamSnapshot: createTeamSnapshot(sourceCity, armyPreset),
+          teamSnapshot: createTeamSnapshot(sourceCity, armyPreset, player.currentRealm),
           travelSeconds,
           startedAt: now,
           arrivesAt: new Date(now.getTime() + travelSeconds * 1000),
@@ -2072,6 +2082,7 @@ async function resolveMarchArmyPreset(
 function createTeamSnapshot(
   city: PlayerCity,
   preset: CityArmyPreset | null,
+  currentRealm: number,
 ): Prisma.InputJsonValue {
   if (preset) {
     const commander = armyCommanderConfigs.find((item) => item.commanderId === preset.commanderId);
@@ -2092,7 +2103,9 @@ function createTeamSnapshot(
     formation: "balanced",
     soldier_count: 30,
     supply_cost: 12,
-    team_power: 120 + city.cityLevel * 20,
+    team_power: Math.floor(
+      (120 + city.cityLevel * 20) * (1 + getRealmConfig(currentRealm).powerBonusPercent / 100),
+    ),
   };
 }
 

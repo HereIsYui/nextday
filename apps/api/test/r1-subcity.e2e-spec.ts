@@ -86,6 +86,7 @@ describe("R1 平原分城", () => {
       },
     });
     await prisma.playerCity.update({ where: { cityId }, data: { cityLevel: 2 } });
+    await prisma.player.update({ where: { playerId }, data: { currentRealm: 2 } });
     const key = `idem_r1_subcity_open_${nonce}`;
     const response = await request(app.getHttpServer())
       .post("/api/city/subcity")

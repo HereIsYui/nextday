@@ -4103,6 +4103,36 @@ details.event-boundary {
   padding-top: 9px;
 }
 
+.text-game-shell .city-cultivation-overview,
+.text-game-shell .city-realm-unlock-list {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.text-game-shell .city-cultivation-overview {
+  border-top: 1px solid #d5cab5;
+  padding-top: 9px;
+}
+
+.text-game-shell .city-cultivation-overview p {
+  margin: 0;
+}
+
+.text-game-shell .city-realm-unlock-list {
+  border-left: 2px solid #71806a;
+  padding: 6px 0 6px 9px;
+}
+
+.text-game-shell .city-realm-unlock-list.next {
+  border-left-color: #a27732;
+}
+
+.text-game-shell .city-realm-unlock-list span {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .text-game-shell .city-resource-status-list article {
   border-left: 2px solid #71806a;
   display: grid;

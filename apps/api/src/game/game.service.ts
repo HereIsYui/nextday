@@ -72,6 +72,13 @@ import {
   toProvinceSummary,
   toTaskState,
 } from "./game.mappers";
+import {
+  getRealmConfig,
+  getRealmName,
+  getRealmUnlockStates,
+  levelsPerRealm,
+  maximumRealm,
+} from "./realm-progression.constants";
 import { ensureInitialPlayerTasks, incrementPlayerTasks } from "./task-progress.utils";
 
 type Tx = Prisma.TransactionClient;
@@ -387,15 +394,21 @@ export class GameService {
       handler: async (tx) => {
         await this.ensureM2State(player.playerId, tx);
         const loaded = await this.requirePlayerInTx(tx, player.playerId);
-        const requirement = BigInt(600);
+        const realmConfig = getRealmConfig(loaded.currentRealm);
+        const requirement = BigInt(realmConfig.breakthroughCultivation);
         const canBreakthrough =
-          loaded.currentLevel >= 9 && loaded.progress.cultivationValue >= requirement;
+          loaded.currentRealm < maximumRealm &&
+          loaded.currentLevel >= levelsPerRealm &&
+          loaded.progress.cultivationValue >= requirement;
 
         if (!canBreakthrough) {
           return {
             record_id: `breakthrough_${randomUUID()}`,
             success: false,
-            message: "境界尚未圆满，暂不可突破",
+            message:
+              loaded.currentRealm >= maximumRealm
+                ? "已达当前纪元最高境界"
+                : "境界尚未圆满，暂不可突破",
             profile: toPlayerProfileResponse({
               player: loaded,
               progress: loaded.progress,
@@ -420,19 +433,23 @@ export class GameService {
         });
         const profile = await this.getProfileByPlayerId(loaded.playerId, tx);
         const afterRealm = loaded.currentRealm + 1;
+        const afterRealmName = getRealmName(afterRealm, loaded.route);
+        const newlyUnlocked = getRealmUnlockStates(afterRealm).filter(
+          (feature) => feature.required_realm === afterRealm,
+        );
         const response: BreakthroughResponse = {
           record_id: `breakthrough_${randomUUID()}`,
           success: true,
-          message: "突破成功",
+          message: `突破成功，踏入${afterRealmName}`,
           profile,
           experience: buildJournalExperience({
             title: "境界突破",
-            summary: `灵机贯通，境界提升至第 ${afterRealm} 境。`,
+            summary: `灵机贯通，踏入${afterRealmName}。${newlyUnlocked.length ? `新解锁：${newlyUnlocked.map((feature) => feature.label).join("、")}。` : ""}`,
             deltas: [
               {
                 label: "境界",
-                before: loaded.currentRealm,
-                after: afterRealm,
+                before: getRealmName(loaded.currentRealm, loaded.route),
+                after: afterRealmName,
                 tone: "success",
               },
             ],
@@ -1538,12 +1555,24 @@ export class GameService {
 }
 
 function toCultivationStatus(input: {
-  player: Pick<Player, "currentRealm" | "currentStage" | "currentLevel">;
+  player: Pick<Player, "route" | "currentRealm" | "currentStage" | "currentLevel">;
   progress: PlayerProgress;
 }): CultivationStatus {
+  const realmConfig = getRealmConfig(input.player.currentRealm);
+  const nextRealm =
+    input.player.currentRealm < maximumRealm ? getRealmConfig(input.player.currentRealm + 1) : null;
+  const unlocks = getRealmUnlockStates(input.player.currentRealm);
   return {
     cultivation_value: input.progress.cultivationValue.toString(),
     current_realm: input.player.currentRealm,
+    current_realm_name: getRealmName(input.player.currentRealm, input.player.route),
+    next_realm_name: nextRealm
+      ? input.player.route === "body"
+        ? nextRealm.bodyName
+        : nextRealm.qiName
+      : null,
+    maximum_realm: maximumRealm,
+    realm_power_bonus_percent: realmConfig.powerBonusPercent,
     current_stage: input.player.currentStage,
     current_level: input.player.currentLevel,
     current_level_required: getLevelRequirement(input.player.currentLevel).toString(),
@@ -1551,7 +1580,14 @@ function toCultivationStatus(input: {
     catchup_bonus_rate: input.progress.catchupBonusRate,
     last_cultivation_at: input.progress.lastCultivationAt.toISOString(),
     can_breakthrough:
-      input.player.currentLevel >= 9 && input.progress.cultivationValue >= BigInt(600),
+      input.player.currentRealm < maximumRealm &&
+      input.player.currentLevel >= levelsPerRealm &&
+      input.progress.cultivationValue >= BigInt(realmConfig.breakthroughCultivation),
+    breakthrough_required: String(realmConfig.breakthroughCultivation),
+    unlocked_features: unlocks.filter((feature) => feature.unlocked),
+    next_unlock_features: unlocks.filter(
+      (feature) => feature.required_realm === input.player.currentRealm + 1,
+    ),
   };
 }
 

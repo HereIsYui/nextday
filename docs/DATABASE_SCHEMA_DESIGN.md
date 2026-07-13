@@ -33,6 +33,8 @@
 | alignment | varchar | not null | 未定 / 成仙 / 成魔 / 散修 |
 | current_realm | int | index | 大境界 |
 | current_stage | int |  | 小境界 |
+
+`current_realm` 当前取值为 1-9，依次表示练气/锻体、筑基/筑身、金丹/血丹、元婴/武胎、化神/神躯、炼虚/破虚、合体/天躯、大乘/极境、真仙/真魔。境界解锁采用代码版本配置，不额外存储重复的解锁状态；建筑、分城、将领、阵型和行军操作在执行时读取玩家当前境界校验。
 | current_level | int |  | 小等级 |
 | sect_id | varchar | index nullable | 宗门 |
 | status | varchar | index | 正常 / 冻结 / 封禁 |

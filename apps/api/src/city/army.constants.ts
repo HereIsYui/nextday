@@ -10,6 +10,7 @@ export interface ArmyCommanderConfig {
   role: string;
   powerBonusPercent: number;
   requiredBarracksLevel: number;
+  requiredRealm: number;
 }
 
 export const armyCommanderConfigs: ArmyCommanderConfig[] = [
@@ -19,6 +20,7 @@ export const armyCommanderConfigs: ArmyCommanderConfig[] = [
     role: "攻守均衡，适合初次行军",
     powerBonusPercent: 0,
     requiredBarracksLevel: 1,
+    requiredRealm: 1,
   },
   {
     commanderId: "defense_captain",
@@ -26,6 +28,7 @@ export const armyCommanderConfigs: ArmyCommanderConfig[] = [
     role: "擅长驻防与城池守备",
     powerBonusPercent: 12,
     requiredBarracksLevel: 2,
+    requiredRealm: 2,
   },
   {
     commanderId: "swift_scout",
@@ -33,6 +36,7 @@ export const armyCommanderConfigs: ArmyCommanderConfig[] = [
     role: "擅长侦察与快速行军",
     powerBonusPercent: 8,
     requiredBarracksLevel: 3,
+    requiredRealm: 3,
   },
 ];
 
@@ -43,23 +47,32 @@ const formationPowerBonus: Record<ArmyFormation, number> = {
   scout: -5,
 };
 
-export function getSoldierCapacity(barracksLevel: number): number {
-  return 60 + Math.max(1, barracksLevel) * 60;
+export function getSoldierCapacity(barracksLevel: number, currentRealm = 1): number {
+  return 60 + Math.max(1, barracksLevel) * 60 + Math.max(0, currentRealm - 1) * 30;
 }
 
 export function getArmyPower(input: {
   soldierCount: number;
   commanderPowerBonusPercent: number;
   formation: ArmyFormation;
+  realmPowerBonusPercent?: number;
 }): number {
   const basePower = input.soldierCount * 2;
   return Math.max(
     1,
     Math.floor(
       basePower *
-        (1 + (input.commanderPowerBonusPercent + formationPowerBonus[input.formation]) / 100),
+        (1 +
+          (input.commanderPowerBonusPercent +
+            formationPowerBonus[input.formation] +
+            (input.realmPowerBonusPercent ?? 0)) /
+            100),
     ),
   );
+}
+
+export function getFormationRequiredRealm(formation: ArmyFormation): number {
+  return formation === "balanced" ? 1 : formation === "defense" || formation === "scout" ? 2 : 3;
 }
 
 export function getFormationLabel(formation: ArmyFormation): string {

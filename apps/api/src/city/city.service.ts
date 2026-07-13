@@ -49,6 +49,7 @@ import type {
 } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
 import { defaultEraId } from "../game/game.constants";
+import { getRealmConfig, getRealmName } from "../game/realm-progression.constants";
 import { hashRequestBody } from "../platform/utils/hash";
 import {
   buildCityExpansionState,
@@ -80,6 +81,8 @@ import {
   armyConfigVersion,
   defaultPresetName,
   getArmyPower,
+  getFormationLabel,
+  getFormationRequiredRealm,
   getSoldierCapacity,
   soldierTrainGrainCost,
   soldierTrainSpiritStoneCost,
@@ -139,7 +142,7 @@ export class CityService {
       const buildings = await this.ensureCityBuildings(tx, city.cityId);
       const barracks = requireBuilding(buildings, "barracks");
       const resources = normalizeResourceSnapshot(city.resourceSnapshot);
-      const soldierCapacity = getSoldierCapacity(barracks.level);
+      const soldierCapacity = getSoldierCapacity(barracks.level, player.currentRealm);
       const availableSoldiers = Number(resources.soldier);
       if (availableSoldiers + body.soldier_count > soldierCapacity) {
         throw new BadRequestException(`兵营最多容纳 ${soldierCapacity} 名道兵`);
@@ -209,7 +212,17 @@ export class CityService {
       const city = await this.requireMainCity(player.playerId, tx);
       const buildings = await this.ensureCityBuildings(tx, city.cityId);
       const barracks = requireBuilding(buildings, "barracks");
-      const commander = requireArmyCommander(body.commander_id, barracks.level);
+      const commander = requireArmyCommander(
+        body.commander_id,
+        barracks.level,
+        player.currentRealm,
+      );
+      const formationRequiredRealm = getFormationRequiredRealm(body.formation);
+      if (player.currentRealm < formationRequiredRealm) {
+        throw new BadRequestException(
+          `${getFormationLabel(body.formation)}阵需达到第 ${formationRequiredRealm} 境`,
+        );
+      }
       const availableSoldiers = Number(normalizeResourceSnapshot(city.resourceSnapshot).soldier);
       if (body.soldier_count > availableSoldiers) {
         throw new BadRequestException("当前可调度道兵不足，先在兵营训练或撤回驻军");
@@ -218,6 +231,7 @@ export class CityService {
         soldierCount: body.soldier_count,
         commanderPowerBonusPercent: commander.powerBonusPercent,
         formation: body.formation,
+        realmPowerBonusPercent: getRealmConfig(player.currentRealm).powerBonusPercent,
       });
       const preset = await tx.cityArmyPreset.upsert({
         where: {
@@ -523,8 +537,8 @@ export class CityService {
         throw new BadRequestException("已有建筑正在升级，请等待队列完成");
       }
       const building = requireBuilding(buildings, body.building_type);
-      if (building.level >= getMaximumBuildingLevel(city.cityLevel)) {
-        throw new BadRequestException("主城等级不足，无法继续升级该建筑");
+      if (building.level >= getMaximumBuildingLevel(city.cityLevel, player.currentRealm)) {
+        throw new BadRequestException("主城等级或城主境界不足，无法继续升级该建筑");
       }
       const cost = getBuildingUpgradeCost(body.building_type, building.level);
       const resources = normalizeResourceSnapshot(city.resourceSnapshot);
@@ -557,9 +571,14 @@ export class CityService {
       const responseData: UpgradeCityBuildingResponse = {
         record_id: `city_building_upgrade_${randomUUID()}`,
         city: this.toCityState(updatedCity),
-        building: this.toBuildingState(updatedBuilding, updatedCity.cityLevel, now),
+        building: this.toBuildingState(
+          updatedBuilding,
+          updatedCity.cityLevel,
+          player.currentRealm,
+          now,
+        ),
         buildings: refreshedBuildings.map((item) =>
-          this.toBuildingState(item, updatedCity.cityLevel, now),
+          this.toBuildingState(item, updatedCity.cityLevel, player.currentRealm, now),
         ),
       };
       await this.createCityActionRecord(tx, {
@@ -723,6 +742,9 @@ export class CityService {
     return this.prisma.$transaction(async (tx) => {
       const player = await tx.player.findUnique({ where: { accountId: input.accountId } });
       if (!player) throw new BadRequestException("请先创建角色");
+      if (player.currentRealm < 2) {
+        throw new BadRequestException("达到第 2 境后才能建立分城");
+      }
       const mainCity = await this.requireMainCity(player.playerId, tx);
       if (mainCity.cityLevel < 2) throw new BadRequestException("主城达到 2 级后才能建立分城");
       const targetTile = findWorldTile(body.tile_id);
@@ -740,8 +762,12 @@ export class CityService {
       const subCityCount = await tx.playerCity.count({
         where: { playerId: player.playerId, cityType: "sub" },
       });
-      if (subCityCount >= Math.floor(mainCity.cityLevel / 2)) {
-        throw new BadRequestException("当前主城等级可管理的分城数量已满");
+      const subCityLimit = Math.min(
+        Math.floor(mainCity.cityLevel / 2),
+        Math.max(0, player.currentRealm - 1),
+      );
+      if (subCityCount >= subCityLimit) {
+        throw new BadRequestException("当前境界与主城等级可管理的分城数量已满");
       }
       const resources = normalizeResourceSnapshot(mainCity.resourceSnapshot);
       const cost = { spirit_stone: 180, grain: 300, ore: 140, wood: 220 };
@@ -842,6 +868,9 @@ export class CityService {
       });
       if (!city) {
         throw new BadRequestException("请先建立主城");
+      }
+      if (city.cityLevel >= player.currentRealm + 1) {
+        throw new BadRequestException(`城主达到第 ${city.cityLevel} 境后才能继续扩建主城`);
       }
 
       const ownedPlainBlocks = await tx.worldBlockOwnership.count({
@@ -958,8 +987,9 @@ export class CityService {
       ownerships.map((ownership) => normalizeTerrainType(ownership.terrainType)),
     );
     const now = new Date();
+    const player = await tx.player.findUniqueOrThrow({ where: { playerId } });
     const buildingStates = buildings.map((building) =>
-      this.toBuildingState(building, city.cityLevel, now),
+      this.toBuildingState(building, city.cityLevel, player.currentRealm, now),
     );
     const warehouse = requireBuilding(buildings, "warehouse");
     const territoryCollect = buildTerritoryCollectState({
@@ -1001,6 +1031,8 @@ export class CityService {
     if (!city) {
       return {
         city_id: null,
+        current_realm: 0,
+        current_realm_name: "尚未入道",
         available_soldiers: 0,
         soldier_capacity: 0,
         train_cost_per_soldier: {
@@ -1008,20 +1040,24 @@ export class CityService {
           grain: soldierTrainGrainCost,
         },
         commanders: [],
+        formations: [],
         march_preset: null,
         garrison_preset: null,
         config_version: armyConfigVersion,
       };
     }
-    const [buildings, presets] = await Promise.all([
+    const [player, buildings, presets] = await Promise.all([
+      tx.player.findUniqueOrThrow({ where: { playerId } }),
       this.ensureCityBuildings(tx, city.cityId),
       tx.cityArmyPreset.findMany({ where: { playerId }, orderBy: { presetType: "asc" } }),
     ]);
     const barracks = requireBuilding(buildings, "barracks");
     return {
       city_id: city.cityId,
+      current_realm: player.currentRealm,
+      current_realm_name: getRealmName(player.currentRealm, player.route),
       available_soldiers: Number(normalizeResourceSnapshot(city.resourceSnapshot).soldier),
-      soldier_capacity: getSoldierCapacity(barracks.level),
+      soldier_capacity: getSoldierCapacity(barracks.level, player.currentRealm),
       train_cost_per_soldier: {
         spirit_stone: soldierTrainSpiritStoneCost,
         grain: soldierTrainGrainCost,
@@ -1031,12 +1067,23 @@ export class CityService {
         commander_name: commander.commanderName,
         role: commander.role,
         power_bonus_percent: commander.powerBonusPercent,
-        unlocked: barracks.level >= commander.requiredBarracksLevel,
+        unlocked:
+          barracks.level >= commander.requiredBarracksLevel &&
+          player.currentRealm >= commander.requiredRealm,
         unlock_reason:
-          barracks.level >= commander.requiredBarracksLevel
+          barracks.level >= commander.requiredBarracksLevel &&
+          player.currentRealm >= commander.requiredRealm
             ? "已可任命"
-            : `兵营达到 ${commander.requiredBarracksLevel} 级后可任命`,
+            : `需第 ${commander.requiredRealm} 境、兵营 ${commander.requiredBarracksLevel} 级`,
       })),
+      formations: (["balanced", "defense", "scout", "assault"] as ArmyFormation[]).map(
+        (formation) => ({
+          formation,
+          label: `${getFormationLabel(formation)}阵`,
+          required_realm: getFormationRequiredRealm(formation),
+          unlocked: player.currentRealm >= getFormationRequiredRealm(formation),
+        }),
+      ),
       march_preset: this.toArmyPresetState(
         presets.find((preset) => preset.presetType === "march") ?? null,
       ),
@@ -1251,7 +1298,12 @@ export class CityService {
     });
   }
 
-  private toBuildingState(building: CityBuilding, cityLevel: number, now: Date): CityBuildingState {
+  private toBuildingState(
+    building: CityBuilding,
+    cityLevel: number,
+    currentRealm: number,
+    now: Date,
+  ): CityBuildingState {
     const buildingType = normalizeBuildingType(building.buildingType);
     const targetLevel =
       building.status === "upgrading" ? (building.targetLevel ?? building.level + 1) : null;
@@ -1259,7 +1311,8 @@ export class CityService {
       ? Math.max(0, Math.ceil((building.upgradeEndsAt.getTime() - now.getTime()) / 1000))
       : 0;
     const canUpgrade =
-      building.status !== "upgrading" && building.level < getMaximumBuildingLevel(cityLevel);
+      building.status !== "upgrading" &&
+      building.level < getMaximumBuildingLevel(cityLevel, currentRealm);
 
     return {
       building_id: building.buildingId,
@@ -1686,11 +1739,14 @@ function normalizeArmyFormation(value: unknown): ArmyFormation {
   return value === "assault" || value === "defense" || value === "scout" ? value : "balanced";
 }
 
-function requireArmyCommander(commanderId: string, barracksLevel: number) {
+function requireArmyCommander(commanderId: string, barracksLevel: number, currentRealm: number) {
   const commander = armyCommanderConfigs.find((item) => item.commanderId === commanderId);
   if (!commander) throw new BadRequestException("未知将领");
   if (barracksLevel < commander.requiredBarracksLevel) {
     throw new BadRequestException(`兵营达到 ${commander.requiredBarracksLevel} 级后可任命该将领`);
+  }
+  if (currentRealm < commander.requiredRealm) {
+    throw new BadRequestException(`达到第 ${commander.requiredRealm} 境后可任命该将领`);
   }
   return commander;
 }

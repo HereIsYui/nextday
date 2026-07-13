@@ -167,6 +167,8 @@ HTTP 是当前唯一默认交互通道。WebSocket / SSE 即使后续接入，�
 | `/api/progress/claim-offline` | POST | 领取离线收益 |
 | `/api/progress/level-up` | POST | 小等级升级 |
 | `/api/progress/breakthrough` | POST | 大境界突破 |
+
+当前游戏实现使用 `POST /api/game/cultivation/breakthrough` 完成境界突破。总览中的 `cultivation` 返回当前与下一境名称、最高境界、境界战力增益、突破修为需求、已解锁功能和下一境解锁功能。境界相关限制必须由服务端校验，客户端只负责展示。
 | `/api/cave/summary` | GET | 洞府总览 |
 | `/api/cave/claim` | POST | 一键收取洞府产出 |
 | `/api/cave/upgrade` | POST | 升级设施 |

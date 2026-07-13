@@ -405,6 +405,7 @@ R0-R6 后续专项建议新增脚本：
 
 - `test:r0-city-design`
 - `test:r1-world-map`
+- `test:r1-world-complete`
 - `test:r2-city-economy`
 - `test:r3-territory-occupation`
 - `test:r4-province-war`
@@ -429,6 +430,7 @@ R1 九州地图 MVP 验收：
 | 扩张候选 | 服务端优先推荐扩建所需平原或当前产出缺口地形，并区分直接购买与先清野 |
 | 地图图层 | Canvas 可切换全部、我的领地、城池、扩张候选和驻防图层，不增加区块 DOM |
 | 九州摘要 | 建城前显示各州可用安全平原，建城后显示我的城池、领地、驻军和行军数量 |
+| R1 总闭环 | `npm run test:r1-world-complete` 串联总览、建城、清野、购买、驻防、撤防和领地产出 |
 
 R2 城池经营验收：
 

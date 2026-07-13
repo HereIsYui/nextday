@@ -995,6 +995,21 @@ export interface TerritoryBlockState {
   city_expansion_eligible: boolean;
 }
 
+export interface TerritoryExpansionCandidateState {
+  tile_id: string;
+  tile_name: string;
+  province_id: string;
+  province_name: string;
+  x: number;
+  y: number;
+  terrain_type: WorldTerrainType;
+  terrain_label: string;
+  action: "purchase" | "clear_wild";
+  recommendation_reason: string;
+  cost_spirit_stone: string;
+  hourly_output: TerritoryHourlyOutputState;
+}
+
 export interface CityExpansionCostState {
   spirit_stone: number;
   grain: number;
@@ -1024,6 +1039,8 @@ export interface TerritoryOverviewResponse {
   hourly_output: TerritoryHourlyOutputState;
   terrain_summary: TerritoryTerrainSummaryState[];
   blocks: TerritoryBlockState[];
+  expansion_candidates: TerritoryExpansionCandidateState[];
+  recommended_terrain_type: WorldTerrainType | null;
   expansion: CityExpansionState | null;
   next_purchase_hint: string;
   config_version: string;

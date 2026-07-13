@@ -20,6 +20,7 @@ import type {
   StartWorldMarchRequest,
   StartWorldMarchResponse,
   TerritoryBlockState,
+  TerritoryExpansionCandidateState,
   TerritoryNodeState,
   TerritoryOverviewResponse,
   TerritoryTerrainSummaryState,
@@ -265,6 +266,8 @@ export class WorldService {
         hourly_output: emptyTerritoryHourlyOutput(),
         terrain_summary: [],
         blocks: [],
+        expansion_candidates: [],
+        recommended_terrain_type: null,
         expansion: null,
         next_purchase_hint: "先选择出生州建立主城，再从相邻无主区块开始扩张。",
         config_version: territoryConfigVersion,
@@ -312,6 +315,46 @@ export class WorldService {
     });
     const blockLimit = getTerritoryBlockLimit(city.cityLevel);
     const remainingBlockCapacity = Math.max(0, blockLimit - blocks.length);
+    const [provinceOwnerships, clearances] = await Promise.all([
+      this.prisma.worldBlockOwnership.findMany({
+        where: { eraId: defaultEraId, provinceId: city.provinceId, status: "owned" },
+        include: { player: true },
+      }),
+      this.prisma.worldBlockClearance.findMany({
+        where: { playerId: player.playerId, eraId: defaultEraId, status: "cleared" },
+      }),
+    ]);
+    const recommendedTerrainType = resolveRecommendedTerrainType(blocks, expansion);
+    const purchaseContext = mapPurchaseContext(
+      provinceOwnerships,
+      player.playerId,
+      new Set(clearances.map((clearance) => clearance.tileId)),
+    );
+    const ownershipByTileId = new Map(
+      provinceOwnerships.map((ownership) => [ownership.tileId, ownership]),
+    );
+    const expansionCandidates =
+      remainingBlockCapacity > 0
+        ? getWorldTilesByProvince(city.provinceId)
+            .map((tile) => ({
+              state: buildPurchaseState(
+                tile,
+                ownershipByTileId.get(tile.tileId) ?? null,
+                purchaseContext,
+              ),
+              tile,
+            }))
+            .filter(
+              ({ state }) =>
+                state.purchasable ||
+                (state.adjacent_owned && state.clearance_status === "required"),
+            )
+            .sort((left, right) => compareExpansionCandidates(left, right, recommendedTerrainType))
+            .slice(0, 6)
+            .map(({ state, tile }) =>
+              this.toExpansionCandidateState(tile, state, recommendedTerrainType),
+            )
+        : [];
 
     return {
       main_city: this.toCityState(city),
@@ -328,6 +371,8 @@ export class WorldService {
         (left, right) => right.block_count - left.block_count,
       ),
       blocks,
+      expansion_candidates: expansionCandidates,
+      recommended_terrain_type: recommendedTerrainType,
       expansion,
       next_purchase_hint:
         remainingBlockCapacity <= 0
@@ -1346,6 +1391,36 @@ export class WorldService {
     };
   }
 
+  private toExpansionCandidateState(
+    tile: MapTileConfig,
+    purchaseState: MapTileState["purchase_state"],
+    recommendedTerrainType: TerritoryOverviewResponse["recommended_terrain_type"],
+  ): TerritoryExpansionCandidateState {
+    const province = this.requireProvince(tile.provinceId);
+    const action = purchaseState.purchasable ? "purchase" : "clear_wild";
+    return {
+      tile_id: tile.tileId,
+      tile_name: tile.tileName,
+      province_id: tile.provinceId,
+      province_name: province.name,
+      x: tile.x,
+      y: tile.y,
+      terrain_type: tile.terrainType,
+      terrain_label: tile.terrainLabel,
+      action,
+      recommendation_reason:
+        tile.terrainType === recommendedTerrainType
+          ? action === "purchase"
+            ? `可直接购买，能补足当前最需要的${tile.terrainLabel}产出`
+            : `先清野，再购买以补足当前最需要的${tile.terrainLabel}产出`
+          : action === "purchase"
+            ? "与现有领地相邻，可直接购买"
+            : "与现有领地相邻，清野后可购买",
+      cost_spirit_stone: purchaseState.cost_spirit_stone,
+      hourly_output: getTerrainHourlyOutput(tile.terrainType),
+    };
+  }
+
   private toCityState(city: PlayerCity): TerritoryOverviewResponse["main_city"] {
     const province = this.requireProvince(city.provinceId);
     const commandery = province.commanderies.find(
@@ -1943,6 +2018,48 @@ function resolveGarrisonOperation(
     return "withdraw";
   }
   return targetSoldierCount > currentSoldierCount ? "increase" : "decrease";
+}
+
+function resolveRecommendedTerrainType(
+  blocks: TerritoryBlockState[],
+  expansion: NonNullable<TerritoryOverviewResponse["expansion"]>,
+): TerritoryOverviewResponse["recommended_terrain_type"] {
+  if (expansion.owned_plain_blocks < expansion.required_plain_blocks) {
+    return "plain";
+  }
+
+  const output = blocks.reduce(
+    (total, block) => ({
+      grain: total.grain + block.hourly_output.grain,
+      herb: total.herb + block.hourly_output.herb,
+      ore: total.ore + block.hourly_output.ore,
+      spirit_stone: total.spirit_stone + block.hourly_output.spirit_stone,
+      wood: total.wood + block.hourly_output.wood,
+    }),
+    { grain: 0, herb: 0, ore: 0, spirit_stone: 0, wood: 0 },
+  );
+  const resource = Object.entries(output).sort((left, right) => left[1] - right[1])[0]?.[0];
+  return resource === "ore"
+    ? "mountain"
+    : resource === "wood"
+      ? "forest"
+      : resource === "herb"
+        ? "swamp"
+        : resource === "spirit_stone"
+          ? "desert"
+          : "plain";
+}
+
+function compareExpansionCandidates(
+  left: { state: MapTileState["purchase_state"]; tile: MapTileConfig },
+  right: { state: MapTileState["purchase_state"]; tile: MapTileConfig },
+  recommendedTerrainType: TerritoryOverviewResponse["recommended_terrain_type"],
+): number {
+  const score = (candidate: typeof left) =>
+    (candidate.tile.terrainType === recommendedTerrainType ? 100 : 0) +
+    (candidate.state.purchasable ? 30 : 0) -
+    Number(candidate.state.cost_spirit_stone) / 1000;
+  return score(right) - score(left) || left.tile.tileId.localeCompare(right.tile.tileId);
 }
 
 function createWorldClearanceBattleLog(input: {

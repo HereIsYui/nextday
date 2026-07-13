@@ -6530,7 +6530,11 @@ function WorldMapScreen({
     }
   }
 
-  async function focusTerritoryBlock(block: TerritoryOverviewResponse["blocks"][number]) {
+  async function focusTerritoryBlock(
+    block:
+      | TerritoryOverviewResponse["blocks"][number]
+      | TerritoryOverviewResponse["expansion_candidates"][number],
+  ) {
     const province = atlas?.provinces.find(
       (item) => item.province.province_id === block.province_id,
     );
@@ -6888,6 +6892,25 @@ function WorldMapScreen({
                     领地 {territory.owned_block_count}/{territory.block_limit} · 驻军{" "}
                     {territory.total_garrison_soldiers} · 守备 {territory.total_garrison_power}
                   </span>
+                  {territory.expansion_candidates.length ? (
+                    <section className="world-expansion-candidates">
+                      <strong>推荐扩张</strong>
+                      {territory.expansion_candidates.slice(0, 3).map((candidate) => (
+                        <button
+                          key={candidate.tile_id}
+                          onClick={() => focusTerritoryBlock(candidate)}
+                          type="button"
+                        >
+                          <strong>{candidate.tile_name}</strong>
+                          <span>{candidate.recommendation_reason}</span>
+                          <small>
+                            {candidate.action === "purchase" ? "可购买" : "待清野"} · 灵石{" "}
+                            {candidate.cost_spirit_stone}
+                          </small>
+                        </button>
+                      ))}
+                    </section>
+                  ) : null}
                   {territory.blocks.map((block) => (
                     <button
                       key={block.tile_id}

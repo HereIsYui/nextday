@@ -57,6 +57,14 @@ describe("R1 领地产出与主城扩建", () => {
     );
     expect(before.hourly_output.grain).toBeGreaterThan(0);
     expect(before.expansion).toMatchObject({ eligible: false, required_plain_blocks: 2 });
+    expect(before.recommended_terrain_type).toBe("plain");
+    expect(before.expansion_candidates.length).toBeGreaterThan(0);
+    expect(before.expansion_candidates[0]).toMatchObject({
+      terrain_type: "plain",
+      x: expect.any(Number),
+      y: expect.any(Number),
+    });
+    expect(["purchase", "clear_wild"]).toContain(before.expansion_candidates[0]?.action);
 
     const map = await getMap(app, token);
     const plainTile = map.find(
@@ -242,6 +250,14 @@ async function getTerritory(app: INestApplication, token: string) {
       y: number;
       garrison: { soldier_count: number; defense_power: number } | null;
     }>;
+    expansion_candidates: Array<{
+      tile_id: string;
+      terrain_type: string;
+      action: "purchase" | "clear_wild";
+      x: number;
+      y: number;
+    }>;
+    recommended_terrain_type: string | null;
     expansion: { eligible: boolean; required_plain_blocks: number; owned_plain_blocks: number };
   };
 }

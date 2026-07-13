@@ -4968,6 +4968,34 @@ details.event-boundary {
   border-color: #675b48;
 }
 
+.text-game-shell.world-screen .world-expansion-candidates {
+  border-bottom: 1px solid #cbbda4;
+  display: grid;
+  gap: 6px;
+  padding-bottom: 8px;
+}
+
+.text-game-shell.world-screen .world-expansion-candidates > button {
+  background: rgba(239, 229, 203, 0.78);
+  border: 1px solid #a28e68;
+  color: #211e1a;
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  min-width: 0;
+  padding: 7px 8px;
+  text-align: left;
+  width: 100%;
+}
+
+.text-game-shell.world-screen .world-expansion-candidates small,
+.text-game-shell.world-screen .world-expansion-candidates span {
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .text-game-shell.world-screen .world-territory-locator > button strong,
 .text-game-shell.world-screen .world-territory-locator > button span {
   font-size: 12px;

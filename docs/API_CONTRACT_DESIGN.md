@@ -574,7 +574,7 @@ P3 接口规则：
 | 城池 | `/api/city/overview` | GET | 返回主城、分城、建筑、资源、队列、保护状态和驻防摘要 |
 | 城池 | `/api/city/settle` | POST | 选择出生州和郡域建立主城，需 `Idempotency-Key` |
 | 城池 | `/api/city/build` | POST | 建造或升级建筑，需 `Idempotency-Key` |
-| 城池 | `/api/city/produce/claim` | POST | 领取城池产出，需 `Idempotency-Key` |
+| 城池 | `/api/city/territory/collect` | POST | 按离线时长和仓库容量领取领地产出，需 `Idempotency-Key` |
 | 行军 | `/api/world/marches` | GET | 查询当前和最近行军队列、抵达状态和后续处理提示 |
 | 行军 | `/api/world/march` | POST | 派遣队伍前往地块、资源点、分城、关隘或九塔，需 `Idempotency-Key` |
 | 清野 | `/api/world/clear-wild/resolve` | POST | 结算已抵达清野行军，成功后只解锁该玩家的购买资格，需 `Idempotency-Key` |
@@ -594,6 +594,7 @@ P3 接口规则：
 | `WorldBlockOwnership` | 出生分配或购买获得的区块产权，同纪元区块唯一 |
 | `TerritoryOverviewResponse` | 自有区块坐标、地形产出、逐块驻军、领地总驻军以及相邻扩张候选 |
 | `WorldAtlasProvinceState` | 州域城主、无主区、地形资源、我的城池、驻军、行军和可建城平原摘要 |
+| `CityManagementResponse` | 城内建筑队列、资源容量、待收产出、可入库数量、溢出风险和升级建议 |
 | `StrategicControlRecord` | 关隘、州府、九塔的周期控制权变化记录 |
 | `MarchQueue` | 行军队列、出发地、目标地、队伍、到达时间和状态 |
 | `SiegeRecord` | 攻城、围困、城防破损、附庸和恢复记录 |

@@ -9,6 +9,8 @@ import type {
   CityManagementResponse,
   CityOverviewResponse,
   CityResourceSnapshot,
+  CityResourceStatusState,
+  CityStoredResourceType,
   CollectTerritoryResponse,
   EstablishSubCityRequest,
   EstablishSubCityResponse,
@@ -761,7 +763,11 @@ export class CityService {
         city: null,
         buildings: [],
         territory_collect: null,
+        resource_statuses: [],
         active_building: null,
+        upgrade_queue_capacity: 1,
+        recommended_building_type: null,
+        recommendation_reason: "建立主城后可规划仓库与城内建筑。",
         config_version: territoryConfigVersion,
       };
     }
@@ -779,17 +785,27 @@ export class CityService {
       this.toBuildingState(building, city.cityLevel, now),
     );
     const warehouse = requireBuilding(buildings, "warehouse");
+    const territoryCollect = buildTerritoryCollectState({
+      city,
+      hourlyOutput,
+      storageCapacity: getStorageCapacity(warehouse.level),
+      now,
+    });
+    const resourceStatuses = buildCityResourceStatuses(
+      normalizeResourceSnapshot(city.resourceSnapshot),
+      territoryCollect,
+    );
+    const recommendation = resolveBuildingRecommendation(buildingStates, resourceStatuses);
 
     return {
       city: this.toCityState(city),
       buildings: buildingStates,
-      territory_collect: buildTerritoryCollectState({
-        city,
-        hourlyOutput,
-        storageCapacity: getStorageCapacity(warehouse.level),
-        now,
-      }),
+      territory_collect: territoryCollect,
+      resource_statuses: resourceStatuses,
       active_building: buildingStates.find((building) => building.status === "upgrading") ?? null,
+      upgrade_queue_capacity: 1,
+      recommended_building_type: recommendation.buildingType,
+      recommendation_reason: recommendation.reason,
       config_version: territoryConfigVersion,
     };
   }
@@ -1453,6 +1469,75 @@ function capCollectionToStorage(
     wood: Math.max(0, Math.min(claimable.wood, capacity.wood - Number(resources.wood))),
     herb: Math.max(0, Math.min(claimable.herb, capacity.herb - Number(resources.herb))),
   };
+}
+
+const storedResourceLabels: Record<CityStoredResourceType, string> = {
+  spirit_stone: "灵石",
+  grain: "粮草",
+  ore: "矿材",
+  wood: "灵木",
+  herb: "灵草",
+};
+
+function buildCityResourceStatuses(
+  resources: CityResourceSnapshot,
+  collectState: TerritoryCollectState,
+): CityResourceStatusState[] {
+  return (Object.keys(storedResourceLabels) as CityStoredResourceType[]).map((resourceType) => {
+    const current = Number(resources[resourceType]);
+    const capacity = collectState.storage_capacity[resourceType];
+    const claimable = collectState.claimable[resourceType];
+    const collectable = Math.max(0, Math.min(claimable, capacity - current));
+    const overflow = Math.max(0, claimable - collectable);
+    const fullnessPercent =
+      capacity > 0 ? Math.min(100, Math.round((current / capacity) * 100)) : 0;
+    return {
+      resource_type: resourceType,
+      resource_label: storedResourceLabels[resourceType],
+      current,
+      capacity,
+      claimable,
+      collectable,
+      overflow,
+      fullness_percent: fullnessPercent,
+      status: overflow > 0 ? "overflow" : fullnessPercent >= 80 ? "near_full" : "normal",
+    };
+  });
+}
+
+function resolveBuildingRecommendation(
+  buildings: CityBuildingState[],
+  resourceStatuses: CityResourceStatusState[],
+): { buildingType: CityBuildingType | null; reason: string } {
+  const activeBuilding = buildings.find((building) => building.status === "upgrading");
+  if (activeBuilding) {
+    return {
+      buildingType: activeBuilding.building_type,
+      reason: `${activeBuilding.name}正在升级，完成后才能安排下一项工程。`,
+    };
+  }
+  const storageRisk = resourceStatuses.find(
+    (resource) => resource.status === "overflow" || resource.status === "near_full",
+  );
+  const warehouse = buildings.find((building) => building.building_type === "warehouse");
+  if (storageRisk && warehouse?.next_cost) {
+    return {
+      buildingType: "warehouse",
+      reason:
+        storageRisk.status === "overflow"
+          ? `${storageRisk.resource_label}将有 ${storageRisk.overflow} 无法入库，优先扩建仓库。`
+          : `${storageRisk.resource_label}库存已达 ${storageRisk.fullness_percent}%，建议提前扩建仓库。`,
+    };
+  }
+  const nextBuilding = buildings
+    .filter((building) => building.next_cost)
+    .sort((left, right) => left.level - right.level || left.name.localeCompare(right.name))[0];
+  return nextBuilding
+    ? {
+        buildingType: nextBuilding.building_type,
+        reason: `${nextBuilding.name}当前等级较低，可继续建设以完善城池能力。`,
+      }
+    : { buildingType: null, reason: "当前建筑已达到主城等级允许的上限。" };
 }
 
 function subtractHourlyOutput(

@@ -143,6 +143,7 @@ type ActiveFeature =
 
 type CityInteriorBuildingId =
   | "city_hall"
+  | "warehouse"
   | "enlightenment"
   | "alchemy"
   | "forge"
@@ -164,6 +165,12 @@ const cityInteriorBuildings: CityInteriorBuildingDefinition[] = [
     label: "城主府",
     role: "领地中枢",
     description: "扩建主城、收取领地产出与查看分城进度。",
+  },
+  {
+    id: "warehouse",
+    label: "仓库",
+    role: "城池库藏",
+    description: "查看资源容量与溢出风险，扩建后可容纳更多领地产出。",
   },
   {
     id: "enlightenment",
@@ -3333,6 +3340,7 @@ export default function HomePage() {
           city={worldMainCity}
           cityExpansion={cityExpansion}
           garden={herbGarden}
+          management={cityManagement}
           marches={worldMarches}
           onAlchemy={handleCraftAlchemy}
           onBreakthrough={handleBreakthrough}
@@ -3726,6 +3734,7 @@ export default function HomePage() {
                                 city={worldMainCity}
                                 cityExpansion={cityExpansion}
                                 garden={herbGarden}
+                                management={cityManagement}
                                 onAlchemy={handleCraftAlchemy}
                                 onBreakthrough={handleBreakthrough}
                                 onClaimCultivation={handleClaimCultivation}
@@ -6196,6 +6205,7 @@ function WorldMapScreen({
   city,
   cityExpansion,
   garden,
+  management,
   marches,
   onAlchemy,
   onBreakthrough,
@@ -6224,6 +6234,7 @@ function WorldMapScreen({
   city: CityOverviewResponse["main_city"];
   cityExpansion: TerritoryOverviewResponse["expansion"] | null;
   garden: HerbGardenState | null;
+  management: CityManagementResponse | null;
   marches: WorldMarchListResponse | null;
   onAlchemy: () => void | Promise<void>;
   onBreakthrough: () => void | Promise<void>;
@@ -6726,6 +6737,7 @@ function WorldMapScreen({
             city={city}
             cityExpansion={cityExpansion}
             garden={garden}
+            management={management}
             onAlchemy={onAlchemy}
             onBreakthrough={onBreakthrough}
             onClaimCultivation={onClaimCultivation}
@@ -7071,6 +7083,7 @@ function CityInteriorStage({
   city,
   cityExpansion,
   garden,
+  management,
   onAlchemy,
   onBreakthrough,
   onClaimCultivation,
@@ -7089,6 +7102,7 @@ function CityInteriorStage({
   city: NonNullable<CityOverviewResponse["main_city"]>;
   cityExpansion: TerritoryOverviewResponse["expansion"] | null;
   garden: HerbGardenState | null;
+  management: CityManagementResponse | null;
   onAlchemy: () => void | Promise<void>;
   onBreakthrough: () => void | Promise<void>;
   onClaimCultivation: () => void | Promise<void>;
@@ -7103,13 +7117,15 @@ function CityInteriorStage({
   territoryCollect: CityManagementResponse["territory_collect"] | null;
 }) {
   const selectedCityBuilding =
-    selectedBuilding.id === "forge"
-      ? buildings.find((building) => building.building_type === "workshop")
-      : selectedBuilding.id === "barracks"
-        ? buildings.find((building) => building.building_type === "barracks")
-        : selectedBuilding.id === "fortification"
-          ? buildings.find((building) => building.building_type === "fortification")
-          : undefined;
+    selectedBuilding.id === "warehouse"
+      ? buildings.find((building) => building.building_type === "warehouse")
+      : selectedBuilding.id === "forge"
+        ? buildings.find((building) => building.building_type === "workshop")
+        : selectedBuilding.id === "barracks"
+          ? buildings.find((building) => building.building_type === "barracks")
+          : selectedBuilding.id === "fortification"
+            ? buildings.find((building) => building.building_type === "fortification")
+            : undefined;
   const readyGardenPlot = garden?.plots.find((plot) => plot.status === "ready");
   const emptyGardenPlot = garden?.plots.find((plot) => plot.status === "empty");
   const claimableTerritory = territoryCollect
@@ -7151,6 +7167,51 @@ function CityInteriorStage({
         <span>{selectedBuilding.role}</span>
         <p>{selectedBuilding.description}</p>
 
+        {selectedCityBuilding ? (
+          <section className="city-building-management">
+            <div className="strategic-inspector-tags">
+              <span>{selectedCityBuilding.level} 级</span>
+              <span>
+                {selectedCityBuilding.status === "upgrading"
+                  ? `升级剩余 ${formatRemainingSeconds(selectedCityBuilding.remaining_seconds)}`
+                  : "当前空闲"}
+              </span>
+              {management?.recommended_building_type === selectedCityBuilding.building_type ? (
+                <span>建议建设</span>
+              ) : null}
+            </div>
+            <p>{selectedCityBuilding.effect_summary}</p>
+            {selectedCityBuilding.next_cost ? (
+              <span className="action-note">
+                升级消耗：灵石 {selectedCityBuilding.next_cost.spirit_stone} · 粮草{" "}
+                {selectedCityBuilding.next_cost.grain} · 矿材 {selectedCityBuilding.next_cost.ore} ·
+                灵木 {selectedCityBuilding.next_cost.wood}
+              </span>
+            ) : null}
+            <div className="production-actions strategic-primary-action">
+              {selectedCityBuilding.next_cost ? (
+                <Button
+                  disabled={
+                    busy ||
+                    selectedCityBuilding.status === "upgrading" ||
+                    Boolean(
+                      management?.active_building &&
+                        management.active_building.building_id !== selectedCityBuilding.building_id,
+                    )
+                  }
+                  onClick={() => onUpgradeBuilding(selectedCityBuilding)}
+                >
+                  {selectedCityBuilding.status === "upgrading"
+                    ? `${selectedCityBuilding.name}升级中`
+                    : `升级${selectedCityBuilding.name}`}
+                </Button>
+              ) : (
+                <span className="action-note">主城扩建后可继续升级。</span>
+              )}
+            </div>
+          </section>
+        ) : null}
+
         {selectedBuilding.id === "city_hall" ? (
           <>
             <div className="strategic-inspector-tags">
@@ -7158,6 +7219,7 @@ function CityInteriorStage({
               <span>领地 {cityExpansion?.owned_plain_blocks ?? 0} 块平原</span>
             </div>
             <p>{cityExpansion?.reason ?? "扩建状态正在同步。"}</p>
+            <p>{management?.recommendation_reason}</p>
             <div className="production-actions strategic-primary-action">
               {claimableTerritory > 0 ? (
                 <Button disabled={busy} onClick={onCollectTerritory}>
@@ -7172,6 +7234,30 @@ function CityInteriorStage({
               )}
             </div>
           </>
+        ) : null}
+
+        {selectedBuilding.id === "warehouse" ? (
+          <div className="city-resource-status-list">
+            {(management?.resource_statuses ?? []).map((resource) => (
+              <article className={`status-${resource.status}`} key={resource.resource_type}>
+                <div>
+                  <strong>{resource.resource_label}</strong>
+                  <span>
+                    {resource.current}/{resource.capacity} · {resource.fullness_percent}%
+                  </span>
+                </div>
+                <small>
+                  待收 {resource.claimable} · 可入库 {resource.collectable}
+                  {resource.overflow > 0 ? ` · 溢出 ${resource.overflow}` : ""}
+                </small>
+              </article>
+            ))}
+            {claimableTerritory > 0 ? (
+              <Button disabled={busy} onClick={onCollectTerritory}>
+                收取领地产出
+              </Button>
+            ) : null}
+          </div>
         ) : null}
 
         {selectedBuilding.id === "enlightenment" ? (
@@ -7194,19 +7280,11 @@ function CityInteriorStage({
         ) : null}
 
         {selectedBuilding.id === "forge" ? (
-          <>
-            {selectedCityBuilding ? (
-              <p>
-                {selectedCityBuilding.name} {selectedCityBuilding.level} 级 ·{" "}
-                {selectedCityBuilding.effect_summary}
-              </p>
-            ) : null}
-            <div className="production-actions strategic-primary-action">
-              <Button disabled={busy} onClick={onForge}>
-                炼制当前器方
-              </Button>
-            </div>
-          </>
+          <div className="production-actions strategic-primary-action">
+            <Button disabled={busy} onClick={onForge}>
+              炼制当前器方
+            </Button>
+          </div>
         ) : null}
 
         {selectedBuilding.id === "training" ? (
@@ -7220,24 +7298,10 @@ function CityInteriorStage({
         ) : null}
 
         {selectedBuilding.id === "fortification" ? (
-          <>
-            <p>
-              城墙 {city.defense.wall_durability}/{city.defense.wall_durability_cap} ·{" "}
-              {city.defense.protection_label}
-            </p>
-            <div className="production-actions strategic-primary-action">
-              {selectedCityBuilding?.next_cost ? (
-                <Button
-                  disabled={busy || selectedCityBuilding.status === "upgrading"}
-                  onClick={() => onUpgradeBuilding(selectedCityBuilding)}
-                >
-                  {selectedCityBuilding.status === "upgrading" ? "城防升级中" : "加固城防"}
-                </Button>
-              ) : (
-                <span className="action-note">主城扩建后可继续加固。</span>
-              )}
-            </div>
-          </>
+          <p>
+            城墙 {city.defense.wall_durability}/{city.defense.wall_durability_cap} ·{" "}
+            {city.defense.protection_label}
+          </p>
         ) : null}
 
         {selectedBuilding.id === "garden" ? (

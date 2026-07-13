@@ -4086,9 +4086,48 @@ details.event-boundary {
   border-color: #54734f;
 }
 
+.text-game-shell .city-interior-building.building-warehouse {
+  border-color: #806b45;
+}
+
 .text-game-shell .city-interior-inspector {
   background: #fbf7eb;
   border: 1px solid #c8bfa8;
+}
+
+.text-game-shell .city-building-management,
+.text-game-shell .city-resource-status-list {
+  border-top: 1px solid #d5cab5;
+  display: grid;
+  gap: 8px;
+  padding-top: 9px;
+}
+
+.text-game-shell .city-resource-status-list article {
+  border-left: 2px solid #71806a;
+  display: grid;
+  gap: 3px;
+  padding: 5px 0 5px 8px;
+}
+
+.text-game-shell .city-resource-status-list article.status-near_full {
+  border-left-color: #a27732;
+}
+
+.text-game-shell .city-resource-status-list article.status-overflow {
+  border-left-color: #a44335;
+}
+
+.text-game-shell .city-resource-status-list article > div {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.text-game-shell .city-resource-status-list article small,
+.text-game-shell .city-resource-status-list article span {
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .text-game-shell .city-garden-plots {

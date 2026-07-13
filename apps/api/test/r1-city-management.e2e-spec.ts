@@ -10,7 +10,7 @@ import { configureApp } from "../src/platform/configure-app";
 const testProvinceId = "yong";
 const testCommanderyId = "yong_commandery_1";
 
-describe("R1 领地产出收取与主城建筑", () => {
+describe("R2-01 领地产出收取与主城建筑经营", () => {
   let app: INestApplication;
   let prisma: PrismaClient;
   const testPlayerIds: string[] = [];
@@ -126,6 +126,46 @@ describe("R1 领地产出收取与主城建筑", () => {
     expect(synced.active_building).toBeNull();
     expect(synced.territory_collect.storage_capacity.grain).toBeGreaterThan(7000);
   });
+
+  it("仓库会提示资源占用、溢出风险和优先升级建议", async () => {
+    const { token } = await createPlayer(app, "仓储", testPlayerIds);
+    const cityId = await settleMainCity(app, token, "丰藏仙城");
+    await prisma.playerCity.update({
+      where: { cityId },
+      data: {
+        resourceSnapshot: {
+          grain: "7499",
+          herb: "2600",
+          ore: "3300",
+          soldier: "60",
+          spirit_stone: "5199",
+          wood: "3999",
+        },
+        territoryCollectedAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
+      },
+    });
+
+    const before = await management(app, token);
+    const grain = before.resource_statuses.find((resource) => resource.resource_type === "grain");
+    expect(grain).toMatchObject({
+      current: 7499,
+      capacity: 7500,
+      collectable: 1,
+      status: "overflow",
+    });
+    expect(grain?.overflow).toBeGreaterThan(0);
+    expect(before.recommended_building_type).toBe("warehouse");
+    expect(before.recommendation_reason).toContain("优先扩建仓库");
+
+    const collected = await request(app.getHttpServer())
+      .post("/api/city/territory/collect")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_r2_city_overflow_${nonce()}`)
+      .send({})
+      .expect(201);
+    expect(collected.body.data.collected.grain).toBe(1);
+    expect(collected.body.data.overflow.grain).toBeGreaterThan(0);
+  });
 });
 
 async function createPlayer(
@@ -181,6 +221,16 @@ async function management(app: INestApplication, token: string) {
       status: string;
       target_level: number | null;
     }>;
+    resource_statuses: Array<{
+      resource_type: string;
+      current: number;
+      capacity: number;
+      collectable: number;
+      overflow: number;
+      status: string;
+    }>;
+    recommended_building_type: string | null;
+    recommendation_reason: string;
     territory_collect: {
       elapsed_seconds: number;
       claimable: { grain: number };

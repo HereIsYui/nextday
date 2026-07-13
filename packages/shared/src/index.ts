@@ -1099,11 +1099,29 @@ export interface TerritoryCollectState {
   storage_capacity: CityStorageCapacityState;
 }
 
+export type CityStoredResourceType = "spirit_stone" | "grain" | "ore" | "wood" | "herb";
+
+export interface CityResourceStatusState {
+  resource_type: CityStoredResourceType;
+  resource_label: string;
+  current: number;
+  capacity: number;
+  claimable: number;
+  collectable: number;
+  overflow: number;
+  fullness_percent: number;
+  status: "normal" | "near_full" | "overflow";
+}
+
 export interface CityManagementResponse {
   city: PlayerCityState | null;
   buildings: CityBuildingState[];
   territory_collect: TerritoryCollectState | null;
+  resource_statuses: CityResourceStatusState[];
   active_building: CityBuildingState | null;
+  upgrade_queue_capacity: number;
+  recommended_building_type: CityBuildingType | null;
+  recommendation_reason: string;
   config_version: string;
 }
 

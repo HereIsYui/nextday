@@ -6912,13 +6912,15 @@ function WorldMapScreen({
   if (mode === "city" && city) {
     return (
       <main className="shell app-shell text-game-shell world-screen city-screen">
-        <header className="world-screen-hud">
-          <div>
-            <span>我的城池</span>
+        <header className="world-screen-hud city-screen-hud">
+          <div className="city-screen-title">
+            <span>
+              {city.province_name} · {city.commandery_name}
+            </span>
             <strong>{city.city_name}</strong>
           </div>
-          <button onClick={() => setMode("world")} type="button">
-            返回九州地图
+          <button className="city-return-button" onClick={() => setMode("world")} type="button">
+            返回地图
           </button>
         </header>
         <section className="city-screen-stage">
@@ -7424,7 +7426,10 @@ function CityInteriorStage({
         <header className="city-interior-overview">
           <div className="city-interior-gate">
             <span>城内总览</span>
-            <strong>{city.city_name}</strong>
+            <strong>领地中枢</strong>
+            <small>
+              主城 {city.city_level} 级 · {city.province_name}
+            </small>
           </div>
           <div className="city-interior-cultivation">
             <span>城主境界</span>
@@ -7469,7 +7474,7 @@ function CityInteriorStage({
           </span>
         </div>
         <div className="city-interior-district-label">
-          <span>城内坊市</span>
+          <span>城内布局</span>
           <small>选择建筑处理城务</small>
         </div>
         <div className="city-interior-grid">
@@ -7480,6 +7485,7 @@ function CityInteriorStage({
               <button
                 aria-pressed={selected}
                 className={`city-interior-building building-${building.id} ${selected ? "selected" : ""} ${locked ? "locked" : ""}`}
+                data-building-id={building.id}
                 key={building.id}
                 onClick={() => onSelectBuilding(building.id)}
                 type="button"

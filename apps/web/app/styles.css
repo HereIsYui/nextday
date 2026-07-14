@@ -4090,9 +4090,9 @@ details.event-boundary {
 }
 
 .text-game-shell .city-interior-canvas {
-  background: #e7e9e3;
-  border: 1px solid #b7bdb5;
-  box-shadow: 0 10px 24px rgba(37, 48, 43, 0.08);
+  background: #f6f5f1;
+  border: 1px solid #d5d4cc;
+  box-shadow: none;
   display: grid;
   gap: 14px;
   grid-template-rows: auto auto auto minmax(0, 1fr);
@@ -4103,8 +4103,8 @@ details.event-boundary {
 
 .text-game-shell .city-interior-overview {
   align-items: center;
-  background: #f6f7f3;
-  border: 1px solid #c6cbc3;
+  background: transparent;
+  border-bottom: 1px solid #d4d5cf;
   display: grid;
   gap: 0;
   grid-template-columns: minmax(210px, 1.35fr) repeat(2, minmax(150px, 1fr));
@@ -4120,13 +4120,12 @@ details.event-boundary {
 }
 
 .text-game-shell .city-interior-gate {
-  background: #314b43;
-  color: #f4f7f1;
+  color: #253730;
 }
 
 .text-game-shell .city-interior-cultivation,
 .text-game-shell .city-interior-defense {
-  border-left: 1px solid #c6cbc3;
+  border-left: 1px solid #d4d5cf;
   color: #26342e;
 }
 
@@ -4142,7 +4141,7 @@ details.event-boundary {
 
 .text-game-shell .city-interior-gate small,
 .text-game-shell .city-interior-gate span {
-  color: #cfdad2;
+  color: #738078;
 }
 
 .text-game-shell .city-interior-overview strong {
@@ -4152,16 +4151,17 @@ details.event-boundary {
 }
 
 .text-game-shell .city-resource-ledger {
-  background: #263632;
-  border: 1px solid #1c2824;
+  background: transparent;
+  border-bottom: 1px solid #d4d5cf;
+  border-top: 1px solid #d4d5cf;
   display: grid;
   gap: 1px;
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 .text-game-shell .city-resource-ledger > span {
-  border-right: 1px solid rgba(237, 244, 238, 0.18);
-  color: #f1f5ef;
+  border-right: 1px solid #d4d5cf;
+  color: #2d3c35;
   display: grid;
   gap: 2px;
   padding: 9px 12px;
@@ -4171,7 +4171,7 @@ details.event-boundary {
   border-right: 0;
 }
 .text-game-shell .city-resource-ledger small {
-  color: #b9c7bd;
+  color: #738078;
   font-size: 11px;
 }
 .text-game-shell .city-resource-ledger strong {
@@ -4181,11 +4181,11 @@ details.event-boundary {
 
 .text-game-shell .city-interior-district-label {
   align-items: baseline;
-  border-bottom: 1px solid #c4cac2;
+  border-bottom: 0;
   color: #2c3d35;
   display: flex;
   justify-content: space-between;
-  padding: 0 2px 9px;
+  padding: 0 2px;
 }
 
 .text-game-shell .city-interior-district-label span {
@@ -4199,39 +4199,38 @@ details.event-boundary {
 
 .text-game-shell .city-interior-grid {
   align-content: stretch;
-  background: #d8ddd4;
-  border: 1px solid #c2c8bf;
+  background: #d4d5cf;
+  border: 1px solid #d4d5cf;
   display: grid;
-  gap: 12px;
+  gap: 1px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   grid-template-rows: repeat(3, minmax(108px, 1fr));
   min-height: 0;
   min-width: 0;
-  padding: 12px;
+  padding: 1px;
 }
 
 .text-game-shell .city-interior-building {
-  background: #eef0eb;
-  border: 1px solid #aeb6ad;
-  border-left: 4px solid #577767;
-  box-shadow: 0 2px 0 rgba(43, 59, 51, 0.18);
+  --city-building-accent: #849189;
+  background: #fafaf7;
+  border: 0;
+  border-top: 3px solid var(--city-building-accent);
+  box-shadow: none;
   color: #24332d;
   cursor: pointer;
   display: grid;
-  gap: 7px;
+  gap: 6px;
   min-height: 0;
   padding: 14px;
   text-align: left;
-  transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform
-    180ms ease;
+  transition: background-color 160ms ease, color 160ms ease;
 }
 
 .text-game-shell .city-interior-building:hover,
 .text-game-shell .city-interior-building.selected {
-  background: #fbfcf8;
-  border-color: #547361;
-  box-shadow: 0 4px 0 rgba(36, 63, 51, 0.34);
-  transform: translateY(-2px);
+  background: #edf3ee;
+  box-shadow: inset 0 0 0 1px #314b43;
+  transform: none;
 }
 
 .text-game-shell .city-interior-building:focus-visible {
@@ -4240,8 +4239,8 @@ details.event-boundary {
 }
 
 .text-game-shell .city-interior-building.locked {
-  background: #d4d8d1;
-  border-style: dashed;
+  background: #ecece7;
+  border-top-style: dashed;
   color: #6f7971;
 }
 
@@ -4258,84 +4257,74 @@ details.event-boundary {
 }
 
 .text-game-shell .city-interior-building.building-city_hall {
-  background: #3d554b;
-  border-color: #2e4039;
-  border-left-color: #9db47c;
-  color: #f5f8ef;
+  --city-building-accent: #314b43;
+  background: #f0f4ef;
+  color: #253730;
   grid-column: 2 / span 2;
   grid-row: 1 / span 2;
 }
 
 .text-game-shell .city-interior-building.building-city_hall span {
-  color: #d2ddcb;
+  color: #617168;
 }
 
 .text-game-shell .city-interior-building.building-city_hall:hover,
 .text-game-shell .city-interior-building.building-city_hall.selected {
-  background: #496456;
-  border-color: #23342d;
-  box-shadow: 0 4px 0 rgba(28, 43, 37, 0.5);
+  background: #e4ede5;
+  box-shadow: inset 0 0 0 1px #314b43;
 }
 
 .text-game-shell .city-interior-building.building-enlightenment {
-  background: #e4efeb;
-  border-left-color: #3f7a70;
+  --city-building-accent: #3f7a70;
   grid-column: 1;
   grid-row: 1;
 }
 
 .text-game-shell .city-interior-building.building-warehouse {
-  background: #e8e6df;
-  border-left-color: #797365;
+  --city-building-accent: #797365;
   grid-column: 4;
   grid-row: 1;
 }
 
 .text-game-shell .city-interior-building.building-alchemy {
-  background: #f0e4d6;
-  border-left-color: #ad7048;
+  --city-building-accent: #ad7048;
   grid-column: 1;
   grid-row: 2;
 }
 
 .text-game-shell .city-interior-building.building-forge {
-  background: #e0e3e5;
-  border-left-color: #62717e;
+  --city-building-accent: #62717e;
   grid-column: 4;
   grid-row: 2;
 }
 
 .text-game-shell .city-interior-building.building-barracks {
-  background: #e4eadc;
-  border-left-color: #657756;
+  --city-building-accent: #657756;
   grid-column: 1;
   grid-row: 3;
 }
 
 .text-game-shell .city-interior-building.building-training {
-  background: #dfe9e7;
-  border-left-color: #3f7172;
+  --city-building-accent: #3f7172;
   grid-column: 2;
   grid-row: 3;
 }
 
 .text-game-shell .city-interior-building.building-fortification {
-  background: #ece0dc;
-  border-left-color: #855c55;
+  --city-building-accent: #855c55;
   grid-column: 3;
   grid-row: 3;
 }
 
 .text-game-shell .city-interior-building.building-garden {
-  background: #deead7;
-  border-left-color: #658352;
+  --city-building-accent: #658352;
   grid-column: 4;
   grid-row: 3;
 }
 
 .text-game-shell .city-interior-building.building-garden.locked {
-  background: #d4d8d1;
-  border-left-color: #859084;
+  --city-building-accent: #859084;
+  background: #ecece7;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4350,17 +4339,17 @@ details.event-boundary {
   --nextday-button-color: #f5f8f1;
   --nextday-button-radius: 2px;
   align-self: start;
-  background: #f5f6f2;
-  border: 1px solid #b8beb6;
-  border-top: 4px solid #314b43;
-  box-shadow: 0 8px 20px rgba(38, 53, 46, 0.08);
+  background: #f8f8f5;
+  border: 1px solid #d5d6d0;
+  border-top: 1px solid #d5d6d0;
+  box-shadow: none;
   display: grid;
   gap: 12px;
   padding: 18px;
 }
 
 .text-game-shell .city-interior-inspector > strong {
-  color: #263c34;
+  color: #273a32;
   font-family: "Songti SC", SimSun, serif;
   font-size: 23px;
   line-height: 1.2;
@@ -4375,7 +4364,7 @@ details.event-boundary {
 
 .text-game-shell .city-building-management,
 .text-game-shell .city-resource-status-list {
-  border-top: 1px solid #d4dad2;
+  border-top: 1px solid #ddded8;
   display: grid;
   gap: 8px;
   padding-top: 9px;

@@ -3582,14 +3582,23 @@ export default function HomePage() {
         </section>
 
         {!activeProfile?.player ? (
-          <section className="onboarding-panel" aria-label="进入游戏">
-            <div className="section-title">
-              <h2>进入冀州</h2>
-              <span>{token ? "创建角色后开始今日修行" : "游客登录后开始今日修行"}</span>
+          <section className="onboarding-panel login-citadel" aria-label="进入九州">
+            <div className="login-citadel-mark" aria-hidden="true">
+              九州
             </div>
+            <div className="section-title">
+              <div>
+                <span className="login-kicker">九州城池纪元</span>
+                <h2>择州立城</h2>
+              </div>
+              <span>{token ? "名册已开，可立城" : "先取得行旅凭证"}</span>
+            </div>
+            <p className="login-citadel-copy">
+              选择修行路数，入境后将在出生州的安全平原获得第一座主城。
+            </p>
             <div className="login-actions">
               <Button disabled={busy} onClick={handleGuestLogin}>
-                游客登录
+                取得行旅凭证
               </Button>
               <StatusBadge tone={token ? "success" : "neutral"}>
                 {token ? "已登录" : "未登录"}
@@ -3617,7 +3626,7 @@ export default function HomePage() {
               </label>
               {token ? (
                 <Button disabled={busy} type="submit">
-                  创建角色
+                  登记城主名册
                 </Button>
               ) : (
                 <span className="action-note">先使用游客登录</span>

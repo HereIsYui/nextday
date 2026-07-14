@@ -4,6 +4,7 @@ import type {
   DefendWorldRequest,
   DefendWorldResponse,
   JoinSectRallyRequest,
+  ProvinceWarLeaderboardResponse,
   PurchaseWorldBlockRequest,
   PurchaseWorldBlockResponse,
   ResolveSectRallyRequest,
@@ -39,6 +40,11 @@ export class WorldController {
   @Get("provinces")
   provinces(): WorldProvinceListResponse {
     return this.worldService.getProvinces();
+  }
+
+  @Get("province-war")
+  provinceWar(): Promise<ProvinceWarLeaderboardResponse> {
+    return this.worldService.getProvinceWarLeaderboard();
   }
 
   @Get("atlas")

@@ -15,6 +15,8 @@ import type {
   MarchQueueStatus,
   MarchType,
   PlayerCityStatus,
+  ProvinceWarLeaderboardEntry,
+  ProvinceWarLeaderboardResponse,
   ProvinceWarState,
   PurchaseWorldBlockRequest,
   PurchaseWorldBlockResponse,
@@ -367,14 +369,20 @@ export class WorldService {
 
   async getAtlas(accountId: string): Promise<WorldAtlasResponse> {
     const player = await this.requirePlayer(accountId);
-    const [ownerships, marches, cities, garrisons] = await Promise.all([
+    const [ownerships, marches, cities, garrisons, controls] = await Promise.all([
       this.prisma.worldBlockOwnership.findMany({ where: { eraId: defaultEraId, status: "owned" } }),
       this.prisma.marchQueue.findMany({ where: { playerId: player.playerId, status: "marching" } }),
       this.prisma.playerCity.findMany({ where: { eraId: defaultEraId } }),
       this.prisma.territoryGarrison.findMany({
         where: { playerId: player.playerId, eraId: defaultEraId },
       }),
+      this.prisma.strategicControlRecord.findMany({
+        where: { eraId: defaultEraId, status: "active", expiresAt: { gt: new Date() } },
+      }),
     ]);
+    const warByProvince = new Map(
+      this.buildProvinceWarEntries(controls).map((entry) => [entry.province_id, entry]),
+    );
     const mine = new Set(
       ownerships.filter((item) => item.playerId === player.playerId).map((item) => item.tileId),
     );
@@ -479,6 +487,12 @@ export class WorldService {
           resource_summary:
             province.commanderies[0]?.resourceTheme.slice(0, 2).join("、") ?? "灵材",
           has_active_march: marches.some((march) => march.provinceId === province.provinceId),
+          war_score: warByProvince.get(province.provinceId)?.score ?? 0,
+          war_rank: warByProvince.get(province.provinceId)?.rank ?? worldProvinceConfigs.length,
+          controlled_landmarks:
+            (warByProvince.get(province.provinceId)?.pass_controls ?? 0) +
+            (warByProvince.get(province.provinceId)?.capital_controls ?? 0) +
+            (warByProvince.get(province.provinceId)?.tower_controls ?? 0),
           cells,
           terrain_rows: encodeAtlasRows(tiles, mapWidth, mapHeight, (tile) =>
             terrainAtlasCode(tile.terrainType),
@@ -503,6 +517,16 @@ export class WorldService {
       }),
       home_province_id: homeProvinceId,
       config_version: worldConfigVersion,
+    };
+  }
+
+  async getProvinceWarLeaderboard(): Promise<ProvinceWarLeaderboardResponse> {
+    const controls = await this.prisma.strategicControlRecord.findMany({
+      where: { eraId: defaultEraId, status: "active", expiresAt: { gt: new Date() } },
+    });
+    return {
+      provinces: this.buildProvinceWarEntries(controls),
+      calculated_at: new Date().toISOString(),
     };
   }
 
@@ -2024,6 +2048,38 @@ export class WorldService {
       ),
       war_state: this.toProvinceWarState(province),
     };
+  }
+
+  private buildProvinceWarEntries(
+    controls: StrategicControlRecord[],
+  ): ProvinceWarLeaderboardEntry[] {
+    const entries = worldProvinceConfigs.map((province) => {
+      const provinceControls = controls.filter(
+        (control) => control.provinceId === province.provinceId,
+      );
+      const count = (type: string) =>
+        provinceControls.filter((control) => control.controlType === type).length;
+      const passControls = count("pass");
+      const capitalControls = count("capital");
+      const towerControls = count("tower");
+      const dominant = provinceControls.find((control) => control.controllerType === "sect");
+      return {
+        province_id: province.provinceId,
+        province_name: province.name,
+        rank: 0,
+        score: passControls * 60 + capitalControls * 100 + towerControls * 120,
+        pass_controls: passControls,
+        capital_controls: capitalControls,
+        tower_controls: towerControls,
+        dominant_sect_name: dominant?.controllerName ?? null,
+      };
+    });
+    return entries
+      .sort(
+        (left, right) =>
+          right.score - left.score || left.province_id.localeCompare(right.province_id),
+      )
+      .map((entry, index) => ({ ...entry, rank: index + 1 }));
   }
 
   private toCommanderyState(

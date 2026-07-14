@@ -760,12 +760,31 @@ export interface WorldAtlasProvinceState {
   terrain_distribution: Record<WorldTerrainType, number>;
   resource_summary: string;
   has_active_march: boolean;
+  war_score: number;
+  war_rank: number;
+  controlled_landmarks: number;
   cells: WorldAtlasCellState[];
   terrain_rows: string[];
   control_rows: string[];
   landmark_rows: string[];
   birth_rows: string[];
   march_rows: string[];
+}
+
+export interface ProvinceWarLeaderboardEntry {
+  province_id: string;
+  province_name: string;
+  rank: number;
+  score: number;
+  pass_controls: number;
+  capital_controls: number;
+  tower_controls: number;
+  dominant_sect_name: string | null;
+}
+
+export interface ProvinceWarLeaderboardResponse {
+  provinces: ProvinceWarLeaderboardEntry[];
+  calculated_at: string;
 }
 
 export interface WorldAtlasResponse {

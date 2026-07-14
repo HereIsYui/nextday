@@ -143,6 +143,7 @@ import type {
   PluginSubmitPresetResponse,
   ProposeSectDiplomacyRequest,
   ProvinceSummary,
+  ProvinceWarLeaderboardResponse,
   PublishAdminConfigRequest,
   PublishAdminConfigResponse,
   PurchaseMonthlyCardRequest,
@@ -466,6 +467,10 @@ export class GameClient {
 
   worldProvinces(): Promise<ApiResponse<WorldProvinceListResponse>> {
     return this.get<WorldProvinceListResponse>("/api/world/provinces");
+  }
+
+  provinceWar(): Promise<ApiResponse<ProvinceWarLeaderboardResponse>> {
+    return this.get<ProvinceWarLeaderboardResponse>("/api/world/province-war");
   }
 
   worldAtlas(): Promise<ApiResponse<WorldAtlasResponse>> {

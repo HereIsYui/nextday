@@ -110,6 +110,15 @@ describe("R4-01 宗门集结", () => {
       where: { eraId_tileId: { eraId: "era_mvp_001", tileId: targetTileId } },
     });
     expect(ownership).toBeNull();
+    const leaderboard = await request(app.getHttpServer())
+      .get("/api/world/province-war")
+      .set("Authorization", `Bearer ${leader.token}`)
+      .expect(200);
+    expect(
+      leaderboard.body.data.provinces.find(
+        (province: { province_id: string }) => province.province_id === "liang",
+      ),
+    ).toMatchObject({ score: 60, pass_controls: 1, dominant_sect_name: expect.any(String) });
   });
 });
 

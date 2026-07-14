@@ -640,5 +640,6 @@ P3 接口规则：
 - `POST /api/world/siege/resolve` 使用已抵达的围城行军结算，返回攻守战力、城墙伤害、普通资源掠夺、收益衰减、保护期和分城易主结果，必须带 `Idempotency-Key`。
 - `POST /api/world/scout/resolve` 结算已抵达的侦察行军，只返回城池等级、城防档位、驻军档位、资源档位和保护状态，不泄露精确守军与库存。
 - `POST /api/world/strategic-control/resolve` 结算已抵达的战略争夺行军。目标只允许关隘、州府或九塔；成功后获得 24 小时控制权，响应与地图区块均返回控制者、剩余时间与控制类型。控制权不会创建或转移 `world_block_ownership`。
+- `GET /api/world/province-war` 返回按有效战略控制权实时计算的九州排行榜。关隘、州府、九塔分别贡献 60、100、120 分；过期控制不会进入积分。
 - `GET /api/world/rallies` 查询当前宗门开放集结；`POST /api/world/rallies` 由宗主或长老发起攻防集结；`POST /api/world/rallies/join` 由成员响应；`POST /api/world/rallies/resolve` 在至少两人响应后异步结算。攻击成功时战略控制者变为宗门，协防成功时提高宗门已控地标的防守值。
 - R4 州战接口能返回州势力积分、版图归属和周期结算状态。

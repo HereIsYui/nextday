@@ -7040,6 +7040,10 @@ function WorldMapScreen({
                   ? `我的城池 ${province.my_city_count} · 领地 ${province.my_blocks} · 驻军 ${province.my_garrison_soldiers} · 行军 ${province.active_march_count}`
                   : `可建城平原 ${province.available_birth_blocks} 块`}
               </small>
+              <small>
+                州势第 {province.war_rank} · 积分 {province.war_score} · 战略点{" "}
+                {province.controlled_landmarks}
+              </small>
             </button>
           ))}
         </aside>

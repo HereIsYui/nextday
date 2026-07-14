@@ -181,6 +181,32 @@ model SiegeRecord {
   @@map("siege_record")
 }
 
+model StrategicControlRecord {
+  controlId          String    @id @map("control_id")
+  eraId              String    @default("era_mvp_001") @map("era_id")
+  landmarkGroupId    String    @map("landmark_group_id")
+  tileId             String    @map("tile_id")
+  provinceId         String    @map("province_id")
+  controlType        String    @map("control_type")
+  controllerType     String    @map("controller_type")
+  controllerId       String    @map("controller_id")
+  controllerName     String    @map("controller_name")
+  attackerPower      Int       @map("attacker_power")
+  defenderPower      Int       @map("defender_power")
+  status             String
+  startsAt           DateTime  @map("starts_at")
+  expiresAt           DateTime  @map("expires_at")
+  sourceMarchId       String    @map("source_march_id")
+  idempotencyKey      String    @unique @map("idempotency_key")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  resolvedAt          DateTime  @default(now()) @map("resolved_at")
+
+  @@index([eraId, landmarkGroupId, status, expiresAt])
+  @@index([provinceId, controlType, status])
+  @@index([controllerId, status, expiresAt])
+  @@map("strategic_control_record")
+}
+
 model CityBuilding {
   buildingId       String    @id @map("building_id")
   cityId           String    @map("city_id")

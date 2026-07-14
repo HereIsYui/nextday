@@ -677,6 +677,7 @@ export interface MapTileState {
   owner: WorldOwnerState;
   ownership: WorldBlockOwnershipState;
   garrison: TerritoryGarrisonState | null;
+  strategic_control: StrategicControlState | null;
   purchase_state: WorldBlockPurchaseState;
   nodes: TerritoryNodeState[];
 }
@@ -859,7 +860,24 @@ export interface EstablishSubCityResponse {
 
 export type MarchQueueStatus = "marching" | "arrived" | "resolved" | "cancelled";
 
-export type MarchType = "scout" | "clear_wild" | "reinforce" | "siege";
+export type MarchType = "scout" | "clear_wild" | "reinforce" | "siege" | "contest";
+
+export interface StrategicControlState {
+  control_id: string;
+  landmark_group_id: string;
+  tile_id: string;
+  province_id: string;
+  control_type: "pass" | "capital" | "tower";
+  control_label: string;
+  controller_type: "player" | "sect";
+  controller_id: string;
+  controller_name: string;
+  is_mine: boolean;
+  status: "active" | "failed" | "expired";
+  starts_at: string;
+  expires_at: string;
+  remaining_seconds: number;
+}
 
 export interface MarchTeamSnapshot {
   preset_id: string | null;
@@ -910,6 +928,20 @@ export interface StartWorldMarchResponse {
   record_id: string;
   march: MarchQueueState;
   marches: WorldMarchListResponse;
+}
+
+export interface ResolveStrategicControlRequest {
+  march_id: string;
+}
+
+export interface ResolveStrategicControlResponse {
+  record_id: string;
+  won: boolean;
+  attacker_power: number;
+  defender_power: number;
+  control: StrategicControlState;
+  march: MarchQueueState;
+  map: WorldMapResponse;
 }
 
 export interface ResolveWorldClearanceRequest {

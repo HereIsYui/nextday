@@ -4,6 +4,8 @@ import type {
   DefendWorldResponse,
   PurchaseWorldBlockRequest,
   PurchaseWorldBlockResponse,
+  ResolveStrategicControlRequest,
+  ResolveStrategicControlResponse,
   ResolveWorldClearanceRequest,
   ResolveWorldClearanceResponse,
   ScoutWorldRequest,
@@ -126,6 +128,19 @@ export class WorldController {
       body,
       idempotencyKey: requireIdempotencyKey(request),
       endpoint: "POST /api/world/scout/resolve",
+    });
+  }
+
+  @Post("strategic-control/resolve")
+  resolveStrategicControl(
+    @Body() body: ResolveStrategicControlRequest,
+    @Req() request: Request,
+  ): Promise<ResolveStrategicControlResponse> {
+    return this.worldService.resolveStrategicControl({
+      accountId: requireAccountId(request),
+      body,
+      idempotencyKey: requireIdempotencyKey(request),
+      endpoint: "POST /api/world/strategic-control/resolve",
     });
   }
 

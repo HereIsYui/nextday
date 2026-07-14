@@ -1157,6 +1157,8 @@ P2 表结构为设计占位，正式 migration 可按功能阶段拆分落地。
 | battle_report_id | varchar | index nullable | 关联战报 |
 | created_at | datetime | index | 创建 |
 
+R3-02 中控制记录使用 `active / failed / expired` 状态。当前为个人先锋控制，`controller_type=player`；R4 宗门集结完成后可扩展为 `sect`，但无论控制者是谁，都不修改普通区块产权。
+
 `siege_record`
 
 | 字段 | 类型 | 约束 | 说明 |

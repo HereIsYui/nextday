@@ -155,6 +155,8 @@ import type {
   ResolveExploreEventResponse,
   ResolveRiskRecordRequest,
   ResolveRiskRecordResponse,
+  ResolveStrategicControlRequest,
+  ResolveStrategicControlResponse,
   ResolveWorldClearanceRequest,
   ResolveWorldClearanceResponse,
   ResourcePointListResponse,
@@ -635,6 +637,17 @@ export class GameClient {
     return this.post<ScoutWorldResponse, ScoutWorldRequest>("/api/world/scout/resolve", body, {
       idempotencyKey,
     });
+  }
+
+  resolveStrategicControl(
+    body: ResolveStrategicControlRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<ResolveStrategicControlResponse>> {
+    return this.post<ResolveStrategicControlResponse, ResolveStrategicControlRequest>(
+      "/api/world/strategic-control/resolve",
+      body,
+      { idempotencyKey },
+    );
   }
 
   purchaseWorldBlock(

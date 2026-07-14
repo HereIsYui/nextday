@@ -16,6 +16,8 @@ import type {
   ProvinceWarState,
   PurchaseWorldBlockRequest,
   PurchaseWorldBlockResponse,
+  ResolveStrategicControlRequest,
+  ResolveStrategicControlResponse,
   ResolveWorldClearanceRequest,
   ResolveWorldClearanceResponse,
   ScoutWorldRequest,
@@ -25,6 +27,7 @@ import type {
   SiegeWorldResponse,
   StartWorldMarchRequest,
   StartWorldMarchResponse,
+  StrategicControlState,
   TerritoryBlockState,
   TerritoryExpansionCandidateState,
   TerritoryNodeState,
@@ -53,6 +56,7 @@ import type {
   PlayerCity,
   Prisma,
   SiegeRecord,
+  StrategicControlRecord,
   TerritoryGarrison,
   WorldBlockClearance,
   WorldBlockOwnership,
@@ -90,7 +94,14 @@ import {
 const marchConfigVersion = "world_march_r1_001";
 const clearanceConfigVersion = "world_clearance_r1_001";
 const garrisonConfigVersion = "world_garrison_r1_001";
-const validMarchTypes = new Set<MarchType>(["scout", "clear_wild", "reinforce", "siege"]);
+const validMarchTypes = new Set<MarchType>([
+  "scout",
+  "clear_wild",
+  "reinforce",
+  "siege",
+  "contest",
+]);
+const strategicControlDurationMs = 24 * 60 * 60 * 1000;
 
 type WorldBlockOwnershipWithPlayer = WorldBlockOwnership & { player: Player };
 type TerritoryGarrisonWithPlayer = TerritoryGarrison & { player: Player };
@@ -443,7 +454,7 @@ export class WorldService {
         throw new BadRequestException("请先创建角色");
       }
       const requiredRealm =
-        normalizedBody.march_type === "siege"
+        normalizedBody.march_type === "siege" || normalizedBody.march_type === "contest"
           ? 3
           : normalizedBody.march_type === "reinforce"
             ? 2
@@ -465,6 +476,23 @@ export class WorldService {
         }
         if (targetCity.protectionUntil && targetCity.protectionUntil.getTime() > Date.now()) {
           throw new BadRequestException("目标城池处于保护期");
+        }
+      }
+      if (normalizedBody.march_type === "contest") {
+        if (!targetTile.landmarkGroupId || !isStrategicControlTile(targetTile)) {
+          throw new BadRequestException("只能争夺关隘、州府或九塔战略区");
+        }
+        const activeControl = await tx.strategicControlRecord.findFirst({
+          where: {
+            eraId: defaultEraId,
+            landmarkGroupId: targetTile.landmarkGroupId,
+            status: "active",
+            expiresAt: { gt: new Date() },
+          },
+          orderBy: { resolvedAt: "desc" },
+        });
+        if (activeControl?.controllerId === player.playerId) {
+          throw new BadRequestException("你已控制此战略区，无需重复争夺");
         }
       }
       if (normalizedBody.march_type === "clear_wild") {
@@ -808,6 +836,168 @@ export class WorldService {
           targetId: targetTile.tileId,
           afterSnapshot: intel as unknown as Prisma.InputJsonValue,
           reason: "侦察区块与城防概况",
+          idempotencyKey: input.idempotencyKey,
+          configVersion: marchConfigVersion,
+        },
+      });
+      await tx.idempotencyRecord.create({
+        data: {
+          idempotencyKey: input.idempotencyKey,
+          accountId: input.accountId,
+          endpoint: input.endpoint,
+          requestHash,
+          responseData: responseData as unknown as Prisma.InputJsonValue,
+          statusCode: 200,
+          expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
+        },
+      });
+      return responseData;
+    });
+  }
+
+  async resolveStrategicControl(input: {
+    accountId: string;
+    body: ResolveStrategicControlRequest;
+    idempotencyKey: string;
+    endpoint: string;
+  }): Promise<ResolveStrategicControlResponse> {
+    const marchId = input.body.march_id?.trim();
+    if (!marchId) throw new BadRequestException("请选择已抵达的争夺队伍");
+    const requestHash = hashRequestBody({ march_id: marchId });
+    const existingRecord = await this.prisma.idempotencyRecord.findUnique({
+      where: { idempotencyKey: input.idempotencyKey },
+    });
+    if (existingRecord) {
+      if (
+        existingRecord.accountId !== input.accountId ||
+        existingRecord.endpoint !== input.endpoint ||
+        existingRecord.requestHash !== requestHash
+      ) {
+        throw new BadRequestException("幂等键已被其他请求使用");
+      }
+      return existingRecord.responseData as unknown as ResolveStrategicControlResponse;
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const player = await tx.player.findUnique({ where: { accountId: input.accountId } });
+      if (!player) throw new BadRequestException("请先创建角色");
+      const march = await tx.marchQueue.findUnique({ where: { marchId } });
+      if (!march || march.playerId !== player.playerId || march.marchType !== "contest") {
+        throw new BadRequestException("战略争夺行军不存在");
+      }
+      if (march.status === "resolved" || march.resolvedAt) {
+        throw new BadRequestException("该战略争夺行军已处理");
+      }
+      if (getComputedMarchStatus(march) !== "arrived") {
+        throw new BadRequestException("争夺队伍尚未抵达");
+      }
+      const [sourceCity, targetTile] = [
+        await tx.playerCity.findUnique({ where: { cityId: march.sourceCityId } }),
+        requireMapTile(march.targetTileId),
+      ];
+      if (!sourceCity || !targetTile.landmarkGroupId || !isStrategicControlTile(targetTile)) {
+        throw new BadRequestException("战略目标已不可争夺");
+      }
+      const now = new Date();
+      const activeControl = await tx.strategicControlRecord.findFirst({
+        where: {
+          eraId: defaultEraId,
+          landmarkGroupId: targetTile.landmarkGroupId,
+          status: "active",
+          expiresAt: { gt: now },
+        },
+        orderBy: { resolvedAt: "desc" },
+      });
+      const team = normalizeTeamSnapshot(march.teamSnapshot);
+      const controlType = strategicControlTypeForTile(targetTile);
+      const defenderPower =
+        (activeControl?.attackerPower ?? strategicBaseDefense(controlType)) +
+        (activeControl ? 40 : 0);
+      const won = team.team_power >= defenderPower;
+      if (activeControl && won) {
+        await tx.strategicControlRecord.update({
+          where: { controlId: activeControl.controlId },
+          data: { status: "expired", expiresAt: now },
+        });
+      }
+      const control = await tx.strategicControlRecord.create({
+        data: {
+          controlId: `control_${randomUUID()}`,
+          eraId: defaultEraId,
+          landmarkGroupId: targetTile.landmarkGroupId,
+          tileId: targetTile.tileId,
+          provinceId: targetTile.provinceId,
+          controlType,
+          controllerType: "player",
+          controllerId: player.playerId,
+          controllerName: player.name,
+          attackerPower: team.team_power,
+          defenderPower,
+          status: won ? "active" : "failed",
+          startsAt: now,
+          expiresAt: won ? new Date(now.getTime() + strategicControlDurationMs) : now,
+          sourceMarchId: march.marchId,
+          idempotencyKey: input.idempotencyKey,
+          resolvedAt: now,
+        },
+      });
+      const updatedMarch = await tx.marchQueue.update({
+        where: { marchId },
+        data: { status: "resolved", resolvedAt: now },
+      });
+      const provinceTileIds = getWorldTilesByProvince(targetTile.provinceId).map(
+        (tile) => tile.tileId,
+      );
+      const [ownerships, garrisons, clearances, controls] = await Promise.all([
+        tx.worldBlockOwnership.findMany({
+          where: { eraId: defaultEraId, provinceId: targetTile.provinceId, status: "owned" },
+          include: { player: true },
+        }),
+        tx.territoryGarrison.findMany({
+          where: { eraId: defaultEraId, tileId: { in: provinceTileIds } },
+          include: { player: true },
+        }),
+        tx.worldBlockClearance.findMany({
+          where: { playerId: player.playerId, eraId: defaultEraId, status: "cleared" },
+        }),
+        tx.strategicControlRecord.findMany({
+          where: {
+            eraId: defaultEraId,
+            provinceId: targetTile.provinceId,
+            status: "active",
+            expiresAt: { gt: now },
+          },
+        }),
+      ]);
+      const responseData: ResolveStrategicControlResponse = {
+        record_id: `resolve_control_${randomUUID()}`,
+        won,
+        attacker_power: team.team_power,
+        defender_power: defenderPower,
+        control: this.toStrategicControlState(control, player.playerId),
+        march: this.toMarchState(updatedMarch, sourceCity),
+        map: this.buildMapResponse({
+          clearedTileIds: new Set(clearances.map((item) => item.tileId)),
+          controls,
+          garrisons,
+          ownerships,
+          playerId: player.playerId,
+          provinceId: targetTile.provinceId,
+          view: "detail",
+          viewport: viewportAroundTile(targetTile),
+        }),
+      };
+      await tx.auditLog.create({
+        data: {
+          auditLogId: `audit_${randomUUID()}`,
+          accountId: input.accountId,
+          playerId: player.playerId,
+          action: "world_strategic_control_resolve",
+          targetType: "map_tile",
+          targetId: targetTile.tileId,
+          afterSnapshot: responseData.control as unknown as Prisma.InputJsonValue,
+          reason: won
+            ? `夺得${strategicControlLabel(controlType)}周期控制权`
+            : `${strategicControlLabel(controlType)}争夺失利`,
           idempotencyKey: input.idempotencyKey,
           configVersion: marchConfigVersion,
         },
@@ -1458,7 +1648,7 @@ export class WorldService {
       ? await this.prisma.player.findUnique({ where: { accountId: input.accountId } })
       : null;
     const provinceTileIds = getWorldTilesByProvince(provinceId).map((tile) => tile.tileId);
-    const [ownerships, garrisons, clearances] = await Promise.all([
+    const [ownerships, garrisons, clearances, controls] = await Promise.all([
       this.prisma.worldBlockOwnership.findMany({
         where: { eraId: defaultEraId, provinceId, status: "owned" },
         include: { player: true },
@@ -1472,12 +1662,21 @@ export class WorldService {
             where: { playerId: player.playerId, eraId: defaultEraId, status: "cleared" },
           })
         : Promise.resolve([]),
+      this.prisma.strategicControlRecord.findMany({
+        where: {
+          eraId: defaultEraId,
+          provinceId,
+          status: "active",
+          expiresAt: { gt: new Date() },
+        },
+      }),
     ]);
 
     return this.buildMapResponse({
       clearedTileIds: new Set(clearances.map((item) => item.tileId)),
       garrisons,
       ownerships,
+      controls,
       playerId: player?.playerId ?? null,
       provinceId,
       view: normalizeWorldMapView(input.view),
@@ -1487,6 +1686,7 @@ export class WorldService {
 
   private buildMapResponse(input: {
     clearedTileIds?: Set<string>;
+    controls?: StrategicControlRecord[];
     garrisons: TerritoryGarrisonWithPlayer[];
     ownerships: WorldBlockOwnershipWithPlayer[];
     playerId: string | null;
@@ -1504,6 +1704,9 @@ export class WorldService {
     const ownershipMap = new Map(
       input.ownerships.map((ownership) => [ownership.tileId, ownership]),
     );
+    const controlMap = new Map(
+      (input.controls ?? []).map((control) => [control.landmarkGroupId, control]),
+    );
     const purchaseContext = mapPurchaseContext(
       input.ownerships,
       input.playerId,
@@ -1519,6 +1722,7 @@ export class WorldService {
           ownershipMap.get(tile.tileId) ?? null,
           garrisonMap.get(tile.tileId) ?? null,
           purchaseContext,
+          controlMap.get(tile.landmarkGroupId ?? "") ?? null,
         ),
       );
     const miniMapSummary = buildMiniMapSummary({
@@ -1621,6 +1825,7 @@ export class WorldService {
     ownership: WorldBlockOwnershipWithPlayer | null = null,
     garrison: TerritoryGarrisonWithPlayer | null = null,
     purchaseContext: PurchaseContext = emptyPurchaseContext,
+    control: StrategicControlRecord | null = null,
   ): MapTileState {
     const province = this.requireProvince(tile.provinceId);
     const commandery = province.commanderies.find(
@@ -1657,6 +1862,9 @@ export class WorldService {
       owner: this.toOwnerState(tile.ownerProvinceId, ownership),
       ownership: this.toBlockOwnershipState(ownership),
       garrison: garrison ? this.toGarrisonState(garrison, purchaseContext.playerId) : null,
+      strategic_control: control
+        ? this.toStrategicControlState(control, purchaseContext.playerId)
+        : null,
       purchase_state: buildPurchaseState(tile, ownership, purchaseContext),
       nodes: tile.nodes.map((node) => this.toTerritoryNodeState(node, ownership)),
     };
@@ -1838,6 +2046,29 @@ export class WorldService {
       resources: normalizeCityResources(city.resourceSnapshot),
       created_at: city.createdAt.toISOString(),
       updated_at: city.updatedAt.toISOString(),
+    };
+  }
+
+  private toStrategicControlState(
+    control: StrategicControlRecord,
+    playerId: string | null,
+  ): StrategicControlState {
+    const controlType = normalizeStrategicControlType(control.controlType);
+    return {
+      control_id: control.controlId,
+      landmark_group_id: control.landmarkGroupId,
+      tile_id: control.tileId,
+      province_id: control.provinceId,
+      control_type: controlType,
+      control_label: strategicControlLabel(controlType),
+      controller_type: control.controllerType === "sect" ? "sect" : "player",
+      controller_id: control.controllerId,
+      controller_name: control.controllerName,
+      is_mine: control.controllerId === playerId,
+      status: normalizeStrategicControlStatus(control.status),
+      starts_at: control.startsAt.toISOString(),
+      expires_at: control.expiresAt.toISOString(),
+      remaining_seconds: Math.max(0, Math.ceil((control.expiresAt.getTime() - Date.now()) / 1000)),
     };
   }
 
@@ -2159,6 +2390,32 @@ function requireMapTile(targetTileId: string): MapTileConfig {
   }
 
   return targetTile;
+}
+
+function isStrategicControlTile(tile: MapTileConfig): boolean {
+  return tile.tileType === "tower" || tile.tileType === "capital" || tile.tileType === "pass";
+}
+
+function strategicControlTypeForTile(tile: MapTileConfig): "pass" | "capital" | "tower" {
+  if (tile.tileType === "tower") return "tower";
+  if (tile.tileType === "capital") return "capital";
+  return "pass";
+}
+
+function strategicBaseDefense(controlType: "pass" | "capital" | "tower"): number {
+  return { pass: 160, capital: 240, tower: 320 }[controlType];
+}
+
+function strategicControlLabel(controlType: "pass" | "capital" | "tower"): string {
+  return { pass: "关隘", capital: "州府", tower: "九塔" }[controlType];
+}
+
+function normalizeStrategicControlType(value: string): "pass" | "capital" | "tower" {
+  return value === "tower" || value === "capital" ? value : "pass";
+}
+
+function normalizeStrategicControlStatus(value: string): "active" | "failed" | "expired" {
+  return value === "active" || value === "failed" ? value : "expired";
 }
 
 function requiresWorldClearance(tile: MapTileConfig): boolean {

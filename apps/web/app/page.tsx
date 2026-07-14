@@ -1813,6 +1813,33 @@ export default function HomePage() {
     });
   }
 
+  async function handleResolveStrategicControl(march: MarchQueueState) {
+    if (march.status !== "arrived" || march.march_type !== "contest") {
+      setMessage("请选择已抵达的战略争夺队伍");
+      return;
+    }
+    await runAction("结算战略争夺", async () => {
+      const response = await client.resolveStrategicControl(
+        { march_id: march.march_id },
+        createIdempotencyKey(`web_world_control_${march.march_id}`),
+      );
+      ensureOk(response);
+      setWorldMap(response.data.map);
+      rememberExperience(undefined, {
+        summary: response.data.won
+          ? `夺得${response.data.control.control_label}控制权，持续 ${formatRemainingSeconds(response.data.control.remaining_seconds)}。土地归属保持不变。`
+          : `${response.data.control.control_label}争夺失利，我方战力 ${response.data.attacker_power}，守方战力 ${response.data.defender_power}。`,
+        tags: response.data.won ? ["战略争夺", "控制权"] : ["战略争夺", "整军再战"],
+        title: response.data.won ? "战略区易手" : "战略争夺失利",
+        tone: response.data.won ? "success" : "warning",
+      });
+      await refreshWorldState(
+        response.data.won ? `已控制${march.target_name}` : `${march.target_name}争夺失利`,
+        march.province_id,
+      );
+    });
+  }
+
   async function handlePurchaseWorldBlock(tile: MapTileState) {
     if (!worldMainCity) {
       setMessage("请先建立主城");
@@ -3478,6 +3505,7 @@ export default function HomePage() {
           onPlantHerb={handlePlantHerb}
           onPurchase={handlePurchaseWorldBlock}
           onResolveClearance={handleResolveWorldClearance}
+          onResolveStrategicControl={handleResolveStrategicControl}
           onResolveScout={handleResolveWorldScout}
           onResolveSiege={handleResolveWorldSiege}
           onSettle={(provinceId) => {
@@ -6353,6 +6381,7 @@ function WorldMapScreen({
   onPlantHerb,
   onPurchase,
   onResolveClearance,
+  onResolveStrategicControl,
   onResolveScout,
   onResolveSiege,
   onSettle,
@@ -6392,6 +6421,7 @@ function WorldMapScreen({
   onPlantHerb: (plotId: string) => void | Promise<void>;
   onPurchase: (tile: MapTileState) => void | Promise<void>;
   onResolveClearance: (march: MarchQueueState) => void | Promise<void>;
+  onResolveStrategicControl: (march: MarchQueueState) => void | Promise<void>;
   onResolveScout: (march: MarchQueueState) => void | Promise<void>;
   onResolveSiege: (march: MarchQueueState) => void | Promise<void>;
   onSettle: (provinceId: string) => void;
@@ -6919,7 +6949,8 @@ function WorldMapScreen({
           march.status === "arrived" &&
           (march.march_type === "clear_wild" ||
             march.march_type === "siege" ||
-            march.march_type === "scout"),
+            march.march_type === "scout" ||
+            march.march_type === "contest"),
       )
     : undefined;
   const preferredMarchType = selectedTile ? worldTilePreferredMarchType(selectedTile) : null;
@@ -7043,6 +7074,20 @@ function WorldMapScreen({
                     </span>
                   </>
                 ) : null}
+                {selectedTile.strategic_control ? (
+                  <>
+                    <span>
+                      {selectedTile.strategic_control.control_label}由
+                      {selectedTile.strategic_control.controller_name}控制
+                    </span>
+                    <span>
+                      剩余{" "}
+                      {formatRemainingSeconds(selectedTile.strategic_control.remaining_seconds)}
+                    </span>
+                  </>
+                ) : selectedTile.landmark_group_id ? (
+                  <span>尚无势力控制</span>
+                ) : null}
                 {selectedTile.terrain_effects.slice(0, 3).map((effect) => (
                   <span key={effect}>{effect}</span>
                 ))}
@@ -7065,6 +7110,8 @@ function WorldMapScreen({
                     onClick={async () => {
                       if (selectedMarch.march_type === "siege") {
                         await onResolveSiege(selectedMarch);
+                      } else if (selectedMarch.march_type === "contest") {
+                        await onResolveStrategicControl(selectedMarch);
                       } else if (selectedMarch.march_type === "scout") {
                         await onResolveScout(selectedMarch);
                       } else {
@@ -7082,9 +7129,11 @@ function WorldMapScreen({
                   >
                     {selectedMarch.march_type === "siege"
                       ? "结算围城"
-                      : selectedMarch.march_type === "scout"
-                        ? "查看情报"
-                        : "完成清野"}
+                      : selectedMarch.march_type === "contest"
+                        ? "争夺控制权"
+                        : selectedMarch.march_type === "scout"
+                          ? "查看情报"
+                          : "完成清野"}
                   </Button>
                 ) : selectedTile.ownership.owner_player_id === activePlayerId ? (
                   <div className="world-garrison-controls">
@@ -10818,6 +10867,7 @@ function actionFeedbackSuccessMessage(label: string): string {
 function worldMarchTypeLabel(type: MarchType): string {
   const labels: Record<MarchType, string> = {
     clear_wild: "清野",
+    contest: "争夺",
     reinforce: "增援",
     scout: "侦察",
     siege: "围城",
@@ -10928,9 +10978,16 @@ function worldTerrainLabel(type: string): string {
 }
 
 function worldTilePreferredMarchType(tile: MapTileState): MarchType | null {
-  if (!tile.controllable || tile.protected || tile.status === "locked") {
+  if (!tile.controllable || tile.status === "locked") {
     return null;
   }
+  if (
+    (tile.tile_type === "tower" || tile.tile_type === "capital" || tile.tile_type === "pass") &&
+    tile.landmark_group_id
+  ) {
+    return tile.strategic_control?.is_mine ? null : "contest";
+  }
+  if (tile.protected) return null;
   if (tile.ownership.owner_player_id || tile.owner.owner_player_id) {
     return tile.ownership.ownership_type === "main_city" ||
       tile.ownership.ownership_type === "sub_city"

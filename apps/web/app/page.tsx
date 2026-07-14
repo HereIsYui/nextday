@@ -7421,7 +7421,57 @@ function CityInteriorStage({
   return (
     <>
       <div className="city-interior-canvas" aria-label="城内建筑布局">
-        <div className="city-interior-gate">{city.city_name}</div>
+        <header className="city-interior-overview">
+          <div className="city-interior-gate">
+            <span>城内总览</span>
+            <strong>{city.city_name}</strong>
+          </div>
+          <div className="city-interior-cultivation">
+            <span>城主境界</span>
+            <strong>{cultivation?.current_realm_name ?? "尚未入道"}</strong>
+            <small>
+              第 {cultivation?.current_level ?? 1} 层 · 战力增益{" "}
+              {cultivation?.realm_power_bonus_percent ?? 0}%
+            </small>
+          </div>
+          <div className="city-interior-defense">
+            <span>城防</span>
+            <strong>
+              {city.defense.wall_durability}/{city.defense.wall_durability_cap}
+            </strong>
+            <small>{city.defense.protection_label}</small>
+          </div>
+        </header>
+        <div className="city-resource-ledger" aria-label="主城资源账本">
+          <span>
+            <small>灵石</small>
+            <strong>{city.resources.spirit_stone}</strong>
+          </span>
+          <span>
+            <small>粮草</small>
+            <strong>{city.resources.grain}</strong>
+          </span>
+          <span>
+            <small>矿材</small>
+            <strong>{city.resources.ore}</strong>
+          </span>
+          <span>
+            <small>灵木</small>
+            <strong>{city.resources.wood}</strong>
+          </span>
+          <span>
+            <small>灵草</small>
+            <strong>{city.resources.herb}</strong>
+          </span>
+          <span>
+            <small>道兵</small>
+            <strong>{city.resources.soldier}</strong>
+          </span>
+        </div>
+        <div className="city-interior-district-label">
+          <span>城内坊市</span>
+          <small>选择建筑处理城务</small>
+        </div>
         <div className="city-interior-grid">
           {cityInteriorBuildings.map((building) => {
             const selected = building.id === selectedBuilding.id;
@@ -7435,7 +7485,13 @@ function CityInteriorStage({
                 type="button"
               >
                 <strong>{building.label}</strong>
-                <span>{locked ? "分城后开放" : building.role}</span>
+                <span>
+                  {locked
+                    ? "分城后开放"
+                    : building.id === "warehouse"
+                      ? `库存 ${management?.resource_statuses.length ?? 0} 类 · 待收 ${claimableTerritory}`
+                      : building.role}
+                </span>
               </button>
             );
           })}

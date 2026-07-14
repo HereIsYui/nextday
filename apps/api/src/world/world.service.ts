@@ -6,8 +6,10 @@ import type {
   BattleSummary,
   CityDefenseSnapshot,
   CityResourceSnapshot,
+  CreateSectRallyRequest,
   DefendWorldRequest,
   DefendWorldResponse,
+  JoinSectRallyRequest,
   MapTileState,
   MarchQueueState,
   MarchQueueStatus,
@@ -16,12 +18,16 @@ import type {
   ProvinceWarState,
   PurchaseWorldBlockRequest,
   PurchaseWorldBlockResponse,
+  ResolveSectRallyRequest,
   ResolveStrategicControlRequest,
   ResolveStrategicControlResponse,
   ResolveWorldClearanceRequest,
   ResolveWorldClearanceResponse,
   ScoutWorldRequest,
   ScoutWorldResponse,
+  SectRallyListResponse,
+  SectRallyMutationResponse,
+  SectRallyState,
   SiegeRecordState,
   SiegeWorldRequest,
   SiegeWorldResponse,
@@ -55,6 +61,7 @@ import type {
   Player,
   PlayerCity,
   Prisma,
+  SectRally,
   SiegeRecord,
   StrategicControlRecord,
   TerritoryGarrison,
@@ -118,6 +125,244 @@ export class WorldService {
       season_name: worldSeasonName,
       config_version: worldConfigVersion,
     };
+  }
+
+  async getSectRallies(accountId: string): Promise<SectRallyListResponse> {
+    const player = await this.prisma.player.findUnique({ where: { accountId } });
+    if (!player?.sectId) return { rallies: [] };
+    const now = new Date();
+    await this.prisma.sectRally.updateMany({
+      where: { sectId: player.sectId, status: "open", endsAt: { lte: now } },
+      data: { status: "expired", resolvedAt: now },
+    });
+    const rallies = await this.prisma.sectRally.findMany({
+      where: { sectId: player.sectId, status: "open" },
+      orderBy: { endsAt: "asc" },
+    });
+    return {
+      rallies: await Promise.all(
+        rallies.map((rally) => this.toSectRallyState(rally, player.playerId)),
+      ),
+    };
+  }
+
+  async createSectRally(input: {
+    accountId: string;
+    body: CreateSectRallyRequest;
+    idempotencyKey: string;
+    endpoint: string;
+  }): Promise<SectRallyMutationResponse> {
+    const targetTileId = input.body.target_tile_id?.trim();
+    const rallyType = input.body.rally_type;
+    if (!targetTileId || (rallyType !== "attack" && rallyType !== "defend")) {
+      throw new BadRequestException("请选择战略目标和集结类型");
+    }
+    const requestHash = hashRequestBody({ rally_type: rallyType, target_tile_id: targetTileId });
+    return this.prisma.$transaction(async (tx) => {
+      const replay = await tx.idempotencyRecord.findUnique({
+        where: { idempotencyKey: input.idempotencyKey },
+      });
+      if (replay) return replay.responseData as unknown as SectRallyMutationResponse;
+      const player = await tx.player.findUnique({ where: { accountId: input.accountId } });
+      if (!player || player.currentRealm < 4)
+        throw new BadRequestException("达到第 4 境并加入宗门后才能发起集结");
+      const member = await tx.sectMember.findUnique({ where: { playerId: player.playerId } });
+      if (!member || (member.role !== "leader" && member.role !== "elder")) {
+        throw new BadRequestException("只有宗主或长老可以发起集结");
+      }
+      const tile = requireMapTile(targetTileId);
+      if (!tile.landmarkGroupId || !isStrategicControlTile(tile)) {
+        throw new BadRequestException("只能在关隘、州府或九塔发起集结");
+      }
+      const now = new Date();
+      const rally = await tx.sectRally.create({
+        data: {
+          rallyId: `rally_${randomUUID()}`,
+          eraId: defaultEraId,
+          sectId: member.sectId,
+          targetTileId: tile.tileId,
+          landmarkGroupId: tile.landmarkGroupId,
+          provinceId: tile.provinceId,
+          rallyType,
+          status: "open",
+          createdByPlayerId: player.playerId,
+          endsAt: new Date(now.getTime() + 60 * 60 * 1000),
+          idempotencyKey: input.idempotencyKey,
+        },
+      });
+      const responseData: SectRallyMutationResponse = {
+        record_id: `rally_create_${randomUUID()}`,
+        rally: await this.toSectRallyState(rally, player.playerId, tx),
+      };
+      await this.writeWorldIdempotency(tx, input, requestHash, responseData);
+      return responseData;
+    });
+  }
+
+  async joinSectRally(input: {
+    accountId: string;
+    body: JoinSectRallyRequest;
+    idempotencyKey: string;
+    endpoint: string;
+  }): Promise<SectRallyMutationResponse> {
+    const rallyId = input.body.rally_id?.trim();
+    if (!rallyId) throw new BadRequestException("请选择宗门集结");
+    const requestHash = hashRequestBody({ rally_id: rallyId });
+    return this.prisma.$transaction(async (tx) => {
+      const replay = await tx.idempotencyRecord.findUnique({
+        where: { idempotencyKey: input.idempotencyKey },
+      });
+      if (replay) return replay.responseData as unknown as SectRallyMutationResponse;
+      const player = await tx.player.findUnique({ where: { accountId: input.accountId } });
+      if (!player || player.currentRealm < 3)
+        throw new BadRequestException("达到第 3 境后才能响应宗门集结");
+      const [member, rally] = await Promise.all([
+        tx.sectMember.findUnique({ where: { playerId: player.playerId } }),
+        tx.sectRally.findUnique({ where: { rallyId } }),
+      ]);
+      if (
+        !member ||
+        !rally ||
+        member.sectId !== rally.sectId ||
+        rally.status !== "open" ||
+        rally.endsAt <= new Date()
+      ) {
+        throw new BadRequestException("该宗门集结不可响应");
+      }
+      const preset = await tx.cityArmyPreset.findFirst({
+        where: { playerId: player.playerId, presetType: "march" },
+      });
+      const teamPower = preset?.power ?? 140 + player.currentRealm * 20;
+      await tx.sectRallyMember.upsert({
+        where: { rallyId_playerId: { rallyId, playerId: player.playerId } },
+        create: {
+          rallyMemberId: `rally_member_${randomUUID()}`,
+          rallyId,
+          playerId: player.playerId,
+          teamPower,
+        },
+        update: { teamPower, joinedAt: new Date() },
+      });
+      const responseData: SectRallyMutationResponse = {
+        record_id: `rally_join_${randomUUID()}`,
+        rally: await this.toSectRallyState(rally, player.playerId, tx),
+      };
+      await this.writeWorldIdempotency(tx, input, requestHash, responseData);
+      return responseData;
+    });
+  }
+
+  async resolveSectRally(input: {
+    accountId: string;
+    body: ResolveSectRallyRequest;
+    idempotencyKey: string;
+    endpoint: string;
+  }): Promise<SectRallyMutationResponse> {
+    const rallyId = input.body.rally_id?.trim();
+    if (!rallyId) throw new BadRequestException("请选择宗门集结");
+    const requestHash = hashRequestBody({ rally_id: rallyId });
+    return this.prisma.$transaction(async (tx) => {
+      const replay = await tx.idempotencyRecord.findUnique({
+        where: { idempotencyKey: input.idempotencyKey },
+      });
+      if (replay) return replay.responseData as unknown as SectRallyMutationResponse;
+      const player = await tx.player.findUnique({ where: { accountId: input.accountId } });
+      const member = player
+        ? await tx.sectMember.findUnique({ where: { playerId: player.playerId } })
+        : null;
+      const rally = await tx.sectRally.findUnique({ where: { rallyId } });
+      if (
+        !player ||
+        !member ||
+        !rally ||
+        rally.sectId !== member.sectId ||
+        (member.role !== "leader" && member.role !== "elder")
+      ) {
+        throw new BadRequestException("只有发起宗门的宗主或长老可以结算集结");
+      }
+      const participants = await tx.sectRallyMember.findMany({ where: { rallyId } });
+      if (rally.status !== "open" || participants.length < 2) {
+        throw new BadRequestException("集结至少需要两名成员响应后才能结算");
+      }
+      const sect = await tx.sect.findUniqueOrThrow({ where: { sectId: rally.sectId } });
+      const totalPower = participants.reduce(
+        (total, participant) => total + participant.teamPower,
+        0,
+      );
+      const active = await tx.strategicControlRecord.findFirst({
+        where: {
+          eraId: defaultEraId,
+          landmarkGroupId: rally.landmarkGroupId,
+          status: "active",
+          expiresAt: { gt: new Date() },
+        },
+        orderBy: { resolvedAt: "desc" },
+      });
+      const defenderPower =
+        (active?.attackerPower ??
+          strategicBaseDefense(strategicControlTypeForTile(requireMapTile(rally.targetTileId)))) +
+        60;
+      const won = totalPower >= defenderPower;
+      let control: StrategicControlRecord | null = active;
+      if (won && rally.rallyType === "attack") {
+        if (active)
+          await tx.strategicControlRecord.update({
+            where: { controlId: active.controlId },
+            data: { status: "expired", expiresAt: new Date() },
+          });
+        control = await tx.strategicControlRecord.create({
+          data: {
+            controlId: `control_${randomUUID()}`,
+            eraId: defaultEraId,
+            landmarkGroupId: rally.landmarkGroupId,
+            tileId: rally.targetTileId,
+            provinceId: rally.provinceId,
+            controlType: strategicControlTypeForTile(requireMapTile(rally.targetTileId)),
+            controllerType: "sect",
+            controllerId: sect.sectId,
+            controllerName: sect.name,
+            attackerPower: totalPower,
+            defenderPower,
+            status: "active",
+            startsAt: new Date(),
+            expiresAt: new Date(Date.now() + strategicControlDurationMs),
+            sourceMarchId: rally.rallyId,
+            idempotencyKey: `${input.idempotencyKey}:control`,
+            resolvedAt: new Date(),
+          },
+        });
+      } else if (
+        won &&
+        rally.rallyType === "defend" &&
+        active?.controllerType === "sect" &&
+        active.controllerId === sect.sectId
+      ) {
+        control = await tx.strategicControlRecord.update({
+          where: { controlId: active.controlId },
+          data: { attackerPower: { increment: Math.floor(totalPower * 0.5) } },
+        });
+      }
+      const updated = await tx.sectRally.update({
+        where: { rallyId },
+        data: {
+          status: won ? "resolved" : "failed",
+          resolvedAt: new Date(),
+          resultSnapshot: {
+            total_power: totalPower,
+            defender_power: defenderPower,
+            won,
+          } as Prisma.InputJsonValue,
+        },
+      });
+      const responseData: SectRallyMutationResponse = {
+        record_id: `rally_resolve_${randomUUID()}`,
+        won,
+        rally: await this.toSectRallyState(updated, player.playerId, tx),
+        control: control ? this.toStrategicControlState(control, player.playerId) : null,
+      };
+      await this.writeWorldIdempotency(tx, input, requestHash, responseData);
+      return responseData;
+    });
   }
 
   async getAtlas(accountId: string): Promise<WorldAtlasResponse> {
@@ -2049,6 +2294,54 @@ export class WorldService {
     };
   }
 
+  private async toSectRallyState(
+    rally: SectRally,
+    playerId: string,
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<SectRallyState> {
+    const [sect, creator, participants] = await Promise.all([
+      db.sect.findUniqueOrThrow({ where: { sectId: rally.sectId } }),
+      db.player.findUnique({ where: { playerId: rally.createdByPlayerId } }),
+      db.sectRallyMember.findMany({ where: { rallyId: rally.rallyId } }),
+    ]);
+    return {
+      rally_id: rally.rallyId,
+      sect_id: rally.sectId,
+      sect_name: sect.name,
+      target_tile_id: rally.targetTileId,
+      landmark_group_id: rally.landmarkGroupId,
+      province_id: rally.provinceId,
+      rally_type: rally.rallyType === "defend" ? "defend" : "attack",
+      status: normalizeSectRallyStatus(rally.status),
+      created_by_name: creator?.name ?? "宗门执事",
+      participant_count: participants.length,
+      total_power: participants.reduce((total, item) => total + item.teamPower, 0),
+      minimum_participants: 2,
+      ends_at: rally.endsAt.toISOString(),
+      remaining_seconds: Math.max(0, Math.ceil((rally.endsAt.getTime() - Date.now()) / 1000)),
+      joined: participants.some((item) => item.playerId === playerId),
+    };
+  }
+
+  private async writeWorldIdempotency(
+    tx: Prisma.TransactionClient,
+    input: { accountId: string; endpoint: string; idempotencyKey: string },
+    requestHash: string,
+    responseData: unknown,
+  ) {
+    await tx.idempotencyRecord.create({
+      data: {
+        idempotencyKey: input.idempotencyKey,
+        accountId: input.accountId,
+        endpoint: input.endpoint,
+        requestHash,
+        responseData: responseData as Prisma.InputJsonValue,
+        statusCode: 200,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      },
+    });
+  }
+
   private toStrategicControlState(
     control: StrategicControlRecord,
     playerId: string | null,
@@ -2416,6 +2709,10 @@ function normalizeStrategicControlType(value: string): "pass" | "capital" | "tow
 
 function normalizeStrategicControlStatus(value: string): "active" | "failed" | "expired" {
   return value === "active" || value === "failed" ? value : "expired";
+}
+
+function normalizeSectRallyStatus(value: string): "open" | "resolved" | "expired" | "failed" {
+  return value === "resolved" || value === "expired" || value === "failed" ? value : "open";
 }
 
 function requiresWorldClearance(tile: MapTileConfig): boolean {

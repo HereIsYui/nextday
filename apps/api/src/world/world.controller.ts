@@ -1,15 +1,20 @@
 import { Body, Controller, Get, Inject, Post, Query, Req, UseGuards } from "@nestjs/common";
 import type {
+  CreateSectRallyRequest,
   DefendWorldRequest,
   DefendWorldResponse,
+  JoinSectRallyRequest,
   PurchaseWorldBlockRequest,
   PurchaseWorldBlockResponse,
+  ResolveSectRallyRequest,
   ResolveStrategicControlRequest,
   ResolveStrategicControlResponse,
   ResolveWorldClearanceRequest,
   ResolveWorldClearanceResponse,
   ScoutWorldRequest,
   ScoutWorldResponse,
+  SectRallyListResponse,
+  SectRallyMutationResponse,
   SiegeWorldRequest,
   SiegeWorldResponse,
   StartWorldMarchRequest,
@@ -67,6 +72,50 @@ export class WorldController {
   @Get("territory")
   territory(@Req() request: Request): Promise<TerritoryOverviewResponse> {
     return this.worldService.getTerritory(requireAccountId(request));
+  }
+
+  @Get("rallies")
+  rallies(@Req() request: Request): Promise<SectRallyListResponse> {
+    return this.worldService.getSectRallies(requireAccountId(request));
+  }
+
+  @Post("rallies")
+  createRally(
+    @Body() body: CreateSectRallyRequest,
+    @Req() request: Request,
+  ): Promise<SectRallyMutationResponse> {
+    return this.worldService.createSectRally({
+      accountId: requireAccountId(request),
+      body,
+      idempotencyKey: requireIdempotencyKey(request),
+      endpoint: "POST /api/world/rallies",
+    });
+  }
+
+  @Post("rallies/join")
+  joinRally(
+    @Body() body: JoinSectRallyRequest,
+    @Req() request: Request,
+  ): Promise<SectRallyMutationResponse> {
+    return this.worldService.joinSectRally({
+      accountId: requireAccountId(request),
+      body,
+      idempotencyKey: requireIdempotencyKey(request),
+      endpoint: "POST /api/world/rallies/join",
+    });
+  }
+
+  @Post("rallies/resolve")
+  resolveRally(
+    @Body() body: ResolveSectRallyRequest,
+    @Req() request: Request,
+  ): Promise<SectRallyMutationResponse> {
+    return this.worldService.resolveSectRally({
+      accountId: requireAccountId(request),
+      body,
+      idempotencyKey: requireIdempotencyKey(request),
+      endpoint: "POST /api/world/rallies/resolve",
+    });
   }
 
   @Post("march")

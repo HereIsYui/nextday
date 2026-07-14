@@ -2294,6 +2294,51 @@ export interface SectWarehouseResponse {
   experience?: ExperiencePayload;
 }
 
+export type SectRallyType = "attack" | "defend";
+export type SectRallyStatus = "open" | "resolved" | "expired" | "failed";
+
+export interface SectRallyState {
+  rally_id: string;
+  sect_id: string;
+  sect_name: string;
+  target_tile_id: string;
+  landmark_group_id: string;
+  province_id: string;
+  rally_type: SectRallyType;
+  status: SectRallyStatus;
+  created_by_name: string;
+  participant_count: number;
+  total_power: number;
+  minimum_participants: number;
+  ends_at: string;
+  remaining_seconds: number;
+  joined: boolean;
+}
+
+export interface SectRallyListResponse {
+  rallies: SectRallyState[];
+}
+
+export interface CreateSectRallyRequest {
+  target_tile_id: string;
+  rally_type: SectRallyType;
+}
+
+export interface JoinSectRallyRequest {
+  rally_id: string;
+}
+
+export interface ResolveSectRallyRequest {
+  rally_id: string;
+}
+
+export interface SectRallyMutationResponse {
+  record_id: string;
+  rally: SectRallyState;
+  won?: boolean;
+  control?: StrategicControlState | null;
+}
+
 export interface ResourcePointSummary {
   resource_point_id: string;
   province_id: string;

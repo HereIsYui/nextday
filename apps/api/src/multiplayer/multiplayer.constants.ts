@@ -198,6 +198,7 @@ export const sectWarehouseWhitelist = new Set([
   "pill_dust",
   "artifact_soul",
   "array_sand",
+  "battle_mark",
 ]);
 
 export const resourcePointConfigs = [

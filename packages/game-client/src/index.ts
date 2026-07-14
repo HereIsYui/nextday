@@ -64,6 +64,7 @@ import type {
   CreatePlayerRequest,
   CreatePlayerResponse,
   CreateSectHireRequest,
+  CreateSectRallyRequest,
   CreateSectRequest,
   CreateTransferRequestRequest,
   CreateTransferRequestResponse,
@@ -118,6 +119,7 @@ import type {
   InnerWorldSupportResponse,
   InnerWorldUpgradeRequest,
   InnerWorldUpgradeResponse,
+  JoinSectRallyRequest,
   JoinSectRequest,
   JournalListResponse,
   LearnSkillRequest,
@@ -155,6 +157,7 @@ import type {
   ResolveExploreEventResponse,
   ResolveRiskRecordRequest,
   ResolveRiskRecordResponse,
+  ResolveSectRallyRequest,
   ResolveStrategicControlRequest,
   ResolveStrategicControlResponse,
   ResolveWorldClearanceRequest,
@@ -180,6 +183,8 @@ import type {
   SectHireMutationResponse,
   SectListResponse,
   SectMutationResponse,
+  SectRallyListResponse,
+  SectRallyMutationResponse,
   SectTaskResponse,
   SectWarehouseDepositRequest,
   SectWarehouseResponse,
@@ -648,6 +653,28 @@ export class GameClient {
       body,
       { idempotencyKey },
     );
+  }
+
+  sectRallies(): Promise<ApiResponse<SectRallyListResponse>> {
+    return this.get("/api/world/rallies");
+  }
+  createSectRally(
+    body: CreateSectRallyRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<SectRallyMutationResponse>> {
+    return this.post("/api/world/rallies", body, { idempotencyKey });
+  }
+  joinSectRally(
+    body: JoinSectRallyRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<SectRallyMutationResponse>> {
+    return this.post("/api/world/rallies/join", body, { idempotencyKey });
+  }
+  resolveSectRally(
+    body: ResolveSectRallyRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<SectRallyMutationResponse>> {
+    return this.post("/api/world/rallies/resolve", body, { idempotencyKey });
   }
 
   purchaseWorldBlock(

@@ -207,6 +207,42 @@ model StrategicControlRecord {
   @@map("strategic_control_record")
 }
 
+model SectRally {
+  rallyId           String    @id @map("rally_id")
+  eraId             String    @default("era_mvp_001") @map("era_id")
+  sectId            String    @map("sect_id")
+  targetTileId      String    @map("target_tile_id")
+  landmarkGroupId   String    @map("landmark_group_id")
+  provinceId        String    @map("province_id")
+  rallyType         String    @map("rally_type")
+  status            String    @default("open")
+  createdByPlayerId String    @map("created_by_player_id")
+  startsAt          DateTime  @default(now()) @map("starts_at")
+  endsAt            DateTime  @map("ends_at")
+  resolvedAt        DateTime? @map("resolved_at")
+  resultSnapshot    Json      @default("{}") @map("result_snapshot")
+  idempotencyKey    String    @unique @map("idempotency_key")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  @@index([sectId, status, endsAt])
+  @@index([landmarkGroupId, status, endsAt])
+  @@map("sect_rally")
+}
+
+model SectRallyMember {
+  rallyMemberId String   @id @map("rally_member_id")
+  rallyId       String   @map("rally_id")
+  playerId      String   @map("player_id")
+  teamPower     Int      @map("team_power")
+  joinedAt      DateTime @default(now()) @map("joined_at")
+
+  @@unique([rallyId, playerId])
+  @@index([rallyId])
+  @@index([playerId])
+  @@map("sect_rally_member")
+}
+
 model CityBuilding {
   buildingId       String    @id @map("building_id")
   cityId           String    @map("city_id")

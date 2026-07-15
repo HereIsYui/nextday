@@ -6919,6 +6919,22 @@ function WorldMapScreen({
             </span>
             <strong>{city.city_name}</strong>
           </div>
+          <div className="city-screen-status" aria-label="城池状态">
+            <span>
+              <small>主城</small>
+              <strong>{city.city_level} 级</strong>
+            </span>
+            <span>
+              <small>境界</small>
+              <strong>{cultivation?.current_realm_name ?? "尚未入道"}</strong>
+            </span>
+            <span>
+              <small>城防</small>
+              <strong>
+                {city.defense.wall_durability}/{city.defense.wall_durability_cap}
+              </strong>
+            </span>
+          </div>
           <button className="city-return-button" onClick={() => setMode("world")} type="button">
             返回地图
           </button>
@@ -7421,61 +7437,14 @@ function CityInteriorStage({
     : 0;
 
   return (
-    <>
+    <div className="city-interior-scene">
       <div className="city-interior-canvas" aria-label="城内建筑布局">
-        <header className="city-interior-overview">
-          <div className="city-interior-gate">
-            <span>城内总览</span>
-            <strong>领地中枢</strong>
-            <small>
-              主城 {city.city_level} 级 · {city.province_name}
-            </small>
-          </div>
-          <div className="city-interior-cultivation">
-            <span>城主境界</span>
-            <strong>{cultivation?.current_realm_name ?? "尚未入道"}</strong>
-            <small>
-              第 {cultivation?.current_level ?? 1} 层 · 战力增益{" "}
-              {cultivation?.realm_power_bonus_percent ?? 0}%
-            </small>
-          </div>
-          <div className="city-interior-defense">
-            <span>城防</span>
-            <strong>
-              {city.defense.wall_durability}/{city.defense.wall_durability_cap}
-            </strong>
-            <small>{city.defense.protection_label}</small>
-          </div>
-        </header>
-        <div className="city-resource-ledger" aria-label="主城资源账本">
-          <span>
-            <small>灵石</small>
-            <strong>{city.resources.spirit_stone}</strong>
-          </span>
-          <span>
-            <small>粮草</small>
-            <strong>{city.resources.grain}</strong>
-          </span>
-          <span>
-            <small>矿材</small>
-            <strong>{city.resources.ore}</strong>
-          </span>
-          <span>
-            <small>灵木</small>
-            <strong>{city.resources.wood}</strong>
-          </span>
-          <span>
-            <small>灵草</small>
-            <strong>{city.resources.herb}</strong>
-          </span>
-          <span>
-            <small>道兵</small>
-            <strong>{city.resources.soldier}</strong>
-          </span>
-        </div>
         <div className="city-interior-district-label">
-          <span>城内布局</span>
-          <small>选择建筑处理城务</small>
+          <div>
+            <span>内城</span>
+            <small>城主府统辖生产、修行与守备坊区</small>
+          </div>
+          <strong>{selectedBuilding.label}</strong>
         </div>
         <div className="city-interior-grid">
           {cityInteriorBuildings.map((building) => {
@@ -7501,6 +7470,35 @@ function CityInteriorStage({
               </button>
             );
           })}
+          <span aria-hidden="true" className="city-interior-gate-mark">
+            南城门
+          </span>
+        </div>
+        <div className="city-resource-ledger" aria-label="主城资源账本">
+          <span>
+            <small>灵石</small>
+            <strong>{city.resources.spirit_stone}</strong>
+          </span>
+          <span>
+            <small>粮草</small>
+            <strong>{city.resources.grain}</strong>
+          </span>
+          <span>
+            <small>矿材</small>
+            <strong>{city.resources.ore}</strong>
+          </span>
+          <span>
+            <small>灵木</small>
+            <strong>{city.resources.wood}</strong>
+          </span>
+          <span>
+            <small>灵草</small>
+            <strong>{city.resources.herb}</strong>
+          </span>
+          <span>
+            <small>道兵</small>
+            <strong>{city.resources.soldier}</strong>
+          </span>
         </div>
       </div>
       <aside
@@ -7843,7 +7841,7 @@ function CityInteriorStage({
           )
         ) : null}
       </aside>
-    </>
+    </div>
   );
 }
 

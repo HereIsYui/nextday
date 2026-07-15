@@ -4089,82 +4089,38 @@ details.event-boundary {
   padding: 10px;
 }
 
-.text-game-shell .city-interior-canvas {
-  background: #f6f5f1;
-  border: 1px solid #d5d4cc;
-  box-shadow: none;
-  display: grid;
-  gap: 14px;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+.text-game-shell .city-interior-scene {
+  background: #dfe3dc;
+  height: 100%;
   min-height: 0;
   overflow: hidden;
-  padding: 18px;
+  position: relative;
 }
 
-.text-game-shell .city-interior-overview {
-  align-items: center;
-  background: transparent;
-  border-bottom: 1px solid #d4d5cf;
+.text-game-shell .city-interior-canvas {
+  background: #eeeee8;
   display: grid;
-  gap: 0;
-  grid-template-columns: minmax(210px, 1.35fr) repeat(2, minmax(150px, 1fr));
-}
-
-.text-game-shell .city-interior-gate,
-.text-game-shell .city-interior-cultivation,
-.text-game-shell .city-interior-defense {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  padding: 12px 15px;
-}
-
-.text-game-shell .city-interior-gate {
-  color: #253730;
-}
-
-.text-game-shell .city-interior-cultivation,
-.text-game-shell .city-interior-defense {
-  border-left: 1px solid #d4d5cf;
-  color: #26342e;
-}
-
-.text-game-shell .city-interior-overview span,
-.text-game-shell .city-interior-overview small {
-  font-size: 11px;
-  line-height: 1.35;
-}
-
-.text-game-shell .city-interior-overview small {
-  color: #68736b;
-}
-
-.text-game-shell .city-interior-gate small,
-.text-game-shell .city-interior-gate span {
-  color: #738078;
-}
-
-.text-game-shell .city-interior-overview strong {
-  font-family: "Songti SC", SimSun, serif;
-  font-size: 19px;
-  line-height: 1.2;
+  gap: 14px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  padding: 22px 390px 18px 22px;
 }
 
 .text-game-shell .city-resource-ledger {
-  background: transparent;
-  border-bottom: 1px solid #d4d5cf;
-  border-top: 1px solid #d4d5cf;
+  background: rgba(247, 247, 243, 0.96);
+  border: 1px solid #cfd2ca;
   display: grid;
-  gap: 1px;
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 .text-game-shell .city-resource-ledger > span {
-  border-right: 1px solid #d4d5cf;
+  border-right: 1px solid #d7d9d2;
   color: #2d3c35;
   display: grid;
   gap: 2px;
-  padding: 9px 12px;
+  padding: 8px 11px;
 }
 
 .text-game-shell .city-resource-ledger > span:last-child {
@@ -4180,18 +4136,35 @@ details.event-boundary {
 }
 
 .text-game-shell .city-interior-district-label {
-  align-items: baseline;
-  border-bottom: 0;
+  align-items: flex-end;
   color: #2c3d35;
   display: flex;
   justify-content: space-between;
-  padding: 0 2px;
+  min-width: 0;
+}
+
+.text-game-shell .city-interior-district-label > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.text-game-shell .city-interior-district-label span,
+.text-game-shell .city-interior-district-label > strong {
+  font-family: "Songti SC", SimSun, serif;
+  line-height: 1.2;
 }
 
 .text-game-shell .city-interior-district-label span {
-  font-family: "Songti SC", SimSun, serif;
-  font-size: 17px;
+  font-size: 20px;
 }
+
+.text-game-shell .city-interior-district-label > strong {
+  color: #637068;
+  font-size: 13px;
+  font-weight: 400;
+}
+
 .text-game-shell .city-interior-district-label small {
   color: #728077;
   font-size: 12px;
@@ -4199,37 +4172,64 @@ details.event-boundary {
 
 .text-game-shell .city-interior-grid {
   align-content: stretch;
-  background: #d4d5cf;
-  border: 1px solid #d4d5cf;
+  background: #e5e4dc;
+  border: 1px solid #c8cbc3;
   display: grid;
-  gap: 1px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  grid-template-rows: repeat(3, minmax(108px, 1fr));
+  gap: 20px 26px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(92px, 1fr));
   min-height: 0;
   min-width: 0;
-  padding: 1px;
+  padding: 24px;
+  position: relative;
+}
+
+.text-game-shell .city-interior-grid::before,
+.text-game-shell .city-interior-grid::after {
+  background: #d2cec2;
+  content: "";
+  pointer-events: none;
+  position: absolute;
+}
+
+.text-game-shell .city-interior-grid::before {
+  bottom: 0;
+  left: calc(50% - 10px);
+  top: 0;
+  width: 20px;
+}
+
+.text-game-shell .city-interior-grid::after {
+  height: 18px;
+  left: 0;
+  right: 0;
+  top: calc(66.666% - 9px);
 }
 
 .text-game-shell .city-interior-building {
-  --city-building-accent: #849189;
-  background: #fafaf7;
-  border: 0;
+  --city-building-accent: #7c8a82;
+  align-content: end;
+  background: rgba(250, 250, 246, 0.94);
+  border: 1px solid #bec3ba;
   border-top: 3px solid var(--city-building-accent);
+  border-radius: 3px;
   box-shadow: none;
   color: #24332d;
   cursor: pointer;
   display: grid;
   gap: 6px;
   min-height: 0;
-  padding: 14px;
+  padding: 13px 14px;
+  position: relative;
   text-align: left;
   transition: background-color 160ms ease, color 160ms ease;
+  z-index: 1;
 }
 
 .text-game-shell .city-interior-building:hover,
 .text-game-shell .city-interior-building.selected {
-  background: #edf3ee;
-  box-shadow: inset 0 0 0 1px #314b43;
+  background: #ffffff;
+  box-shadow: inset 0 0 0 2px #314b43;
   transform: none;
 }
 
@@ -4258,73 +4258,87 @@ details.event-boundary {
 
 .text-game-shell .city-interior-building.building-city_hall {
   --city-building-accent: #314b43;
-  background: #f0f4ef;
-  color: #253730;
-  grid-column: 2 / span 2;
+  align-content: center;
+  background: #344b43;
+  border-color: #263a33;
+  color: #f4f7f2;
+  grid-column: 3 / span 2;
   grid-row: 1 / span 2;
+  text-align: center;
 }
 
 .text-game-shell .city-interior-building.building-city_hall span {
-  color: #617168;
+  color: #c7d4cc;
 }
 
 .text-game-shell .city-interior-building.building-city_hall:hover,
 .text-game-shell .city-interior-building.building-city_hall.selected {
-  background: #e4ede5;
-  box-shadow: inset 0 0 0 1px #314b43;
+  background: #405c51;
+  box-shadow: inset 0 0 0 2px #e7eee8;
 }
 
 .text-game-shell .city-interior-building.building-enlightenment {
   --city-building-accent: #3f7a70;
-  grid-column: 1;
+  grid-column: 1 / span 2;
   grid-row: 1;
 }
 
 .text-game-shell .city-interior-building.building-warehouse {
   --city-building-accent: #797365;
-  grid-column: 4;
+  grid-column: 5 / span 2;
   grid-row: 1;
 }
 
 .text-game-shell .city-interior-building.building-alchemy {
   --city-building-accent: #ad7048;
-  grid-column: 1;
+  grid-column: 1 / span 2;
   grid-row: 2;
 }
 
 .text-game-shell .city-interior-building.building-forge {
   --city-building-accent: #62717e;
-  grid-column: 4;
+  grid-column: 5 / span 2;
   grid-row: 2;
 }
 
 .text-game-shell .city-interior-building.building-barracks {
   --city-building-accent: #657756;
-  grid-column: 1;
+  grid-column: 1 / span 2;
   grid-row: 3;
 }
 
 .text-game-shell .city-interior-building.building-training {
   --city-building-accent: #3f7172;
-  grid-column: 2;
+  grid-column: 3;
   grid-row: 3;
 }
 
 .text-game-shell .city-interior-building.building-fortification {
   --city-building-accent: #855c55;
-  grid-column: 3;
+  grid-column: 4;
   grid-row: 3;
 }
 
 .text-game-shell .city-interior-building.building-garden {
   --city-building-accent: #658352;
-  grid-column: 4;
+  grid-column: 5 / span 2;
   grid-row: 3;
 }
 
 .text-game-shell .city-interior-building.building-garden.locked {
   --city-building-accent: #859084;
   background: #ecece7;
+}
+
+.text-game-shell .city-interior-gate-mark {
+  bottom: 5px;
+  color: #77766d;
+  font-family: "Songti SC", SimSun, serif;
+  font-size: 11px;
+  left: 50%;
+  position: absolute;
+  transform: translateX(-50%);
+  z-index: 2;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4338,14 +4352,21 @@ details.event-boundary {
   --nextday-button-border: 1px solid #314b43;
   --nextday-button-color: #f5f8f1;
   --nextday-button-radius: 2px;
-  align-self: start;
-  background: #f8f8f5;
-  border: 1px solid #d5d6d0;
-  border-top: 1px solid #d5d6d0;
+  background: rgba(249, 249, 246, 0.98);
+  border: 1px solid #c7cbc3;
+  border-top: 4px solid #314b43;
   box-shadow: none;
   display: grid;
   gap: 12px;
+  max-height: none;
+  overflow: auto;
   padding: 18px;
+  position: absolute;
+  right: 20px;
+  top: 20px;
+  bottom: 20px;
+  width: 344px;
+  z-index: 4;
 }
 
 .text-game-shell .city-interior-inspector > strong {
@@ -5445,19 +5466,17 @@ details.event-boundary {
 }
 
 .text-game-shell.world-screen.city-screen .city-screen-stage {
-  align-items: stretch;
-  background: #dfe4df;
-  display: grid;
-  gap: 18px;
-  grid-template-columns: minmax(0, 1fr) minmax(304px, 352px);
+  background: #dfe3dc;
   min-height: 0;
-  overflow: auto;
-  padding: 20px 24px 24px;
+  overflow: hidden;
+  padding: 0;
 }
 
 .text-game-shell.world-screen.city-screen .world-screen-hud {
   background: #263c38;
   border-bottom-color: #182823;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto minmax(220px, 1fr);
   min-height: 70px;
   padding: 12px 24px;
 }
@@ -5478,6 +5497,38 @@ details.event-boundary {
   font-size: 23px;
 }
 
+.text-game-shell.world-screen.city-screen .city-screen-status {
+  align-items: center;
+  display: flex;
+  gap: 0;
+  justify-content: center;
+}
+
+.text-game-shell.world-screen.city-screen .city-screen-status > span {
+  border-left: 1px solid rgba(223, 233, 225, 0.22);
+  display: grid;
+  gap: 2px;
+  min-width: 96px;
+  padding: 0 18px;
+  text-align: center;
+}
+
+.text-game-shell.world-screen.city-screen .city-screen-status > span:last-child {
+  border-right: 1px solid rgba(223, 233, 225, 0.22);
+}
+
+.text-game-shell.world-screen.city-screen .city-screen-status small {
+  color: #aebdb4;
+  font-size: 10px;
+}
+
+.text-game-shell.world-screen.city-screen .city-screen-status strong {
+  color: #f0f4ef;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
 .text-game-shell.world-screen.city-screen .world-screen-hud .city-return-button {
   background: transparent;
   border: 1px solid #9eb6a8;
@@ -5486,6 +5537,7 @@ details.event-boundary {
   font-size: 13px;
   min-height: 36px;
   padding: 7px 14px;
+  justify-self: end;
 }
 
 .text-game-shell.world-screen.city-screen .world-screen-hud .city-return-button:hover {
@@ -5494,7 +5546,7 @@ details.event-boundary {
   color: #263c38;
 }
 
-.text-game-shell.world-screen.city-screen .city-screen-stage > .city-interior-canvas {
+.text-game-shell.world-screen.city-screen .city-screen-stage > .city-interior-scene {
   height: 100%;
   min-height: 0;
 }

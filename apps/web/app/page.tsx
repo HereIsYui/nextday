@@ -3481,6 +3481,7 @@ export default function HomePage() {
         <DesktopOnlyNotice />
         <WorldMapScreen
           activePlayerId={activePlayerId}
+          cityActionFeedback={actionFeedbackFor("city-interior")}
           atlas={worldAtlas}
           army={cityArmy}
           birthOptions={cityOverview?.birth_options ?? []}
@@ -3493,6 +3494,7 @@ export default function HomePage() {
           management={cityManagement}
           marches={worldMarches}
           onAlchemy={handleCraftAlchemy}
+          onActionFeedbackCapture={handleActionFeedbackCapture}
           onBreakthrough={handleBreakthrough}
           onClaimCultivation={handleClaimCultivation}
           onCollectTerritory={handleCollectTerritory}
@@ -3897,6 +3899,7 @@ export default function HomePage() {
                                 army={cityArmy}
                                 busy={busy}
                                 city={worldMainCity}
+                                feedback={actionFeedbackFor("city-interior")}
                                 cityExpansion={cityExpansion}
                                 cultivation={overview?.cultivation ?? null}
                                 garden={herbGarden}
@@ -6372,12 +6375,14 @@ function WorldMapScreen({
   buildings,
   busy,
   city,
+  cityActionFeedback,
   cityExpansion,
   cultivation,
   garden,
   management,
   marches,
   onAlchemy,
+  onActionFeedbackCapture,
   onBreakthrough,
   onClaimCultivation,
   onCollectTerritory,
@@ -6408,12 +6413,14 @@ function WorldMapScreen({
   buildings: CityBuildingState[];
   busy: boolean;
   city: CityOverviewResponse["main_city"];
+  cityActionFeedback?: ActionFeedbackState;
   cityExpansion: TerritoryOverviewResponse["expansion"] | null;
   cultivation: CultivationStatus | null;
   garden: HerbGardenState | null;
   management: CityManagementResponse | null;
   marches: WorldMarchListResponse | null;
   onAlchemy: () => void | Promise<void>;
+  onActionFeedbackCapture: (event: MouseEvent<HTMLElement>) => void;
   onBreakthrough: () => void | Promise<void>;
   onClaimCultivation: () => void | Promise<void>;
   onCollectTerritory: () => void | Promise<void>;
@@ -6911,7 +6918,10 @@ function WorldMapScreen({
 
   if (mode === "city" && city) {
     return (
-      <main className="shell app-shell text-game-shell world-screen city-screen">
+      <main
+        className="shell app-shell text-game-shell world-screen city-screen"
+        onClickCapture={onActionFeedbackCapture}
+      >
         <header className="world-screen-hud city-screen-hud">
           <div className="city-screen-title">
             <span>
@@ -6944,6 +6954,7 @@ function WorldMapScreen({
             buildings={buildings}
             busy={busy}
             city={city}
+            feedback={cityActionFeedback}
             cityExpansion={cityExpansion}
             cultivation={cultivation}
             garden={garden}
@@ -6983,7 +6994,10 @@ function WorldMapScreen({
   const preferredMarchType = selectedTile ? worldTilePreferredMarchType(selectedTile) : null;
 
   return (
-    <main className="shell app-shell text-game-shell world-screen">
+    <main
+      className="shell app-shell text-game-shell world-screen"
+      onClickCapture={onActionFeedbackCapture}
+    >
       <header className="world-screen-hud">
         <div>
           <span>九州城池纪元</span>
@@ -7356,6 +7370,7 @@ function CityInteriorStage({
   city,
   cityExpansion,
   cultivation,
+  feedback,
   garden,
   management,
   onAlchemy,
@@ -7379,6 +7394,7 @@ function CityInteriorStage({
   city: NonNullable<CityOverviewResponse["main_city"]>;
   cityExpansion: TerritoryOverviewResponse["expansion"] | null;
   cultivation: CultivationStatus | null;
+  feedback?: ActionFeedbackState;
   garden: HerbGardenState | null;
   management: CityManagementResponse | null;
   onAlchemy: () => void | Promise<void>;
@@ -7474,7 +7490,11 @@ function CityInteriorStage({
             南城门
           </span>
         </div>
-        <div className="city-resource-ledger" aria-label="主城资源账本">
+        <div
+          className={`city-resource-ledger${feedback?.status === "success" ? " is-updated" : ""}`}
+          aria-label="主城资源账本"
+          key={feedback?.status === "success" ? feedback.updatedAt : "city-resource-ledger"}
+        >
           <span>
             <small>灵石</small>
             <strong>{city.resources.spirit_stone}</strong>
@@ -7508,6 +7528,7 @@ function CityInteriorStage({
         <strong>{selectedBuilding.label}</strong>
         <span>{selectedBuilding.role}</span>
         <p>{selectedBuilding.description}</p>
+        <ActionFeedbackInline feedback={feedback} />
 
         {selectedCityBuilding ? (
           <section className="city-building-management">
@@ -8522,7 +8543,7 @@ function ActionFeedbackInline({
   onViewDetails,
 }: {
   feedback?: ActionFeedbackState;
-  onViewDetails: () => void;
+  onViewDetails?: () => void;
 }) {
   if (!feedback) {
     return null;
@@ -8534,7 +8555,7 @@ function ActionFeedbackInline({
         <strong>{actionFeedbackStatusLabel(feedback.status)}</strong>
         <span>{feedback.message}</span>
       </div>
-      {feedback.status !== "running" ? (
+      {feedback.status !== "running" && onViewDetails ? (
         <button className="action-feedback-link" onClick={onViewDetails} type="button">
           查看详情
         </button>

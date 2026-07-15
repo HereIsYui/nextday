@@ -4115,6 +4115,21 @@ details.event-boundary {
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
+.text-game-shell .city-resource-ledger.is-updated {
+  animation: city-resource-updated 1.2s ease-out;
+}
+
+@keyframes city-resource-updated {
+  0% {
+    background: #e4efdf;
+    border-color: #718a68;
+  }
+  100% {
+    background: rgba(247, 247, 243, 0.96);
+    border-color: #cfd2ca;
+  }
+}
+
 .text-game-shell .city-resource-ledger > span {
   border-right: 1px solid #d7d9d2;
   color: #2d3c35;
@@ -4342,7 +4357,9 @@ details.event-boundary {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .text-game-shell .city-interior-building {
+  .text-game-shell .city-interior-building,
+  .text-game-shell .city-resource-ledger.is-updated {
+    animation: none;
     transition: none;
   }
 }

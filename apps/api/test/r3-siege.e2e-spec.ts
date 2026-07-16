@@ -95,6 +95,7 @@ describe("R3-01 围城、掠夺与分城易主", () => {
   afterAll(async () => {
     const playerIds = [attacker?.playerId, defender?.playerId].filter(Boolean);
     if (playerIds.length) {
+      await prisma.warMeritRecord.deleteMany({ where: { playerId: { in: playerIds } } });
       await prisma.siegeRecord.deleteMany({
         where: {
           OR: [{ attackerPlayerId: { in: playerIds } }, { defenderPlayerId: { in: playerIds } }],
@@ -164,6 +165,15 @@ describe("R3-01 围城、掠夺与分城易主", () => {
     ]);
     expect(city.playerId).toBe(attacker.playerId);
     expect(ownership.playerId).toBe(attacker.playerId);
+    const merit = await request(app.getHttpServer())
+      .get("/api/world/war-merit")
+      .set("Authorization", `Bearer ${attacker.token}`)
+      .expect(200);
+    expect(merit.body.data.entries[0]).toMatchObject({
+      source_type: "siege",
+      merit: 80,
+      result: "captured",
+    });
   });
 
   it("攻破主城只掠夺资源，不转移主城产权", async () => {

@@ -588,6 +588,7 @@ P3 接口规则：
 | 侦查 | `/api/world/scout` | POST | 侦查目标地块、城池或驻防摘要，需 `Idempotency-Key` |
 | 战报 | `/api/world/reports` | GET | 查询行军、清野、购地、攻城、驻防和掠夺战报 |
 | 州战 | `/api/world/province-war` | GET | 返回州势力积分、版图、日结、周结和赛季状态 |
+| 战功 | `/api/world/war-merit?limit=20` | GET | 返回当前玩家总战功、日战功、周战功、州内战功、宗门战功和最近流水 |
 
 新增共享类型占位：
 

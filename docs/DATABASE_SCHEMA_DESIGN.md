@@ -1205,6 +1205,7 @@ R3-01 实现中，`siege_record.status` 使用 `won / lost / captured`。`captur
 - `idx_march_target(target_tile_id, status, arrives_at)`。
 - `idx_occupation_tile(tile_id, created_at)`。
 - `idx_province_war(season_id, province_id, war_score)`。
+- `war_merit_record` 使用 `player_id + source_type + source_id` 唯一键，保证同一场围城、战略争夺或宗门集结不会重复记账。
 
 ## 十四、幂等与事务边界
 

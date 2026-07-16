@@ -71,6 +71,7 @@ describe("R3-02 战略控制权", () => {
 
   afterAll(async () => {
     if (playerId) {
+      await prisma.warMeritRecord.deleteMany({ where: { playerId } });
       await prisma.strategicControlRecord.deleteMany({ where: { controllerId: playerId } });
       await prisma.marchQueue.deleteMany({ where: { playerId } });
       await prisma.cityArmyPreset.deleteMany({ where: { playerId } });
@@ -120,6 +121,16 @@ describe("R3-02 战略控制权", () => {
       (item: { tile_id: string }) => item.tile_id === targetTileId,
     );
     expect(tile.strategic_control).toMatchObject({ controller_id: playerId, is_mine: true });
+    const merit = await request(app.getHttpServer())
+      .get("/api/world/war-merit")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(merit.body.data).toMatchObject({ total_merit: 50, weekly_merit: 50 });
+    expect(merit.body.data.entries[0]).toMatchObject({
+      source_type: "strategic_control",
+      merit: 50,
+      result: "won",
+    });
   });
 });
 

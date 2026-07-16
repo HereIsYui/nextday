@@ -110,6 +110,7 @@ model Player {
   worldBlockOwnerships      WorldBlockOwnership[]
   territoryGarrisons        TerritoryGarrison[]
   armyPresets               CityArmyPreset[]
+  warMeritRecords           WarMeritRecord[]
 
   @@index([accountId])
   @@index([sectId])
@@ -241,6 +242,30 @@ model SectRallyMember {
   @@index([rallyId])
   @@index([playerId])
   @@map("sect_rally_member")
+}
+
+model WarMeritRecord {
+  recordId       String   @id @map("record_id")
+  playerId       String   @map("player_id")
+  sectId         String?  @map("sect_id")
+  eraId          String   @default("era_mvp_001") @map("era_id")
+  provinceId     String   @map("province_id")
+  sourceType     String   @map("source_type")
+  sourceId       String   @map("source_id")
+  merit          Int
+  result         String
+  detailSnapshot Json     @map("detail_snapshot")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+  sect   Sect?  @relation(fields: [sectId], references: [sectId])
+
+  @@unique([playerId, sourceType, sourceId])
+  @@index([playerId, eraId, createdAt])
+  @@index([sectId, eraId, createdAt])
+  @@index([provinceId, eraId, createdAt])
+  @@index([sourceType, createdAt])
+  @@map("war_merit_record")
 }
 
 model CityBuilding {
@@ -1265,6 +1290,7 @@ model Sect {
   diplomacyTargets     SectDiplomacyRecord[] @relation("SectDiplomacyTarget")
   hiresAsEmployer      SectHireRecord[]      @relation("SectHireEmployer")
   hiresAsHelper        SectHireRecord[]      @relation("SectHireHelper")
+  warMeritRecords      WarMeritRecord[]
 
   @@index([alignment])
   @@index([level])

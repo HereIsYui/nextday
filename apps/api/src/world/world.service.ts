@@ -42,6 +42,8 @@ import type {
   TerritoryOverviewResponse,
   TerritoryTerrainSummaryState,
   WalletSnapshot,
+  WarMeritEntryState,
+  WarMeritSummaryResponse,
   WorldAtlasCellState,
   WorldAtlasResponse,
   WorldBlockClearanceState,
@@ -67,6 +69,7 @@ import type {
   SiegeRecord,
   StrategicControlRecord,
   TerritoryGarrison,
+  WarMeritRecord,
   WorldBlockClearance,
   WorldBlockOwnership,
 } from "@prisma/client";
@@ -356,6 +359,30 @@ export class WorldService {
           } as Prisma.InputJsonValue,
         },
       });
+      await tx.warMeritRecord.createMany({
+        data: participants.map((participant) => {
+          const merit = won ? Math.min(60, 30 + Math.floor(participant.teamPower / 100)) : 8;
+          return {
+            recordId: `merit_${randomUUID()}`,
+            playerId: participant.playerId,
+            sectId: rally.sectId,
+            eraId: defaultEraId,
+            provinceId: rally.provinceId,
+            sourceType: "sect_rally",
+            sourceId: rally.rallyId,
+            merit,
+            result: won ? (rally.rallyType === "defend" ? "defended" : "won") : "lost",
+            detailSnapshot: {
+              summary: won
+                ? `参与${sect.name}集结并取得胜利，获得 ${merit} 点战功`
+                : `参与${sect.name}集结，虽未取胜仍获得 ${merit} 点参战战功`,
+              team_power: participant.teamPower,
+              total_power: totalPower,
+            } as Prisma.InputJsonValue,
+          };
+        }),
+        skipDuplicates: true,
+      });
       const responseData: SectRallyMutationResponse = {
         record_id: `rally_resolve_${randomUUID()}`,
         won,
@@ -527,6 +554,60 @@ export class WorldService {
     return {
       provinces: this.buildProvinceWarEntries(controls),
       calculated_at: new Date().toISOString(),
+    };
+  }
+
+  async getWarMerit(accountId: string, limit = 20): Promise<WarMeritSummaryResponse> {
+    const player = await this.requirePlayer(accountId);
+    const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(50, Math.floor(limit))) : 20;
+    const now = new Date();
+    const dayStart = new Date(now);
+    dayStart.setHours(0, 0, 0, 0);
+    const weekStart = new Date(dayStart);
+    const day = weekStart.getDay() || 7;
+    weekStart.setDate(weekStart.getDate() - day + 1);
+    const records = await this.prisma.warMeritRecord.findMany({
+      where: { playerId: player.playerId, eraId: defaultEraId },
+      orderBy: { createdAt: "desc" },
+    });
+    const city = await this.prisma.playerCity.findFirst({
+      where: { playerId: player.playerId, cityType: "main" },
+    });
+    const total = (items: typeof records) => items.reduce((sum, item) => sum + item.merit, 0);
+    return {
+      season_id: worldSeasonId,
+      season_name: worldSeasonName,
+      total_merit: total(records),
+      daily_merit: total(records.filter((item) => item.createdAt >= dayStart)),
+      weekly_merit: total(records.filter((item) => item.createdAt >= weekStart)),
+      province_merit: total(records.filter((item) => item.provinceId === city?.provinceId)),
+      sect_merit: total(records.filter((item) => Boolean(item.sectId))),
+      entries: records.slice(0, safeLimit).map((item) => this.toWarMeritEntry(item)),
+      calculated_at: now.toISOString(),
+    };
+  }
+
+  private toWarMeritEntry(record: WarMeritRecord): WarMeritEntryState {
+    const provinceName =
+      worldProvinceConfigs.find((province) => province.provinceId === record.provinceId)?.name ??
+      record.provinceId;
+    const labels = {
+      siege: "攻城",
+      strategic_control: "战略争夺",
+      sect_rally: "宗门集结",
+    } as const;
+    const detail = record.detailSnapshot as { summary?: string };
+    return {
+      record_id: record.recordId,
+      province_id: record.provinceId,
+      province_name: provinceName,
+      source_type: record.sourceType as WarMeritEntryState["source_type"],
+      source_label: labels[record.sourceType as keyof typeof labels] ?? "州战行动",
+      source_id: record.sourceId,
+      merit: record.merit,
+      result: record.result as WarMeritEntryState["result"],
+      summary: detail.summary ?? `获得 ${record.merit} 点战功`,
+      created_at: record.createdAt.toISOString(),
     };
   }
 
@@ -1209,6 +1290,28 @@ export class WorldService {
           resolvedAt: now,
         },
       });
+      const controlMerit = won ? 50 : 10;
+      await tx.warMeritRecord.create({
+        data: {
+          recordId: `merit_${randomUUID()}`,
+          playerId: player.playerId,
+          sectId: player.sectId,
+          eraId: defaultEraId,
+          provinceId: targetTile.provinceId,
+          sourceType: "strategic_control",
+          sourceId: control.controlId,
+          merit: controlMerit,
+          result: won ? "won" : "lost",
+          detailSnapshot: {
+            summary: won
+              ? `夺得${targetTile.tileName}控制权，获得 ${controlMerit} 点战功`
+              : `争夺${targetTile.tileName}未果，获得 ${controlMerit} 点参战战功`,
+            control_type: controlType,
+            attacker_power: team.team_power,
+            defender_power: defenderPower,
+          } as Prisma.InputJsonValue,
+        },
+      });
       const updatedMarch = await tx.marchQueue.update({
         where: { marchId },
         data: { status: "resolved", resolvedAt: now },
@@ -1433,6 +1536,49 @@ export class WorldService {
           idempotencyKey: input.idempotencyKey,
           resolvedAt: now,
         },
+      });
+      const attackerMerit = captured ? 80 : won ? 40 : 10;
+      const defenderMerit = won ? 8 : 20;
+      await tx.warMeritRecord.createMany({
+        data: [
+          {
+            recordId: `merit_${randomUUID()}`,
+            playerId: player.playerId,
+            sectId: player.sectId,
+            eraId: defaultEraId,
+            provinceId: targetCity.provinceId,
+            sourceType: "siege",
+            sourceId: siege.siegeId,
+            merit: attackerMerit,
+            result: captured ? "captured" : won ? "won" : "lost",
+            detailSnapshot: {
+              summary: captured
+                ? `攻破并接管${targetCity.cityName}，获得 ${attackerMerit} 点战功`
+                : won
+                  ? `攻破${targetCity.cityName}城防，获得 ${attackerMerit} 点战功`
+                  : `进攻${targetCity.cityName}未果，获得 ${attackerMerit} 点参战战功`,
+              wall_damage: wallDamage,
+            } as Prisma.InputJsonValue,
+          },
+          {
+            recordId: `merit_${randomUUID()}`,
+            playerId: targetCity.playerId,
+            sectId: targetCity.ownerSectId,
+            eraId: defaultEraId,
+            provinceId: targetCity.provinceId,
+            sourceType: "siege",
+            sourceId: siege.siegeId,
+            merit: defenderMerit,
+            result: won ? "lost" : "defended",
+            detailSnapshot: {
+              summary: won
+                ? `${targetCity.cityName}城防失守，获得 ${defenderMerit} 点守城战功`
+                : `守住${targetCity.cityName}，获得 ${defenderMerit} 点守城战功`,
+              wall_damage: wallDamage,
+            } as Prisma.InputJsonValue,
+          },
+        ],
+        skipDuplicates: true,
       });
       const targetTile = requireMapTile(targetCity.tileId);
       const provinceTileIds = getWorldTilesByProvince(targetCity.provinceId).map(

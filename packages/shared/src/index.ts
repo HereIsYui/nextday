@@ -787,6 +787,33 @@ export interface ProvinceWarLeaderboardResponse {
   calculated_at: string;
 }
 
+export type WarMeritSourceType = "siege" | "strategic_control" | "sect_rally";
+
+export interface WarMeritEntryState {
+  record_id: string;
+  province_id: string;
+  province_name: string;
+  source_type: WarMeritSourceType;
+  source_label: string;
+  source_id: string;
+  merit: number;
+  result: "won" | "lost" | "captured" | "defended";
+  summary: string;
+  created_at: string;
+}
+
+export interface WarMeritSummaryResponse {
+  season_id: string;
+  season_name: string;
+  total_merit: number;
+  daily_merit: number;
+  weekly_merit: number;
+  province_merit: number;
+  sect_merit: number;
+  entries: WarMeritEntryState[];
+  calculated_at: string;
+}
+
 export interface WorldAtlasResponse {
   provinces: WorldAtlasProvinceState[];
   home_province_id: string | null;

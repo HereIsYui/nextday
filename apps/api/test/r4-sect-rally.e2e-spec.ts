@@ -72,6 +72,7 @@ describe("R4-01 宗门集结", () => {
   afterAll(async () => {
     const ids = [leader?.playerId, member?.playerId].filter(Boolean);
     if (ids.length) {
+      await prisma.warMeritRecord.deleteMany({ where: { playerId: { in: ids } } });
       await prisma.strategicControlRecord.deleteMany({ where: { controllerId: sectId } });
       await prisma.sectRallyMember.deleteMany({ where: { playerId: { in: ids } } });
       await prisma.sectRally.deleteMany({ where: { sectId } });
@@ -119,6 +120,15 @@ describe("R4-01 宗门集结", () => {
         (province: { province_id: string }) => province.province_id === "liang",
       ),
     ).toMatchObject({ score: 60, pass_controls: 1, dominant_sect_name: expect.any(String) });
+    const merit = await request(app.getHttpServer())
+      .get("/api/world/war-merit")
+      .set("Authorization", `Bearer ${member.token}`)
+      .expect(200);
+    expect(merit.body.data.entries[0]).toMatchObject({
+      source_type: "sect_rally",
+      result: "won",
+    });
+    expect(merit.body.data.sect_merit).toBeGreaterThanOrEqual(30);
   });
 });
 

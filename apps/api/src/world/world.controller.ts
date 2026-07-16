@@ -21,6 +21,7 @@ import type {
   StartWorldMarchRequest,
   StartWorldMarchResponse,
   TerritoryOverviewResponse,
+  WarMeritSummaryResponse,
   WorldAtlasResponse,
   WorldMapResponse,
   WorldMapView,
@@ -45,6 +46,14 @@ export class WorldController {
   @Get("province-war")
   provinceWar(): Promise<ProvinceWarLeaderboardResponse> {
     return this.worldService.getProvinceWarLeaderboard();
+  }
+
+  @Get("war-merit")
+  warMerit(
+    @Query("limit") limit: string | undefined,
+    @Req() request: Request,
+  ): Promise<WarMeritSummaryResponse> {
+    return this.worldService.getWarMerit(requireAccountId(request), Number(limit ?? 20));
   }
 
   @Get("atlas")

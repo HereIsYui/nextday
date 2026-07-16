@@ -21,6 +21,7 @@ import type {
   StartWorldMarchRequest,
   StartWorldMarchResponse,
   TerritoryOverviewResponse,
+  WarMeritSettlementResponse,
   WarMeritSummaryResponse,
   WorldAtlasResponse,
   WorldMapResponse,
@@ -54,6 +55,11 @@ export class WorldController {
     @Req() request: Request,
   ): Promise<WarMeritSummaryResponse> {
     return this.worldService.getWarMerit(requireAccountId(request), Number(limit ?? 20));
+  }
+
+  @Get("war-settlement")
+  warSettlement(@Req() request: Request): Promise<WarMeritSettlementResponse> {
+    return this.worldService.getWarSettlement(requireAccountId(request));
   }
 
   @Get("atlas")

@@ -225,6 +225,7 @@ import type {
   TransferStatusResponse,
   UpgradeCityBuildingRequest,
   UpgradeCityBuildingResponse,
+  WarMeritSettlementResponse,
   WarMeritSummaryResponse,
   WorldAtlasResponse,
   WorldBossChallengeRequest,
@@ -476,6 +477,10 @@ export class GameClient {
 
   warMerit(limit = 20): Promise<ApiResponse<WarMeritSummaryResponse>> {
     return this.get<WarMeritSummaryResponse>(`/api/world/war-merit?limit=${limit}`);
+  }
+
+  warSettlement(): Promise<ApiResponse<WarMeritSettlementResponse>> {
+    return this.get<WarMeritSettlementResponse>("/api/world/war-settlement");
   }
 
   worldAtlas(): Promise<ApiResponse<WorldAtlasResponse>> {

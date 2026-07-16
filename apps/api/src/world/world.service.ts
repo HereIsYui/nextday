@@ -43,6 +43,9 @@ import type {
   TerritoryTerrainSummaryState,
   WalletSnapshot,
   WarMeritEntryState,
+  WarMeritPeriodSnapshot,
+  WarMeritRankingEntry,
+  WarMeritSettlementResponse,
   WarMeritSummaryResponse,
   WorldAtlasCellState,
   WorldAtlasResponse,
@@ -114,6 +117,15 @@ const validMarchTypes = new Set<MarchType>([
   "contest",
 ]);
 const strategicControlDurationMs = 24 * 60 * 60 * 1000;
+
+function periodKey(type: "day" | "week", date: Date): string {
+  const value = [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+  return `${type}_${value}`;
+}
 
 type WorldBlockOwnershipWithPlayer = WorldBlockOwnership & { player: Player };
 type TerritoryGarrisonWithPlayer = TerritoryGarrison & { player: Player };
@@ -584,6 +596,121 @@ export class WorldService {
       sect_merit: total(records.filter((item) => Boolean(item.sectId))),
       entries: records.slice(0, safeLimit).map((item) => this.toWarMeritEntry(item)),
       calculated_at: now.toISOString(),
+    };
+  }
+
+  async getWarSettlement(accountId: string): Promise<WarMeritSettlementResponse> {
+    await this.requirePlayer(accountId);
+    const now = new Date();
+    const dayStart = new Date(now);
+    dayStart.setHours(0, 0, 0, 0);
+    const weekStart = new Date(dayStart);
+    const day = weekStart.getDay() || 7;
+    weekStart.setDate(weekStart.getDate() - day + 1);
+    const [daily, weeklyPlayer, weeklySect, weeklyProvince] = await Promise.all([
+      this.buildWarMeritSnapshot("daily_player", periodKey("day", dayStart), dayStart, "player"),
+      this.buildWarMeritSnapshot(
+        "weekly_player",
+        periodKey("week", weekStart),
+        weekStart,
+        "player",
+      ),
+      this.buildWarMeritSnapshot("weekly_sect", periodKey("week", weekStart), weekStart, "sect"),
+      this.buildWarMeritSnapshot(
+        "weekly_province",
+        periodKey("week", weekStart),
+        weekStart,
+        "province",
+      ),
+    ]);
+    return {
+      season_id: worldSeasonId,
+      season_name: worldSeasonName,
+      daily,
+      weekly: [weeklyPlayer, weeklySect, weeklyProvince],
+      calculated_at: now.toISOString(),
+    };
+  }
+
+  private async buildWarMeritSnapshot(
+    rankType: WarMeritPeriodSnapshot["rank_type"],
+    periodKey: string,
+    since: Date,
+    targetType: WarMeritRankingEntry["target_type"],
+  ): Promise<WarMeritPeriodSnapshot> {
+    const records = await this.prisma.warMeritRecord.findMany({
+      where: { eraId: defaultEraId, createdAt: { gte: since } },
+      orderBy: { createdAt: "asc" },
+    });
+    const scores = new Map<string, number>();
+    for (const record of records) {
+      const targetId =
+        targetType === "player"
+          ? record.playerId
+          : targetType === "sect"
+            ? record.sectId
+            : record.provinceId;
+      if (targetId) scores.set(targetId, (scores.get(targetId) ?? 0) + record.merit);
+    }
+    const ids = Array.from(scores.keys());
+    const [players, sects] = await Promise.all([
+      targetType === "player"
+        ? this.prisma.player.findMany({ where: { playerId: { in: ids } } })
+        : Promise.resolve([]),
+      targetType === "sect"
+        ? this.prisma.sect.findMany({ where: { sectId: { in: ids } } })
+        : Promise.resolve([]),
+    ]);
+    const names = new Map<string, string>([
+      ...players.map((item) => [item.playerId, item.name] as const),
+      ...sects.map((item) => [item.sectId, item.name] as const),
+      ...worldProvinceConfigs.map((item) => [item.provinceId, item.name] as const),
+    ]);
+    const entries = Array.from(scores.entries())
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+      .slice(0, 50)
+      .map(([targetId, score], index) => ({
+        rank_no: index + 1,
+        target_type: targetType,
+        target_id: targetId,
+        display_name: names.get(targetId) ?? targetId,
+        score,
+      }));
+    const generatedAt = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      const snapshot = await tx.rankSnapshot.upsert({
+        where: { eraId_rankType_periodKey: { eraId: defaultEraId, rankType, periodKey } },
+        create: {
+          rankSnapshotId: `rank_snapshot_${randomUUID()}`,
+          eraId: defaultEraId,
+          rankType,
+          periodKey,
+          configVersion: worldConfigVersion,
+          rewardConfigVersion: worldConfigVersion,
+        },
+        update: { generatedAt, configVersion: worldConfigVersion },
+      });
+      await tx.rankEntry.deleteMany({ where: { rankSnapshotId: snapshot.rankSnapshotId } });
+      if (entries.length > 0) {
+        await tx.rankEntry.createMany({
+          data: entries.map((entry) => ({
+            rankEntryId: `rank_entry_${randomUUID()}`,
+            rankSnapshotId: snapshot.rankSnapshotId,
+            targetType: entry.target_type,
+            targetId: entry.target_id,
+            displayName: entry.display_name,
+            score: BigInt(entry.score),
+            rankNo: entry.rank_no,
+            rewardSnapshot: { merit: entry.score, period_key: periodKey },
+          })),
+        });
+      }
+    });
+    return {
+      rank_type: rankType,
+      period_key: periodKey,
+      generated_at: generatedAt.toISOString(),
+      entries,
     };
   }
 

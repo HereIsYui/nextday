@@ -589,6 +589,7 @@ P3 接口规则：
 | 战报 | `/api/world/reports` | GET | 查询行军、清野、购地、攻城、驻防和掠夺战报 |
 | 州战 | `/api/world/province-war` | GET | 返回州势力积分、版图、日结、周结和赛季状态 |
 | 战功 | `/api/world/war-merit?limit=20` | GET | 返回当前玩家总战功、日战功、周战功、州内战功、宗门战功和最近流水 |
+| 战功结算 | `/api/world/war-settlement` | GET | 生成并返回个人日榜、个人周榜、宗门周榜和州域周榜快照，不发放奖励 |
 
 新增共享类型占位：
 

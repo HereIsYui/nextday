@@ -814,6 +814,29 @@ export interface WarMeritSummaryResponse {
   calculated_at: string;
 }
 
+export interface WarMeritRankingEntry {
+  rank_no: number;
+  target_type: "player" | "sect" | "province";
+  target_id: string;
+  display_name: string;
+  score: number;
+}
+
+export interface WarMeritPeriodSnapshot {
+  rank_type: "daily_player" | "weekly_player" | "weekly_sect" | "weekly_province";
+  period_key: string;
+  generated_at: string;
+  entries: WarMeritRankingEntry[];
+}
+
+export interface WarMeritSettlementResponse {
+  season_id: string;
+  season_name: string;
+  daily: WarMeritPeriodSnapshot;
+  weekly: WarMeritPeriodSnapshot[];
+  calculated_at: string;
+}
+
 export interface WorldAtlasResponse {
   provinces: WorldAtlasProvinceState[];
   home_province_id: string | null;

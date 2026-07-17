@@ -6,6 +6,8 @@ import type {
   BattleSummary,
   CityDefenseSnapshot,
   CityResourceSnapshot,
+  ClaimWarSeasonRewardRequest,
+  ClaimWarSeasonRewardResponse,
   CreateSectRallyRequest,
   DefendWorldRequest,
   DefendWorldResponse,
@@ -30,6 +32,7 @@ import type {
   SectRallyListResponse,
   SectRallyMutationResponse,
   SectRallyState,
+  SettleWarSeasonResponse,
   SiegeRecordState,
   SiegeWorldRequest,
   SiegeWorldResponse,
@@ -47,6 +50,9 @@ import type {
   WarMeritRankingEntry,
   WarMeritSettlementResponse,
   WarMeritSummaryResponse,
+  WarSeasonRewardBundle,
+  WarSeasonRewardState,
+  WarSeasonStateResponse,
   WorldAtlasCellState,
   WorldAtlasResponse,
   WorldBlockClearanceState,
@@ -73,6 +79,8 @@ import type {
   StrategicControlRecord,
   TerritoryGarrison,
   WarMeritRecord,
+  WarSeasonReward,
+  WarSeasonSettlement,
   WorldBlockClearance,
   WorldBlockOwnership,
 } from "@prisma/client";
@@ -629,6 +637,167 @@ export class WorldService {
       daily,
       weekly: [weeklyPlayer, weeklySect, weeklyProvince],
       calculated_at: now.toISOString(),
+    };
+  }
+
+  async getWarSeasonState(accountId: string): Promise<WarSeasonStateResponse> {
+    const player = await this.requirePlayer(accountId);
+    const settlement = await this.prisma.warSeasonSettlement.findUnique({
+      where: { seasonId: worldSeasonId },
+    });
+    const reward = settlement
+      ? await this.prisma.warSeasonReward.findUnique({
+          where: {
+            settlementId_playerId: {
+              settlementId: settlement.settlementId,
+              playerId: player.playerId,
+            },
+          },
+        })
+      : null;
+    return this.toWarSeasonState(settlement, reward);
+  }
+
+  async settleWarSeason(input: {
+    accountId: string;
+    idempotencyKey: string;
+    settlementToken?: string;
+  }): Promise<SettleWarSeasonResponse> {
+    const expectedToken = process.env.WORLD_SETTLEMENT_TOKEN;
+    if (!expectedToken || input.settlementToken !== expectedToken) {
+      throw new BadRequestException("赛季结算密钥无效");
+    }
+    const operator = await this.requirePlayer(input.accountId);
+    const existing = await this.prisma.warSeasonSettlement.findUnique({
+      where: { seasonId: worldSeasonId },
+    });
+    if (existing) {
+      const state = await this.getWarSeasonState(input.accountId);
+      return {
+        ...state,
+        generated_reward_count: await this.prisma.warSeasonReward.count({
+          where: { settlementId: existing.settlementId },
+        }),
+      };
+    }
+    const finalSnapshot = await this.buildWarMeritSnapshot(
+      "season_player",
+      `season_${worldSeasonId}`,
+      new Date(0),
+      "player",
+    );
+    const settlementId = `war_settlement_${randomUUID()}`;
+    await this.prisma.$transaction(async (tx) => {
+      await tx.warSeasonSettlement.create({
+        data: {
+          settlementId,
+          eraId: defaultEraId,
+          seasonId: worldSeasonId,
+          status: "settled",
+          finalSnapshot: finalSnapshot as unknown as Prisma.InputJsonValue,
+          configVersion: worldConfigVersion,
+          idempotencyKey: input.idempotencyKey,
+          settledBy: operator.playerId,
+        },
+      });
+      if (finalSnapshot.entries.length > 0) {
+        await tx.warSeasonReward.createMany({
+          data: finalSnapshot.entries.map((entry) => ({
+            rewardId: `war_reward_${randomUUID()}`,
+            settlementId,
+            playerId: entry.target_id,
+            rankNo: entry.rank_no,
+            merit: entry.score,
+            rewardSnapshot: warSeasonRewardForRank(
+              entry.rank_no,
+            ) as unknown as Prisma.InputJsonValue,
+          })),
+        });
+      }
+    });
+    const state = await this.getWarSeasonState(input.accountId);
+    return { ...state, generated_reward_count: finalSnapshot.entries.length };
+  }
+
+  async claimWarSeasonReward(input: {
+    accountId: string;
+    body: ClaimWarSeasonRewardRequest;
+    idempotencyKey: string;
+  }): Promise<ClaimWarSeasonRewardResponse> {
+    const rewardId = input.body.reward_id?.trim();
+    if (!rewardId) throw new BadRequestException("请选择赛季奖励");
+    return this.prisma.$transaction(async (tx) => {
+      const player = await tx.player.findUnique({ where: { accountId: input.accountId } });
+      const reward = await tx.warSeasonReward.findUnique({ where: { rewardId } });
+      if (!player || !reward || reward.playerId !== player.playerId) {
+        throw new BadRequestException("赛季奖励不存在");
+      }
+      const settlement = await tx.warSeasonSettlement.findUniqueOrThrow({
+        where: { settlementId: reward.settlementId },
+      });
+      const city = await tx.playerCity.findFirst({
+        where: { playerId: player.playerId, cityType: "main" },
+      });
+      if (!city) throw new BadRequestException("建立主城后才能领取赛季奖励");
+      if (reward.status === "claimed") {
+        if (reward.claimKey !== input.idempotencyKey) {
+          throw new BadRequestException("赛季奖励已经领取");
+        }
+        const cityState = this.toCityState(city);
+        if (!cityState) throw new BadRequestException("主城状态读取失败");
+        return {
+          reward: this.toWarSeasonRewardState(reward, settlement.seasonId),
+          city: cityState,
+        };
+      }
+      const bundle = normalizeWarSeasonReward(reward.rewardSnapshot);
+      const resources = normalizeCityResources(city.resourceSnapshot);
+      const updatedCity = await tx.playerCity.update({
+        where: { cityId: city.cityId },
+        data: {
+          resourceSnapshot: addWarSeasonReward(
+            resources,
+            bundle,
+          ) as unknown as Prisma.InputJsonValue,
+        },
+      });
+      const claimed = await tx.warSeasonReward.update({
+        where: { rewardId },
+        data: { status: "claimed", claimKey: input.idempotencyKey, claimedAt: new Date() },
+      });
+      const cityState = this.toCityState(updatedCity);
+      if (!cityState) throw new BadRequestException("主城状态读取失败");
+      return {
+        reward: this.toWarSeasonRewardState(claimed, settlement.seasonId),
+        city: cityState,
+      };
+    });
+  }
+
+  private toWarSeasonState(
+    settlement: WarSeasonSettlement | null,
+    reward: WarSeasonReward | null,
+  ): WarSeasonStateResponse {
+    const snapshot = settlement?.finalSnapshot as unknown as WarMeritPeriodSnapshot | undefined;
+    return {
+      season_id: worldSeasonId,
+      season_name: worldSeasonName,
+      status: settlement ? "settled" : "active",
+      settled_at: settlement?.settledAt.toISOString() ?? null,
+      final_rankings: snapshot?.entries ?? [],
+      my_reward: reward ? this.toWarSeasonRewardState(reward, worldSeasonId) : null,
+    };
+  }
+
+  private toWarSeasonRewardState(reward: WarSeasonReward, seasonId: string): WarSeasonRewardState {
+    return {
+      reward_id: reward.rewardId,
+      season_id: seasonId,
+      rank_no: reward.rankNo,
+      merit: reward.merit,
+      rewards: normalizeWarSeasonReward(reward.rewardSnapshot),
+      status: reward.status as WarSeasonRewardState["status"],
+      claimed_at: reward.claimedAt?.toISOString() ?? null,
     };
   }
 
@@ -3479,6 +3648,36 @@ function normalizeCityResources(value: Prisma.JsonValue): CityResourceSnapshot {
     wood: toStringValue(record.wood, "0"),
     herb: toStringValue(record.herb, "0"),
     soldier: toStringValue(record.soldier, "0"),
+  };
+}
+
+function warSeasonRewardForRank(rankNo: number): WarSeasonRewardBundle {
+  if (rankNo === 1) return { spirit_stone: 1000, grain: 800, ore: 400, wood: 400 };
+  if (rankNo <= 3) return { spirit_stone: 700, grain: 500, ore: 250, wood: 250 };
+  if (rankNo <= 10) return { spirit_stone: 400, grain: 300, ore: 150, wood: 150 };
+  return { spirit_stone: 200, grain: 150, ore: 80, wood: 80 };
+}
+
+function normalizeWarSeasonReward(value: Prisma.JsonValue): WarSeasonRewardBundle {
+  const record = isRecord(value) ? value : {};
+  return {
+    spirit_stone: Number(record.spirit_stone ?? 0),
+    grain: Number(record.grain ?? 0),
+    ore: Number(record.ore ?? 0),
+    wood: Number(record.wood ?? 0),
+  };
+}
+
+function addWarSeasonReward(
+  resources: CityResourceSnapshot,
+  reward: WarSeasonRewardBundle,
+): CityResourceSnapshot {
+  return {
+    ...resources,
+    spirit_stone: String(Number(resources.spirit_stone) + reward.spirit_stone),
+    grain: String(Number(resources.grain) + reward.grain),
+    ore: String(Number(resources.ore) + reward.ore),
+    wood: String(Number(resources.wood) + reward.wood),
   };
 }
 

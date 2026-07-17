@@ -1,5 +1,17 @@
-import { Body, Controller, Get, Inject, Post, Query, Req, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Inject,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from "@nestjs/common";
 import type {
+  ClaimWarSeasonRewardRequest,
+  ClaimWarSeasonRewardResponse,
   CreateSectRallyRequest,
   DefendWorldRequest,
   DefendWorldResponse,
@@ -16,6 +28,7 @@ import type {
   ScoutWorldResponse,
   SectRallyListResponse,
   SectRallyMutationResponse,
+  SettleWarSeasonResponse,
   SiegeWorldRequest,
   SiegeWorldResponse,
   StartWorldMarchRequest,
@@ -23,6 +36,7 @@ import type {
   TerritoryOverviewResponse,
   WarMeritSettlementResponse,
   WarMeritSummaryResponse,
+  WarSeasonStateResponse,
   WorldAtlasResponse,
   WorldMapResponse,
   WorldMapView,
@@ -60,6 +74,35 @@ export class WorldController {
   @Get("war-settlement")
   warSettlement(@Req() request: Request): Promise<WarMeritSettlementResponse> {
     return this.worldService.getWarSettlement(requireAccountId(request));
+  }
+
+  @Get("season")
+  season(@Req() request: Request): Promise<WarSeasonStateResponse> {
+    return this.worldService.getWarSeasonState(requireAccountId(request));
+  }
+
+  @Post("season/settle")
+  settleSeason(
+    @Headers("x-settlement-token") settlementToken: string | undefined,
+    @Req() request: Request,
+  ): Promise<SettleWarSeasonResponse> {
+    return this.worldService.settleWarSeason({
+      accountId: requireAccountId(request),
+      idempotencyKey: requireIdempotencyKey(request),
+      settlementToken,
+    });
+  }
+
+  @Post("season/rewards/claim")
+  claimSeasonReward(
+    @Body() body: ClaimWarSeasonRewardRequest,
+    @Req() request: Request,
+  ): Promise<ClaimWarSeasonRewardResponse> {
+    return this.worldService.claimWarSeasonReward({
+      accountId: requireAccountId(request),
+      body,
+      idempotencyKey: requireIdempotencyKey(request),
+    });
   }
 
   @Get("atlas")

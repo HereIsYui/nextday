@@ -823,7 +823,7 @@ export interface WarMeritRankingEntry {
 }
 
 export interface WarMeritPeriodSnapshot {
-  rank_type: "daily_player" | "weekly_player" | "weekly_sect" | "weekly_province";
+  rank_type: "daily_player" | "weekly_player" | "weekly_sect" | "weekly_province" | "season_player";
   period_key: string;
   generated_at: string;
   entries: WarMeritRankingEntry[];
@@ -835,6 +835,45 @@ export interface WarMeritSettlementResponse {
   daily: WarMeritPeriodSnapshot;
   weekly: WarMeritPeriodSnapshot[];
   calculated_at: string;
+}
+
+export interface WarSeasonRewardBundle {
+  spirit_stone: number;
+  grain: number;
+  ore: number;
+  wood: number;
+}
+
+export interface WarSeasonRewardState {
+  reward_id: string;
+  season_id: string;
+  rank_no: number;
+  merit: number;
+  rewards: WarSeasonRewardBundle;
+  status: "claimable" | "claimed";
+  claimed_at: string | null;
+}
+
+export interface WarSeasonStateResponse {
+  season_id: string;
+  season_name: string;
+  status: "active" | "settled";
+  settled_at: string | null;
+  final_rankings: WarMeritRankingEntry[];
+  my_reward: WarSeasonRewardState | null;
+}
+
+export interface SettleWarSeasonResponse extends WarSeasonStateResponse {
+  generated_reward_count: number;
+}
+
+export interface ClaimWarSeasonRewardRequest {
+  reward_id: string;
+}
+
+export interface ClaimWarSeasonRewardResponse {
+  reward: WarSeasonRewardState;
+  city: PlayerCityState;
 }
 
 export interface WorldAtlasResponse {

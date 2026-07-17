@@ -49,6 +49,8 @@ import type {
   ClaimMonthlyDailyResponse,
   ClaimRankTitleRequest,
   ClaimRankTitleResponse,
+  ClaimWarSeasonRewardRequest,
+  ClaimWarSeasonRewardResponse,
   CollectTerritoryResponse,
   CollectionSummaryResponse,
   ConfigEnvelope,
@@ -227,6 +229,7 @@ import type {
   UpgradeCityBuildingResponse,
   WarMeritSettlementResponse,
   WarMeritSummaryResponse,
+  WarSeasonStateResponse,
   WorldAtlasResponse,
   WorldBossChallengeRequest,
   WorldBossChallengeResponse,
@@ -481,6 +484,21 @@ export class GameClient {
 
   warSettlement(): Promise<ApiResponse<WarMeritSettlementResponse>> {
     return this.get<WarMeritSettlementResponse>("/api/world/war-settlement");
+  }
+
+  warSeason(): Promise<ApiResponse<WarSeasonStateResponse>> {
+    return this.get<WarSeasonStateResponse>("/api/world/season");
+  }
+
+  claimWarSeasonReward(
+    body: ClaimWarSeasonRewardRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<ClaimWarSeasonRewardResponse>> {
+    return this.post<ClaimWarSeasonRewardResponse, ClaimWarSeasonRewardRequest>(
+      "/api/world/season/rewards/claim",
+      body,
+      { idempotencyKey },
+    );
   }
 
   worldAtlas(): Promise<ApiResponse<WorldAtlasResponse>> {

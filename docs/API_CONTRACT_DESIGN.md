@@ -590,6 +590,9 @@ P3 接口规则：
 | 州战 | `/api/world/province-war` | GET | 返回州势力积分、版图、日结、周结和赛季状态 |
 | 战功 | `/api/world/war-merit?limit=20` | GET | 返回当前玩家总战功、日战功、周战功、州内战功、宗门战功和最近流水 |
 | 战功结算 | `/api/world/war-settlement` | GET | 生成并返回个人日榜、个人周榜、宗门周榜和州域周榜快照，不发放奖励 |
+| 赛季状态 | `/api/world/season` | GET | 返回赛季是否结算、最终个人榜和当前玩家奖励状态 |
+| 赛季锁定 | `/api/world/season/settle` | POST | 使用 `X-Settlement-Token` 与 `Idempotency-Key` 锁定最终榜并生成普通资源奖励 |
+| 赛季领奖 | `/api/world/season/rewards/claim` | POST | 请求 `{ reward_id }`，使用 `Idempotency-Key` 将本人的普通资源奖励加入主城 |
 
 新增共享类型占位：
 

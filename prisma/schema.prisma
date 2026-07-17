@@ -111,6 +111,7 @@ model Player {
   territoryGarrisons        TerritoryGarrison[]
   armyPresets               CityArmyPreset[]
   warMeritRecords           WarMeritRecord[]
+  warSeasonRewards          WarSeasonReward[]
 
   @@index([accountId])
   @@index([sectId])
@@ -266,6 +267,46 @@ model WarMeritRecord {
   @@index([provinceId, eraId, createdAt])
   @@index([sourceType, createdAt])
   @@map("war_merit_record")
+}
+
+model WarSeasonSettlement {
+  settlementId  String   @id @map("settlement_id")
+  eraId         String   @default("era_mvp_001") @map("era_id")
+  seasonId      String   @unique @map("season_id")
+  status        String   @default("settled")
+  finalSnapshot Json     @map("final_snapshot")
+  configVersion String   @map("config_version")
+  idempotencyKey String  @unique @map("idempotency_key")
+  settledBy     String   @map("settled_by")
+  settledAt     DateTime @default(now()) @map("settled_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  rewards WarSeasonReward[]
+
+  @@index([eraId, status])
+  @@index([settledAt])
+  @@map("war_season_settlement")
+}
+
+model WarSeasonReward {
+  rewardId       String    @id @map("reward_id")
+  settlementId   String    @map("settlement_id")
+  playerId       String    @map("player_id")
+  rankNo         Int       @map("rank_no")
+  merit          Int
+  rewardSnapshot Json      @map("reward_snapshot")
+  status         String    @default("claimable")
+  claimKey       String?   @unique @map("claim_key")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  claimedAt      DateTime? @map("claimed_at")
+
+  settlement WarSeasonSettlement @relation(fields: [settlementId], references: [settlementId], onDelete: Cascade)
+  player     Player              @relation(fields: [playerId], references: [playerId])
+
+  @@unique([settlementId, playerId])
+  @@index([playerId, status])
+  @@index([rankNo])
+  @@map("war_season_reward")
 }
 
 model CityBuilding {

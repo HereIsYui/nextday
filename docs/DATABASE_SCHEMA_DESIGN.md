@@ -1206,6 +1206,7 @@ R3-01 实现中，`siege_record.status` 使用 `won / lost / captured`。`captur
 - `idx_occupation_tile(tile_id, created_at)`。
 - `idx_province_war(season_id, province_id, war_score)`。
 - `war_merit_record` 使用 `player_id + source_type + source_id` 唯一键，保证同一场围城、战略争夺或宗门集结不会重复记账。
+- `war_season_settlement` 按 `season_id` 唯一锁定最终个人榜；`war_season_reward` 按结算与玩家唯一生成普通城池资源奖励，并用唯一 `claim_key` 保证领取幂等。
 
 ## 十四、幂等与事务边界
 

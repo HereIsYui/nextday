@@ -26,6 +26,7 @@ describe("R5-01C 州战赛季结算与奖励", () => {
       where: { seasonId: "season_city_era_001" },
     });
     await prisma.rankSnapshot.deleteMany({ where: { rankType: "season_player" } });
+    await prisma.eraChronicleRecord.deleteMany({ where: { chronicleType: "city_era" } });
     leader = await createPlayer(app, "赛季榜首");
     runnerUp = await createPlayer(app, "赛季次席");
     await prisma.warMeritRecord.createMany({
@@ -43,6 +44,7 @@ describe("R5-01C 州战赛季结算与奖励", () => {
       where: { seasonId: "season_city_era_001" },
     });
     await prisma.rankSnapshot.deleteMany({ where: { rankType: "season_player" } });
+    await prisma.eraChronicleRecord.deleteMany({ where: { chronicleType: "city_era" } });
     await prisma.worldBlockOwnership.deleteMany({ where: { playerId: { in: playerIds } } });
     await prisma.playerCity.deleteMany({ where: { playerId: { in: playerIds } } });
     await prisma.$disconnect();
@@ -81,6 +83,36 @@ describe("R5-01C 州战赛季结算与奖励", () => {
     });
     expect(settled.body.data.my_reward.rewards).not.toHaveProperty("paid_jade");
     expect(settled.body.data.my_reward.rewards).not.toHaveProperty("bound_jade");
+
+    const chronicle = await request(app.getHttpServer())
+      .get("/api/story/era-chronicle")
+      .set("Authorization", `Bearer ${leader.token}`)
+      .expect(200);
+    const cityEra = chronicle.body.data.entries.find(
+      (entry: { chronicle_type: string }) => entry.chronicle_type === "city_era",
+    );
+    expect(cityEra).toMatchObject({
+      title: "九州城池纪元先遣季",
+      strategic_summary: {
+        captured_sub_city_count: expect.any(Number),
+      },
+    });
+    expect(cityEra.strategic_summary.top_players[0]).toMatchObject({
+      rank_no: 1,
+      player_name: expect.any(String),
+      merit: 120,
+    });
+    await prisma.warMeritRecord.create({
+      data: meritRecord(leader.playerId, 999, "after_settlement"),
+    });
+    const repeatedChronicle = await request(app.getHttpServer())
+      .get("/api/story/era-chronicle")
+      .set("Authorization", `Bearer ${leader.token}`)
+      .expect(200);
+    const repeatedCityEra = repeatedChronicle.body.data.entries.find(
+      (entry: { chronicle_type: string }) => entry.chronicle_type === "city_era",
+    );
+    expect(repeatedCityEra.strategic_summary.top_players[0].merit).toBe(120);
   });
 
   it("同一领取键重复请求不会重复增加主城资源", async () => {

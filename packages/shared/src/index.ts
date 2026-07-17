@@ -268,7 +268,29 @@ export interface EraChronicleEntryState {
   highlights: string[];
   visibility_rule: "public" | "server" | "sect" | "personal" | "admin" | string;
   related_source_ids: string[];
+  strategic_summary?: EraChronicleStrategicSummary | null;
   created_at: string;
+}
+
+export interface EraChronicleStrategicSummary {
+  champion_province: string | null;
+  dominant_sect: string | null;
+  territory_distribution: Array<{
+    province_id: string;
+    province_name: string;
+    owned_blocks: number;
+    city_count: number;
+  }>;
+  tower_controls: Array<{
+    province_id: string;
+    controller_name: string;
+  }>;
+  captured_sub_city_count: number;
+  top_players: Array<{
+    rank_no: number;
+    player_name: string;
+    merit: number;
+  }>;
 }
 
 export interface EraChronicleResponse {

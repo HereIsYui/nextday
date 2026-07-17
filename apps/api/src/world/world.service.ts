@@ -11,6 +11,7 @@ import type {
   CreateSectRallyRequest,
   DefendWorldRequest,
   DefendWorldResponse,
+  EraChronicleStrategicSummary,
   JoinSectRallyRequest,
   MapTileState,
   MarchQueueState,
@@ -686,6 +687,7 @@ export class WorldService {
       new Date(0),
       "player",
     );
+    const strategicSnapshot = await this.buildWarSeasonStrategicSnapshot(finalSnapshot.entries);
     const settlementId = `war_settlement_${randomUUID()}`;
     await this.prisma.$transaction(async (tx) => {
       await tx.warSeasonSettlement.create({
@@ -694,7 +696,10 @@ export class WorldService {
           eraId: defaultEraId,
           seasonId: worldSeasonId,
           status: "settled",
-          finalSnapshot: finalSnapshot as unknown as Prisma.InputJsonValue,
+          finalSnapshot: {
+            rankings: finalSnapshot,
+            strategic: strategicSnapshot,
+          } as unknown as Prisma.InputJsonValue,
           configVersion: worldConfigVersion,
           idempotencyKey: input.idempotencyKey,
           settledBy: operator.playerId,
@@ -778,7 +783,12 @@ export class WorldService {
     settlement: WarSeasonSettlement | null,
     reward: WarSeasonReward | null,
   ): WarSeasonStateResponse {
-    const snapshot = settlement?.finalSnapshot as unknown as WarMeritPeriodSnapshot | undefined;
+    const stored = settlement?.finalSnapshot as unknown as
+      | { rankings?: WarMeritPeriodSnapshot }
+      | WarMeritPeriodSnapshot
+      | undefined;
+    const snapshot =
+      stored && "rankings" in stored ? stored.rankings : (stored as WarMeritPeriodSnapshot);
     return {
       season_id: worldSeasonId,
       season_name: worldSeasonName,
@@ -786,6 +796,59 @@ export class WorldService {
       settled_at: settlement?.settledAt.toISOString() ?? null,
       final_rankings: snapshot?.entries ?? [],
       my_reward: reward ? this.toWarSeasonRewardState(reward, worldSeasonId) : null,
+    };
+  }
+
+  private async buildWarSeasonStrategicSnapshot(
+    rankings: WarMeritRankingEntry[],
+  ): Promise<EraChronicleStrategicSummary> {
+    const now = new Date();
+    const [controls, ownerships, cities, capturedSieges] = await Promise.all([
+      this.prisma.strategicControlRecord.findMany({
+        where: { eraId: defaultEraId, status: "active", expiresAt: { gt: now } },
+      }),
+      this.prisma.worldBlockOwnership.findMany({
+        where: { eraId: defaultEraId, status: "owned" },
+      }),
+      this.prisma.playerCity.findMany({ where: { eraId: defaultEraId } }),
+      this.prisma.siegeRecord.findMany({
+        where: { eraId: defaultEraId, status: "captured" },
+        select: { siegeId: true },
+      }),
+    ]);
+    const provinceRanks = this.buildProvinceWarEntries(controls);
+    const sectControlCounts = new Map<string, { count: number; name: string }>();
+    for (const control of controls.filter((item) => item.controllerType === "sect")) {
+      const current = sectControlCounts.get(control.controllerId);
+      sectControlCounts.set(control.controllerId, {
+        count: (current?.count ?? 0) + 1,
+        name: control.controllerName,
+      });
+    }
+    const dominantSect = Array.from(sectControlCounts.values()).sort(
+      (left, right) => right.count - left.count || left.name.localeCompare(right.name),
+    )[0];
+    return {
+      champion_province: provinceRanks[0]?.province_name ?? null,
+      dominant_sect: dominantSect?.name ?? null,
+      territory_distribution: worldProvinceConfigs.map((province) => ({
+        province_id: province.provinceId,
+        province_name: province.name,
+        owned_blocks: ownerships.filter((item) => item.provinceId === province.provinceId).length,
+        city_count: cities.filter((item) => item.provinceId === province.provinceId).length,
+      })),
+      tower_controls: controls
+        .filter((item) => item.controlType === "tower")
+        .map((item) => ({
+          province_id: item.provinceId,
+          controller_name: item.controllerName,
+        })),
+      captured_sub_city_count: capturedSieges.length,
+      top_players: rankings.slice(0, 10).map((entry) => ({
+        rank_no: entry.rank_no,
+        player_name: entry.display_name,
+        merit: entry.score,
+      })),
     };
   }
 

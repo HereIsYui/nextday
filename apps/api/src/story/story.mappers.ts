@@ -3,6 +3,7 @@ import type {
   BattleRoundLog,
   BattleSummary,
   EraChronicleEntryState,
+  EraChronicleStrategicSummary,
   StoryBattleReference,
   StoryScrollDetailState,
   StoryScrollFragmentState,
@@ -120,6 +121,7 @@ export function toEraChronicleEntry(record: EraChronicleRecord): EraChronicleEnt
     highlights: stringArrayFromUnknown(summary.highlights),
     visibility_rule: record.visibilityRule,
     related_source_ids: stringArrayFromJson(record.relatedSourceIds),
+    strategic_summary: strategicSummaryFromUnknown(summary.strategic_summary),
     created_at: record.createdAt.toISOString(),
   };
 }
@@ -168,6 +170,20 @@ function objectFromJson(value: unknown): Record<string, unknown> {
 
 function stringFromUnknown(value: unknown, fallback: string): string {
   return typeof value === "string" && value.length > 0 ? value : fallback;
+}
+
+function strategicSummaryFromUnknown(value: unknown): EraChronicleStrategicSummary | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const summary = value as Partial<EraChronicleStrategicSummary>;
+  if (
+    !Array.isArray(summary.territory_distribution) ||
+    !Array.isArray(summary.tower_controls) ||
+    !Array.isArray(summary.top_players) ||
+    typeof summary.captured_sub_city_count !== "number"
+  ) {
+    return null;
+  }
+  return summary as EraChronicleStrategicSummary;
 }
 
 function isStoryFragment(value: unknown): value is StoryScrollFragmentState {

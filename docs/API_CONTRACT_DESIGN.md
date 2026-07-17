@@ -485,7 +485,7 @@ P2 新增接口分组：
 | 剧情卷轴 | `/api/story/scrolls` | GET | 章节卷轴列表、解锁进度、最近更新和可回放红点 |
 | 剧情卷轴 | `/api/story/scrolls/{scroll_id}` | GET | 章节卷轴详情、文本片段、选择摘要、战报引用和配置版本 |
 | 剧情卷轴 | `/api/story/battle-narratives/{battle_id}` | GET | 战报叙事摘要、关键回合、胜负原因和原始战报引用 |
-| 纪元史册 | `/api/story/era-chronicle` | GET | 当前服务器纪元史册、排行摘要、阵营结局、九塔状态和活动节点 |
+| 纪元史册 | `/api/story/era-chronicle` | GET | 当前服务器纪元史册；赛季结算后增加冻结版图、冠军州、主导宗门、九塔控制、分城易主和个人战功摘要 |
 | 多纪元收藏 | `/api/collection/summary` | GET | 个人收藏馆摘要、历史图鉴、纪元纪念物和展示栏 |
 | 多纪元收藏 | `/api/collection/entries/{collection_id}` | GET | 收藏条目详情、来源记录、继承规则和展示状态 |
 | 多纪元收藏 | `/api/collection/display/equip` | POST | 装备收藏展示项，需幂等键 |

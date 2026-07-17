@@ -45,6 +45,7 @@
     "test:r5-war-merit": "npm run test:r3-strategic-control && npm run test:r3-siege && npm run test:r4-sect-rally",
     "test:r5-war-settlement": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run build:packages && DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run test:r5-war-settlement -w @nextday/api",
     "test:r5-war-season": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run build:packages && DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run test:r5-war-season -w @nextday/api",
+    "test:r5-chronicle": "npm run test:r5-war-season",
     "test:m1": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run build:packages && DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run test:m1 -w @nextday/api",
     "test:m2": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run build:packages && DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run test:m2 -w @nextday/api",
     "test:m3": "DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run build:packages && DATABASE_URL=postgresql://nextday:nextday@localhost:5432/nextday_game npm run test:m3 -w @nextday/api",

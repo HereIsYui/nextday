@@ -80,6 +80,7 @@ import type {
   WorldBossResponse,
   WorldMapResponse,
   WorldMapView,
+  WorldMapViewportRequest,
   WorldMarchListResponse,
   WorldProvinceListResponse,
 } from "@nextday/shared";
@@ -90,6 +91,7 @@ import {
   type PointerEvent,
   type ReactNode,
   type WheelEvent,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -124,6 +126,11 @@ const worldCanvasAssetSources = {
   s: "/maps/swamp.png",
 } as const;
 type WorldCanvasAssetKey = keyof typeof worldCanvasAssetSources;
+const worldCanvasBlockSize = 100;
+const worldCanvasMinimumZoom = 0.02;
+const worldCanvasMaximumZoom = 2;
+const worldCanvasDetailZoomThreshold = 0.28;
+const worldCanvasViewportChunkSize = 16;
 type ActiveTab =
   | "overview"
   | "story"
@@ -3111,21 +3118,27 @@ export default function HomePage() {
     setStrategicMapScope("province");
   }
 
-  async function loadWorldViewportTile(
-    provinceId: string,
-    x: number,
-    y: number,
-  ): Promise<MapTileState | null> {
-    const response = await client.worldMap(provinceId, "detail", {
-      height: 12,
-      width: 12,
-      x: Math.max(0, x - 6),
-      y: Math.max(0, y - 6),
-    });
-    ensureOk(response);
-    setWorldMap(response.data);
-    return response.data.tiles.find((tile) => tile.x === x && tile.y === y) ?? null;
-  }
+  const loadWorldViewport = useCallback(
+    async (provinceId: string, viewport: WorldMapViewportRequest): Promise<MapTileState[]> => {
+      const response = await client.worldMap(provinceId, "detail", viewport);
+      ensureOk(response);
+      return response.data.tiles;
+    },
+    [client],
+  );
+
+  const loadWorldViewportTile = useCallback(
+    async (provinceId: string, x: number, y: number): Promise<MapTileState | null> => {
+      const tiles = await loadWorldViewport(provinceId, {
+        height: 12,
+        width: 12,
+        x: Math.max(0, x - 6),
+        y: Math.max(0, y - 6),
+      });
+      return tiles.find((tile) => tile.x === x && tile.y === y) ?? null;
+    },
+    [loadWorldViewport],
+  );
 
   function handleFeatureChange(feature: ActiveFeature, options: { focus?: boolean } = {}) {
     const shouldFocus = options.focus ?? true;
@@ -3522,6 +3535,7 @@ export default function HomePage() {
           onForge={handleCraftForge}
           onHarvestHerb={handleHarvestHerb}
           onLoadTile={loadWorldViewportTile}
+          onLoadViewport={loadWorldViewport}
           onPlantHerb={handlePlantHerb}
           onPurchase={handlePurchaseWorldBlock}
           onResolveClearance={handleResolveWorldClearance}
@@ -6410,6 +6424,7 @@ function WorldMapScreen({
   onForge,
   onHarvestHerb,
   onLoadTile,
+  onLoadViewport,
   onPlantHerb,
   onPurchase,
   onResolveClearance,
@@ -6452,6 +6467,10 @@ function WorldMapScreen({
   onForge: () => void | Promise<void>;
   onHarvestHerb: (plotId: string) => void | Promise<void>;
   onLoadTile: (provinceId: string, x: number, y: number) => Promise<MapTileState | null>;
+  onLoadViewport: (
+    provinceId: string,
+    viewport: WorldMapViewportRequest,
+  ) => Promise<MapTileState[]>;
   onPlantHerb: (plotId: string) => void | Promise<void>;
   onPurchase: (tile: MapTileState) => void | Promise<void>;
   onResolveClearance: (march: MarchQueueState) => void | Promise<void>;
@@ -6475,11 +6494,13 @@ function WorldMapScreen({
   const dragRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
   const didDragRef = useRef(false);
   const tileCacheRef = useRef(new Map<string, MapTileState>());
+  const loadedViewportKeysRef = useRef(new Set<string>());
+  const initialCameraKeyRef = useRef<string | null>(null);
   const mapImageCacheRef = useRef(new Map<WorldCanvasAssetKey, HTMLImageElement>());
   const [mode, setMode] = useState<"world" | "city">("world");
   const [canvasSize, setCanvasSize] = useState({ height: 720, width: 1280 });
   const [mapImagesReady, setMapImagesReady] = useState(false);
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(worldCanvasMinimumZoom);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [mapLayer, setMapLayer] = useState<WorldMapLayer>("all");
   const [selectedTile, setSelectedTile] = useState<MapTileState | null>(null);
@@ -6509,21 +6530,172 @@ function WorldMapScreen({
         Math.max(1, ...provinces.map((province) => province.layout_x + province.layout_width)) + 4,
     };
   }, [atlas]);
-  const transform = useMemo(() => {
-    const base = Math.max(
-      2,
-      Math.min(
-        (canvasSize.width - 52) / worldBounds.width,
-        (canvasSize.height - 52) / worldBounds.height,
-      ),
+  const provinceAt = useMemo(() => {
+    const coordinates = new Map<string, string>();
+    for (const province of atlas?.provinces ?? []) {
+      for (let y = 0; y < province.layout_height; y += 1) {
+        for (let x = 0; x < province.layout_width; x += 1) {
+          if ((province.terrain_rows[y]?.[x] ?? ".") !== ".") {
+            coordinates.set(
+              `${province.layout_x + x}:${province.layout_y + y}`,
+              province.province.province_id,
+            );
+          }
+        }
+      }
+    }
+    return coordinates;
+  }, [atlas]);
+  const provinceCenters = useMemo(() => {
+    const centers = new Map<string, { x: number; y: number }>();
+    for (const province of atlas?.provinces ?? []) {
+      let totalX = 0;
+      let totalY = 0;
+      let count = 0;
+      for (let y = 0; y < province.layout_height; y += 1) {
+        for (let x = 0; x < province.layout_width; x += 1) {
+          if ((province.terrain_rows[y]?.[x] ?? ".") === ".") continue;
+          totalX += province.layout_x + x;
+          totalY += province.layout_y + y;
+          count += 1;
+        }
+      }
+      if (count > 0) {
+        centers.set(province.province.province_id, { x: totalX / count, y: totalY / count });
+      }
+    }
+    return centers;
+  }, [atlas]);
+  const worldMapCenter = useMemo(() => {
+    const coordinates = Array.from(provinceAt.keys()).map((key) => key.split(":").map(Number));
+    if (!coordinates.length) {
+      return { x: worldBounds.width / 2, y: worldBounds.height / 2 };
+    }
+    const xValues = coordinates.map(([x]) => x);
+    const yValues = coordinates.map(([, y]) => y);
+    return {
+      x: (Math.min(...xValues) + Math.max(...xValues) + 1) / 2,
+      y: (Math.min(...yValues) + Math.max(...yValues) + 1) / 2,
+    };
+  }, [provinceAt, worldBounds.height, worldBounds.width]);
+  const cityAnchor = useMemo(() => {
+    if (!city) return null;
+    const match = city.tile_id.match(/^(.*)_block_(\d+)_(\d+)$/);
+    if (!match) return null;
+    const province = atlas?.provinces.find(
+      (item) => item.province.province_id === city.province_id,
     );
-    const cellSize = base * zoom;
+    if (!province) return null;
+    return {
+      x: province.layout_x + Number(match[2]),
+      y: province.layout_y + Number(match[3]),
+    };
+  }, [atlas, city]);
+  const transform = useMemo(() => {
+    const cellSize = worldCanvasBlockSize * zoom;
     return {
       cellSize,
       originX: (canvasSize.width - worldBounds.width * cellSize) / 2 + pan.x,
       originY: (canvasSize.height - worldBounds.height * cellSize) / 2 + pan.y,
     };
   }, [canvasSize, pan, worldBounds, zoom]);
+  const defaultCamera = useMemo(() => {
+    if (cityAnchor) {
+      const leftReserved = 282;
+      const rightReserved = 322;
+      const usableWidth = Math.max(320, canvasSize.width - leftReserved - rightReserved);
+      const usableHeight = Math.max(320, canvasSize.height - 72);
+      const cellSize = Math.min(usableWidth / 10, usableHeight / 10);
+      const targetZoom = Math.max(
+        worldCanvasMinimumZoom,
+        Math.min(worldCanvasMaximumZoom, cellSize / worldCanvasBlockSize),
+      );
+      return worldCanvasCameraForCoordinate({
+        canvasSize,
+        coordinate: cityAnchor,
+        focusPoint: { x: leftReserved + usableWidth / 2, y: canvasSize.height / 2 },
+        worldBounds,
+        zoom: targetZoom,
+      });
+    }
+
+    const overviewZoom = Math.max(
+      worldCanvasMinimumZoom,
+      Math.min(
+        worldCanvasMaximumZoom,
+        (canvasSize.width - 52) / (worldBounds.width * worldCanvasBlockSize),
+        (canvasSize.height - 52) / (worldBounds.height * worldCanvasBlockSize),
+      ),
+    );
+    return worldCanvasCameraForCoordinate({
+      canvasSize,
+      coordinate: worldMapCenter,
+      focusPoint: { x: canvasSize.width / 2, y: canvasSize.height / 2 },
+      worldBounds,
+      zoom: overviewZoom,
+    });
+  }, [canvasSize, cityAnchor, worldBounds, worldMapCenter]);
+  const resetMapCamera = useCallback(() => {
+    setZoom(defaultCamera.zoom);
+    setPan(defaultCamera.pan);
+  }, [defaultCamera]);
+  const cameraKey = `${city?.tile_id ?? "atlas"}:${canvasSize.width}:${canvasSize.height}:${worldBounds.width}:${worldBounds.height}`;
+
+  useEffect(() => {
+    if (!atlas || initialCameraKeyRef.current === cameraKey) return;
+    initialCameraKeyRef.current = cameraKey;
+    resetMapCamera();
+  }, [atlas, cameraKey, resetMapCamera]);
+
+  const nearbyViewports = useMemo(() => {
+    if (!atlas || mode !== "world" || transform.cellSize < worldCanvasDetailZoomThreshold * 100) {
+      return [];
+    }
+    const padding = 3;
+    const worldLeft = Math.floor(-transform.originX / transform.cellSize) - padding;
+    const worldTop = Math.floor(-transform.originY / transform.cellSize) - padding;
+    const worldRight =
+      Math.ceil((canvasSize.width - transform.originX) / transform.cellSize) + padding;
+    const worldBottom =
+      Math.ceil((canvasSize.height - transform.originY) / transform.cellSize) + padding;
+
+    return atlas.provinces.flatMap((province) => {
+      const left = Math.max(0, worldLeft - province.layout_x);
+      const top = Math.max(0, worldTop - province.layout_y);
+      const right = Math.min(province.layout_width, worldRight - province.layout_x);
+      const bottom = Math.min(province.layout_height, worldBottom - province.layout_y);
+      if (right <= left || bottom <= top) return [];
+
+      const requestLeft =
+        Math.floor(Math.max(0, left - padding) / worldCanvasViewportChunkSize) *
+        worldCanvasViewportChunkSize;
+      const requestTop =
+        Math.floor(Math.max(0, top - padding) / worldCanvasViewportChunkSize) *
+        worldCanvasViewportChunkSize;
+      const requestRight = Math.min(
+        province.layout_width,
+        Math.ceil(Math.min(province.layout_width, right + padding) / worldCanvasViewportChunkSize) *
+          worldCanvasViewportChunkSize,
+      );
+      const requestBottom = Math.min(
+        province.layout_height,
+        Math.ceil(
+          Math.min(province.layout_height, bottom + padding) / worldCanvasViewportChunkSize,
+        ) * worldCanvasViewportChunkSize,
+      );
+      return [
+        {
+          provinceId: province.province.province_id,
+          viewport: {
+            height: requestBottom - requestTop,
+            width: requestRight - requestLeft,
+            x: requestLeft,
+            y: requestTop,
+          },
+        },
+      ];
+    });
+  }, [atlas, canvasSize.height, canvasSize.width, mode, transform]);
 
   useEffect(() => {
     void mode;
@@ -6574,6 +6746,28 @@ function WorldMapScreen({
   }, []);
 
   useEffect(() => {
+    if (!nearbyViewports.length) return;
+    const timer = window.setTimeout(() => {
+      for (const request of nearbyViewports) {
+        const { provinceId, viewport } = request;
+        const key = `${provinceId}:${viewport.x}:${viewport.y}:${viewport.width}:${viewport.height}`;
+        if (loadedViewportKeysRef.current.has(key)) continue;
+        loadedViewportKeysRef.current.add(key);
+        void onLoadViewport(provinceId, viewport)
+          .then((tiles) => {
+            for (const tile of tiles) {
+              tileCacheRef.current.set(`${tile.province_id}:${tile.x}:${tile.y}`, tile);
+            }
+          })
+          .catch(() => {
+            loadedViewportKeysRef.current.delete(key);
+          });
+      }
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [nearbyViewports, onLoadViewport]);
+
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const pixelRatio = window.devicePixelRatio || 1;
@@ -6598,29 +6792,28 @@ function WorldMapScreen({
         .filter((block) => block.garrison)
         .map((block) => `${block.province_id}:${block.x}:${block.y}`),
     );
-    const provinceAt = new Map<string, string>();
-    for (const province of atlas?.provinces ?? []) {
-      for (let y = 0; y < province.layout_height; y += 1) {
-        for (let x = 0; x < province.layout_width; x += 1) {
-          if ((province.terrain_rows[y]?.[x] ?? ".") !== ".") {
-            provinceAt.set(
-              `${province.layout_x + x}:${province.layout_y + y}`,
-              province.province.province_id,
-            );
-          }
-        }
-      }
-    }
+    const renderPadding = 4;
+    const visibleLeft = Math.floor(-transform.originX / transform.cellSize) - renderPadding;
+    const visibleTop = Math.floor(-transform.originY / transform.cellSize) - renderPadding;
+    const visibleRight =
+      Math.ceil((canvasSize.width - transform.originX) / transform.cellSize) + renderPadding;
+    const visibleBottom =
+      Math.ceil((canvasSize.height - transform.originY) / transform.cellSize) + renderPadding;
 
     for (const province of atlas?.provinces ?? []) {
-      for (let y = 0; y < province.layout_height; y += 1) {
+      const startY = Math.max(0, visibleTop - province.layout_y);
+      const endY = Math.min(province.layout_height, visibleBottom - province.layout_y);
+      const startX = Math.max(0, visibleLeft - province.layout_x);
+      const endX = Math.min(province.layout_width, visibleRight - province.layout_x);
+      if (startX >= endX || startY >= endY) continue;
+      for (let y = startY; y < endY; y += 1) {
         const terrainRow = province.terrain_rows[y] ?? "";
         const controlRow = province.control_rows[y] ?? "";
         const landmarkRow = province.landmark_rows[y] ?? "";
         const cityRow = province.city_rows[y] ?? "";
         const birthRow = province.birth_rows[y] ?? "";
         const marchRow = province.march_rows[y] ?? "";
-        for (let x = 0; x < province.layout_width; x += 1) {
+        for (let x = startX; x < endX; x += 1) {
           const terrain = terrainRow[x] ?? "p";
           if (terrain === ".") {
             continue;
@@ -6771,28 +6964,33 @@ function WorldMapScreen({
           }
         }
       }
-      if (transform.cellSize >= 4) {
-        const cells = Array.from(provinceAt.entries()).filter(
-          ([, id]) => id === province.province.province_id,
-        );
-        const centerX =
-          cells.reduce((total, [key]) => total + Number(key.split(":")[0]), 0) / cells.length;
-        const centerY =
-          cells.reduce((total, [key]) => total + Number(key.split(":")[1]), 0) / cells.length;
+      const center = provinceCenters.get(province.province.province_id);
+      if (center && transform.cellSize >= 4 && transform.cellSize <= 20) {
         context.fillStyle = "rgba(33, 30, 26, 0.4)";
         context.font = `600 ${Math.max(16, Math.min(42, transform.cellSize * 4))}px Songti SC, SimSun, serif`;
         context.textAlign = "center";
         context.textBaseline = "middle";
         context.fillText(
           province.province.name,
-          transform.originX + (centerX + 0.5) * transform.cellSize,
-          transform.originY + (centerY + 0.5) * transform.cellSize,
+          transform.originX + (center.x + 0.5) * transform.cellSize,
+          transform.originY + (center.y + 0.5) * transform.cellSize,
         );
         context.textAlign = "start";
         context.textBaseline = "alphabetic";
       }
     }
-  }, [atlas, canvasSize, city, mapImagesReady, mapLayer, selectedCoordinate, territory, transform]);
+  }, [
+    atlas,
+    canvasSize,
+    city,
+    mapImagesReady,
+    mapLayer,
+    provinceAt,
+    provinceCenters,
+    selectedCoordinate,
+    territory,
+    transform,
+  ]);
 
   async function selectCanvasTile(event: MouseEvent<HTMLCanvasElement>) {
     if (!atlas || dragRef.current || didDragRef.current) {
@@ -6863,26 +7061,15 @@ function WorldMapScreen({
         tileCacheRef.current.set(`${block.province_id}:${block.x}:${block.y}`, tile);
         setSelectedTile(tile);
       }
-      const nextZoom = Math.max(2.2, zoom);
-      const baseCellSize = Math.max(
-        2,
-        Math.min(
-          (canvasSize.width - 52) / worldBounds.width,
-          (canvasSize.height - 52) / worldBounds.height,
-        ),
-      );
-      const nextCellSize = baseCellSize * nextZoom;
-      setZoom(nextZoom);
-      setPan({
-        x:
-          canvasSize.width / 2 -
-          (province.layout_x + block.x + 0.5) * nextCellSize -
-          (canvasSize.width - worldBounds.width * nextCellSize) / 2,
-        y:
-          canvasSize.height / 2 -
-          (province.layout_y + block.y + 0.5) * nextCellSize -
-          (canvasSize.height - worldBounds.height * nextCellSize) / 2,
+      const nextCamera = worldCanvasCameraForCoordinate({
+        canvasSize,
+        coordinate: { x: province.layout_x + block.x, y: province.layout_y + block.y },
+        focusPoint: { x: canvasSize.width / 2, y: canvasSize.height / 2 },
+        worldBounds,
+        zoom: Math.max(defaultCamera.zoom, zoom),
       });
+      setZoom(nextCamera.zoom);
+      setPan(nextCamera.pan);
     } finally {
       setLoadingTile(false);
     }
@@ -6899,26 +7086,23 @@ function WorldMapScreen({
     const centerY =
       occupiedCoordinates.reduce((total, coordinate) => total + coordinate.y, 0) /
       occupiedCoordinates.length;
-    const nextZoom = 1.65;
-    const baseCellSize = Math.max(
-      2,
+    const nextZoom = Math.max(
+      worldCanvasMinimumZoom,
       Math.min(
-        (canvasSize.width - 52) / worldBounds.width,
-        (canvasSize.height - 52) / worldBounds.height,
+        worldCanvasMaximumZoom,
+        (canvasSize.width - 52) / (province.layout_width * worldCanvasBlockSize),
+        (canvasSize.height - 52) / (province.layout_height * worldCanvasBlockSize),
       ),
     );
-    const nextCellSize = baseCellSize * nextZoom;
-    setZoom(nextZoom);
-    setPan({
-      x:
-        canvasSize.width / 2 -
-        (province.layout_x + centerX) * nextCellSize -
-        (canvasSize.width - worldBounds.width * nextCellSize) / 2,
-      y:
-        canvasSize.height / 2 -
-        (province.layout_y + centerY) * nextCellSize -
-        (canvasSize.height - worldBounds.height * nextCellSize) / 2,
+    const nextCamera = worldCanvasCameraForCoordinate({
+      canvasSize,
+      coordinate: { x: province.layout_x + centerX, y: province.layout_y + centerY },
+      focusPoint: { x: canvasSize.width / 2, y: canvasSize.height / 2 },
+      worldBounds,
+      zoom: nextZoom,
     });
+    setZoom(nextCamera.zoom);
+    setPan(nextCamera.pan);
     setSelectedCoordinate(null);
     setSelectedTile(null);
   }
@@ -6946,17 +7130,13 @@ function WorldMapScreen({
   function zoomAtPointer(event: WheelEvent<HTMLCanvasElement>) {
     event.preventDefault();
     const rectangle = event.currentTarget.getBoundingClientRect();
-    const nextZoom = Math.max(0.55, Math.min(5, zoom + (event.deltaY < 0 ? 0.16 : -0.16)));
+    const nextZoom = Math.max(
+      worldCanvasMinimumZoom,
+      Math.min(worldCanvasMaximumZoom, zoom * (event.deltaY < 0 ? 1.2 : 1 / 1.2)),
+    );
     const worldX = (event.clientX - rectangle.left - transform.originX) / transform.cellSize;
     const worldY = (event.clientY - rectangle.top - transform.originY) / transform.cellSize;
-    const nextCellSize =
-      Math.max(
-        2,
-        Math.min(
-          (canvasSize.width - 52) / worldBounds.width,
-          (canvasSize.height - 52) / worldBounds.height,
-        ),
-      ) * nextZoom;
+    const nextCellSize = worldCanvasBlockSize * nextZoom;
     setZoom(nextZoom);
     setPan({
       x:
@@ -7084,8 +7264,9 @@ function WorldMapScreen({
           ) : null}
           <button
             onClick={() => {
-              setPan({ x: 0, y: 0 });
-              setZoom(1);
+              resetMapCamera();
+              setSelectedCoordinate(null);
+              setSelectedTile(null);
             }}
             type="button"
           >
@@ -7386,7 +7567,7 @@ function WorldMapScreen({
                   ))}
                 </div>
               ) : (
-                <p>全图直接绘制所有区块；点击安全平原后可以建立主城。</p>
+                <p>近处区块会随视野读取详情；点击安全平原后可以建立主城。</p>
               )}
             </>
           )}
@@ -7394,6 +7575,25 @@ function WorldMapScreen({
       </section>
     </main>
   );
+}
+
+function worldCanvasCameraForCoordinate(input: {
+  canvasSize: { height: number; width: number };
+  coordinate: { x: number; y: number };
+  focusPoint: { x: number; y: number };
+  worldBounds: { height: number; width: number };
+  zoom: number;
+}): { pan: { x: number; y: number }; zoom: number } {
+  const cellSize = worldCanvasBlockSize * input.zoom;
+  const originX = (input.canvasSize.width - input.worldBounds.width * cellSize) / 2;
+  const originY = (input.canvasSize.height - input.worldBounds.height * cellSize) / 2;
+  return {
+    pan: {
+      x: input.focusPoint.x - (input.coordinate.x + 0.5) * cellSize - originX,
+      y: input.focusPoint.y - (input.coordinate.y + 0.5) * cellSize - originY,
+    },
+    zoom: input.zoom,
+  };
 }
 
 function worldCanvasTerrainAssetKey(code: string): WorldCanvasAssetKey {

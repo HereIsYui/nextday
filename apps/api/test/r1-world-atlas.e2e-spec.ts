@@ -52,6 +52,7 @@ describe("R1 九州战略总览", () => {
         terrain_rows: string[];
         control_rows: string[];
         landmark_rows: string[];
+        city_rows: string[];
         cells: Array<{
           terrain_type: string;
           control: string;
@@ -73,8 +74,11 @@ describe("R1 九州战略总览", () => {
       expect(province.terrain_rows).toHaveLength(province.layout_height);
       expect(province.control_rows).toHaveLength(province.layout_height);
       expect(province.landmark_rows).toHaveLength(province.layout_height);
+      expect(province.city_rows).toHaveLength(province.layout_height);
       expect(province.terrain_rows.every((row) => row.length === province.layout_width)).toBe(true);
+      expect(province.city_rows.every((row) => row.length === province.layout_width)).toBe(true);
       expect(province.landmark_rows.join("")).toContain("t");
+      expect(province.city_rows.join("")).toContain("g");
       expect(province.terrain_rows.some((row) => row.includes("."))).toBe(true);
       expect(province.player_count).toBeGreaterThanOrEqual(0);
       expect(province.my_city_count).toBe(0);

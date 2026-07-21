@@ -106,6 +106,24 @@ const worldMapLayers: Array<{ id: WorldMapLayer; label: string }> = [
   { id: "expansion", label: "扩张候选" },
   { id: "garrison", label: "驻防" },
 ];
+const worldCanvasAssetSources = {
+  city1: "/maps/city1.png",
+  city2: "/maps/city2.png",
+  city3: "/maps/city3.png",
+  city4: "/maps/city4.png",
+  city5: "/maps/city5.png",
+  city6: "/maps/city6.png",
+  city7: "/maps/city7.png",
+  city8: "/maps/city8.png",
+  city9: "/maps/city9.png",
+  city10: "/maps/city10.png",
+  d: "/maps/desert.png",
+  f: "/maps/forest.png",
+  m: "/maps/mountain.png",
+  p: "/maps/plain.png",
+  s: "/maps/swamp.png",
+} as const;
+type WorldCanvasAssetKey = keyof typeof worldCanvasAssetSources;
 type ActiveTab =
   | "overview"
   | "story"
@@ -6457,8 +6475,10 @@ function WorldMapScreen({
   const dragRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
   const didDragRef = useRef(false);
   const tileCacheRef = useRef(new Map<string, MapTileState>());
+  const mapImageCacheRef = useRef(new Map<WorldCanvasAssetKey, HTMLImageElement>());
   const [mode, setMode] = useState<"world" | "city">("world");
   const [canvasSize, setCanvasSize] = useState({ height: 720, width: 1280 });
+  const [mapImagesReady, setMapImagesReady] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [mapLayer, setMapLayer] = useState<WorldMapLayer>("all");
@@ -6521,6 +6541,39 @@ function WorldMapScreen({
   }, [mode]);
 
   useEffect(() => {
+    let mounted = true;
+    const assets = Object.entries(worldCanvasAssetSources) as Array<[WorldCanvasAssetKey, string]>;
+    const pending = assets.map(
+      ([key, source]) =>
+        new Promise<void>((resolve) => {
+          const image = new Image();
+          const complete = () => {
+            image.onload = null;
+            image.onerror = null;
+            if (image.naturalWidth > 0) {
+              mapImageCacheRef.current.set(key, image);
+            }
+            resolve();
+          };
+          image.onload = complete;
+          image.onerror = complete;
+          image.src = source;
+          if (image.complete) complete();
+        }),
+    );
+
+    void Promise.all(pending).then(() => {
+      if (mounted) {
+        setMapImagesReady(true);
+      }
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const pixelRatio = window.devicePixelRatio || 1;
@@ -6532,7 +6585,6 @@ function WorldMapScreen({
     context.fillStyle = "#e8dfcb";
     context.fillRect(0, 0, canvasSize.width, canvasSize.height);
     const showTileGrid = transform.cellSize >= 9;
-    const showLandmarkLabel = transform.cellSize >= 18;
     const myTerritoryCoordinates = new Set(
       (territory?.blocks ?? []).map((block) => `${block.province_id}:${block.x}:${block.y}`),
     );
@@ -6565,6 +6617,7 @@ function WorldMapScreen({
         const terrainRow = province.terrain_rows[y] ?? "";
         const controlRow = province.control_rows[y] ?? "";
         const landmarkRow = province.landmark_rows[y] ?? "";
+        const cityRow = province.city_rows[y] ?? "";
         const birthRow = province.birth_rows[y] ?? "";
         const marchRow = province.march_rows[y] ?? "";
         for (let x = 0; x < province.layout_width; x += 1) {
@@ -6574,23 +6627,33 @@ function WorldMapScreen({
           }
           const control = controlRow[x] ?? "n";
           const landmark = landmarkRow[x] ?? ".";
+          const cityCode = cityRow[x] ?? ".";
           const birthTile = !city && birthRow[x] === "b";
           const drawX = transform.originX + (province.layout_x + x) * transform.cellSize;
           const drawY = transform.originY + (province.layout_y + y) * transform.cellSize;
-          context.fillStyle = worldCanvasTerrainColor(terrain);
-          context.fillRect(
-            drawX,
-            drawY,
-            transform.cellSize + (showTileGrid ? 0 : 0.35),
-            transform.cellSize + (showTileGrid ? 0 : 0.35),
-          );
+          const terrainImage = mapImagesReady
+            ? mapImageCacheRef.current.get(worldCanvasTerrainAssetKey(terrain))
+            : null;
+          if (terrainImage) {
+            context.drawImage(
+              terrainImage,
+              drawX,
+              drawY,
+              transform.cellSize + (showTileGrid ? 0 : 0.35),
+              transform.cellSize + (showTileGrid ? 0 : 0.35),
+            );
+          } else {
+            context.fillStyle = "#e8dfcb";
+            context.fillRect(drawX, drawY, transform.cellSize, transform.cellSize);
+          }
           if (birthTile) {
-            context.fillStyle = "rgba(244, 229, 145, 0.72)";
-            context.fillRect(
-              drawX + transform.cellSize * 0.24,
-              drawY + transform.cellSize * 0.24,
-              Math.max(1, transform.cellSize * 0.52),
-              Math.max(1, transform.cellSize * 0.52),
+            context.strokeStyle = "#d2a52f";
+            context.lineWidth = Math.max(1, transform.cellSize * 0.12);
+            context.strokeRect(
+              drawX + transform.cellSize * 0.14,
+              drawY + transform.cellSize * 0.14,
+              Math.max(1, transform.cellSize * 0.72),
+              Math.max(1, transform.cellSize * 0.72),
             );
           }
           if (marchRow[x] === "m") {
@@ -6627,52 +6690,45 @@ function WorldMapScreen({
             context.stroke();
           }
           if (control === "m" || control === "o") {
-            context.fillStyle = control === "m" ? "#244f3e" : "#8f4b45";
-            const inset = Math.max(1, transform.cellSize * 0.2);
-            context.fillRect(
+            const inset = Math.max(1, transform.cellSize * 0.12);
+            context.strokeStyle = control === "m" ? "#1f6348" : "#a24d42";
+            context.lineWidth = Math.max(1, transform.cellSize * 0.11);
+            context.strokeRect(
               drawX + inset,
               drawY + inset,
               Math.max(1, transform.cellSize - inset * 2),
               Math.max(1, transform.cellSize - inset * 2),
             );
           }
-          if (landmark !== "." && transform.cellSize >= 4) {
-            context.fillStyle =
-              landmark === "t"
-                ? "#211e1a"
-                : landmark === "h"
-                  ? "#b43a2f"
-                  : landmark === "s"
-                    ? "#9a6d24"
-                    : landmark === "c"
-                      ? "#745735"
-                      : "#4d4a43";
-            context.fillRect(
-              drawX + transform.cellSize * 0.25,
-              drawY + transform.cellSize * 0.25,
-              Math.max(1, transform.cellSize * 0.5),
-              Math.max(1, transform.cellSize * 0.5),
-            );
-            if (showLandmarkLabel) {
-              context.fillStyle = "#ffffff";
-              context.font = `600 ${Math.max(10, Math.min(14, transform.cellSize * 0.58))}px Songti SC, SimSun, serif`;
-              context.textAlign = "center";
-              context.textBaseline = "middle";
-              context.fillText(
-                landmark === "t"
-                  ? "塔"
-                  : landmark === "h"
-                    ? "城"
-                    : landmark === "s"
-                      ? "邑"
-                      : landmark === "c"
-                        ? "府"
-                        : "关",
-                drawX + transform.cellSize / 2,
-                drawY + transform.cellSize / 2,
+          const cityAssetKey = worldCanvasCityAssetKey(cityCode);
+          const cityImage =
+            mapImagesReady && cityAssetKey ? mapImageCacheRef.current.get(cityAssetKey) : null;
+          if (cityImage && transform.cellSize >= 6) {
+            if (cityAssetKey === "city10" && landmark !== ".") {
+              if (isWorldCanvasLandmarkOrigin(province.landmark_rows, x, y, landmark)) {
+                const landmarkSize = worldCanvasLandmarkSize(
+                  province.landmark_rows,
+                  x,
+                  y,
+                  landmark,
+                );
+                context.drawImage(
+                  cityImage,
+                  drawX,
+                  drawY,
+                  landmarkSize.width * transform.cellSize,
+                  landmarkSize.height * transform.cellSize,
+                );
+              }
+            } else if (cityAssetKey !== "city10") {
+              const inset = transform.cellSize * 0.03;
+              context.drawImage(
+                cityImage,
+                drawX + inset,
+                drawY + inset,
+                transform.cellSize - inset * 2,
+                transform.cellSize - inset * 2,
               );
-              context.textAlign = "start";
-              context.textBaseline = "alphabetic";
             }
           }
           if (mapLayer !== "all") {
@@ -6736,7 +6792,7 @@ function WorldMapScreen({
         context.textBaseline = "alphabetic";
       }
     }
-  }, [atlas, canvasSize, city, mapLayer, selectedCoordinate, territory, transform]);
+  }, [atlas, canvasSize, city, mapImagesReady, mapLayer, selectedCoordinate, territory, transform]);
 
   async function selectCanvasTile(event: MouseEvent<HTMLCanvasElement>) {
     if (!atlas || dragRef.current || didDragRef.current) {
@@ -7056,8 +7112,8 @@ function WorldMapScreen({
           tabIndex={0}
         />
         <div className="world-canvas-legend" aria-label="地图图例">
-          <span>拖动移动</span>
-          <span>滚轮缩放至区块层</span>
+          <span>地形按实景区块绘制</span>
+          <span>城池按等级显示</span>
           <span>点击区块查看详情</span>
         </div>
         <aside className="world-province-summary" aria-label="州域概览">
@@ -7340,15 +7396,48 @@ function WorldMapScreen({
   );
 }
 
-function worldCanvasTerrainColor(code: string): string {
-  return (
-    (
-      { d: "#c7aa70", f: "#55795c", m: "#8c8171", p: "#b8be85", s: "#6d8d7b" } as Record<
-        string,
-        string
-      >
-    )[code] ?? "#b8be85"
-  );
+function worldCanvasTerrainAssetKey(code: string): WorldCanvasAssetKey {
+  const terrainAssets: Record<string, WorldCanvasAssetKey> = {
+    d: "d",
+    f: "f",
+    m: "m",
+    p: "p",
+    s: "s",
+  };
+  return terrainAssets[code] ?? "p";
+}
+
+function worldCanvasCityAssetKey(code: string): WorldCanvasAssetKey | null {
+  if (/^[1-9]$/.test(code)) {
+    return `city${code}` as WorldCanvasAssetKey;
+  }
+  return code === "g" ? "city10" : null;
+}
+
+function isWorldCanvasLandmarkOrigin(
+  rows: string[],
+  x: number,
+  y: number,
+  landmark: string,
+): boolean {
+  return rows[y]?.[x - 1] !== landmark && rows[y - 1]?.[x] !== landmark;
+}
+
+function worldCanvasLandmarkSize(
+  rows: string[],
+  x: number,
+  y: number,
+  landmark: string,
+): { height: number; width: number } {
+  let width = 1;
+  let height = 1;
+  while (rows[y]?.[x + width] === landmark) {
+    width += 1;
+  }
+  while (rows[y + height]?.[x] === landmark) {
+    height += 1;
+  }
+  return { height, width };
 }
 
 function DesktopOnlyNotice() {

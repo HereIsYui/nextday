@@ -555,6 +555,13 @@ export class WorldService {
                 ? "s"
                 : landmarkAtlasCode(tile.tileType),
           ),
+          city_rows: encodeAtlasRows(tiles, mapWidth, mapHeight, (tile) => {
+            const city = cityByTile.get(tile.tileId);
+            if (city) {
+              return cityAtlasCode(city.cityLevel);
+            }
+            return landmarkAtlasCode(tile.tileType) === "." ? "." : "g";
+          }),
           birth_rows: encodeAtlasRows(tiles, mapWidth, mapHeight, (tile) =>
             isBirthPlainTile(tile) ? "b" : ".",
           ),
@@ -3184,6 +3191,10 @@ function landmarkAtlasCode(tileType: MapTileConfig["tileType"]): string {
   if (tileType === "capital") return "c";
   if (tileType === "pass") return "p";
   return ".";
+}
+
+function cityAtlasCode(cityLevel: number): string {
+  return String(Math.max(1, Math.min(9, Math.floor(cityLevel))));
 }
 
 function resolveSourceCity(cities: PlayerCity[], sourceCityId: string): PlayerCity {

@@ -789,6 +789,8 @@ export interface WorldAtlasProvinceState {
   terrain_rows: string[];
   control_rows: string[];
   landmark_rows: string[];
+  /** 1-9 为城池等级，g 为州府、关隘、九塔等公共地标。 */
+  city_rows: string[];
   birth_rows: string[];
   march_rows: string[];
 }

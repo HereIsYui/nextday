@@ -7,8 +7,8 @@ import type {
   WorldTerrainType,
 } from "@nextday/shared";
 
-export const territoryConfigVersion = "world_territory_r1_007";
-export const maximumCityLevel = 10;
+export const territoryConfigVersion = "world_territory_r1_008";
+export const maximumCityLevel = 9;
 export const territoryCollectionCapSeconds = 12 * 60 * 60;
 export const cityBuildingTypes: CityBuildingType[] = [
   "warehouse",

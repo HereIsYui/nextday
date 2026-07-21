@@ -6948,20 +6948,6 @@ function WorldMapScreen({
               context.fillRect(drawX, drawY, transform.cellSize, transform.cellSize);
             }
           }
-          if (
-            selectedCoordinate?.provinceId === province.province.province_id &&
-            selectedCoordinate.x === x &&
-            selectedCoordinate.y === y
-          ) {
-            context.strokeStyle = "#d74f2a";
-            context.lineWidth = Math.max(2, transform.cellSize * 0.12);
-            context.strokeRect(
-              drawX + 1,
-              drawY + 1,
-              transform.cellSize - 2,
-              transform.cellSize - 2,
-            );
-          }
         }
       }
       const center = provinceCenters.get(province.province.province_id);
@@ -6977,6 +6963,29 @@ function WorldMapScreen({
         );
         context.textAlign = "start";
         context.textBaseline = "alphabetic";
+      }
+    }
+
+    // 选中框在所有区块、地标和州名绘制完成后覆盖，避免被后续贴图遮挡。
+    if (selectedCoordinate) {
+      const province = atlas?.provinces.find(
+        (item) => item.province.province_id === selectedCoordinate.provinceId,
+      );
+      if (province) {
+        const drawX =
+          transform.originX + (province.layout_x + selectedCoordinate.x) * transform.cellSize;
+        const drawY =
+          transform.originY + (province.layout_y + selectedCoordinate.y) * transform.cellSize;
+        const inset = Math.max(1, transform.cellSize * 0.06);
+        const size = Math.max(1, transform.cellSize - inset * 2);
+        context.save();
+        context.strokeStyle = "rgba(255, 247, 225, 0.94)";
+        context.lineWidth = Math.max(3, transform.cellSize * 0.2);
+        context.strokeRect(drawX + inset, drawY + inset, size, size);
+        context.strokeStyle = "#d74f2a";
+        context.lineWidth = Math.max(1.5, transform.cellSize * 0.1);
+        context.strokeRect(drawX + inset, drawY + inset, size, size);
+        context.restore();
       }
     }
   }, [

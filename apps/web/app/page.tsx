@@ -26,7 +26,6 @@ import type {
   DailyRouteResponse,
   EntitlementOverviewResponse,
   EquipmentListResponse,
-  EraChronicleResponse,
   EraCollectionItemState,
   EraMuseumResponse,
   ExperiencePayload,
@@ -78,11 +77,14 @@ import type {
   TransferStatusResponse,
   WorldAtlasResponse,
   WorldBossResponse,
+  WorldChronicleListResponse,
+  WorldCycleRewardState,
   WorldMapResponse,
   WorldMapView,
   WorldMapViewportRequest,
   WorldMarchListResponse,
   WorldProvinceListResponse,
+  WorldRankingSummaryResponse,
 } from "@nextday/shared";
 import { Button, StatusBadge } from "@nextday/ui";
 import {
@@ -481,7 +483,6 @@ export default function HomePage() {
   const [transferStatus, setTransferStatus] = useState<TransferStatusResponse | null>(null);
   const [storyScrolls, setStoryScrolls] = useState<StoryScrollListResponse | null>(null);
   const [storyDetail, setStoryDetail] = useState<StoryScrollDetailResponse | null>(null);
-  const [eraChronicle, setEraChronicle] = useState<EraChronicleResponse | null>(null);
   const [collection, setCollection] = useState<CollectionSummaryResponse | null>(null);
   const [eraMuseum, setEraMuseum] = useState<EraMuseumResponse | null>(null);
   const [playerName, setPlayerName] = useState("云游修士");
@@ -497,6 +498,8 @@ export default function HomePage() {
   );
   const [worldMap, setWorldMap] = useState<WorldMapResponse | null>(null);
   const [worldAtlas, setWorldAtlas] = useState<WorldAtlasResponse | null>(null);
+  const [worldRankings, setWorldRankings] = useState<WorldRankingSummaryResponse | null>(null);
+  const [worldChronicle, setWorldChronicle] = useState<WorldChronicleListResponse | null>(null);
   const [cityOverview, setCityOverview] = useState<CityOverviewResponse | null>(null);
   const [cityManagement, setCityManagement] = useState<CityManagementResponse | null>(null);
   const [cityArmy, setCityArmy] = useState<CityArmyState | null>(null);
@@ -1126,6 +1129,8 @@ export default function HomePage() {
         }
         setWorldProvinceList(state.provinces);
         setWorldAtlas(state.atlas);
+        setWorldRankings(state.rankings);
+        setWorldChronicle(state.chronicle);
         setCityOverview(state.city);
         setCityManagement(state.management);
         setCityArmy(state.army);
@@ -1374,7 +1379,6 @@ export default function HomePage() {
         }
         setStoryScrolls(state.storyScrolls);
         setStoryDetail(state.storyDetail);
-        setEraChronicle(state.eraChronicle);
         if (state.storyDetail && state.storyDetail.scroll.scroll_id !== selectedStoryScrollId) {
           setSelectedStoryScrollId(state.storyDetail.scroll.scroll_id);
         }
@@ -1666,6 +1670,8 @@ export default function HomePage() {
     );
     setWorldProvinceList(state.provinces);
     setWorldAtlas(state.atlas);
+    setWorldRankings(state.rankings);
+    setWorldChronicle(state.chronicle);
     setCityOverview(state.city);
     setCityManagement(state.management);
     setCityArmy(state.army);
@@ -1901,6 +1907,23 @@ export default function HomePage() {
         `已购买${response.data.tile.tile_name}`,
         response.data.tile.province_id,
       );
+    });
+  }
+
+  async function handleClaimWorldCycleReward(reward: WorldCycleRewardState) {
+    await runAction("领取榜单奖励", async () => {
+      const response = await client.claimWorldCycleReward(
+        { reward_id: reward.reward_id },
+        createIdempotencyKey(`web_world_cycle_reward_${reward.reward_id}`),
+      );
+      ensureOk(response);
+      rememberExperience(undefined, {
+        summary: `${reward.cycle_type === "daily" ? "日榜" : reward.cycle_type === "weekly" ? "周榜" : "历史"}奖励已入主城仓储。`,
+        tags: ["战功榜", "普通资源"],
+        title: "榜单奖励领取成功",
+        tone: "success",
+      });
+      await refreshWorldState("榜单奖励已收入主城仓储");
     });
   }
 
@@ -3524,11 +3547,14 @@ export default function HomePage() {
           garden={herbGarden}
           management={cityManagement}
           marches={worldMarches}
+          rankings={worldRankings}
+          chronicle={worldChronicle}
           onAlchemy={handleCraftAlchemy}
           onActionFeedbackCapture={handleActionFeedbackCapture}
           onBreakthrough={handleBreakthrough}
           onClaimCultivation={handleClaimCultivation}
           onCollectTerritory={handleCollectTerritory}
+          onClaimCycleReward={handleClaimWorldCycleReward}
           onEstablishSubCity={handleEstablishSubCity}
           onDefend={handleDefendWorld}
           onExpandCity={handleExpandMainCity}
@@ -4555,7 +4581,7 @@ export default function HomePage() {
                             {worldMap ? (
                               <>
                                 <div className="mini-stats">
-                                  <span>赛季 {worldMap.province.war_state.season_name}</span>
+                                  <span>常世州势</span>
                                   <span>州势 {worldMap.province.war_state.score}</span>
                                   <span>
                                     灵脉{" "}
@@ -4842,7 +4868,7 @@ export default function HomePage() {
                   <section className="panel" aria-label="章节卷轴">
                     <div className="section-title">
                       <h2>章节卷轴</h2>
-                      <span>战报、选择与纪元史册回放</span>
+                      <span>战报、选择与九州大事记回放</span>
                     </div>
                     <div className="main-grid">
                       <div className="task-list">
@@ -4925,12 +4951,12 @@ export default function HomePage() {
                     </div>
 
                     <div className="rank-summary-grid">
-                      {eraChronicle?.entries.map((entry) => (
-                        <article className="rank-mini-card" key={entry.chronicle_id}>
+                      {worldChronicle?.entries.map((entry) => (
+                        <article className="rank-mini-card" key={entry.event_id}>
                           <div className="province-head">
                             <strong>{entry.title}</strong>
                             <StatusBadge tone="neutral">
-                              {chronicleTypeLabel(entry.chronicle_type)}
+                              {worldChronicleEventLabel(entry.event_type)}
                             </StatusBadge>
                           </div>
                           <p>{entry.summary}</p>
@@ -4940,7 +4966,7 @@ export default function HomePage() {
                             ))}
                           </div>
                         </article>
-                      )) ?? <p className="empty">纪元史册尚未生成。</p>}
+                      )) ?? <p className="empty">九州大事记尚未记录新的大事。</p>}
                     </div>
                   </section>
                 ) : null}
@@ -6409,6 +6435,7 @@ function WorldMapScreen({
   city,
   cityActionFeedback,
   cityExpansion,
+  chronicle,
   cultivation,
   garden,
   management,
@@ -6417,6 +6444,7 @@ function WorldMapScreen({
   onActionFeedbackCapture,
   onBreakthrough,
   onClaimCultivation,
+  onClaimCycleReward,
   onCollectTerritory,
   onDefend,
   onEstablishSubCity,
@@ -6436,6 +6464,7 @@ function WorldMapScreen({
   onSaveArmyPreset,
   onTrainSoldiers,
   onUpgradeBuilding,
+  rankings,
   territoryCollect,
   territory,
 }: {
@@ -6448,6 +6477,7 @@ function WorldMapScreen({
   city: CityOverviewResponse["main_city"];
   cityActionFeedback?: ActionFeedbackState;
   cityExpansion: TerritoryOverviewResponse["expansion"] | null;
+  chronicle: WorldChronicleListResponse | null;
   cultivation: CultivationStatus | null;
   garden: HerbGardenState | null;
   management: CityManagementResponse | null;
@@ -6456,6 +6486,7 @@ function WorldMapScreen({
   onActionFeedbackCapture: (event: MouseEvent<HTMLElement>) => void;
   onBreakthrough: () => void | Promise<void>;
   onClaimCultivation: () => void | Promise<void>;
+  onClaimCycleReward: (reward: WorldCycleRewardState) => void | Promise<void>;
   onCollectTerritory: () => void | Promise<void>;
   onDefend: (
     tile: MapTileState,
@@ -6487,6 +6518,7 @@ function WorldMapScreen({
   }) => void | Promise<void>;
   onTrainSoldiers: (soldierCount: number) => void | Promise<void>;
   onUpgradeBuilding: (building: CityBuildingState) => void | Promise<void>;
+  rankings: WorldRankingSummaryResponse | null;
   territoryCollect: CityManagementResponse["territory_collect"] | null;
   territory: TerritoryOverviewResponse | null;
 }) {
@@ -7308,6 +7340,45 @@ function WorldMapScreen({
         </div>
         <aside className="world-province-summary" aria-label="州域概览">
           <strong>九州概览</strong>
+          <section className="world-ranking-panel" aria-label="战功榜与大事记摘要">
+            <div>
+              <strong>常世战功</strong>
+              <span>
+                今日 {rankings?.daily_merit ?? 0} · 本周 {rankings?.weekly_merit ?? 0} · 累计{" "}
+                {rankings?.total_merit ?? 0}
+              </span>
+            </div>
+            {rankings?.pending_rewards.length ? (
+              <div className="world-cycle-rewards">
+                {rankings.pending_rewards.slice(0, 2).map((reward) => (
+                  <button
+                    key={reward.reward_id}
+                    onClick={() => onClaimCycleReward(reward)}
+                    type="button"
+                  >
+                    领取
+                    {reward.cycle_type === "daily"
+                      ? "日榜"
+                      : reward.cycle_type === "weekly"
+                        ? "周榜"
+                        : "历史"}
+                    第 {reward.rank_no} 名奖励
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <small>暂无待领取的日榜或周榜资源。</small>
+            )}
+            <div className="world-chronicle-preview">
+              <strong>九州大事记</strong>
+              {chronicle?.entries.slice(0, 3).map((entry) => (
+                <span key={entry.event_id} title={entry.summary}>
+                  {entry.province_name ? `${entry.province_name} · ` : ""}
+                  {entry.title}
+                </span>
+              )) ?? <small>版图上的重大行动会记录在这里。</small>}
+            </div>
+          </section>
           {(atlas?.provinces ?? []).map((province) => (
             <button
               key={province.province.province_id}
@@ -10959,6 +11030,8 @@ async function loadWorldState(
     armyResponse,
     marchResponse,
     territoryResponse,
+    rankingsResponse,
+    chronicleResponse,
   ] = await Promise.all([
     client.worldProvinces(),
     client.worldAtlas(),
@@ -10967,6 +11040,8 @@ async function loadWorldState(
     client.cityArmy(),
     client.worldMarches(),
     client.worldTerritory(),
+    client.worldRankings(),
+    client.worldChronicle({ limit: 5 }),
   ]);
   ensureOk(provinceResponse);
   ensureOk(atlasResponse);
@@ -10975,6 +11050,8 @@ async function loadWorldState(
   ensureOk(armyResponse);
   ensureOk(marchResponse);
   ensureOk(territoryResponse);
+  ensureOk(rankingsResponse);
+  ensureOk(chronicleResponse);
 
   const selectedProvinceId =
     provinceId ||
@@ -10999,6 +11076,8 @@ async function loadWorldState(
     territory: territoryResponse.data,
     map: mapResponse.data,
     marches: marchResponse.data,
+    rankings: rankingsResponse.data,
+    chronicle: chronicleResponse.data,
     provinces: provinceResponse.data,
     selectedProvinceId: mapResponse.data.province.province_id,
   };
@@ -11112,13 +11191,9 @@ async function loadActivities(client: GameClient) {
 }
 
 async function loadStory(client: GameClient, preferredScrollId?: string) {
-  const [scrollsResponse, chronicleResponse] = await Promise.all([
-    client.storyScrolls(),
-    client.eraChronicle(),
-  ]);
+  const scrollsResponse = await client.storyScrolls();
 
   ensureOk(scrollsResponse);
-  ensureOk(chronicleResponse);
 
   const scrollId =
     scrollsResponse.data.scrolls.find((scroll) => scroll.scroll_id === preferredScrollId)
@@ -11132,7 +11207,6 @@ async function loadStory(client: GameClient, preferredScrollId?: string) {
   return {
     storyScrolls: scrollsResponse.data,
     storyDetail: detailResponse?.data ?? null,
-    eraChronicle: chronicleResponse.data,
   };
 }
 
@@ -11584,6 +11658,18 @@ function chronicleTypeLabel(type: string): string {
     tower: "九塔",
   };
   return labels[type] ?? "史册";
+}
+
+function worldChronicleEventLabel(type: string): string {
+  const labels: Record<string, string> = {
+    city_milestone: "城池里程碑",
+    legacy_chronicle: "历史记录",
+    legacy_settlement: "历史快照",
+    sect_rally: "宗门集结",
+    strategic_control: "战略控制",
+    sub_city_captured: "分城易主",
+  };
+  return labels[type] ?? "九州大事";
 }
 
 function collectionTypeLabel(type: string): string {

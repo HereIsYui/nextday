@@ -123,9 +123,9 @@ export const storyScrollConfigs: StoryScrollConfig[] = [
       {
         fragmentId: "ch03_ending",
         title: "留名",
-        body: "纪元史册只保存可公开的荣誉与节点，敏感审计仍留在后台，不进入玩家卷轴。",
+        body: "九州大事记只保存可公开的荣誉与节点，敏感审计仍留在后台，不进入玩家卷轴。",
         fragmentType: "ending",
-        unlockHint: "生成纪元史册后解锁",
+        unlockHint: "解锁九州大事记后开放",
       },
     ],
   },

@@ -1,17 +1,22 @@
 import { randomUUID } from "node:crypto";
-import { BadRequestException, Inject, Injectable } from "@nestjs/common";
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  type OnModuleDestroy,
+  type OnModuleInit,
+} from "@nestjs/common";
 import type {
   ArmyFormation,
   BattleRoundLog,
   BattleSummary,
   CityDefenseSnapshot,
   CityResourceSnapshot,
-  ClaimWarSeasonRewardRequest,
-  ClaimWarSeasonRewardResponse,
+  ClaimWorldCycleRewardRequest,
+  ClaimWorldCycleRewardResponse,
   CreateSectRallyRequest,
   DefendWorldRequest,
   DefendWorldResponse,
-  EraChronicleStrategicSummary,
   JoinSectRallyRequest,
   MapTileState,
   MarchQueueState,
@@ -33,7 +38,6 @@ import type {
   SectRallyListResponse,
   SectRallyMutationResponse,
   SectRallyState,
-  SettleWarSeasonResponse,
   SiegeRecordState,
   SiegeWorldRequest,
   SiegeWorldResponse,
@@ -49,15 +53,17 @@ import type {
   WarMeritEntryState,
   WarMeritPeriodSnapshot,
   WarMeritRankingEntry,
-  WarMeritSettlementResponse,
   WarMeritSummaryResponse,
-  WarSeasonRewardBundle,
-  WarSeasonRewardState,
-  WarSeasonStateResponse,
   WorldAtlasCellState,
   WorldAtlasResponse,
   WorldBlockClearanceState,
+  WorldChronicleEventState,
+  WorldChronicleListResponse,
+  WorldChronicleScope,
   WorldCommanderyState,
+  WorldCycleRewardBundle,
+  WorldCycleRewardState,
+  WorldCycleSettlementState,
   WorldMapResponse,
   WorldMapView,
   WorldMapViewportRequest,
@@ -67,6 +73,8 @@ import type {
   WorldOwnerState,
   WorldProvinceListResponse,
   WorldProvinceState,
+  WorldRankingCycleType,
+  WorldRankingSummaryResponse,
   WorldScoutIntelState,
 } from "@nextday/shared";
 import type {
@@ -80,10 +88,11 @@ import type {
   StrategicControlRecord,
   TerritoryGarrison,
   WarMeritRecord,
-  WarSeasonReward,
-  WarSeasonSettlement,
   WorldBlockClearance,
   WorldBlockOwnership,
+  WorldChronicleEvent,
+  WorldCycleReward,
+  WorldCycleSettlement,
 } from "@prisma/client";
 import { armyCommanderConfigs, getArmyPower } from "../city/army.constants";
 import { PrismaService } from "../database/prisma.service";
@@ -109,9 +118,9 @@ import {
   isBirthPlainTile,
   recommendedBirthProvinceId,
   worldConfigVersion,
+  worldCycleConfigVersion,
+  worldCycleRewardBands,
   worldProvinceConfigs,
-  worldSeasonId,
-  worldSeasonName,
   type worldTileConfigs,
 } from "./world.constants";
 
@@ -128,10 +137,11 @@ const validMarchTypes = new Set<MarchType>([
 const strategicControlDurationMs = 24 * 60 * 60 * 1000;
 
 function periodKey(type: "day" | "week", date: Date): string {
+  const local = new Date(date.getTime() + 8 * 60 * 60 * 1000);
   const value = [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0"),
+    local.getUTCFullYear(),
+    String(local.getUTCMonth() + 1).padStart(2, "0"),
+    String(local.getUTCDate()).padStart(2, "0"),
   ].join("-");
   return `${type}_${value}`;
 }
@@ -140,15 +150,36 @@ type WorldBlockOwnershipWithPlayer = WorldBlockOwnership & { player: Player };
 type TerritoryGarrisonWithPlayer = TerritoryGarrison & { player: Player };
 
 @Injectable()
-export class WorldService {
+export class WorldService implements OnModuleInit, OnModuleDestroy {
+  private worldCycleTimer: ReturnType<typeof setInterval> | null = null;
+
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+
+  onModuleInit() {
+    if (process.env.NODE_ENV === "test") return;
+    void this.settleMissedWorldCycles();
+    this.worldCycleTimer = setInterval(
+      () => {
+        void this.settleMissedWorldCycles();
+      },
+      5 * 60 * 1000,
+    );
+  }
+
+  onModuleDestroy() {
+    if (this.worldCycleTimer) clearInterval(this.worldCycleTimer);
+    this.worldCycleTimer = null;
+  }
+
+  /** 供自动化验收验证补结幂等性，不暴露为 HTTP 接口。 */
+  async settleWorldCyclesForTest(now: Date): Promise<void> {
+    await this.settleMissedWorldCycles(now);
+  }
 
   getProvinces(): WorldProvinceListResponse {
     return {
       provinces: worldProvinceConfigs.map((province) => this.toProvinceState(province)),
       recommended_province_id: recommendedBirthProvinceId,
-      season_id: worldSeasonId,
-      season_name: worldSeasonName,
       config_version: worldConfigVersion,
     };
   }
@@ -404,6 +435,25 @@ export class WorldService {
         }),
         skipDuplicates: true,
       });
+      if (won) {
+        await this.recordWorldChronicleEvent(tx, {
+          eventType: "sect_rally",
+          provinceId: rally.provinceId,
+          sectId: sect.sectId,
+          playerId: player.playerId,
+          sourceType: "sect_rally",
+          sourceId: rally.rallyId,
+          title: `${sect.name}集结告捷`,
+          summary: `${sect.name}在${this.requireProvince(rally.provinceId).name}完成集结，${
+            rally.rallyType === "attack" ? "夺得战略主动" : "稳住战略防线"
+          }。`,
+          highlights: [
+            `参与修士 ${participants.length} 人`,
+            `集结战力 ${totalPower}`,
+            `目标 ${requireMapTile(rally.targetTileId).tileName}`,
+          ],
+        });
+      }
       const responseData: SectRallyMutationResponse = {
         record_id: `rally_resolve_${randomUUID()}`,
         won,
@@ -585,290 +635,391 @@ export class WorldService {
     };
   }
 
-  async getWarMerit(accountId: string, limit = 20): Promise<WarMeritSummaryResponse> {
+  async getWorldRankings(accountId: string, limit = 20): Promise<WorldRankingSummaryResponse> {
     const player = await this.requirePlayer(accountId);
     const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(50, Math.floor(limit))) : 20;
     const now = new Date();
-    const dayStart = new Date(now);
-    dayStart.setHours(0, 0, 0, 0);
-    const weekStart = new Date(dayStart);
-    const day = weekStart.getDay() || 7;
-    weekStart.setDate(weekStart.getDate() - day + 1);
-    const records = await this.prisma.warMeritRecord.findMany({
-      where: { playerId: player.playerId, eraId: defaultEraId },
-      orderBy: { createdAt: "desc" },
-    });
-    const city = await this.prisma.playerCity.findFirst({
-      where: { playerId: player.playerId, cityType: "main" },
-    });
+    const dayStart = startOfShanghaiDay(now);
+    const weekStart = startOfShanghaiWeek(now);
+    const [
+      records,
+      city,
+      daily,
+      weeklyPlayer,
+      weeklySect,
+      weeklyProvince,
+      pendingRewards,
+      dailySettlement,
+      weeklySettlement,
+    ] = await Promise.all([
+      this.prisma.warMeritRecord.findMany({
+        where: { playerId: player.playerId, eraId: defaultEraId },
+        orderBy: { createdAt: "desc" },
+      }),
+      this.prisma.playerCity.findFirst({ where: { playerId: player.playerId, cityType: "main" } }),
+      this.buildWarMeritSnapshot(
+        "daily_player",
+        periodKey("day", dayStart),
+        dayStart,
+        "player",
+        now,
+      ),
+      this.buildWarMeritSnapshot(
+        "weekly_player",
+        periodKey("week", weekStart),
+        weekStart,
+        "player",
+        now,
+      ),
+      this.buildWarMeritSnapshot(
+        "weekly_sect",
+        periodKey("week", weekStart),
+        weekStart,
+        "sect",
+        now,
+      ),
+      this.buildWarMeritSnapshot(
+        "weekly_province",
+        periodKey("week", weekStart),
+        weekStart,
+        "province",
+        now,
+      ),
+      this.prisma.worldCycleReward.findMany({
+        where: { playerId: player.playerId, status: "claimable" },
+        include: { settlement: true },
+        orderBy: { createdAt: "asc" },
+        take: 20,
+      }),
+      this.prisma.worldCycleSettlement.findFirst({
+        where: { eraId: defaultEraId, cycleType: "daily", status: "settled" },
+        orderBy: { endedAt: "desc" },
+      }),
+      this.prisma.worldCycleSettlement.findFirst({
+        where: { eraId: defaultEraId, cycleType: "weekly", status: "settled" },
+        orderBy: { endedAt: "desc" },
+      }),
+    ]);
     const total = (items: typeof records) => items.reduce((sum, item) => sum + item.merit, 0);
     return {
-      season_id: worldSeasonId,
-      season_name: worldSeasonName,
       total_merit: total(records),
       daily_merit: total(records.filter((item) => item.createdAt >= dayStart)),
       weekly_merit: total(records.filter((item) => item.createdAt >= weekStart)),
       province_merit: total(records.filter((item) => item.provinceId === city?.provinceId)),
       sect_merit: total(records.filter((item) => Boolean(item.sectId))),
       entries: records.slice(0, safeLimit).map((item) => this.toWarMeritEntry(item)),
-      calculated_at: now.toISOString(),
-    };
-  }
-
-  async getWarSettlement(accountId: string): Promise<WarMeritSettlementResponse> {
-    await this.requirePlayer(accountId);
-    const now = new Date();
-    const dayStart = new Date(now);
-    dayStart.setHours(0, 0, 0, 0);
-    const weekStart = new Date(dayStart);
-    const day = weekStart.getDay() || 7;
-    weekStart.setDate(weekStart.getDate() - day + 1);
-    const [daily, weeklyPlayer, weeklySect, weeklyProvince] = await Promise.all([
-      this.buildWarMeritSnapshot("daily_player", periodKey("day", dayStart), dayStart, "player"),
-      this.buildWarMeritSnapshot(
-        "weekly_player",
-        periodKey("week", weekStart),
-        weekStart,
-        "player",
-      ),
-      this.buildWarMeritSnapshot("weekly_sect", periodKey("week", weekStart), weekStart, "sect"),
-      this.buildWarMeritSnapshot(
-        "weekly_province",
-        periodKey("week", weekStart),
-        weekStart,
-        "province",
-      ),
-    ]);
-    return {
-      season_id: worldSeasonId,
-      season_name: worldSeasonName,
       daily,
       weekly: [weeklyPlayer, weeklySect, weeklyProvince],
+      last_daily_settlement: dailySettlement
+        ? this.toWorldCycleSettlementState(dailySettlement)
+        : null,
+      last_weekly_settlement: weeklySettlement
+        ? this.toWorldCycleSettlementState(weeklySettlement)
+        : null,
+      pending_rewards: pendingRewards.map((reward) => this.toWorldCycleRewardState(reward)),
       calculated_at: now.toISOString(),
     };
   }
 
-  async getWarSeasonState(accountId: string): Promise<WarSeasonStateResponse> {
-    const player = await this.requirePlayer(accountId);
-    const settlement = await this.prisma.warSeasonSettlement.findUnique({
-      where: { seasonId: worldSeasonId },
-    });
-    const reward = settlement
-      ? await this.prisma.warSeasonReward.findUnique({
-          where: {
-            settlementId_playerId: {
-              settlementId: settlement.settlementId,
-              playerId: player.playerId,
-            },
-          },
-        })
-      : null;
-    return this.toWarSeasonState(settlement, reward);
-  }
-
-  async settleWarSeason(input: {
+  async claimWorldCycleReward(input: {
     accountId: string;
+    body: ClaimWorldCycleRewardRequest;
     idempotencyKey: string;
-    settlementToken?: string;
-  }): Promise<SettleWarSeasonResponse> {
-    const expectedToken = process.env.WORLD_SETTLEMENT_TOKEN;
-    if (!expectedToken || input.settlementToken !== expectedToken) {
-      throw new BadRequestException("赛季结算密钥无效");
-    }
-    const operator = await this.requirePlayer(input.accountId);
-    const existing = await this.prisma.warSeasonSettlement.findUnique({
-      where: { seasonId: worldSeasonId },
-    });
-    if (existing) {
-      const state = await this.getWarSeasonState(input.accountId);
-      return {
-        ...state,
-        generated_reward_count: await this.prisma.warSeasonReward.count({
-          where: { settlementId: existing.settlementId },
-        }),
-      };
-    }
-    const finalSnapshot = await this.buildWarMeritSnapshot(
-      "season_player",
-      `season_${worldSeasonId}`,
-      new Date(0),
-      "player",
-    );
-    const strategicSnapshot = await this.buildWarSeasonStrategicSnapshot(finalSnapshot.entries);
-    const settlementId = `war_settlement_${randomUUID()}`;
-    await this.prisma.$transaction(async (tx) => {
-      await tx.warSeasonSettlement.create({
-        data: {
-          settlementId,
-          eraId: defaultEraId,
-          seasonId: worldSeasonId,
-          status: "settled",
-          finalSnapshot: {
-            rankings: finalSnapshot,
-            strategic: strategicSnapshot,
-          } as unknown as Prisma.InputJsonValue,
-          configVersion: worldConfigVersion,
-          idempotencyKey: input.idempotencyKey,
-          settledBy: operator.playerId,
-        },
-      });
-      if (finalSnapshot.entries.length > 0) {
-        await tx.warSeasonReward.createMany({
-          data: finalSnapshot.entries.map((entry) => ({
-            rewardId: `war_reward_${randomUUID()}`,
-            settlementId,
-            playerId: entry.target_id,
-            rankNo: entry.rank_no,
-            merit: entry.score,
-            rewardSnapshot: warSeasonRewardForRank(
-              entry.rank_no,
-            ) as unknown as Prisma.InputJsonValue,
-          })),
-        });
-      }
-    });
-    const state = await this.getWarSeasonState(input.accountId);
-    return { ...state, generated_reward_count: finalSnapshot.entries.length };
-  }
-
-  async claimWarSeasonReward(input: {
-    accountId: string;
-    body: ClaimWarSeasonRewardRequest;
-    idempotencyKey: string;
-  }): Promise<ClaimWarSeasonRewardResponse> {
+  }): Promise<ClaimWorldCycleRewardResponse> {
     const rewardId = input.body.reward_id?.trim();
-    if (!rewardId) throw new BadRequestException("请选择赛季奖励");
+    if (!rewardId) throw new BadRequestException("请选择待领取的榜单奖励");
     return this.prisma.$transaction(async (tx) => {
       const player = await tx.player.findUnique({ where: { accountId: input.accountId } });
-      const reward = await tx.warSeasonReward.findUnique({ where: { rewardId } });
-      if (!player || !reward || reward.playerId !== player.playerId) {
-        throw new BadRequestException("赛季奖励不存在");
-      }
-      const settlement = await tx.warSeasonSettlement.findUniqueOrThrow({
-        where: { settlementId: reward.settlementId },
+      const reward = await tx.worldCycleReward.findUnique({
+        where: { rewardId },
+        include: { settlement: true },
       });
+      if (!player || !reward || reward.playerId !== player.playerId) {
+        throw new BadRequestException("榜单奖励不存在");
+      }
       const city = await tx.playerCity.findFirst({
         where: { playerId: player.playerId, cityType: "main" },
       });
-      if (!city) throw new BadRequestException("建立主城后才能领取赛季奖励");
+      if (!city) throw new BadRequestException("建立主城后才能领取榜单奖励");
       if (reward.status === "claimed") {
         if (reward.claimKey !== input.idempotencyKey) {
-          throw new BadRequestException("赛季奖励已经领取");
+          throw new BadRequestException("该榜单奖励已经领取");
         }
         const cityState = this.toCityState(city);
         if (!cityState) throw new BadRequestException("主城状态读取失败");
-        return {
-          reward: this.toWarSeasonRewardState(reward, settlement.seasonId),
-          city: cityState,
-        };
+        return { reward: this.toWorldCycleRewardState(reward), city: cityState };
       }
-      const bundle = normalizeWarSeasonReward(reward.rewardSnapshot);
-      const resources = normalizeCityResources(city.resourceSnapshot);
       const updatedCity = await tx.playerCity.update({
         where: { cityId: city.cityId },
         data: {
-          resourceSnapshot: addWarSeasonReward(
-            resources,
-            bundle,
+          resourceSnapshot: addWorldCycleReward(
+            normalizeCityResources(city.resourceSnapshot),
+            normalizeWorldCycleReward(reward.rewardSnapshot),
           ) as unknown as Prisma.InputJsonValue,
         },
       });
-      const claimed = await tx.warSeasonReward.update({
+      const claimed = await tx.worldCycleReward.update({
         where: { rewardId },
         data: { status: "claimed", claimKey: input.idempotencyKey, claimedAt: new Date() },
+        include: { settlement: true },
       });
       const cityState = this.toCityState(updatedCity);
       if (!cityState) throw new BadRequestException("主城状态读取失败");
-      return {
-        reward: this.toWarSeasonRewardState(claimed, settlement.seasonId),
-        city: cityState,
-      };
+      return { reward: this.toWorldCycleRewardState(claimed), city: cityState };
     });
   }
 
-  private toWarSeasonState(
-    settlement: WarSeasonSettlement | null,
-    reward: WarSeasonReward | null,
-  ): WarSeasonStateResponse {
-    const stored = settlement?.finalSnapshot as unknown as
-      | { rankings?: WarMeritPeriodSnapshot }
-      | WarMeritPeriodSnapshot
-      | undefined;
-    const snapshot =
-      stored && "rankings" in stored ? stored.rankings : (stored as WarMeritPeriodSnapshot);
-    return {
-      season_id: worldSeasonId,
-      season_name: worldSeasonName,
-      status: settlement ? "settled" : "active",
-      settled_at: settlement?.settledAt.toISOString() ?? null,
-      final_rankings: snapshot?.entries ?? [],
-      my_reward: reward ? this.toWarSeasonRewardState(reward, worldSeasonId) : null,
+  async getWorldChronicle(input: {
+    accountId: string;
+    before?: string;
+    limit?: number;
+    scope?: WorldChronicleScope;
+  }): Promise<WorldChronicleListResponse> {
+    const player = await this.requirePlayer(input.accountId);
+    const limit = Number.isFinite(input.limit) ? Math.max(1, Math.min(50, input.limit ?? 20)) : 20;
+    const before = input.before ? new Date(input.before) : null;
+    const city = await this.prisma.playerCity.findFirst({
+      where: { playerId: player.playerId, cityType: "main" },
+      select: { provinceId: true },
+    });
+    const scope = input.scope ?? "all";
+    const where: Prisma.WorldChronicleEventWhereInput = {
+      eraId: defaultEraId,
+      ...(before && !Number.isNaN(before.getTime()) ? { occurredAt: { lt: before } } : {}),
+      visibilityRule: {
+        in: scope === "sect" ? ["public", "server", "sect"] : ["public", "server"],
+      },
+      ...(scope === "province" && city ? { provinceId: city.provinceId } : {}),
+      ...(scope === "sect" ? { sectId: player.sectId ?? "__no_sect__" } : {}),
+      ...(scope === "personal" ? { playerId: player.playerId } : {}),
     };
-  }
-
-  private async buildWarSeasonStrategicSnapshot(
-    rankings: WarMeritRankingEntry[],
-  ): Promise<EraChronicleStrategicSummary> {
-    const now = new Date();
-    const [controls, ownerships, cities, capturedSieges] = await Promise.all([
-      this.prisma.strategicControlRecord.findMany({
-        where: { eraId: defaultEraId, status: "active", expiresAt: { gt: now } },
+    const entries = await this.prisma.worldChronicleEvent.findMany({
+      where,
+      orderBy: [{ occurredAt: "desc" }, { eventId: "desc" }],
+      take: limit + 1,
+    });
+    const page = entries.slice(0, limit);
+    const [sects, players] = await Promise.all([
+      this.prisma.sect.findMany({
+        where: { sectId: { in: page.flatMap((item) => (item.sectId ? [item.sectId] : [])) } },
       }),
-      this.prisma.worldBlockOwnership.findMany({
-        where: { eraId: defaultEraId, status: "owned" },
-      }),
-      this.prisma.playerCity.findMany({ where: { eraId: defaultEraId } }),
-      this.prisma.siegeRecord.findMany({
-        where: { eraId: defaultEraId, status: "captured" },
-        select: { siegeId: true },
+      this.prisma.player.findMany({
+        where: { playerId: { in: page.flatMap((item) => (item.playerId ? [item.playerId] : [])) } },
       }),
     ]);
-    const provinceRanks = this.buildProvinceWarEntries(controls);
-    const sectControlCounts = new Map<string, { count: number; name: string }>();
-    for (const control of controls.filter((item) => item.controllerType === "sect")) {
-      const current = sectControlCounts.get(control.controllerId);
-      sectControlCounts.set(control.controllerId, {
-        count: (current?.count ?? 0) + 1,
-        name: control.controllerName,
-      });
-    }
-    const dominantSect = Array.from(sectControlCounts.values()).sort(
-      (left, right) => right.count - left.count || left.name.localeCompare(right.name),
-    )[0];
+    const sectNames = new Map(sects.map((sect) => [sect.sectId, sect.name]));
+    const playerNames = new Map(players.map((item) => [item.playerId, item.name]));
     return {
-      champion_province: provinceRanks[0]?.province_name ?? null,
-      dominant_sect: dominantSect?.name ?? null,
-      territory_distribution: worldProvinceConfigs.map((province) => ({
-        province_id: province.provinceId,
-        province_name: province.name,
-        owned_blocks: ownerships.filter((item) => item.provinceId === province.provinceId).length,
-        city_count: cities.filter((item) => item.provinceId === province.provinceId).length,
-      })),
-      tower_controls: controls
-        .filter((item) => item.controlType === "tower")
-        .map((item) => ({
-          province_id: item.provinceId,
-          controller_name: item.controllerName,
-        })),
-      captured_sub_city_count: capturedSieges.length,
-      top_players: rankings.slice(0, 10).map((entry) => ({
-        rank_no: entry.rank_no,
-        player_name: entry.display_name,
-        merit: entry.score,
-      })),
+      entries: page.map((entry) => this.toWorldChronicleEventState(entry, sectNames, playerNames)),
+      next_cursor: entries.length > limit ? (page.at(-1)?.occurredAt.toISOString() ?? null) : null,
     };
   }
 
-  private toWarSeasonRewardState(reward: WarSeasonReward, seasonId: string): WarSeasonRewardState {
+  private async settleMissedWorldCycles(now = new Date()): Promise<void> {
+    const dayStart = startOfShanghaiDay(now);
+    const dailyEnd =
+      now.getTime() >= dayStart.getTime() + 5 * 60 * 1000 ? dayStart : addDays(dayStart, -1);
+    const weekStart = startOfShanghaiWeek(now);
+    const weeklyEnd =
+      now.getTime() >= weekStart.getTime() + 10 * 60 * 1000 ? weekStart : addDays(weekStart, -7);
+    await Promise.all([
+      this.settleWorldCycle("daily", addDays(dailyEnd, -1), dailyEnd),
+      this.settleWorldCycle("weekly", addDays(weeklyEnd, -7), weeklyEnd),
+    ]);
+  }
+
+  private async settleWorldCycle(
+    cycleType: "daily" | "weekly",
+    startedAt: Date,
+    endedAt: Date,
+  ): Promise<void> {
+    const periodKeyValue = periodKey(cycleType === "daily" ? "day" : "week", startedAt);
+    const existing = await this.prisma.worldCycleSettlement.findUnique({
+      where: {
+        eraId_cycleType_periodKey: {
+          eraId: defaultEraId,
+          cycleType,
+          periodKey: periodKeyValue,
+        },
+      },
+    });
+    if (existing) return;
+    const rankings =
+      cycleType === "daily"
+        ? [
+            await this.buildWarMeritSnapshot(
+              "daily_player",
+              periodKeyValue,
+              startedAt,
+              "player",
+              endedAt,
+            ),
+          ]
+        : await Promise.all([
+            this.buildWarMeritSnapshot(
+              "weekly_player",
+              periodKeyValue,
+              startedAt,
+              "player",
+              endedAt,
+            ),
+            this.buildWarMeritSnapshot("weekly_sect", periodKeyValue, startedAt, "sect", endedAt),
+            this.buildWarMeritSnapshot(
+              "weekly_province",
+              periodKeyValue,
+              startedAt,
+              "province",
+              endedAt,
+            ),
+          ]);
+    const playerRanking = rankings.find((item) => item.rank_type.endsWith("player"));
+    const rewards = (playerRanking?.entries ?? [])
+      .map((entry) => ({ entry, reward: worldCycleRewardForRank(cycleType, entry.rank_no) }))
+      .filter((item): item is { entry: WarMeritRankingEntry; reward: WorldCycleRewardBundle } =>
+        Boolean(item.reward),
+      );
+    const settlementId = `cycle_${cycleType}_${periodKeyValue}`;
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.worldCycleSettlement.create({
+          data: {
+            settlementId,
+            eraId: defaultEraId,
+            cycleType,
+            periodKey: periodKeyValue,
+            status: "settled",
+            rankingSnapshot: rankings as unknown as Prisma.InputJsonValue,
+            configVersion: worldCycleConfigVersion,
+            startedAt,
+            endedAt,
+          },
+        });
+        if (rewards.length) {
+          await tx.worldCycleReward.createMany({
+            data: rewards.map(({ entry, reward }) => ({
+              rewardId: `cycle_reward_${randomUUID()}`,
+              settlementId,
+              playerId: entry.target_id,
+              rankNo: entry.rank_no,
+              merit: entry.score,
+              rewardSnapshot: reward as unknown as Prisma.InputJsonValue,
+            })),
+          });
+        }
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) return;
+      throw error;
+    }
+  }
+
+  private toWorldCycleRewardState(
+    reward: WorldCycleReward & { settlement: WorldCycleSettlement },
+  ): WorldCycleRewardState {
     return {
       reward_id: reward.rewardId,
-      season_id: seasonId,
+      cycle_type: reward.settlement.cycleType as WorldRankingCycleType,
+      period_key: reward.settlement.periodKey,
       rank_no: reward.rankNo,
       merit: reward.merit,
-      rewards: normalizeWarSeasonReward(reward.rewardSnapshot),
-      status: reward.status as WarSeasonRewardState["status"],
+      rewards: normalizeWorldCycleReward(reward.rewardSnapshot),
+      status: reward.status as WorldCycleRewardState["status"],
       claimed_at: reward.claimedAt?.toISOString() ?? null,
     };
+  }
+
+  private toWorldCycleSettlementState(settlement: WorldCycleSettlement): WorldCycleSettlementState {
+    const rankings = Array.isArray(settlement.rankingSnapshot)
+      ? (settlement.rankingSnapshot as unknown as WarMeritPeriodSnapshot[])
+      : [];
+    return {
+      settlement_id: settlement.settlementId,
+      cycle_type: settlement.cycleType as WorldRankingCycleType,
+      period_key: settlement.periodKey,
+      started_at: settlement.startedAt.toISOString(),
+      ended_at: settlement.endedAt.toISOString(),
+      settled_at: settlement.settledAt.toISOString(),
+      rankings,
+    };
+  }
+
+  private toWorldChronicleEventState(
+    event: WorldChronicleEvent,
+    sectNames: Map<string, string>,
+    playerNames: Map<string, string>,
+  ): WorldChronicleEventState {
+    const province = event.provinceId
+      ? worldProvinceConfigs.find((item) => item.provinceId === event.provinceId)
+      : null;
+    return {
+      event_id: event.eventId,
+      event_type: event.eventType,
+      province_id: event.provinceId,
+      province_name: province?.name ?? null,
+      sect_id: event.sectId,
+      sect_name: event.sectId ? (sectNames.get(event.sectId) ?? null) : null,
+      player_id: event.playerId,
+      title: event.title,
+      summary: event.summary,
+      highlights: stringArrayFromJson(event.highlights),
+      source_type: event.sourceType,
+      source_id: event.sourceId,
+      visibility: event.visibilityRule as WorldChronicleEventState["visibility"],
+      occurred_at: event.occurredAt.toISOString(),
+    };
+  }
+
+  private async recordWorldChronicleEvent(
+    tx: Prisma.TransactionClient,
+    input: {
+      eventType: WorldChronicleEventState["event_type"];
+      provinceId?: string | null;
+      sectId?: string | null;
+      playerId?: string | null;
+      sourceType: string;
+      sourceId: string;
+      title: string;
+      summary: string;
+      highlights: string[];
+    },
+  ): Promise<void> {
+    await tx.worldChronicleEvent.upsert({
+      where: {
+        eraId_sourceType_sourceId: {
+          eraId: defaultEraId,
+          sourceType: input.sourceType,
+          sourceId: input.sourceId,
+        },
+      },
+      create: {
+        eventId: `world_chronicle_${randomUUID()}`,
+        eraId: defaultEraId,
+        provinceId: input.provinceId ?? null,
+        sectId: input.sectId ?? null,
+        playerId: input.playerId ?? null,
+        eventType: input.eventType,
+        sourceType: input.sourceType,
+        sourceId: input.sourceId,
+        title: input.title,
+        summary: input.summary,
+        highlights: input.highlights as unknown as Prisma.InputJsonValue,
+        snapshot: {
+          province_id: input.provinceId ?? null,
+          sect_id: input.sectId ?? null,
+          player_id: input.playerId ?? null,
+        } as Prisma.InputJsonValue,
+        visibilityRule: "public",
+      },
+      update: {
+        provinceId: input.provinceId ?? null,
+        sectId: input.sectId ?? null,
+        playerId: input.playerId ?? null,
+        eventType: input.eventType,
+        title: input.title,
+        summary: input.summary,
+        highlights: input.highlights as unknown as Prisma.InputJsonValue,
+      },
+    });
   }
 
   private async buildWarMeritSnapshot(
@@ -876,9 +1027,13 @@ export class WorldService {
     periodKey: string,
     since: Date,
     targetType: WarMeritRankingEntry["target_type"],
+    until?: Date,
   ): Promise<WarMeritPeriodSnapshot> {
     const records = await this.prisma.warMeritRecord.findMany({
-      where: { eraId: defaultEraId, createdAt: { gte: since } },
+      where: {
+        eraId: defaultEraId,
+        createdAt: { gte: since, ...(until ? { lt: until } : {}) },
+      },
       orderBy: { createdAt: "asc" },
     });
     const scores = new Map<string, number>();
@@ -1678,6 +1833,23 @@ export class WorldService {
           } as Prisma.InputJsonValue,
         },
       });
+      if (won) {
+        await this.recordWorldChronicleEvent(tx, {
+          eventType: "strategic_control",
+          provinceId: targetTile.provinceId,
+          sectId: player.sectId,
+          playerId: player.playerId,
+          sourceType: "strategic_control",
+          sourceId: control.controlId,
+          title: `${player.name}掌控${targetTile.tileName}`,
+          summary: `${player.name}夺得${strategicControlLabel(controlType)}控制权，所在州域的战略格局因此改变。`,
+          highlights: [
+            `进攻战力 ${team.team_power}`,
+            `守备战力 ${defenderPower}`,
+            `控制时限 ${Math.round(strategicControlDurationMs / 3_600_000)} 小时`,
+          ],
+        });
+      }
       const updatedMarch = await tx.marchQueue.update({
         where: { marchId },
         data: { status: "resolved", resolvedAt: now },
@@ -1946,6 +2118,23 @@ export class WorldService {
         ],
         skipDuplicates: true,
       });
+      if (captured) {
+        await this.recordWorldChronicleEvent(tx, {
+          eventType: "sub_city_captured",
+          provinceId: targetCity.provinceId,
+          sectId: player.sectId,
+          playerId: player.playerId,
+          sourceType: "siege",
+          sourceId: siege.siegeId,
+          title: `${player.name}接管${targetCity.cityName}`,
+          summary: `${targetCity.cityName}的分城产权易主，新的领地控制权已写入九州版图。`,
+          highlights: [
+            `进攻战力 ${attackerPower}`,
+            `守备战力 ${defenderPower}`,
+            `城防损耗 ${wallDamage}`,
+          ],
+        });
+      }
       const targetTile = requireMapTile(targetCity.tileId);
       const provinceTileIds = getWorldTilesByProvince(targetCity.provinceId).map(
         (tile) => tile.tileId,
@@ -2544,7 +2733,6 @@ export class WorldService {
       birth_available: province.birthAvailable,
       recommended_birth: province.recommendedBirth,
       congestion: province.congestion,
-      season_state: province.seasonState,
       map_focus: province.mapFocus,
       block_count: province.blockCount,
       tower_block_count: province.towerBlockCount,
@@ -2619,8 +2807,6 @@ export class WorldService {
     return {
       province_id: province.provinceId,
       province_name: province.name,
-      season_id: worldSeasonId,
-      season_name: worldSeasonName,
       rank: province.warRank,
       score: province.warScore,
       city_occupancy_rate: province.cityOccupancyRate,
@@ -2628,8 +2814,8 @@ export class WorldService {
       pass_control_count: province.passControlCount,
       tower_state: province.towerState,
       dominant_sect_name: province.dominantSectName,
-      daily_settlement_at: "22:00",
-      weekly_settlement_at: "周日 22:30",
+      daily_settlement_at: "每日 00:05",
+      weekly_settlement_at: "每周一 00:10",
     };
   }
 
@@ -3725,26 +3911,28 @@ function normalizeCityResources(value: Prisma.JsonValue): CityResourceSnapshot {
   };
 }
 
-function warSeasonRewardForRank(rankNo: number): WarSeasonRewardBundle {
-  if (rankNo === 1) return { spirit_stone: 1000, grain: 800, ore: 400, wood: 400 };
-  if (rankNo <= 3) return { spirit_stone: 700, grain: 500, ore: 250, wood: 250 };
-  if (rankNo <= 10) return { spirit_stone: 400, grain: 300, ore: 150, wood: 150 };
-  return { spirit_stone: 200, grain: 150, ore: 80, wood: 80 };
+function worldCycleRewardForRank(
+  cycleType: "daily" | "weekly",
+  rankNo: number,
+): WorldCycleRewardBundle | null {
+  const band = worldCycleRewardBands[cycleType].find((item) => rankNo <= item.maxRank);
+  return band ? { ...band.reward } : null;
 }
 
-function normalizeWarSeasonReward(value: Prisma.JsonValue): WarSeasonRewardBundle {
+function normalizeWorldCycleReward(value: Prisma.JsonValue): WorldCycleRewardBundle {
   const record = isRecord(value) ? value : {};
   return {
     spirit_stone: Number(record.spirit_stone ?? 0),
     grain: Number(record.grain ?? 0),
     ore: Number(record.ore ?? 0),
     wood: Number(record.wood ?? 0),
+    herb: Number(record.herb ?? 0),
   };
 }
 
-function addWarSeasonReward(
+function addWorldCycleReward(
   resources: CityResourceSnapshot,
-  reward: WarSeasonRewardBundle,
+  reward: WorldCycleRewardBundle,
 ): CityResourceSnapshot {
   return {
     ...resources,
@@ -3752,7 +3940,41 @@ function addWarSeasonReward(
     grain: String(Number(resources.grain) + reward.grain),
     ore: String(Number(resources.ore) + reward.ore),
     wood: String(Number(resources.wood) + reward.wood),
+    herb: String(Number(resources.herb) + reward.herb),
   };
+}
+
+function startOfShanghaiDay(date: Date): Date {
+  const offsetMs = 8 * 60 * 60 * 1000;
+  const local = new Date(date.getTime() + offsetMs);
+  return new Date(
+    Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()) - offsetMs,
+  );
+}
+
+function startOfShanghaiWeek(date: Date): Date {
+  const dayStart = startOfShanghaiDay(date);
+  const localWeekday = new Date(dayStart.getTime() + 8 * 60 * 60 * 1000).getUTCDay();
+  return addDays(dayStart, -((localWeekday + 6) % 7));
+}
+
+function addDays(date: Date, days: number): Date {
+  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: string }).code === "P2002",
+  );
+}
+
+function stringArrayFromJson(value: Prisma.JsonValue): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
 }
 
 function buildScoutIntel(input: {

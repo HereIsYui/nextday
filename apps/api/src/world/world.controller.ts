@@ -1,17 +1,7 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Headers,
-  Inject,
-  Post,
-  Query,
-  Req,
-  UseGuards,
-} from "@nestjs/common";
+import { Body, Controller, Get, Inject, Post, Query, Req, UseGuards } from "@nestjs/common";
 import type {
-  ClaimWarSeasonRewardRequest,
-  ClaimWarSeasonRewardResponse,
+  ClaimWorldCycleRewardRequest,
+  ClaimWorldCycleRewardResponse,
   CreateSectRallyRequest,
   DefendWorldRequest,
   DefendWorldResponse,
@@ -28,21 +18,20 @@ import type {
   ScoutWorldResponse,
   SectRallyListResponse,
   SectRallyMutationResponse,
-  SettleWarSeasonResponse,
   SiegeWorldRequest,
   SiegeWorldResponse,
   StartWorldMarchRequest,
   StartWorldMarchResponse,
   TerritoryOverviewResponse,
-  WarMeritSettlementResponse,
-  WarMeritSummaryResponse,
-  WarSeasonStateResponse,
   WorldAtlasResponse,
+  WorldChronicleListResponse,
+  WorldChronicleScope,
   WorldMapResponse,
   WorldMapView,
   WorldMapViewportRequest,
   WorldMarchListResponse,
   WorldProvinceListResponse,
+  WorldRankingSummaryResponse,
 } from "@nextday/shared";
 import type { Request } from "express";
 import { BearerAuthGuard } from "../auth/bearer-auth.guard";
@@ -63,42 +52,35 @@ export class WorldController {
     return this.worldService.getProvinceWarLeaderboard();
   }
 
-  @Get("war-merit")
-  warMerit(
+  @Get("rankings")
+  rankings(
     @Query("limit") limit: string | undefined,
     @Req() request: Request,
-  ): Promise<WarMeritSummaryResponse> {
-    return this.worldService.getWarMerit(requireAccountId(request), Number(limit ?? 20));
+  ): Promise<WorldRankingSummaryResponse> {
+    return this.worldService.getWorldRankings(requireAccountId(request), Number(limit ?? 20));
   }
 
-  @Get("war-settlement")
-  warSettlement(@Req() request: Request): Promise<WarMeritSettlementResponse> {
-    return this.worldService.getWarSettlement(requireAccountId(request));
-  }
-
-  @Get("season")
-  season(@Req() request: Request): Promise<WarSeasonStateResponse> {
-    return this.worldService.getWarSeasonState(requireAccountId(request));
-  }
-
-  @Post("season/settle")
-  settleSeason(
-    @Headers("x-settlement-token") settlementToken: string | undefined,
+  @Get("chronicle")
+  chronicle(
+    @Query("limit") limit: string | undefined,
+    @Query("before") before: string | undefined,
+    @Query("scope") scope: WorldChronicleScope | undefined,
     @Req() request: Request,
-  ): Promise<SettleWarSeasonResponse> {
-    return this.worldService.settleWarSeason({
+  ): Promise<WorldChronicleListResponse> {
+    return this.worldService.getWorldChronicle({
       accountId: requireAccountId(request),
-      idempotencyKey: requireIdempotencyKey(request),
-      settlementToken,
+      before,
+      limit: limit ? Number(limit) : undefined,
+      scope,
     });
   }
 
-  @Post("season/rewards/claim")
-  claimSeasonReward(
-    @Body() body: ClaimWarSeasonRewardRequest,
+  @Post("rankings/rewards/claim")
+  claimCycleReward(
+    @Body() body: ClaimWorldCycleRewardRequest,
     @Req() request: Request,
-  ): Promise<ClaimWarSeasonRewardResponse> {
-    return this.worldService.claimWarSeasonReward({
+  ): Promise<ClaimWorldCycleRewardResponse> {
+    return this.worldService.claimWorldCycleReward({
       accountId: requireAccountId(request),
       body,
       idempotencyKey: requireIdempotencyKey(request),

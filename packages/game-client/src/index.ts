@@ -49,8 +49,8 @@ import type {
   ClaimMonthlyDailyResponse,
   ClaimRankTitleRequest,
   ClaimRankTitleResponse,
-  ClaimWarSeasonRewardRequest,
-  ClaimWarSeasonRewardResponse,
+  ClaimWorldCycleRewardRequest,
+  ClaimWorldCycleRewardResponse,
   CollectTerritoryResponse,
   CollectionSummaryResponse,
   ConfigEnvelope,
@@ -227,18 +227,18 @@ import type {
   TransferStatusResponse,
   UpgradeCityBuildingRequest,
   UpgradeCityBuildingResponse,
-  WarMeritSettlementResponse,
-  WarMeritSummaryResponse,
-  WarSeasonStateResponse,
   WorldAtlasResponse,
   WorldBossChallengeRequest,
   WorldBossChallengeResponse,
   WorldBossResponse,
+  WorldChronicleListResponse,
+  WorldChronicleScope,
   WorldMapResponse,
   WorldMapView,
   WorldMapViewportRequest,
   WorldMarchListResponse,
   WorldProvinceListResponse,
+  WorldRankingSummaryResponse,
 } from "@nextday/shared";
 
 export interface GameClientOptions {
@@ -478,27 +478,28 @@ export class GameClient {
     return this.get<ProvinceWarLeaderboardResponse>("/api/world/province-war");
   }
 
-  warMerit(limit = 20): Promise<ApiResponse<WarMeritSummaryResponse>> {
-    return this.get<WarMeritSummaryResponse>(`/api/world/war-merit?limit=${limit}`);
+  worldRankings(limit = 20): Promise<ApiResponse<WorldRankingSummaryResponse>> {
+    return this.get<WorldRankingSummaryResponse>(`/api/world/rankings?limit=${limit}`);
   }
 
-  warSettlement(): Promise<ApiResponse<WarMeritSettlementResponse>> {
-    return this.get<WarMeritSettlementResponse>("/api/world/war-settlement");
-  }
-
-  warSeason(): Promise<ApiResponse<WarSeasonStateResponse>> {
-    return this.get<WarSeasonStateResponse>("/api/world/season");
-  }
-
-  claimWarSeasonReward(
-    body: ClaimWarSeasonRewardRequest,
+  claimWorldCycleReward(
+    body: ClaimWorldCycleRewardRequest,
     idempotencyKey: string,
-  ): Promise<ApiResponse<ClaimWarSeasonRewardResponse>> {
-    return this.post<ClaimWarSeasonRewardResponse, ClaimWarSeasonRewardRequest>(
-      "/api/world/season/rewards/claim",
+  ): Promise<ApiResponse<ClaimWorldCycleRewardResponse>> {
+    return this.post<ClaimWorldCycleRewardResponse, ClaimWorldCycleRewardRequest>(
+      "/api/world/rankings/rewards/claim",
       body,
       { idempotencyKey },
     );
+  }
+
+  worldChronicle(input: { before?: string; limit?: number; scope?: WorldChronicleScope } = {}) {
+    const query = new URLSearchParams();
+    if (input.before) query.set("before", input.before);
+    if (input.limit) query.set("limit", String(input.limit));
+    if (input.scope) query.set("scope", input.scope);
+    const suffix = query.size ? `?${query.toString()}` : "";
+    return this.get<WorldChronicleListResponse>(`/api/world/chronicle${suffix}`);
   }
 
   worldAtlas(): Promise<ApiResponse<WorldAtlasResponse>> {

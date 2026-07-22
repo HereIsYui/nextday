@@ -571,7 +571,7 @@ P3 接口规则：
 
 | 分组 | 接口 | 方法 | 说明 |
 | --- | --- | --- | --- |
-| 九州地图 | `/api/world/provinces` | GET | 返回九州、郡域、州势力、出生拥挤度和赛季状态 |
+| 九州地图 | `/api/world/provinces` | GET | 返回九州、郡域、州势力、出生拥挤度和常世州势摘要 |
 | 九州地图 | `/api/world/map` | GET | 返回可见地块、坐标、地块类型、归属、驻防和可操作状态 |
 | 城池 | `/api/city/overview` | GET | 返回主城、分城、建筑、资源、队列、保护状态和驻防摘要 |
 | 城池 | `/api/city/settle` | POST | 选择出生州和郡域建立主城，需 `Idempotency-Key` |
@@ -587,12 +587,10 @@ P3 接口规则：
 | 驻防 | `/api/world/defend` | POST | 设置自有区块的目标驻军数；增加只扣差额，降低自动返还主城，`0` 表示全部撤回，需 `Idempotency-Key` |
 | 侦查 | `/api/world/scout` | POST | 侦查目标地块、城池或驻防摘要，需 `Idempotency-Key` |
 | 战报 | `/api/world/reports` | GET | 查询行军、清野、购地、攻城、驻防和掠夺战报 |
-| 州战 | `/api/world/province-war` | GET | 返回州势力积分、版图、日结、周结和赛季状态 |
-| 战功 | `/api/world/war-merit?limit=20` | GET | 返回当前玩家总战功、日战功、周战功、州内战功、宗门战功和最近流水 |
-| 战功结算 | `/api/world/war-settlement` | GET | 生成并返回个人日榜、个人周榜、宗门周榜和州域周榜快照，不发放奖励 |
-| 赛季状态 | `/api/world/season` | GET | 返回赛季是否结算、最终个人榜和当前玩家奖励状态 |
-| 赛季锁定 | `/api/world/season/settle` | POST | 使用 `X-Settlement-Token` 与 `Idempotency-Key` 锁定最终榜并生成普通资源奖励 |
-| 赛季领奖 | `/api/world/season/rewards/claim` | POST | 请求 `{ reward_id }`，使用 `Idempotency-Key` 将本人的普通资源奖励加入主城 |
+| 州战 | `/api/world/province-war` | GET | 返回州势力积分、版图与常世战略控制状态 |
+| 常世榜单 | `/api/world/rankings?limit=20` | GET | 返回个人日榜、周榜、长期荣誉榜及当前玩家待领取的周期资源奖励 |
+| 领奖 | `/api/world/rankings/rewards/claim` | POST | 请求 `{ reward_id }`，使用 `Idempotency-Key` 将本人的日榜或周榜普通资源奖励加入主城 |
+| 九州大事记 | `/api/world/chronicle?limit&before&scope` | GET | 查询公开的城池易主、战略控制、宗门集结和主城里程碑；不返回高频购地与清野流水 |
 
 新增共享类型占位：
 
@@ -601,7 +599,7 @@ P3 接口规则：
 | `PlayerCity` | 玩家主城、分城、坐标、状态、保护期和资源摘要 |
 | `MapTile` | 地图地块、州、郡、坐标、类型、归属和可见状态 |
 | `TerritoryNode` | 地块内生产设施或战略节点，如资源点、灵脉、关隘、州府、九塔 |
-| `WorldBlockOwnership` | 出生分配或购买获得的区块产权，同纪元区块唯一 |
+| `WorldBlockOwnership` | 出生分配或购买获得的区块产权，同一永久世界区块唯一 |
 | `TerritoryOverviewResponse` | 自有区块坐标、地形产出、逐块驻军、领地总驻军以及相邻扩张候选 |
 | `WorldAtlasProvinceState` | 州域城主、无主区、地形资源、我的城池、驻军、行军和可建城平原摘要 |
 | `CityManagementResponse` | 城内建筑队列、资源容量、待收产出、可入库数量、溢出风险和升级建议 |
@@ -609,10 +607,15 @@ P3 接口规则：
 | `MarchQueue` | 行军队列、出发地、目标地、队伍、到达时间和状态 |
 | `SiegeRecord` | 攻城、围困、城防破损、附庸和恢复记录 |
 | `ProvinceWarState` | 州势力积分、城池占有率、灵脉控制度、州战排名 |
+| `WorldRankingSummaryResponse` | 日榜、周榜、长期荣誉榜和当前玩家周期奖励摘要 |
+| `WorldCycleSettlementState` | 日榜或周榜的结算周期、生成时间和榜单快照 |
+| `WorldCycleRewardState` | 当前玩家可领取或已领取的普通城池资源奖励 |
+| `WorldChronicleEventState` | 九州大事记事件、州域、相关城池或宗门和地图定位信息 |
 
 接口边界：
 
-- 客户端只提交行军、购买、建造、驻防等意图；产权、战斗、资源产出和州战积分必须由服务端结算。
+- 客户端只提交行军、购买、建造、驻防等意图；产权、战斗、资源产出、州战积分和日周榜奖励必须由服务端结算。
+- `era_id` 只作为永久世界的内部命名空间，客户端不展示、不切换，也不触发世界重置。
 - 玩家区块产权只能来自出生分配或普通灵石购买，行军、清野、攻城和州战不得强制转移产权。
 - 驻防请求中的 `soldier_count` 表示目标驻军数而非本次增量；重复幂等请求不得重复扣兵或返兵。
 - 行军和驻防可携带 `preset_id`；服务端校验预设归属、类型、将领解锁和道兵数量，并将将领、阵型与战力写入不可变快照。

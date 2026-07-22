@@ -5308,6 +5308,50 @@ details.event-boundary {
   font-size: 15px;
 }
 
+.text-game-shell.world-screen .world-ranking-panel {
+  border-bottom: 1px solid rgba(94, 85, 71, 0.36);
+  display: grid;
+  gap: 6px;
+  padding: 0 0 9px;
+}
+
+.text-game-shell.world-screen .world-ranking-panel > div {
+  display: grid;
+  gap: 2px;
+}
+
+.text-game-shell.world-screen .world-ranking-panel strong {
+  color: #211e1a;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.text-game-shell.world-screen .world-cycle-rewards button {
+  background: #eee5d4;
+  border: 1px solid #8f8068;
+  color: #211e1a;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.25;
+  padding: 5px 6px;
+  text-align: left;
+}
+
+.text-game-shell.world-screen .world-cycle-rewards button:hover {
+  background: #211e1a;
+  color: #ffffff;
+}
+
+.text-game-shell.world-screen .world-chronicle-preview {
+  border-top: 1px solid rgba(94, 85, 71, 0.18);
+  padding-top: 6px;
+}
+
+.text-game-shell.world-screen .world-chronicle-preview span {
+  overflow-wrap: anywhere;
+}
+
 .text-game-shell.world-screen .world-province-summary > button {
   background: transparent;
   color: #211e1a;

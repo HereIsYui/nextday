@@ -597,8 +597,6 @@ export interface WorldOwnerState {
 export interface ProvinceWarState {
   province_id: string;
   province_name: string;
-  season_id: string;
-  season_name: string;
   rank: number;
   score: number;
   city_occupancy_rate: number;
@@ -632,7 +630,6 @@ export interface WorldProvinceState {
   birth_available: boolean;
   recommended_birth: boolean;
   congestion: "low" | "medium" | "high";
-  season_state: "preseason" | "active" | "settling";
   map_focus: string;
   block_count: number;
   tower_block_count: number;
@@ -720,8 +717,6 @@ export interface WorldMiniMapSummary {
 export interface WorldProvinceListResponse {
   provinces: WorldProvinceState[];
   recommended_province_id: string;
-  season_id: string;
-  season_name: string;
   config_version: string;
 }
 
@@ -827,8 +822,6 @@ export interface WarMeritEntryState {
 }
 
 export interface WarMeritSummaryResponse {
-  season_id: string;
-  season_name: string;
   total_merit: number;
   daily_merit: number;
   weekly_merit: number;
@@ -847,57 +840,97 @@ export interface WarMeritRankingEntry {
 }
 
 export interface WarMeritPeriodSnapshot {
-  rank_type: "daily_player" | "weekly_player" | "weekly_sect" | "weekly_province" | "season_player";
+  rank_type: "daily_player" | "weekly_player" | "weekly_sect" | "weekly_province";
   period_key: string;
   generated_at: string;
   entries: WarMeritRankingEntry[];
 }
 
-export interface WarMeritSettlementResponse {
-  season_id: string;
-  season_name: string;
-  daily: WarMeritPeriodSnapshot;
-  weekly: WarMeritPeriodSnapshot[];
-  calculated_at: string;
-}
+export type WorldRankingCycleType = "daily" | "weekly" | "legacy";
 
-export interface WarSeasonRewardBundle {
+export interface WorldCycleRewardBundle {
   spirit_stone: number;
   grain: number;
   ore: number;
   wood: number;
+  herb: number;
 }
 
-export interface WarSeasonRewardState {
+export interface WorldCycleRewardState {
   reward_id: string;
-  season_id: string;
+  cycle_type: WorldRankingCycleType;
+  period_key: string;
   rank_no: number;
   merit: number;
-  rewards: WarSeasonRewardBundle;
+  rewards: WorldCycleRewardBundle;
   status: "claimable" | "claimed";
   claimed_at: string | null;
 }
 
-export interface WarSeasonStateResponse {
-  season_id: string;
-  season_name: string;
-  status: "active" | "settled";
-  settled_at: string | null;
-  final_rankings: WarMeritRankingEntry[];
-  my_reward: WarSeasonRewardState | null;
+export interface WorldCycleSettlementState {
+  settlement_id: string;
+  cycle_type: WorldRankingCycleType;
+  period_key: string;
+  started_at: string;
+  ended_at: string;
+  settled_at: string;
+  rankings: WarMeritPeriodSnapshot[];
 }
 
-export interface SettleWarSeasonResponse extends WarSeasonStateResponse {
-  generated_reward_count: number;
+export interface WorldRankingSummaryResponse {
+  total_merit: number;
+  daily_merit: number;
+  weekly_merit: number;
+  province_merit: number;
+  sect_merit: number;
+  entries: WarMeritEntryState[];
+  daily: WarMeritPeriodSnapshot;
+  weekly: WarMeritPeriodSnapshot[];
+  last_daily_settlement: WorldCycleSettlementState | null;
+  last_weekly_settlement: WorldCycleSettlementState | null;
+  pending_rewards: WorldCycleRewardState[];
+  calculated_at: string;
 }
 
-export interface ClaimWarSeasonRewardRequest {
+export interface ClaimWorldCycleRewardRequest {
   reward_id: string;
 }
 
-export interface ClaimWarSeasonRewardResponse {
-  reward: WarSeasonRewardState;
+export interface ClaimWorldCycleRewardResponse {
+  reward: WorldCycleRewardState;
   city: PlayerCityState;
+}
+
+export type WorldChronicleScope = "all" | "province" | "sect" | "personal";
+
+export type WorldChronicleEventType =
+  | "sub_city_captured"
+  | "strategic_control"
+  | "sect_rally"
+  | "city_milestone"
+  | "legacy_settlement"
+  | "legacy_chronicle";
+
+export interface WorldChronicleEventState {
+  event_id: string;
+  event_type: WorldChronicleEventType | string;
+  province_id: string | null;
+  province_name: string | null;
+  sect_id: string | null;
+  sect_name: string | null;
+  player_id: string | null;
+  title: string;
+  summary: string;
+  highlights: string[];
+  source_type: string;
+  source_id: string;
+  visibility: "public" | "server" | "sect" | "personal";
+  occurred_at: string;
+}
+
+export interface WorldChronicleListResponse {
+  entries: WorldChronicleEventState[];
+  next_cursor: string | null;
 }
 
 export interface WorldAtlasResponse {

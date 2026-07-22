@@ -112,6 +112,7 @@ model Player {
   armyPresets               CityArmyPreset[]
   warMeritRecords           WarMeritRecord[]
   warSeasonRewards          WarSeasonReward[]
+  worldCycleRewards         WorldCycleReward[]
 
   @@index([accountId])
   @@index([sectId])
@@ -307,6 +308,74 @@ model WarSeasonReward {
   @@index([playerId, status])
   @@index([rankNo])
   @@map("war_season_reward")
+}
+
+model WorldCycleSettlement {
+  settlementId    String   @id @map("settlement_id")
+  eraId           String   @default("era_mvp_001") @map("era_id")
+  cycleType       String   @map("cycle_type")
+  periodKey       String   @map("period_key")
+  status          String   @default("settled")
+  rankingSnapshot Json     @map("ranking_snapshot")
+  configVersion   String   @map("config_version")
+  startedAt       DateTime @map("started_at")
+  endedAt         DateTime @map("ended_at")
+  settledAt       DateTime @default(now()) @map("settled_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  rewards WorldCycleReward[]
+
+  @@unique([eraId, cycleType, periodKey])
+  @@index([cycleType, endedAt])
+  @@index([eraId, settledAt])
+  @@map("world_cycle_settlement")
+}
+
+model WorldCycleReward {
+  rewardId       String    @id @map("reward_id")
+  settlementId   String    @map("settlement_id")
+  playerId       String    @map("player_id")
+  rankNo         Int       @map("rank_no")
+  merit          Int
+  rewardSnapshot Json      @map("reward_snapshot")
+  status         String    @default("claimable")
+  claimKey       String?   @unique @map("claim_key")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  claimedAt      DateTime? @map("claimed_at")
+
+  settlement WorldCycleSettlement @relation(fields: [settlementId], references: [settlementId], onDelete: Cascade)
+  player     Player                @relation(fields: [playerId], references: [playerId])
+
+  @@unique([settlementId, playerId])
+  @@index([playerId, status])
+  @@index([rankNo])
+  @@map("world_cycle_reward")
+}
+
+model WorldChronicleEvent {
+  eventId        String   @id @map("event_id")
+  eraId          String   @default("era_mvp_001") @map("era_id")
+  provinceId     String?  @map("province_id")
+  sectId         String?  @map("sect_id")
+  playerId       String?  @map("player_id")
+  eventType      String   @map("event_type")
+  sourceType     String   @map("source_type")
+  sourceId       String   @map("source_id")
+  title          String
+  summary        String
+  highlights     Json     @default("[]")
+  snapshot       Json?    @map("snapshot")
+  visibilityRule String   @default("server") @map("visibility_rule")
+  occurredAt     DateTime @default(now()) @map("occurred_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([eraId, sourceType, sourceId])
+  @@index([eraId, occurredAt])
+  @@index([provinceId, occurredAt])
+  @@index([sectId, occurredAt])
+  @@index([playerId, occurredAt])
+  @@index([eventType])
+  @@map("world_chronicle_event")
 }
 
 model CityBuilding {

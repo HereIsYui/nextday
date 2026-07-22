@@ -920,6 +920,39 @@ export class CityService {
           resourceSnapshot: nextResources as unknown as Prisma.InputJsonValue,
         },
       });
+      if ([3, 5, 7, 9].includes(updatedCity.cityLevel)) {
+        await tx.worldChronicleEvent.upsert({
+          where: {
+            eraId_sourceType_sourceId: {
+              eraId: defaultEraId,
+              sourceType: "city_expand",
+              sourceId: `${updatedCity.cityId}:level_${updatedCity.cityLevel}`,
+            },
+          },
+          create: {
+            eventId: `world_chronicle_${randomUUID()}`,
+            eraId: defaultEraId,
+            provinceId: updatedCity.provinceId,
+            playerId: player.playerId,
+            eventType: "city_milestone",
+            sourceType: "city_expand",
+            sourceId: `${updatedCity.cityId}:level_${updatedCity.cityLevel}`,
+            title: `${updatedCity.cityName}升至${updatedCity.cityLevel}级`,
+            summary: `${updatedCity.cityName}完成主城扩建，新的城池职能已向全州开放。`,
+            highlights: [
+              `主城等级 ${updatedCity.cityLevel}`,
+              `城防上限 ${nextDefense.wall_durability_cap}`,
+              `平原领地 ${ownedPlainBlocks} 块`,
+            ] as unknown as Prisma.InputJsonValue,
+            snapshot: {
+              city_id: updatedCity.cityId,
+              city_level: updatedCity.cityLevel,
+            } as Prisma.InputJsonValue,
+            visibilityRule: "public",
+          },
+          update: {},
+        });
+      }
       const responseData: ExpandCityResponse = {
         record_id: `city_expand_${randomUUID()}`,
         city: this.toCityState(updatedCity),

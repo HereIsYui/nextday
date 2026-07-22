@@ -66,6 +66,48 @@ describe("game-client HTTP 客户端", () => {
     expect(requestedUrl).toBe("https://example.test/api/world/map?province_id=ji&view=mini");
   });
 
+  it("读取常世榜单与大事记，并为榜单奖励携带幂等键", async () => {
+    const calls: Array<{ idempotencyKey: string; url: string }> = [];
+    const client = new GameClient({
+      baseUrl: "https://example.test",
+      fetchImpl: async (input, init) => {
+        calls.push({
+          idempotencyKey: new Headers(init?.headers).get("Idempotency-Key") ?? "",
+          url: String(input),
+        });
+        return new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            server_time: 1,
+            data: {},
+            trace_id: "req_test",
+          }),
+        );
+      },
+    });
+
+    await client.worldRankings(12);
+    await client.worldChronicle({
+      before: "2040-02-03T00:00:00.000Z",
+      limit: 5,
+      scope: "province",
+    });
+    await client.claimWorldCycleReward({ reward_id: "reward_1" }, "idem_world_cycle");
+
+    expect(calls).toEqual([
+      { idempotencyKey: "", url: "https://example.test/api/world/rankings?limit=12" },
+      {
+        idempotencyKey: "",
+        url: "https://example.test/api/world/chronicle?before=2040-02-03T00%3A00%3A00.000Z&limit=5&scope=province",
+      },
+      {
+        idempotencyKey: "idem_world_cycle",
+        url: "https://example.test/api/world/rankings/rewards/claim",
+      },
+    ]);
+  });
+
   it("九州城池写操作携带幂等键", async () => {
     const calls: Array<{ body: unknown; idempotencyKey: string; url: string }> = [];
     const client = new GameClient({

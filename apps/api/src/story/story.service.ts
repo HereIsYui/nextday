@@ -3,17 +3,14 @@ import { BadRequestException, ForbiddenException, Inject, Injectable } from "@ne
 import type {
   BattleNarrativeResponse,
   EraChronicleResponse,
-  EraChronicleStrategicSummary,
   StoryScrollDetailResponse,
   StoryScrollFragmentState,
   StoryScrollListResponse,
-  WarMeritPeriodSnapshot,
 } from "@nextday/shared";
 import type { BattleLog, Player, PlayerProgress, Prisma, StoryScrollRecord } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
 import { toBattleSummary } from "../game/game.mappers";
 import { towerConfigs } from "../multiplayer/multiplayer.constants";
-import { worldSeasonName } from "../world/world.constants";
 import {
   sensitiveStoryTerms,
   storyCollectionConfigVersion,
@@ -282,64 +279,6 @@ export class StoryService {
         }),
       ),
     );
-    await this.ensureCityEraChronicle(eraId);
-  }
-
-  private async ensureCityEraChronicle(eraId: string): Promise<void> {
-    const settlement = await this.prisma.warSeasonSettlement.findFirst({
-      where: { eraId, status: "settled" },
-      orderBy: { settledAt: "desc" },
-    });
-    if (!settlement) return;
-    const stored = settlement.finalSnapshot as unknown as {
-      rankings?: WarMeritPeriodSnapshot;
-      strategic?: EraChronicleStrategicSummary;
-    };
-    if (!stored.strategic || !stored.rankings) return;
-    const strategic = stored.strategic;
-    const highlights = [
-      strategic.champion_province
-        ? `${strategic.champion_province}位列州势之首`
-        : "本纪元未产生州势冠军",
-      strategic.dominant_sect
-        ? `${strategic.dominant_sect}成为本纪元主导宗门`
-        : "本纪元没有宗门取得显著控制优势",
-      `本纪元共有 ${strategic.captured_sub_city_count} 座分城易主`,
-      stored.rankings.entries[0]
-        ? `${stored.rankings.entries[0].display_name}以 ${stored.rankings.entries[0].score} 战功居首`
-        : "个人战功榜尚无记录",
-    ];
-    await this.prisma.eraChronicleRecord.upsert({
-      where: {
-        eraId_serverId_chronicleType: {
-          eraId,
-          serverId: "default",
-          chronicleType: "city_era",
-        },
-      },
-      create: {
-        chronicleId: `era_chronicle_${eraId}_city_era`,
-        eraId,
-        serverId: "default",
-        chronicleType: "city_era",
-        publicSummary: {
-          title: worldSeasonName,
-          summary: "九州版图、城池攻守与州战功业已在赛季结算时定卷。",
-          highlights,
-          strategic_summary: strategic,
-        } as unknown as Prisma.InputJsonValue,
-        privateSummary: {
-          generated_by: "season_settlement",
-          immutable_after_settlement: true,
-        },
-        relatedSnapshotId: settlement.settlementId,
-        relatedSourceIds: [settlement.settlementId],
-        visibilityRule: "server",
-        storyConfigVersion,
-        collectionConfigVersion: storyCollectionConfigVersion,
-      },
-      update: {},
-    });
   }
 }
 

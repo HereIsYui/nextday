@@ -114,7 +114,7 @@
 | --- | --- | --- | --- |
 | alchemy_record_id | varchar | PK | 炼丹记录 |
 | player_id | varchar | index | 玩家 |
-| era_id | varchar | index | 纪元 |
+| era_id | varchar | index | 永久世界内部命名空间 |
 | recipe_id | varchar | index | 丹方 |
 | pill_rank | int | index | 丹阶 |
 | result_pill_id | varchar | index nullable | 结果丹药 |
@@ -1183,8 +1183,7 @@ R3-01 实现中，`siege_record.status` 使用 `won / lost / captured`。`captur
 | 字段 | 类型 | 约束 | 说明 |
 | --- | --- | --- | --- |
 | province_war_id | varchar | PK | 州战状态 ID |
-| era_id | varchar | index | 纪元 |
-| season_id | varchar | index | 赛季 |
+| era_id | varchar | index | 永久世界内部命名空间 |
 | province_id | varchar | index | 州 |
 | city_control_score | bigint |  | 城池占有积分 |
 | vein_control_score | bigint |  | 灵脉控制积分 |
@@ -1192,7 +1191,7 @@ R3-01 实现中，`siege_record.status` 使用 `won / lost / captured`。`captur
 | tower_control_score | bigint |  | 九塔奇观积分 |
 | war_score | bigint | index | 州势力总积分 |
 | ranking_snapshot | jsonb |  | 排名快照 |
-| settlement_status | varchar | index | open / daily_settled / weekly_settled / season_settled |
+| settlement_status | varchar | index | open / daily_settled / weekly_settled |
 | updated_at | datetime | index | 更新 |
 
 核心索引：
@@ -1204,9 +1203,11 @@ R3-01 实现中，`siege_record.status` 使用 `won / lost / captured`。`captur
 - `idx_march_player_status(player_id, status, arrives_at)`。
 - `idx_march_target(target_tile_id, status, arrives_at)`。
 - `idx_occupation_tile(tile_id, created_at)`。
-- `idx_province_war(season_id, province_id, war_score)`。
+- `idx_province_war(era_id, province_id, war_score)`。
 - `war_merit_record` 使用 `player_id + source_type + source_id` 唯一键，保证同一场围城、战略争夺或宗门集结不会重复记账。
-- `war_season_settlement` 按 `season_id` 唯一锁定最终个人榜；`war_season_reward` 按结算与玩家唯一生成普通城池资源奖励，并用唯一 `claim_key` 保证领取幂等。
+- `world_cycle_settlement` 按 `era_id + cycle_type + period_key` 唯一生成日榜或周榜快照；`world_cycle_reward` 按结算与玩家唯一生成普通城池资源奖励，并用唯一 `claim_key` 保证领取幂等。
+- `world_chronicle_event` 记录分城易主、战略控制变更、宗门集结成功和主城关键等级里程碑；购地与普通清野只写个人战报，不写公共大事记。
+- 旧 `war_season_settlement` 与 `war_season_reward` 仅作迁移历史来源，不能作为新功能读写表。
 
 ## 十四、幂等与事务边界
 

@@ -425,7 +425,7 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
     payload: {
       era_id: "era_mvp_001",
       rank_types: ["production", "era", "inner_world", "faction"],
-      snapshot_rule: "读取排行榜时生成最新快照，真实赛季结算可复用 rank_snapshot / rank_entry",
+      snapshot_rule: "读取排行榜时生成最新快照，日榜与周榜结算可复用 rank_snapshot / rank_entry",
       title_rewards: rankTitleRewards,
       era_blessing: {
         cap_percent: eraBlessingCapPercent,
@@ -749,7 +749,7 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
       sect_alignment_rule:
         "成仙对应仙盟宗门，成魔对应魔宗宗门，散修对应中立宗门；冲突时不能参与该宗门阵营集结",
       reward_boundary:
-        "阵营奖励以称号、展示外观、纪元史册、绑定资源为主，不发唯一战力道具，不提高全服贡献倍率",
+        "阵营奖励以称号、展示外观、九州大事记展示与绑定资源为主，不发唯一战力道具，不提高全服贡献倍率",
     },
   },
   risk: {

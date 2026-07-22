@@ -7,11 +7,26 @@ import type {
 import { provinceConfigs } from "../game/game.constants";
 
 export const worldConfigVersion = "world_city_era_r1_09_continent_8888";
-export const worldSeasonId = "season_city_era_001";
-export const worldSeasonName = "九州城池纪元先遣季";
+export const worldCycleConfigVersion = "world_cycle_r6_001";
+export const permanentWorldName = "九州常世";
 export const recommendedBirthProvinceId = "ji";
 export const worldTotalBlockCount = 8888;
 export const towerBlockCountPerProvince = 16;
+
+export const worldCycleRewardBands = {
+  daily: [
+    { maxRank: 1, reward: { spirit_stone: 180, grain: 160, herb: 30, ore: 70, wood: 70 } },
+    { maxRank: 3, reward: { spirit_stone: 130, grain: 110, herb: 20, ore: 50, wood: 50 } },
+    { maxRank: 10, reward: { spirit_stone: 80, grain: 70, herb: 12, ore: 30, wood: 30 } },
+    { maxRank: 50, reward: { spirit_stone: 40, grain: 35, herb: 6, ore: 15, wood: 15 } },
+  ],
+  weekly: [
+    { maxRank: 1, reward: { spirit_stone: 750, grain: 600, herb: 120, ore: 280, wood: 280 } },
+    { maxRank: 3, reward: { spirit_stone: 520, grain: 420, herb: 80, ore: 190, wood: 190 } },
+    { maxRank: 10, reward: { spirit_stone: 320, grain: 260, herb: 48, ore: 110, wood: 110 } },
+    { maxRank: 50, reward: { spirit_stone: 160, grain: 130, herb: 24, ore: 55, wood: 55 } },
+  ],
+} as const;
 
 const birthProvinceIds = new Set(provinceConfigs.map((province) => province.provinceId));
 
@@ -233,7 +248,6 @@ export interface WorldProvinceConfig {
   birthAvailable: boolean;
   recommendedBirth: boolean;
   congestion: "low" | "medium" | "high";
-  seasonState: "preseason" | "active" | "settling";
   mapFocus: string;
   blockCount: number;
   towerBlockCount: number;
@@ -279,7 +293,6 @@ export const worldProvinceConfigs: WorldProvinceConfig[] = provinceConfigs.map(
       provinceId: province.provinceId,
       recommendedBirth: province.provinceId === recommendedBirthProvinceId,
       role: plan.role,
-      seasonState: "preseason",
       spiritVeinControlRate: Math.max(0.16, 0.38 - provinceIndex * 0.02),
       theme: province.theme,
       towerBlockCount: towerBlockCountPerProvince,
@@ -492,7 +505,7 @@ function buildStrategicTileConfig(input: {
     return createStrategicTile({
       commanderyId: input.commanderyId,
       dangerLevel: 7 + Math.floor(input.provinceIndex / 2),
-      labels: ["州府", "赛季目标", getTerrainLabel(input.terrainType)],
+      labels: ["州府", "常世战略", getTerrainLabel(input.terrainType)],
       landmarkGroupId: `${input.province.provinceId}_capital`,
       nodeName: input.capitalName,
       nodeType: "capital",
@@ -500,7 +513,7 @@ function buildStrategicTileConfig(input: {
       province: input.province,
       protected: true,
       purchaseBaseCost: 0,
-      stateSummary: "州府是赛季治理核心，当前只开放地图预览，后续接入周结争夺。",
+      stateSummary: "州府是常世治理核心，可由宗门长期争夺战略控制权。",
       status: "locked",
       terrainType: input.terrainType,
       tileId,
@@ -575,7 +588,7 @@ function createStrategicTile(input: {
         ownerProvinceId: input.ownerProvinceId,
         productionSummary:
           input.tileType === "tower"
-            ? "控制后影响本州灵脉、魔潮和赛季叙事。"
+            ? "控制后影响本州灵脉、魔潮与九州大事记。"
             : "控制后影响州内治理、税收和行军效率。",
         protected: input.protected ?? false,
         province: input.province,

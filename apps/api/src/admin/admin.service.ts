@@ -72,53 +72,45 @@ export class AdminService {
       throw new BadRequestException("玩家不存在");
     }
 
-    const [
-      orders,
-      gachaRecords,
-      battles,
-      towerActions,
-      bossActions,
-      caveActions,
-      mails,
-      risk,
-    ] = await Promise.all([
-      this.prisma.purchaseOrder.findMany({
-        where: { playerId },
-        orderBy: { createdAt: "desc" },
-        take: 12,
-      }),
-      this.prisma.gachaRecord.findMany({
-        where: { playerId },
-        orderBy: { createdAt: "desc" },
-        take: 12,
-      }),
-      this.prisma.battleLog.findMany({
-        where: { playerId },
-        orderBy: { createdAt: "desc" },
-        take: 12,
-      }),
-      this.prisma.towerActionRecord.findMany({
-        where: { playerId },
-        orderBy: { createdAt: "desc" },
-        take: 8,
-      }),
-      this.prisma.worldBossChallengeRecord.findMany({
-        where: { playerId },
-        orderBy: { createdAt: "desc" },
-        take: 8,
-      }),
-      this.prisma.caveCollectRecord.findMany({
-        where: { playerId },
-        orderBy: { createdAt: "desc" },
-        take: 8,
-      }),
-      this.prisma.playerMail.findMany({
-        where: { OR: [{ playerId }, { targetType: "all" }] },
-        orderBy: { createdAt: "desc" },
-        take: 12,
-      }),
-      this.riskService.getPlayerRisk(playerId),
-    ]);
+    const [orders, gachaRecords, battles, towerActions, bossActions, caveActions, mails, risk] =
+      await Promise.all([
+        this.prisma.purchaseOrder.findMany({
+          where: { playerId },
+          orderBy: { createdAt: "desc" },
+          take: 12,
+        }),
+        this.prisma.gachaRecord.findMany({
+          where: { playerId },
+          orderBy: { createdAt: "desc" },
+          take: 12,
+        }),
+        this.prisma.battleLog.findMany({
+          where: { playerId },
+          orderBy: { createdAt: "desc" },
+          take: 12,
+        }),
+        this.prisma.towerActionRecord.findMany({
+          where: { playerId },
+          orderBy: { createdAt: "desc" },
+          take: 8,
+        }),
+        this.prisma.worldBossChallengeRecord.findMany({
+          where: { playerId },
+          orderBy: { createdAt: "desc" },
+          take: 8,
+        }),
+        this.prisma.caveCollectRecord.findMany({
+          where: { playerId },
+          orderBy: { createdAt: "desc" },
+          take: 8,
+        }),
+        this.prisma.playerMail.findMany({
+          where: { OR: [{ playerId }, { targetType: "all" }] },
+          orderBy: { createdAt: "desc" },
+          take: 12,
+        }),
+        this.riskService.getPlayerRisk(playerId),
+      ]);
     const profile = toPlayerProfileResponse({
       player,
       progress: player.progress,

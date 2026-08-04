@@ -71,7 +71,9 @@ export function toFactionStateSummary(input: {
     display_appearance_id: input.state.displayAppearanceId,
     sect_alignment: sectAlignment as SectAlignment | string | null,
     sect_conflict: sectConflict,
-    sect_conflict_hint: sectConflict ? "个人路线与宗门立场不一致，不能参与该宗门阵营集结。" : null,
+    sect_conflict_hint: sectConflict
+      ? "个人路线与宗门立场不一致，部分宗门叙事将以旁观者视角呈现。"
+      : null,
     config_version: input.state.configVersion,
     reward_config_version: input.state.rewardConfigVersion,
   };

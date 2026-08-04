@@ -158,7 +158,7 @@ describe("P1 仙魔散修路线系统", () => {
       .expect(201);
 
     expect(chosen.body.data.state.sect_conflict).toBe(true);
-    expect(chosen.body.data.state.sect_conflict_hint).toContain("阵营集结");
+    expect(chosen.body.data.state.sect_conflict_hint).toContain("旁观者视角");
 
     const reputation = await request(app.getHttpServer())
       .get("/api/factions/reputation")

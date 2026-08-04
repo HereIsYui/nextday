@@ -476,6 +476,8 @@ export interface CultivationStatus {
   last_cultivation_at: string;
   can_breakthrough: boolean;
   breakthrough_required: string;
+  breakthrough_support: string;
+  effective_breakthrough_required: string;
   unlocked_features: RealmUnlockFeatureState[];
   next_unlock_features: RealmUnlockFeatureState[];
 }

@@ -613,7 +613,7 @@ function buildFactionExperience(input: {
         step: 3,
         title: "宗门立场",
         description: input.state.sect_conflict
-          ? "当前个人路线与宗门立场冲突，阵营集结会被限制。"
+          ? "当前个人路线与宗门立场冲突，部分宗门叙事将以旁观者视角呈现。"
           : "当前个人路线与宗门立场无冲突。",
         tone: input.state.sect_conflict ? "warning" : "success",
       },
@@ -657,7 +657,7 @@ function factionTagDescription(tag: string): string {
   const descriptions: Record<string, string> = {
     route_locked: "化神 / 神躯后正式锁定成仙、成魔或散修路线。",
     honor_reward: "奖励以称号、展示外观和纪元纪念为主，不提供唯一战力道具。",
-    sect_conflict_checked: "个人路线与宗门立场冲突时，不能参与该宗门阵营集结。",
+    sect_conflict_checked: "个人路线与宗门立场冲突时，部分宗门叙事将以旁观者视角呈现。",
     transfer_cooldown: `转道后进入 ${factionTransferCooldownDays} 天冷却，避免活动前反复套利。`,
     reputation_cleared: "转道会清除部分旧路线声望，保留新路线基础参与价值。",
   };

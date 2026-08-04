@@ -70,5 +70,4 @@ describe("P1 数值模拟配置", () => {
     expect(report.warnings.every((warning) => warning.suggestion.length > 0)).toBe(true);
     expect(report.warnings.every((warning) => warning.severity !== "critical")).toBe(true);
   });
-
 });

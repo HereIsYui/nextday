@@ -147,11 +147,21 @@ export function getCaveReward(cave: PlayerCaveState, minutes: number): RewardBun
   const items: RewardBundle["items"] = [];
 
   if (herbCount > 0) {
-    items.push({ item_id: "low_herb", name: "凝露草", count: herbCount, bind_type: "bound" });
+    items.push({
+      item_id: "alch_spirit_resin",
+      name: "灵髓露",
+      count: herbCount,
+      bind_type: "bound",
+    });
   }
 
   if (oreCount > 0) {
-    items.push({ item_id: "raw_iron", name: "玄铁砂", count: oreCount, bind_type: "bound" });
+    items.push({
+      item_id: "forge_spiritwood_core",
+      name: "灵木芯",
+      count: oreCount,
+      bind_type: "bound",
+    });
   }
 
   return {
@@ -227,6 +237,23 @@ function getItemName(itemId: string): string {
 
   if (itemId === "raw_iron") {
     return "玄铁砂";
+  }
+
+  const productionMaterialNames: Record<string, string> = {
+    alch_break_marrow_root: "破脉根",
+    alch_moon_dew_herb: "月露草",
+    alch_spirit_resin: "灵髓露",
+    alch_sunfire_petal: "赤阳花",
+    alch_void_moss: "玄阴苔",
+    forge_artifact_marrow: "器心髓",
+    forge_spiritwood_core: "灵木芯",
+    forge_star_iron: "星纹铁",
+    forge_thunder_crystal: "雷纹晶",
+    forge_void_silk: "空冥丝",
+  };
+
+  if (productionMaterialNames[itemId]) {
+    return productionMaterialNames[itemId];
   }
 
   return itemId;

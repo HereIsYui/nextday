@@ -1,6 +1,6 @@
 import type { RealmUnlockFeatureState } from "@nextday/shared";
 
-export const realmProgressionConfigVersion = "realm_r2_001";
+export const realmProgressionConfigVersion = "realm_text_v1";
 export const maximumRealm = 9;
 export const levelsPerRealm = 9;
 
@@ -17,28 +17,32 @@ type RealmUnlockDefinition = Omit<RealmUnlockFeatureState, "required_realm" | "u
 
 export const realmProgressionConfigs: RealmProgressionConfig[] = [
   realm(1, "练气", "锻体", 600, 0, [
-    unlock("world_map", "九州地图", "建城、清野、购地与基础行军"),
-    unlock("basic_army", "基础军队", "训练道兵、均衡阵与主城先锋"),
+    unlock("province_explore", "州域游历", "前往已开启州域探索，收集修行材料。"),
+    unlock("basic_production", "丹器试炼", "尝试材料搭配，发现自己的丹方与器方。"),
   ]),
   realm(2, "筑基", "筑身", 900, 8, [
-    unlock("sub_city", "分城与药园", "建立首座分城并经营灵草"),
-    unlock("defense_formation", "守御军阵", "守御都尉、守御阵与协防行军"),
+    unlock("formula_publication", "单方传阅", "可将成功单方公开给其他修士参阅。"),
+    unlock("tower_support", "九塔支援", "可向州域封印塔提交镇封、破封或补给行动。"),
   ]),
   realm(3, "金丹", "血丹", 1300, 18, [
-    unlock("siege", "围城准备", "破阵阵、攻城器械与资源掠夺资格"),
-    unlock("advanced_production", "丹器战略补给", "高阶炼丹、炼器与军队补给"),
+    unlock("advanced_production", "高阶丹器", "可尝试更复杂的材料组合与词条倾向。"),
+    unlock("sect_practice", "宗门修行", "参与宗门任务、仓库与同道协作。"),
   ]),
   realm(4, "元婴", "武胎", 1800, 30, [
-    unlock("sect_rally", "宗门集结", "跨郡增援、协防与集结队伍"),
+    unlock("province_events", "州域异闻", "解锁更深州域探索与章节异闻。"),
   ]),
   realm(5, "化神", "神躯", 2500, 44, [
-    unlock("province_scout", "跨州侦察", "观察敌州城池与九塔态势"),
+    unlock("inner_world", "内天地", "开辟内天地，派遣生灵支援州域。"),
   ]),
-  realm(6, "炼虚", "破虚", 3400, 60, [unlock("teleport_array", "传送阵", "远程增援与围城调度")]),
+  realm(6, "炼虚", "破虚", 3400, 60, [
+    unlock("distant_travel", "远州游历", "可深入高阶州域与圣遗秘境。"),
+  ]),
   realm(7, "合体", "天躯", 4500, 78, [
-    unlock("province_governance", "州府治理", "州内治理、外交与高级宗门职位"),
+    unlock("faction_path", "仙魔抉择", "选择阵营路线，改变后续章节叙事。"),
   ]),
-  realm(8, "大乘", "极境", 5800, 98, [unlock("war_command", "州战指挥", "州府与九塔核心指挥资格")]),
+  realm(8, "大乘", "极境", 5800, 98, [
+    unlock("tower_core", "九塔核心", "参与高阶封印事件与终局前置。"),
+  ]),
   realm(9, "真仙", "真魔", 0, 120, [
     unlock("era_finale", "纪元终局", "参与纪元终局路线与史册留名"),
   ]),

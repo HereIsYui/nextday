@@ -74,9 +74,9 @@ export function buildExploreExperience(input: {
         priority: "medium",
       },
       {
-        label: "回到九州地图",
+        label: "继续州域游历",
         reason: "州域探索次数会影响后续开放和推荐行动。",
-        action_hint: "overview",
+        action_hint: "explore",
         priority: "low",
       },
     ],

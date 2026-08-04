@@ -2,7 +2,6 @@ import { Inject, type MiddlewareConsumer, Module, type NestModule } from "@nestj
 import { AdminModule } from "./admin/admin.module";
 import { AppearancePlusModule } from "./appearance-plus/appearance-plus.module";
 import { AuthModule } from "./auth/auth.module";
-import { CityModule } from "./city/city.module";
 import { CollectionModule } from "./collection/collection.module";
 import { CommerceModule } from "./commerce/commerce.module";
 import { DatabaseModule } from "./database/database.module";
@@ -26,7 +25,6 @@ import { RiskModule } from "./risk/risk.module";
 import { SocialModule } from "./social/social.module";
 import { StoryModule } from "./story/story.module";
 import { TransferModule } from "./transfer/transfer.module";
-import { WorldModule } from "./world/world.module";
 
 @Module({
   imports: [
@@ -34,7 +32,6 @@ import { WorldModule } from "./world/world.module";
     LogModule,
     AppearancePlusModule,
     AuthModule,
-    CityModule,
     PlayerModule,
     CollectionModule,
     GameModule,
@@ -50,7 +47,6 @@ import { WorldModule } from "./world/world.module";
     SocialModule,
     TransferModule,
     PluginModule,
-    WorldModule,
     AdminModule,
   ],
   controllers: [HealthController],

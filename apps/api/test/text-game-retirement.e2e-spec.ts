@@ -78,7 +78,7 @@ describe("文字修行城池退役", () => {
       .expect(404);
   });
 
-  it("关键城池、资源点与 PVP 表已经删除，新角色不会产生迁移资产", async () => {
+  it("关键城池、资源点、PVP 表与州域战略字段已经删除，新角色不会产生迁移资产", async () => {
     const { playerId } = await createTextGamePlayer(app, "新角");
     const remainingTables = await prisma.$queryRaw<Array<{ table_name: string }>>(
       Prisma.sql`
@@ -91,17 +91,27 @@ describe("文字修行城池退役", () => {
 
     expect(remainingTables).toEqual([]);
 
-    const [retirementItems, retirementAudits] = await Promise.all([
+    const [retirementItems, retirementAudits, strategicColumns] = await Promise.all([
       prisma.playerItem.findMany({
         where: { playerId, sourceType: "city_retirement" },
       }),
       prisma.auditLog.findMany({
         where: { playerId, action: "city_retirement_migration" },
       }),
+      prisma.$queryRaw<Array<{ column_name: string }>>(
+        Prisma.sql`
+          SELECT column_name
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'province_state'
+            AND column_name = 'faction_control'
+        `,
+      ),
     ]);
 
     expect(retirementItems).toEqual([]);
     expect(retirementAudits).toEqual([]);
+    expect(strategicColumns).toEqual([]);
   });
 });
 

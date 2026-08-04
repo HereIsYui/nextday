@@ -664,8 +664,7 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
     payload: {
       diplomacy_rules: diplomacyRules,
       boundary: diplomacyBoundary,
-      settlement_rule:
-        "宗门外交只改变协作关系和公告展示，不改变九塔行动令、贡献结算和探索奖励。",
+      settlement_rule: "宗门外交只改变协作关系和公告展示，不改变九塔行动令、贡献结算和探索奖励。",
     },
   },
   sect_hire: {
@@ -741,7 +740,7 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
         task_required: true,
       },
       sect_alignment_rule:
-        "成仙对应仙盟宗门，成魔对应魔宗宗门，散修对应中立宗门；冲突时不能参与该宗门阵营集结",
+        "成仙对应仙盟宗门，成魔对应魔宗宗门，散修对应中立宗门；冲突时部分宗门叙事将以旁观者视角呈现",
       reward_boundary:
         "阵营奖励以称号、展示外观、九州大事记展示与绑定资源为主，不发唯一战力道具，不提高全服贡献倍率",
     },

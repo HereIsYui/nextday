@@ -157,6 +157,25 @@ export const towerActionConfigs: Record<TowerActionType, TowerActionConfig> = {
   },
 };
 
+const towerProductionMaterialRewards: Record<string, { item_id: string; name: string }> = {
+  tower_chaosheng: { item_id: "alch_void_moss", name: "玄阴苔" },
+  tower_geyang: { item_id: "forge_thunder_crystal", name: "雷纹晶" },
+  tower_taichu: { item_id: "forge_artifact_marrow", name: "器心髓" },
+  tower_zhenyue: { item_id: "alch_break_marrow_root", name: "破脉根" },
+};
+
+/** 九塔行动的专属丹器材料，按次数稳定结算。 */
+export function getTowerProductionMaterialReward(towerId: string, count: number): RewardBundle {
+  const material = towerProductionMaterialRewards[towerId];
+  if (!material || count <= 0) {
+    return {};
+  }
+
+  return {
+    items: [{ ...material, count, bind_type: "bound" }],
+  };
+}
+
 export const maxTowerActionBatch = 5;
 
 export const bossConfig = {

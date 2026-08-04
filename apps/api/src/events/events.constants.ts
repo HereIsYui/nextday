@@ -68,7 +68,7 @@ export const eventTemplateConfigs: EventTemplateConfig[] = [
     eventId: "event_p1_sect_celebration",
     eventType: "sect_celebration",
     name: "宗门同贺",
-    description: "宗门弟子可提交贺礼；未入宗玩家也可提交个人贺礼，不影响宗门战局。",
+    description: "宗门弟子可提交贺礼；未入宗玩家也可提交个人贺礼，不影响个人修行进度。",
     actionLabel: "提交同贺贺礼",
     targetProgress: 2,
     actionPointCost: 1,

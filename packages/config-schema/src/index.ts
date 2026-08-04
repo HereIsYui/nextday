@@ -338,7 +338,6 @@ export function validateP1SimulationConfig(
     if (profile.daily_completion_rate < 0 || profile.daily_completion_rate > 1.5) {
       errors.push(`${profile.profile_id} daily_completion_rate 超出合理范围`);
     }
-
   }
 
   const profileIds = new Set((config.profiles ?? []).map((profile) => profile.profile_id));

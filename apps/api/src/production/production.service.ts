@@ -445,16 +445,13 @@ export class ProductionService {
           await this.createPlayerProductionEffect(tx, {
             playerId: player.playerId,
             effectType: pillEffect.pill_effect,
-            effectValue:
-              pillEffect.pill_effect === "explore_boost"
-                ? (pillEffect.next_explore_bonus_percent ?? effectValue)
-                : effectValue,
+            effectValue: effectValue,
             sourceFormulaId: pillEffect.formula_id,
             sourceItemId: item.itemId,
             sourcePillUseRecordId: record.recordId,
           });
         }
-        const effectNote = pillEffectNote(pillEffect.pill_effect, effectValue, pillEffect);
+        const effectNote = pillEffectNote(pillEffect.pill_effect, effectValue);
         await this.writeAudit(tx, {
           accountId: input.accountId,
           playerId: player.playerId,
@@ -467,7 +464,8 @@ export class ProductionService {
             effective_rate: effectiveRate,
             effect_value: effectValue,
             pill_effect: pillEffect.pill_effect,
-            next_explore_bonus_percent: pillEffect.next_explore_bonus_percent ?? null,
+            next_explore_bonus_percent:
+              pillEffect.pill_effect === "explore_boost" ? effectValue : null,
           } as Prisma.InputJsonValue,
           idempotencyKey: input.idempotencyKey,
         });
@@ -483,7 +481,8 @@ export class ProductionService {
           after_cultivation: afterCultivation.toString(),
           profile: await this.getProfileByPlayerId(tx, player.playerId),
           pill_effect: pillEffect.pill_effect,
-          next_explore_bonus_percent: pillEffect.next_explore_bonus_percent,
+          next_explore_bonus_percent:
+            pillEffect.pill_effect === "explore_boost" ? effectValue : undefined,
           effect_note: effectNote,
         };
       },
@@ -1375,6 +1374,7 @@ export class ProductionService {
           remainingUses: 1,
           sourceItemId: input.sourceItemId,
           sourceFormulaId: input.sourceFormulaId,
+          sourcePillUseRecordId: input.sourcePillUseRecordId,
         },
       });
       return;
@@ -1802,29 +1802,59 @@ export class ProductionService {
       return existingRecord.responseData as unknown as TResponse;
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const response = await input.handler(tx);
-      await tx.idempotencyRecord.create({
-        data: {
-          idempotencyKey: input.idempotencyKey,
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const response = await input.handler(tx);
+        await tx.idempotencyRecord.create({
+          data: {
+            idempotencyKey: input.idempotencyKey,
+            accountId: input.accountId,
+            endpoint: input.endpoint,
+            requestHash,
+            responseData: response as unknown as Prisma.InputJsonValue,
+            statusCode: 200,
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          },
+        });
+        await writeJournalFromResponse(tx, {
           accountId: input.accountId,
           endpoint: input.endpoint,
-          requestHash,
-          responseData: response as unknown as Prisma.InputJsonValue,
-          statusCode: 200,
-          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        },
-      });
-      await writeJournalFromResponse(tx, {
-        accountId: input.accountId,
-        endpoint: input.endpoint,
-        response,
-        idempotencyKey: input.idempotencyKey,
-      });
+          response,
+          idempotencyKey: input.idempotencyKey,
+        });
 
-      return response;
-    });
+        return response;
+      });
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) {
+        throw error;
+      }
+
+      const replay = await this.prisma.idempotencyRecord.findUnique({
+        where: { idempotencyKey: input.idempotencyKey },
+      });
+      if (!replay) {
+        throw error;
+      }
+      if (
+        replay.accountId !== input.accountId ||
+        replay.endpoint !== input.endpoint ||
+        replay.requestHash !== requestHash
+      ) {
+        throw new BadRequestException("幂等键已被其他请求使用");
+      }
+      return replay.responseData as unknown as TResponse;
+    }
   }
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "P2002"
+  );
 }
 
 function normalizeSetItemLockRequest(body: SetItemLockRequest): SetItemLockRequest {
@@ -2426,18 +2456,14 @@ function getPillEffectFromItem(item: PlayerItem): PillRuntimeEffect | null {
   return legacy ? { ...legacy, formula_id: null } : null;
 }
 
-function pillEffectNote(
-  effectKind: PillRuntimeEffect["pill_effect"],
-  effectValue: number,
-  effect: PillRuntimeEffect,
-): string {
+function pillEffectNote(effectKind: PillRuntimeEffect["pill_effect"], effectValue: number): string {
   if (effectKind === "cultivation") {
     return `药力化为 ${effectValue} 点修为。`;
   }
   if (effectKind === "breakthrough_support") {
     return `获得 ${effectValue} 点破境辅助药力，将在下一次突破时结算。`;
   }
-  return `获得下一次探索 +${effect.next_explore_bonus_percent ?? effectValue}% 的行云增益。`;
+  return `获得下一次探索 +${effectValue}% 的行云增益。`;
 }
 
 function getPillEffectiveRate(previousUseCount: number): number {

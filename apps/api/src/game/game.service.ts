@@ -38,6 +38,7 @@ import type {
   Player,
   PlayerActionState,
   PlayerCaveState,
+  PlayerProductionEffect,
   PlayerProgress,
   PlayerSkillLoadout,
   PlayerWallet,
@@ -323,9 +324,15 @@ export class GameService {
         const completedTaskIds = await incrementPlayerTasks(tx, loaded.playerId, {
           novice_claim_cultivation: 1,
         });
+        const breakthroughEffect = await this.findActiveProductionEffect(
+          tx,
+          loaded.playerId,
+          "breakthrough_support",
+        );
         const status = toCultivationStatus({
           player: updatedPlayer,
           progress: updatedProgress,
+          breakthroughSupportValue: breakthroughEffect?.effectValue ?? 0,
         });
         const response: CultivationClaimResponse = {
           record_id: `cultivation_claim_${randomUUID()}`,
@@ -396,10 +403,19 @@ export class GameService {
         const loaded = await this.requirePlayerInTx(tx, player.playerId);
         const realmConfig = getRealmConfig(loaded.currentRealm);
         const requirement = BigInt(realmConfig.breakthroughCultivation);
+        const breakthroughEffect = await this.findActiveProductionEffect(
+          tx,
+          loaded.playerId,
+          "breakthrough_support",
+        );
+        const supportValue = BigInt(
+          Math.min(Math.max(0, breakthroughEffect?.effectValue ?? 0), Number(requirement)),
+        );
+        const potentialRequirement = requirement > supportValue ? requirement - supportValue : 0n;
         const canBreakthrough =
           loaded.currentRealm < maximumRealm &&
           loaded.currentLevel >= levelsPerRealm &&
-          loaded.progress.cultivationValue >= requirement;
+          loaded.progress.cultivationValue >= potentialRequirement;
 
         if (!canBreakthrough) {
           return {
@@ -409,6 +425,25 @@ export class GameService {
               loaded.currentRealm >= maximumRealm
                 ? "已达当前纪元最高境界"
                 : "境界尚未圆满，暂不可突破",
+            profile: toPlayerProfileResponse({
+              player: loaded,
+              progress: loaded.progress,
+              wallet: loaded.wallet,
+            }),
+          };
+        }
+
+        const supportApplied = breakthroughEffect
+          ? await this.consumeProductionEffect(tx, breakthroughEffect)
+          : false;
+        const appliedSupportValue = supportApplied ? supportValue : 0n;
+        const effectiveRequirement =
+          requirement > appliedSupportValue ? requirement - appliedSupportValue : 0n;
+        if (loaded.progress.cultivationValue < effectiveRequirement) {
+          return {
+            record_id: `breakthrough_${randomUUID()}`,
+            success: false,
+            message: "突破辅助已失效，当前修为尚不足以突破",
             profile: toPlayerProfileResponse({
               player: loaded,
               progress: loaded.progress,
@@ -427,7 +462,7 @@ export class GameService {
         await tx.playerProgress.update({
           where: { playerId: loaded.playerId },
           data: {
-            cultivationValue: loaded.progress.cultivationValue - requirement,
+            cultivationValue: loaded.progress.cultivationValue - effectiveRequirement,
             breakthroughFailCount: 0,
           },
         });
@@ -440,7 +475,7 @@ export class GameService {
         const response: BreakthroughResponse = {
           record_id: `breakthrough_${randomUUID()}`,
           success: true,
-          message: `突破成功，踏入${afterRealmName}`,
+          message: `突破成功，踏入${afterRealmName}${appliedSupportValue > 0n ? `。破障丹助你抵消了 ${appliedSupportValue} 点突破所需修为` : ""}`,
           profile,
           experience: buildJournalExperience({
             title: "境界突破",
@@ -514,6 +549,20 @@ export class GameService {
           throw new BadRequestException("行动令不足");
         }
 
+        const exploreEffect = await this.findActiveProductionEffect(
+          tx,
+          loaded.playerId,
+          "explore_boost",
+        );
+        const candidateExploreBoostPercent = Math.min(
+          100,
+          Math.max(0, exploreEffect?.effectValue ?? 0),
+        );
+        const exploreBoostApplied = exploreEffect
+          ? await this.consumeProductionEffect(tx, exploreEffect)
+          : false;
+        const exploreBoostPercent = exploreBoostApplied ? candidateExploreBoostPercent : 0;
+
         const afterActionState = await tx.playerActionState.update({
           where: { playerId: loaded.playerId },
           data: { actionPoints: actionState.action_points - body.count },
@@ -537,6 +586,7 @@ export class GameService {
             actionStateSnapshot: toActionState(
               afterActionState,
             ) as unknown as Prisma.InputJsonValue,
+            exploreBoostPercent,
             idempotencyKey: input.idempotencyKey,
             configVersion: "m2_core_loop_v2",
             rulesetVersion: "ruleset_p1_6_v1",
@@ -630,6 +680,7 @@ export class GameService {
             province,
             record.recordId,
             index,
+            record.exploreBoostPercent,
           );
           battles.push(battle.summary);
           currentPlayer = battle.player;
@@ -870,8 +921,10 @@ export class GameService {
             recordId: `cave_collect_${randomUUID()}`,
             playerId: player.playerId,
             spiritStone: BigInt(rewards.spirit_stone ?? "0"),
-            herbCount: rewards.items?.find((item) => item.item_id === "low_herb")?.count ?? 0,
-            oreCount: rewards.items?.find((item) => item.item_id === "raw_iron")?.count ?? 0,
+            herbCount:
+              rewards.items?.find((item) => item.item_id === "alch_spirit_resin")?.count ?? 0,
+            oreCount:
+              rewards.items?.find((item) => item.item_id === "forge_spiritwood_core")?.count ?? 0,
             collectedMinutes: caveState.claimable_minutes,
             rewardSnapshot: rewards as unknown as Prisma.InputJsonValue,
           },
@@ -965,7 +1018,6 @@ export class GameService {
           towerName: province.towerName,
           chapterRequired: province.chapterRequired,
           unlocked: province.chapterRequired === 1,
-          factionControl: { immortal: 0, demon: 0, neutral: 100 },
         },
         update: {
           name: province.name,
@@ -994,7 +1046,16 @@ export class GameService {
 
   private async getCultivationStatus(playerId: string): Promise<CultivationStatus> {
     const player = await this.requirePlayerInTx(this.prisma, playerId);
-    return toCultivationStatus({ player, progress: player.progress });
+    const breakthroughEffect = await this.findActiveProductionEffect(
+      this.prisma,
+      playerId,
+      "breakthrough_support",
+    );
+    return toCultivationStatus({
+      player,
+      progress: player.progress,
+      breakthroughSupportValue: breakthroughEffect?.effectValue ?? 0,
+    });
   }
 
   private async refreshActionState(
@@ -1045,6 +1106,49 @@ export class GameService {
       where: { recordId: record.recordId },
       data: { status: "completed" },
     });
+  }
+
+  private async findActiveProductionEffect(
+    tx: Tx,
+    playerId: string,
+    effectType: "breakthrough_support" | "explore_boost",
+  ): Promise<PlayerProductionEffect | null> {
+    return tx.playerProductionEffect.findFirst({
+      where: {
+        playerId,
+        effectType,
+        remainingUses: { gt: 0 },
+        consumedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+      orderBy: { createdAt: "asc" },
+    });
+  }
+
+  private async consumeProductionEffect(tx: Tx, effect: PlayerProductionEffect): Promise<boolean> {
+    const consumed = await tx.playerProductionEffect.updateMany({
+      where: {
+        effectId: effect.effectId,
+        remainingUses: { gt: 0 },
+        consumedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+      data: { remainingUses: { decrement: 1 } },
+    });
+    if (consumed.count === 0) {
+      return false;
+    }
+
+    const updated = await tx.playerProductionEffect.findUniqueOrThrow({
+      where: { effectId: effect.effectId },
+    });
+    if (updated.remainingUses <= 0) {
+      await tx.playerProductionEffect.update({
+        where: { effectId: effect.effectId },
+        data: { consumedAt: new Date() },
+      });
+    }
+    return true;
   }
 
   private async getProvinceSummaries(playerId: string): Promise<ProvinceSummary[]> {
@@ -1129,6 +1233,7 @@ export class GameService {
     province: ProvinceSummary,
     exploreRecordId: string,
     battleIndex: number,
+    exploreBoostPercent: number,
   ): Promise<{
     summary: BattleSummary;
     player: PlayerWithCore;
@@ -1157,7 +1262,7 @@ export class GameService {
       result === "win"
         ? selectExploreLoot(province.province_id, exploreRecordId, battleIndex, enemy.enemyId)
         : null;
-    const rewards: RewardBundle =
+    const baseRewards: RewardBundle =
       result === "win"
         ? {
             cultivation: "40",
@@ -1167,6 +1272,7 @@ export class GameService {
               : undefined,
           }
         : { cultivation: "10", spirit_stone: "8" };
+    const rewards = applyExploreRewardBoost(baseRewards, exploreBoostPercent);
     const totalCultivation = progress.cultivationValue + BigInt(rewards.cultivation ?? "0");
     const leveled = applyAutoLevel(player, totalCultivation);
     if (leveled.afterLevel !== player.currentLevel) {
@@ -1529,36 +1635,78 @@ export class GameService {
       return existingRecord.responseData as unknown as TResponse;
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const response = await input.handler(tx);
-      await tx.idempotencyRecord.create({
-        data: {
-          idempotencyKey: input.idempotencyKey,
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const response = await input.handler(tx);
+        await tx.idempotencyRecord.create({
+          data: {
+            idempotencyKey: input.idempotencyKey,
+            accountId: input.accountId,
+            endpoint: input.endpoint,
+            requestHash,
+            responseData: response as unknown as Prisma.InputJsonValue,
+            statusCode: 200,
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          },
+        });
+        await writeJournalFromResponse(tx, {
           accountId: input.accountId,
           endpoint: input.endpoint,
-          requestHash,
-          responseData: response as unknown as Prisma.InputJsonValue,
-          statusCode: 200,
-          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        },
-      });
-      await writeJournalFromResponse(tx, {
-        accountId: input.accountId,
-        endpoint: input.endpoint,
-        response,
-        idempotencyKey: input.idempotencyKey,
-      });
+          response,
+          idempotencyKey: input.idempotencyKey,
+        });
 
-      return response;
-    });
+        return response;
+      });
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) {
+        throw error;
+      }
+
+      const replay = await this.prisma.idempotencyRecord.findUnique({
+        where: { idempotencyKey: input.idempotencyKey },
+      });
+      if (!replay) {
+        throw error;
+      }
+      if (
+        replay.accountId !== input.accountId ||
+        replay.endpoint !== input.endpoint ||
+        replay.requestHash !== requestHash
+      ) {
+        throw new BadRequestException("幂等键已被其他请求使用");
+      }
+      return replay.responseData as unknown as TResponse;
+    }
   }
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "P2002"
+  );
 }
 
 function toCultivationStatus(input: {
   player: Pick<Player, "route" | "currentRealm" | "currentStage" | "currentLevel">;
   progress: PlayerProgress;
+  breakthroughSupportValue?: number;
 }): CultivationStatus {
   const realmConfig = getRealmConfig(input.player.currentRealm);
+  const breakthroughRequirement = BigInt(realmConfig.breakthroughCultivation);
+  const breakthroughSupport = BigInt(
+    Math.min(
+      Math.max(0, Math.trunc(input.breakthroughSupportValue ?? 0)),
+      Number(breakthroughRequirement),
+    ),
+  );
+  const effectiveBreakthroughRequirement =
+    breakthroughRequirement > breakthroughSupport
+      ? breakthroughRequirement - breakthroughSupport
+      : 0n;
   const nextRealm =
     input.player.currentRealm < maximumRealm ? getRealmConfig(input.player.currentRealm + 1) : null;
   const unlocks = getRealmUnlockStates(input.player.currentRealm);
@@ -1582,8 +1730,10 @@ function toCultivationStatus(input: {
     can_breakthrough:
       input.player.currentRealm < maximumRealm &&
       input.player.currentLevel >= levelsPerRealm &&
-      input.progress.cultivationValue >= BigInt(realmConfig.breakthroughCultivation),
-    breakthrough_required: String(realmConfig.breakthroughCultivation),
+      input.progress.cultivationValue >= effectiveBreakthroughRequirement,
+    breakthrough_required: breakthroughRequirement.toString(),
+    breakthrough_support: breakthroughSupport.toString(),
+    effective_breakthrough_required: effectiveBreakthroughRequirement.toString(),
     unlocked_features: unlocks.filter((feature) => feature.unlocked),
     next_unlock_features: unlocks.filter(
       (feature) => feature.required_realm === input.player.currentRealm + 1,
@@ -1746,6 +1896,7 @@ function toExploreResponse(
     completes_at: record.completesAt.toISOString(),
     claimed_at: record.claimedAt?.toISOString() ?? null,
     can_claim: record.status === "completed" && !record.claimedAt,
+    explore_boost_percent: record.exploreBoostPercent,
     action_state: actionState,
     battles,
     rewards,
@@ -2248,6 +2399,20 @@ function mergeRewards(target: RewardBundle, source: RewardBundle) {
     BigInt(target.spirit_stone ?? "0") + BigInt(source.spirit_stone ?? "0")
   ).toString();
   target.items = [...(target.items ?? []), ...(source.items ?? [])];
+}
+
+function applyExploreRewardBoost(rewards: RewardBundle, boostPercent: number): RewardBundle {
+  const normalizedBoostPercent = BigInt(Math.max(0, Math.min(100, Math.trunc(boostPercent))));
+  const boost = (value: string | undefined): string | undefined =>
+    value === undefined
+      ? undefined
+      : ((BigInt(value) * (100n + normalizedBoostPercent)) / 100n).toString();
+
+  return {
+    ...rewards,
+    cultivation: boost(rewards.cultivation),
+    spirit_stone: boost(rewards.spirit_stone),
+  };
 }
 
 function createBattleRoundLog(input: {

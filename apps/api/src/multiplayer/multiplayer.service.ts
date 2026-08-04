@@ -53,6 +53,7 @@ import {
   bossConfig,
   eraBlessingCapPercent,
   getCurrentWeekKey,
+  getTowerProductionMaterialReward,
   maxTowerActionBatch,
   multiplayerConfigVersion,
   multiplayerRewardConfigVersion,
@@ -161,7 +162,10 @@ export class MultiplayerService {
         const actionPointCost = actionConfig.actionPointCost * body.count;
         const actionState = await this.consumeActionPoints(tx, player.playerId, actionPointCost);
         const contribution = actionConfig.contribution * body.count;
-        const rewards = multiplyReward(actionConfig.reward, body.count);
+        const rewards = mergeRewardBundles(
+          multiplyReward(actionConfig.reward, body.count),
+          getTowerProductionMaterialReward(body.tower_id, body.count),
+        );
         if (risk.settlement_status === "delayed") {
           const sectMember = await this.getSectMemberByPlayer(tx, player.playerId);
           const record = await tx.towerActionRecord.create({
@@ -1727,6 +1731,13 @@ function multiplyReward(reward: RewardBundle, count: number): RewardBundle {
   };
 }
 
+function mergeRewardBundles(primary: RewardBundle, additional: RewardBundle): RewardBundle {
+  return {
+    ...primary,
+    items: [...(primary.items ?? []), ...(additional.items ?? [])],
+  };
+}
+
 function calculateRecoveredActionPoints(state: PlayerActionState): number {
   const elapsedHours = Math.min(
     maxOfflineCultivationHours,
@@ -1839,12 +1850,7 @@ function formatSigned(value: number): string {
 }
 
 function isIdempotencyConflict(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "P2002"
-  );
+  return typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
 }
 
 function addScore(map: Map<string, bigint>, key: string, score: bigint) {

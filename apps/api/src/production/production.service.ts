@@ -2002,7 +2002,11 @@ function getFormulaSourceFromSnapshots(
   const materials = extractFormulaMaterials(materialSnapshot, kind);
   const result = asRecord(resultSnapshot);
   const context = asRecord(result.formula_context);
-  const template = parseFormulaResultTemplate(context.result_template, kind);
+  // 炼丹记录使用 formula_context，炼器记录保留顶层结果快照；两者都必须可冻结为单方。
+  const template = parseFormulaResultTemplate(
+    context.result_template ?? result.result_template,
+    kind,
+  );
   if (!materials.length || !template) {
     throw new BadRequestException("该生产记录不包含可保存的自研单方");
   }

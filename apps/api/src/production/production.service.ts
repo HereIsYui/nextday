@@ -1,10 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import type {
-  AlchemyCraftRequest,
-  AlchemyCraftResponse,
-  AlchemyRecipeListResponse,
-  AlchemyRecipeSummary,
   AlchemyRecordListResponse,
   BagSummaryResponse,
   BattleSummary,
@@ -14,14 +10,10 @@ import type {
   EquipmentOperationRecordListResponse,
   EquipmentOperationResponse,
   EquipmentTargetRequest,
-  ForgeCraftRequest,
-  ForgeRecipeListResponse,
-  ForgeRecipeSummary,
   LearnSkillRequest,
   LearnSkillResponse,
   PillQuality,
   PillUseRequest,
-  PillUseResponse,
   RewardBundle,
   SaveSkillLoadoutRequest,
   SetEquipmentLockRequest,
@@ -32,7 +24,15 @@ import type {
   SkillPresetSuggestionState,
   SkillSummary,
 } from "@nextday/shared";
-import type { EquipmentAffix, EquipmentInstance, Player, PlayerItem, Prisma } from "@prisma/client";
+import type {
+  AlchemyRecord,
+  EquipmentAffix,
+  EquipmentInstance,
+  EquipmentOperationRecord,
+  Player,
+  PlayerItem,
+  Prisma,
+} from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
 import { defaultEraId } from "../game/game.constants";
 import { normalizeRewardBundle, toBattleSummary } from "../game/game.mappers";
@@ -42,25 +42,45 @@ import { buildAlchemyExperience, buildEquipmentExperience } from "../platform/ex
 import { hashRequestBody } from "../platform/utils/hash";
 import { toPlayerProfileResponse } from "../player/player.mapper";
 import {
-  alchemyRecipes,
-  buildMaterialSourceHints,
-  buildProductionBalanceWarnings,
-  forgeRecipes,
   getAvailableSkills,
   getDefaultLearnedSkillIds,
   getDefaultSkillLoadout,
   getItemMeta,
+  getMaterialCompositionHash,
+  getProductionCraftMaterials,
   getQualityConfig,
   getSkillLearningConfig,
   hiddenAffixes,
+  isProductionCraftMaterial,
   mainAffixes,
+  materialCompositionSignature,
+  normalizeProductionMaterials,
   pillQualityConfigs,
   productionConfigVersion,
+  productionFormulaRuleVersion,
   productionRewardConfigVersion,
+  resolveAlchemyCombination,
+  resolveForgeCombination,
   skillConfigs,
   skillLearningConfigVersion,
   subAffixes,
 } from "./production.constants";
+import type {
+  DiscoveredAlchemyCraftResponse,
+  DiscoveredForgeCraftResponse,
+  DiscoveredPillUseResponse,
+  FormulaCraftResponse,
+  FormulaResultTemplate,
+  ProductionCraftRequest,
+  ProductionFormulaKind,
+  ProductionFormulaListQuery,
+  ProductionFormulaListResponse,
+  ProductionFormulaResponse,
+  ProductionFormulaState,
+  ProductionFormulaVisibility,
+  ProductionMaterialInput,
+  SaveProductionFormulaRequest,
+} from "./production.formula-types";
 import {
   rewardItemsToBundle,
   toAlchemyRecordState,
@@ -72,6 +92,52 @@ import {
 type Tx = Prisma.TransactionClient;
 type DbClient = Tx | PrismaService;
 type EquipmentWithAffixes = EquipmentInstance & { affixes: EquipmentAffix[] };
+
+/**
+ * ProductionFormula 尚未生成到当前 Prisma Client 时使用的最小委托形状。
+ * TODO(Prisma)：主模型生成后移除动态委托，直接使用 Prisma.ProductionFormula。
+ */
+type StoredProductionFormula = {
+  formulaId: string;
+  playerId: string;
+  kind: string;
+  name: string;
+  compositionHash: string;
+  materialSnapshot: Prisma.JsonValue;
+  resultTemplateSnapshot: Prisma.JsonValue;
+  visibility: string;
+  sourceRecordId: string;
+  ruleVersion: string;
+  publishedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type ProductionFormulaDelegate = {
+  create(input: { data: Record<string, unknown> }): Promise<StoredProductionFormula>;
+  findFirst(input: { where: Record<string, unknown> }): Promise<StoredProductionFormula | null>;
+  findMany(input: {
+    where?: Record<string, unknown>;
+    orderBy?: Record<string, "asc" | "desc">;
+    take?: number;
+  }): Promise<StoredProductionFormula[]>;
+  update(input: {
+    where: Record<string, unknown>;
+    data: Record<string, unknown>;
+  }): Promise<StoredProductionFormula>;
+};
+
+type FormulaDelegateHolder = {
+  productionFormula?: ProductionFormulaDelegate;
+};
+
+type PlayerProductionEffectDelegate = {
+  create(input: { data: Record<string, unknown> }): Promise<unknown>;
+};
+
+type PlayerProductionEffectDelegateHolder = {
+  playerProductionEffect?: PlayerProductionEffectDelegate;
+};
 
 @Injectable()
 export class ProductionService {
@@ -126,29 +192,6 @@ export class ProductionService {
     });
   }
 
-  async getAlchemyRecipes(accountId: string): Promise<AlchemyRecipeListResponse> {
-    const player = await this.requirePlayer(accountId);
-    const [bag, wallet, recentBattles] = await Promise.all([
-      this.getBagByPlayerId(player.playerId),
-      this.getWalletState(this.prisma, player.playerId),
-      this.getRecentBattleSummaries(player.playerId),
-    ]);
-
-    return {
-      recipes: alchemyRecipes
-        .filter((recipe) => isRouteAvailable(recipe.route, player.route))
-        .map((recipe) =>
-          withProductionRecommendation(recipe, {
-            bag,
-            kind: "alchemy",
-            playerRoute: player.route,
-            recentBattles,
-            spiritStone: wallet.spirit_stone,
-          }),
-        ),
-    };
-  }
-
   async getAlchemyRecords(accountId: string): Promise<AlchemyRecordListResponse> {
     const player = await this.requirePlayer(accountId);
     const records = await this.prisma.alchemyRecord.findMany({
@@ -162,86 +205,130 @@ export class ProductionService {
 
   async craftAlchemy(input: {
     accountId: string;
-    body: AlchemyCraftRequest;
+    body: ProductionCraftRequest;
     idempotencyKey: string;
-  }): Promise<AlchemyCraftResponse> {
+    endpoint?: string;
+  }): Promise<DiscoveredAlchemyCraftResponse> {
     const player = await this.requirePlayer(input.accountId);
-    const body = normalizeRecipeRequest(input.body.recipe_id);
-    const recipe = alchemyRecipes.find((item) => item.recipe_id === body.recipe_id);
-
-    if (!recipe || !isRouteAvailable(recipe.route, player.route)) {
-      throw new BadRequestException("丹方不存在或当前路线不可炼制");
-    }
+    const body = normalizeProductionCraftRequest(input.body, "alchemy");
+    const formula = body.formula_id
+      ? await this.getFormulaForCraft(this.prisma, player.playerId, body.formula_id, "alchemy")
+      : null;
+    const materials = formula
+      ? resolveFormulaMaterials(body.materials, formula, "alchemy")
+      : body.materials;
+    const template = formula ? formula.result_template : resolveAlchemyCombination(materials);
+    const compositionHash = getMaterialCompositionHash("alchemy", materials);
+    const cost = buildDiscoveryCost(materials, template?.spirit_stone_cost);
+    const failureReturns = buildAlchemyFailureReturns(materials);
 
     return this.withIdempotency({
       accountId: input.accountId,
-      endpoint: "POST /api/production/alchemy/craft",
+      endpoint: input.endpoint ?? "POST /api/production/alchemy/craft",
       idempotencyKey: input.idempotencyKey,
-      requestBody: body,
+      requestBody: { ...body, materials, composition_hash: compositionHash },
       handler: async (tx) => {
-        await this.consumeProductionCost(tx, player.playerId, recipeCostBundle(recipe), {
+        await this.consumeProductionCost(tx, player.playerId, cost, {
           sourceType: "alchemy_craft",
-          sourceId: recipe.recipe_id,
+          sourceId: compositionHash,
           idempotencyKey: input.idempotencyKey,
         });
 
         const success =
-          roll10000(`${input.idempotencyKey}:${recipe.recipe_id}:success`) < recipe.success_rate;
+          Boolean(template?.alchemy) &&
+          roll10000(`${input.idempotencyKey}:${compositionHash}:success`) <
+            (template?.success_rate ?? 0);
         const quality = success
-          ? pickPillQuality(`${input.idempotencyKey}:${recipe.recipe_id}:quality`)
+          ? pickPillQuality(`${input.idempotencyKey}:${compositionHash}:quality`)
           : null;
+        const alchemy = template?.alchemy;
+        const effectValue =
+          success && alchemy
+            ? rollRange(
+                `${input.idempotencyKey}:${compositionHash}:effect`,
+                alchemy.effect_min,
+                alchemy.effect_max,
+              )
+            : 0;
         const rewards: RewardBundle = success
           ? {
               items: [
                 {
-                  item_id: recipe.pill_item_id,
-                  name: getItemMeta(recipe.pill_item_id).name,
+                  item_id: alchemy?.pill_item_id ?? "pill_dust",
+                  name: getItemMeta(alchemy?.pill_item_id ?? "pill_dust").name,
                   count: 1,
                   bind_type: "bound",
                 },
               ],
             }
-          : recipe.failure_returns;
+          : failureReturns;
 
-        if (success && quality) {
+        if (success && quality && alchemy) {
           await this.grantItem(tx, player.playerId, {
-            itemId: recipe.pill_item_id,
+            itemId: alchemy.pill_item_id,
             count: 1,
             bindType: "bound",
             sourceType: "alchemy",
-            metadata: { quality, recipe_id: recipe.recipe_id },
+            metadata: {
+              composition_hash: compositionHash,
+              effect_value: effectValue,
+              formula_id: formula?.formula_id ?? null,
+              next_explore_bonus_percent: alchemy.next_explore_bonus_percent ?? null,
+              pill_effect: alchemy.effect_kind,
+              pill_rank: alchemy.pill_rank,
+              pill_type: alchemy.pill_type,
+              quality,
+              rule_version: productionFormulaRuleVersion,
+            } as Prisma.InputJsonValue,
           });
         } else {
           await this.grantRewardItems(tx, player.playerId, rewards, "alchemy_failure");
         }
 
-        const record = await tx.alchemyRecord.create({
-          data: {
-            recordId: `alchemy_${randomUUID()}`,
-            playerId: player.playerId,
-            eraId: defaultEraId,
-            recipeId: recipe.recipe_id,
-            pillItemId: success ? recipe.pill_item_id : null,
-            quality,
-            success,
-            count: success ? 1 : 0,
-            materialSnapshot: recipeCostBundle(recipe) as unknown as Prisma.InputJsonValue,
-            failureReturnSnapshot: success
-              ? undefined
-              : (recipe.failure_returns as unknown as Prisma.InputJsonValue),
-            resultSnapshot: rewards as unknown as Prisma.InputJsonValue,
-            configVersion: productionConfigVersion,
-            rewardConfigVersion: productionRewardConfigVersion,
-            idempotencyKey: input.idempotencyKey,
-          },
+        const record = await this.createAlchemyRecord(tx, {
+          recordId: `alchemy_${randomUUID()}`,
+          playerId: player.playerId,
+          eraId: defaultEraId,
+          // 兼容旧表字段；它保存组合标识而不是固定 recipe_id。
+          recipeId: `composition_${compositionHash}`,
+          pillItemId: success ? (alchemy?.pill_item_id ?? null) : null,
+          quality,
+          success,
+          count: success ? 1 : 0,
+          materialSnapshot: withFormulaContext(cost, {
+            composition_hash: compositionHash,
+            formula_id: formula?.formula_id ?? null,
+            rule_version: productionFormulaRuleVersion,
+          }),
+          failureReturnSnapshot: success
+            ? undefined
+            : (failureReturns as unknown as Prisma.InputJsonValue),
+          resultSnapshot: withFormulaContext(rewards, {
+            composition_hash: compositionHash,
+            craft_success: success,
+            formula_id: formula?.formula_id ?? null,
+            result_template: template,
+            rule_version: productionFormulaRuleVersion,
+          }),
+          configVersion: productionConfigVersion,
+          rewardConfigVersion: productionRewardConfigVersion,
+          idempotencyKey: input.idempotencyKey,
+          // TODO(Prisma)：ProductionFormula 迁移后由主模型接收这些字段。
+          formulaId: formula?.formula_id ?? null,
+          compositionHash,
         });
         await this.writeAudit(tx, {
           accountId: input.accountId,
           playerId: player.playerId,
           action: "alchemy_craft",
-          targetType: "alchemy_recipe",
-          targetId: recipe.recipe_id,
-          afterSnapshot: toAlchemyRecordState(record) as unknown as Prisma.InputJsonValue,
+          targetType: "alchemy_discovery",
+          targetId: compositionHash,
+          afterSnapshot: {
+            ...toAlchemyRecordState(record),
+            composition_hash: compositionHash,
+            formula_id: formula?.formula_id ?? null,
+            result_template: template,
+          } as unknown as Prisma.InputJsonValue,
           idempotencyKey: input.idempotencyKey,
         });
 
@@ -257,13 +344,18 @@ export class ProductionService {
           bag: await this.getBagByPlayerId(player.playerId, tx),
           completed_task_ids: completedTaskIds,
           experience: buildAlchemyExperience({
-            recipeName: recipe.name,
+            recipeName: template?.name ?? "未名丹材组合",
             success,
             quality,
             rewards,
-            failureReturns: success ? null : recipe.failure_returns,
+            failureReturns: success ? null : failureReturns,
             configVersion: productionConfigVersion,
           }),
+          discovery: {
+            composition_hash: compositionHash,
+            formula_id: formula?.formula_id ?? null,
+            result_template: template,
+          },
         };
       },
     });
@@ -273,7 +365,7 @@ export class ProductionService {
     accountId: string;
     body: PillUseRequest;
     idempotencyKey: string;
-  }): Promise<PillUseResponse> {
+  }): Promise<DiscoveredPillUseResponse> {
     const player = await this.requirePlayer(input.accountId);
     const body = normalizePillUseRequest(input.body);
 
@@ -295,8 +387,8 @@ export class ProductionService {
           throw new BadRequestException("丹药不存在、已锁定或已过期");
         }
 
-        const recipe = alchemyRecipes.find((candidate) => candidate.pill_item_id === item.itemId);
-        if (!recipe || !isRouteAvailable(recipe.route, player.route)) {
+        const pillEffect = getPillEffectFromItem(item);
+        if (!pillEffect) {
           throw new BadRequestException("该丹药不可服用");
         }
 
@@ -305,19 +397,20 @@ export class ProductionService {
         const previousUseCount = await tx.pillUseRecord.count({
           where: {
             playerId: player.playerId,
-            pillType: recipe.pill_type,
-            pillRank: recipe.pill_rank,
+            pillType: pillEffect.pill_type,
+            pillRank: pillEffect.pill_rank,
           },
         });
         const sameTierUseCount = previousUseCount + 1;
         const effectiveRate = getPillEffectiveRate(previousUseCount);
         const effectValue = Math.floor(
-          recipe.base_effect * getQualityConfig(quality).multiplier * (effectiveRate / 100),
+          pillEffect.effect_value * getQualityConfig(quality).multiplier * (effectiveRate / 100),
         );
         const progress = await tx.playerProgress.findUniqueOrThrow({
           where: { playerId: player.playerId },
         });
-        const afterCultivation = progress.cultivationValue + BigInt(effectValue);
+        const cultivationGain = pillEffect.pill_effect === "cultivation" ? effectValue : 0;
+        const afterCultivation = progress.cultivationValue + BigInt(cultivationGain);
         await tx.playerProgress.update({
           where: { playerId: player.playerId },
           data: {
@@ -332,9 +425,9 @@ export class ProductionService {
             playerId: player.playerId,
             eraId: defaultEraId,
             pillItemId: item.itemId,
-            pillRank: recipe.pill_rank,
-            pillType: recipe.pill_type,
-            route: recipe.route,
+            pillRank: pillEffect.pill_rank,
+            pillType: pillEffect.pill_type,
+            route: "all",
             quality,
             sameTierUseCount,
             effectiveRate,
@@ -345,6 +438,23 @@ export class ProductionService {
             idempotencyKey: input.idempotencyKey,
           },
         });
+        if (
+          pillEffect.pill_effect === "breakthrough_support" ||
+          pillEffect.pill_effect === "explore_boost"
+        ) {
+          await this.createPlayerProductionEffect(tx, {
+            playerId: player.playerId,
+            effectType: pillEffect.pill_effect,
+            effectValue:
+              pillEffect.pill_effect === "explore_boost"
+                ? (pillEffect.next_explore_bonus_percent ?? effectValue)
+                : effectValue,
+            sourceFormulaId: pillEffect.formula_id,
+            sourceItemId: item.itemId,
+            sourcePillUseRecordId: record.recordId,
+          });
+        }
+        const effectNote = pillEffectNote(pillEffect.pill_effect, effectValue, pillEffect);
         await this.writeAudit(tx, {
           accountId: input.accountId,
           playerId: player.playerId,
@@ -356,6 +466,8 @@ export class ProductionService {
             pill_item_id: item.itemId,
             effective_rate: effectiveRate,
             effect_value: effectValue,
+            pill_effect: pillEffect.pill_effect,
+            next_explore_bonus_percent: pillEffect.next_explore_bonus_percent ?? null,
           } as Prisma.InputJsonValue,
           idempotencyKey: input.idempotencyKey,
         });
@@ -370,32 +482,12 @@ export class ProductionService {
           before_cultivation: progress.cultivationValue.toString(),
           after_cultivation: afterCultivation.toString(),
           profile: await this.getProfileByPlayerId(tx, player.playerId),
+          pill_effect: pillEffect.pill_effect,
+          next_explore_bonus_percent: pillEffect.next_explore_bonus_percent,
+          effect_note: effectNote,
         };
       },
     });
-  }
-
-  async getForgeRecipes(accountId: string): Promise<ForgeRecipeListResponse> {
-    const player = await this.requirePlayer(accountId);
-    const [bag, wallet, recentBattles] = await Promise.all([
-      this.getBagByPlayerId(player.playerId),
-      this.getWalletState(this.prisma, player.playerId),
-      this.getRecentBattleSummaries(player.playerId),
-    ]);
-
-    return {
-      recipes: forgeRecipes
-        .filter((recipe) => isRouteAvailable(recipe.route, player.route))
-        .map((recipe) =>
-          withProductionRecommendation(recipe, {
-            bag,
-            kind: "forge",
-            playerRoute: player.route,
-            recentBattles,
-            spiritStone: wallet.spirit_stone,
-          }),
-        ),
-    };
   }
 
   async listEquipment(accountId: string): Promise<EquipmentListResponse> {
@@ -416,62 +508,98 @@ export class ProductionService {
 
   async craftForge(input: {
     accountId: string;
-    body: ForgeCraftRequest;
+    body: ProductionCraftRequest;
     idempotencyKey: string;
-  }): Promise<EquipmentOperationResponse> {
+    endpoint?: string;
+  }): Promise<DiscoveredForgeCraftResponse> {
     const player = await this.requirePlayer(input.accountId);
-    const body = normalizeRecipeRequest(input.body.recipe_id);
-    const recipe = forgeRecipes.find((item) => item.recipe_id === body.recipe_id);
-
-    if (!recipe || !isRouteAvailable(recipe.route, player.route)) {
-      throw new BadRequestException("炼器配方不存在或当前路线不可炼制");
-    }
+    const body = normalizeProductionCraftRequest(input.body, "forge");
+    const formula = body.formula_id
+      ? await this.getFormulaForCraft(this.prisma, player.playerId, body.formula_id, "forge")
+      : null;
+    const materials = formula
+      ? resolveFormulaMaterials(body.materials, formula, "forge")
+      : body.materials;
+    const template = formula ? formula.result_template : resolveForgeCombination(materials);
+    const compositionHash = getMaterialCompositionHash("forge", materials);
+    const cost = buildDiscoveryCost(materials, template?.spirit_stone_cost);
 
     return this.withIdempotency({
       accountId: input.accountId,
-      endpoint: "POST /api/production/forge/craft",
+      endpoint: input.endpoint ?? "POST /api/production/forge/craft",
       idempotencyKey: input.idempotencyKey,
-      requestBody: body,
+      requestBody: { ...body, materials, composition_hash: compositionHash },
       handler: async (tx) => {
-        await this.consumeProductionCost(tx, player.playerId, recipeCostBundle(recipe), {
+        await this.consumeProductionCost(tx, player.playerId, cost, {
           sourceType: "forge_craft",
-          sourceId: recipe.recipe_id,
+          sourceId: compositionHash,
           idempotencyKey: input.idempotencyKey,
         });
-
-        const equipment = await tx.equipmentInstance.create({
-          data: {
-            equipmentInstanceId: `equipment_${randomUUID()}`,
-            playerId: player.playerId,
-            eraId: defaultEraId,
-            equipmentId: recipe.equipment_id,
-            name: recipe.name,
-            equipmentType: recipe.equipment_type,
-            rarity: recipe.rarity,
-            bindType: "bound",
-            sourceType: "forge",
-            affixes: {
-              create: createAffixRows(`${input.idempotencyKey}:${recipe.affix_seed}`),
-            },
-          },
-          include: { affixes: true },
-        });
-        const equipmentState = toEquipmentState(equipment);
+        const forge = template?.forge;
+        const success =
+          Boolean(forge) &&
+          roll10000(`${input.idempotencyKey}:${compositionHash}:success`) <
+            (template?.success_rate ?? 0);
+        const failureRewards = buildForgeFailureReturns(materials);
+        const equipment =
+          success && forge
+            ? await tx.equipmentInstance.create({
+                data: {
+                  equipmentInstanceId: `equipment_${randomUUID()}`,
+                  playerId: player.playerId,
+                  eraId: defaultEraId,
+                  equipmentId: forge.equipment_id,
+                  name: template?.name ?? "无名法宝",
+                  equipmentType: forge.equipment_type,
+                  rarity: forge.rarity,
+                  bindType: "bound",
+                  sourceType: "forge",
+                  affixes: {
+                    create: createForgeAffixRows(
+                      `${input.idempotencyKey}:${compositionHash}`,
+                      forge.affix_profile,
+                      forge.rarity,
+                    ),
+                  },
+                },
+                include: { affixes: true },
+              })
+            : null;
+        const equipmentState = equipment ? toEquipmentState(equipment) : null;
+        if (!success) {
+          await this.grantRewardItems(tx, player.playerId, failureRewards, "forge_failure");
+        }
         const operation = await this.writeEquipmentOperation(tx, {
           playerId: player.playerId,
-          equipmentInstanceId: equipment.equipmentInstanceId,
+          equipmentInstanceId: equipment?.equipmentInstanceId ?? null,
           operationType: "forge",
-          materials: recipeCostBundle(recipe),
-          result: { equipment: equipmentState } as unknown,
+          materials: cost,
+          result: {
+            equipment: equipmentState,
+            composition_hash: compositionHash,
+            craft_success: success,
+            formula_id: formula?.formula_id ?? null,
+            result_template: template,
+            rewards: success ? undefined : failureRewards,
+            rule_version: productionFormulaRuleVersion,
+          } as unknown,
           idempotencyKey: input.idempotencyKey,
+          formulaId: formula?.formula_id ?? null,
+          compositionHash,
         });
         await this.writeAudit(tx, {
           accountId: input.accountId,
           playerId: player.playerId,
           action: "equipment_forge",
-          targetType: "equipment_instance",
-          targetId: equipment.equipmentInstanceId,
-          afterSnapshot: equipmentState as unknown as Prisma.InputJsonValue,
+          targetType: success ? "equipment_instance" : "forge_discovery",
+          targetId: equipment?.equipmentInstanceId ?? compositionHash,
+          afterSnapshot: {
+            equipment: equipmentState,
+            composition_hash: compositionHash,
+            craft_success: success,
+            formula_id: formula?.formula_id ?? null,
+            result_template: template,
+          } as unknown as Prisma.InputJsonValue,
           idempotencyKey: input.idempotencyKey,
         });
 
@@ -479,16 +607,158 @@ export class ProductionService {
           record_id: operation.recordId,
           operation_type: "forge",
           equipment: equipmentState,
+          rewards: success ? undefined : failureRewards,
           wallet: await this.getWalletState(tx, player.playerId),
           bag: await this.getBagByPlayerId(player.playerId, tx),
           experience: buildEquipmentExperience({
             operationType: "forge",
             equipment: equipmentState,
-            materials: recipeCostBundle(recipe),
+            materials: cost,
+            rewards: success ? undefined : failureRewards,
           }),
+          discovery: {
+            composition_hash: compositionHash,
+            formula_id: formula?.formula_id ?? null,
+            result_template: template,
+            success,
+          },
         };
       },
     });
+  }
+
+  async getCraftableMaterials(accountId: string, kind?: ProductionFormulaKind) {
+    await this.requirePlayer(accountId);
+    return { materials: getProductionCraftMaterials(kind) };
+  }
+
+  async listProductionFormulas(
+    accountId: string,
+    query: ProductionFormulaListQuery = {},
+  ): Promise<ProductionFormulaListResponse> {
+    const player = await this.requirePlayer(accountId);
+    const normalized = normalizeFormulaListQuery(query);
+    const formulas = await this.listStoredFormulas(this.prisma, {
+      playerId: player.playerId,
+      scope: normalized.scope,
+    });
+    const filtered = formulas.filter((formula) => {
+      if (normalized.kind && formula.kind !== normalized.kind) {
+        return false;
+      }
+      return !normalized.keyword || formula.name.includes(normalized.keyword);
+    });
+    const ownerNames = await this.getFormulaOwnerNames(this.prisma, filtered);
+
+    return {
+      formulas: filtered.map((formula) =>
+        toProductionFormulaState(formula, player.playerId, ownerNames.get(formula.playerId)),
+      ),
+    };
+  }
+
+  async saveProductionFormula(input: {
+    accountId: string;
+    body: SaveProductionFormulaRequest;
+    idempotencyKey: string;
+  }): Promise<ProductionFormulaResponse> {
+    const player = await this.requirePlayer(input.accountId);
+    const body = normalizeSaveProductionFormulaRequest(input.body);
+
+    return this.withIdempotency({
+      accountId: input.accountId,
+      endpoint: "POST /api/production/formulas",
+      idempotencyKey: input.idempotencyKey,
+      requestBody: body,
+      handler: async (tx) => {
+        const source = await this.getSuccessfulFormulaSource(
+          tx,
+          player.playerId,
+          body.kind,
+          body.source_record_id,
+        );
+        const compositionHash = getMaterialCompositionHash(body.kind, source.materials);
+        const existing = await this.findStoredFormulaByComposition(
+          tx,
+          player.playerId,
+          body.kind,
+          compositionHash,
+        );
+        if (existing) {
+          return {
+            formula: toProductionFormulaState(existing, player.playerId, player.name),
+          };
+        }
+        const formula = await this.createStoredFormula(tx, {
+          formulaId: `formula_${randomUUID()}`,
+          playerId: player.playerId,
+          kind: body.kind,
+          name: body.name,
+          compositionHash,
+          materialSnapshot: source.materials as unknown as Prisma.JsonValue,
+          resultTemplateSnapshot: source.template as unknown as Prisma.JsonValue,
+          visibility: "private",
+          sourceRecordId: body.source_record_id,
+          ruleVersion: productionFormulaRuleVersion,
+          publishedAt: null,
+        });
+        const state = toProductionFormulaState(formula, player.playerId, player.name);
+        await this.writeAudit(tx, {
+          accountId: input.accountId,
+          playerId: player.playerId,
+          action: "production_formula_save",
+          targetType: "production_formula",
+          targetId: formula.formulaId,
+          afterSnapshot: state as unknown as Prisma.InputJsonValue,
+          idempotencyKey: input.idempotencyKey,
+        });
+
+        return { formula: state };
+      },
+    });
+  }
+
+  async publishProductionFormula(input: {
+    accountId: string;
+    formulaId: string;
+    idempotencyKey: string;
+  }): Promise<ProductionFormulaResponse> {
+    return this.setProductionFormulaVisibility({ ...input, visibility: "public" });
+  }
+
+  async unpublishProductionFormula(input: {
+    accountId: string;
+    formulaId: string;
+    idempotencyKey: string;
+  }): Promise<ProductionFormulaResponse> {
+    return this.setProductionFormulaVisibility({ ...input, visibility: "private" });
+  }
+
+  async craftProductionFormula(input: {
+    accountId: string;
+    formulaId: string;
+    idempotencyKey: string;
+  }): Promise<FormulaCraftResponse> {
+    const player = await this.requirePlayer(input.accountId);
+    const formula = await this.getFormulaForCraft(this.prisma, player.playerId, input.formulaId);
+    const endpoint = `POST /api/production/formulas/${formula.formula_id}/craft`;
+    const body: ProductionCraftRequest = { formula_id: formula.formula_id };
+    const result =
+      formula.kind === "alchemy"
+        ? await this.craftAlchemy({
+            accountId: input.accountId,
+            body,
+            endpoint,
+            idempotencyKey: input.idempotencyKey,
+          })
+        : await this.craftForge({
+            accountId: input.accountId,
+            body,
+            endpoint,
+            idempotencyKey: input.idempotencyKey,
+          });
+
+    return { kind: formula.kind, formula, result };
   }
 
   async refineEquipment(input: {
@@ -819,6 +1089,319 @@ export class ProductionService {
     });
   }
 
+  private async setProductionFormulaVisibility(input: {
+    accountId: string;
+    formulaId: string;
+    idempotencyKey: string;
+    visibility: ProductionFormulaVisibility;
+  }): Promise<ProductionFormulaResponse> {
+    const player = await this.requirePlayer(input.accountId);
+    const formulaId = normalizeFormulaId(input.formulaId);
+
+    return this.withIdempotency({
+      accountId: input.accountId,
+      endpoint: `POST /api/production/formulas/${formulaId}/${input.visibility === "public" ? "publish" : "unpublish"}`,
+      idempotencyKey: input.idempotencyKey,
+      requestBody: { formula_id: formulaId, visibility: input.visibility },
+      handler: async (tx) => {
+        const existing = await this.findStoredFormula(tx, formulaId);
+        if (!existing || existing.playerId !== player.playerId) {
+          throw new BadRequestException("单方不存在或无权修改");
+        }
+        const updated = await this.updateStoredFormula(tx, formulaId, {
+          visibility: input.visibility,
+          publishedAt: input.visibility === "public" ? new Date() : null,
+        });
+        const state = toProductionFormulaState(updated, player.playerId, player.name);
+        await this.writeAudit(tx, {
+          accountId: input.accountId,
+          playerId: player.playerId,
+          action:
+            input.visibility === "public"
+              ? "production_formula_publish"
+              : "production_formula_unpublish",
+          targetType: "production_formula",
+          targetId: updated.formulaId,
+          afterSnapshot: state as unknown as Prisma.InputJsonValue,
+          idempotencyKey: input.idempotencyKey,
+        });
+        return { formula: state };
+      },
+    });
+  }
+
+  private async getFormulaForCraft(
+    tx: DbClient,
+    playerId: string,
+    formulaId: string,
+    expectedKind?: ProductionFormulaKind,
+  ): Promise<ProductionFormulaState> {
+    const normalizedFormulaId = normalizeFormulaId(formulaId);
+    const formula = await this.findStoredFormula(tx, normalizedFormulaId);
+    if (!formula) {
+      throw new BadRequestException("单方不存在");
+    }
+    if (formula.playerId !== playerId && formula.visibility !== "public") {
+      throw new BadRequestException("该单方尚未公开");
+    }
+    if (formula.kind !== "alchemy" && formula.kind !== "forge") {
+      throw new BadRequestException("单方类型异常");
+    }
+    if (expectedKind && formula.kind !== expectedKind) {
+      throw new BadRequestException("单方不能用于当前炉型");
+    }
+
+    const owners = await this.getFormulaOwnerNames(tx, [formula]);
+    return toProductionFormulaState(formula, playerId, owners.get(formula.playerId));
+  }
+
+  private async getSuccessfulFormulaSource(
+    tx: Tx,
+    playerId: string,
+    kind: ProductionFormulaKind,
+    sourceRecordId: string,
+  ): Promise<{ materials: ProductionMaterialInput[]; template: FormulaResultTemplate }> {
+    if (kind === "alchemy") {
+      const record = await tx.alchemyRecord.findFirst({
+        where: { playerId, recordId: sourceRecordId, success: true },
+      });
+      if (!record) {
+        throw new BadRequestException("只能从本人成功的炼丹记录保存单方");
+      }
+      return getFormulaSourceFromSnapshots(kind, record.materialSnapshot, record.resultSnapshot);
+    }
+
+    const record = await tx.equipmentOperationRecord.findFirst({
+      where: { playerId, recordId: sourceRecordId, operationType: "forge" },
+    });
+    if (!record || !isSuccessfulForgeSnapshot(record.resultSnapshot)) {
+      throw new BadRequestException("只能从本人成功的炼器记录保存单方");
+    }
+    return getFormulaSourceFromSnapshots(kind, record.materialSnapshot, record.resultSnapshot);
+  }
+
+  private async createStoredFormula(
+    tx: Tx,
+    input: Omit<StoredProductionFormula, "createdAt" | "updatedAt">,
+  ): Promise<StoredProductionFormula> {
+    const delegate = getProductionFormulaDelegate(tx);
+    if (delegate) {
+      return delegate.create({
+        data: {
+          formulaId: input.formulaId,
+          playerId: input.playerId,
+          kind: input.kind,
+          name: input.name,
+          compositionHash: input.compositionHash,
+          materialSnapshot: input.materialSnapshot,
+          resultTemplateSnapshot: input.resultTemplateSnapshot,
+          visibility: input.visibility,
+          sourceRecordId: input.sourceRecordId,
+          ruleVersion: input.ruleVersion,
+          publishedAt: input.publishedAt,
+        },
+      });
+    }
+
+    const now = new Date();
+    const formula: StoredProductionFormula = { ...input, createdAt: now, updatedAt: now };
+    await tx.equipmentOperationRecord.create({
+      data: {
+        recordId: formula.formulaId,
+        playerId: formula.playerId,
+        eraId: defaultEraId,
+        equipmentInstanceId: null,
+        operationType: "production_formula_archive",
+        materialSnapshot: formula.materialSnapshot as Prisma.InputJsonValue,
+        resultSnapshot: {
+          production_formula: serializeStoredFormula(formula),
+        } as Prisma.InputJsonValue,
+        configVersion: productionConfigVersion,
+      },
+    });
+    return formula;
+  }
+
+  private async listStoredFormulas(
+    tx: DbClient,
+    input: { playerId: string; scope: "mine" | "public" },
+  ): Promise<StoredProductionFormula[]> {
+    const delegate = getProductionFormulaDelegate(tx);
+    if (delegate) {
+      return delegate.findMany({
+        where: input.scope === "mine" ? { playerId: input.playerId } : { visibility: "public" },
+        orderBy: { createdAt: "desc" },
+        take: 100,
+      });
+    }
+
+    const records = await tx.equipmentOperationRecord.findMany({
+      where: {
+        operationType: "production_formula_archive",
+        ...(input.scope === "mine" ? { playerId: input.playerId } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    });
+    return records
+      .map((record) => storedFormulaFromFallbackRecord(record))
+      .filter((formula): formula is StoredProductionFormula => Boolean(formula))
+      .filter((formula) => input.scope === "mine" || formula.visibility === "public");
+  }
+
+  private async findStoredFormula(
+    tx: DbClient,
+    formulaId: string,
+  ): Promise<StoredProductionFormula | null> {
+    const delegate = getProductionFormulaDelegate(tx);
+    if (delegate) {
+      return delegate.findFirst({ where: { formulaId } });
+    }
+
+    const record = await tx.equipmentOperationRecord.findFirst({
+      where: { recordId: formulaId, operationType: "production_formula_archive" },
+    });
+    return record ? storedFormulaFromFallbackRecord(record) : null;
+  }
+
+  private async findStoredFormulaByComposition(
+    tx: Tx,
+    playerId: string,
+    kind: ProductionFormulaKind,
+    compositionHash: string,
+  ): Promise<StoredProductionFormula | null> {
+    const delegate = getProductionFormulaDelegate(tx);
+    if (delegate) {
+      return delegate.findFirst({ where: { playerId, kind, compositionHash } });
+    }
+    const formulas = await this.listStoredFormulas(tx, { playerId, scope: "mine" });
+    return (
+      formulas.find(
+        (formula) => formula.kind === kind && formula.compositionHash === compositionHash,
+      ) ?? null
+    );
+  }
+
+  private async updateStoredFormula(
+    tx: Tx,
+    formulaId: string,
+    data: Pick<StoredProductionFormula, "visibility" | "publishedAt">,
+  ): Promise<StoredProductionFormula> {
+    const delegate = getProductionFormulaDelegate(tx);
+    if (delegate) {
+      return delegate.update({ where: { formulaId }, data });
+    }
+
+    const existing = await this.findStoredFormula(tx, formulaId);
+    if (!existing) {
+      throw new BadRequestException("单方不存在");
+    }
+    const updated: StoredProductionFormula = {
+      ...existing,
+      ...data,
+      updatedAt: new Date(),
+    };
+    await tx.equipmentOperationRecord.update({
+      where: { recordId: formulaId },
+      data: {
+        resultSnapshot: {
+          production_formula: serializeStoredFormula(updated),
+        } as Prisma.InputJsonValue,
+      },
+    });
+    return updated;
+  }
+
+  private async getFormulaOwnerNames(
+    tx: DbClient,
+    formulas: StoredProductionFormula[],
+  ): Promise<Map<string, string>> {
+    const playerIds = Array.from(new Set(formulas.map((formula) => formula.playerId)));
+    if (!playerIds.length) {
+      return new Map();
+    }
+    const players = await tx.player.findMany({
+      where: { playerId: { in: playerIds } },
+      select: { playerId: true, name: true },
+    });
+    return new Map(players.map((owner) => [owner.playerId, owner.name]));
+  }
+
+  private async createAlchemyRecord(tx: Tx, data: Record<string, unknown>): Promise<AlchemyRecord> {
+    const create = tx.alchemyRecord.create as unknown as (input: {
+      data: Record<string, unknown>;
+    }) => Promise<AlchemyRecord>;
+    if (getProductionFormulaDelegate(tx)) {
+      return create({ data });
+    }
+    const { formulaId: _formulaId, compositionHash: _compositionHash, ...legacyData } = data;
+    return create({ data: legacyData });
+  }
+
+  private async createEquipmentOperationRecord(
+    tx: Tx,
+    data: Record<string, unknown>,
+  ): Promise<EquipmentOperationRecord> {
+    const create = tx.equipmentOperationRecord.create as unknown as (input: {
+      data: Record<string, unknown>;
+    }) => Promise<EquipmentOperationRecord>;
+    if (getProductionFormulaDelegate(tx)) {
+      return create({ data });
+    }
+    const { formulaId: _formulaId, compositionHash: _compositionHash, ...legacyData } = data;
+    return create({ data: legacyData });
+  }
+
+  private async createPlayerProductionEffect(
+    tx: Tx,
+    input: {
+      playerId: string;
+      effectType: "breakthrough_support" | "explore_boost";
+      effectValue: number;
+      sourceItemId: string;
+      sourceFormulaId: string | null;
+      sourcePillUseRecordId: string;
+    },
+  ) {
+    const effectId = `production_effect_${randomUUID()}`;
+    const delegate = getPlayerProductionEffectDelegate(tx);
+    if (delegate) {
+      await delegate.create({
+        data: {
+          effectId,
+          playerId: input.playerId,
+          effectType: input.effectType,
+          effectValue: input.effectValue,
+          remainingUses: 1,
+          sourceItemId: input.sourceItemId,
+          sourceFormulaId: input.sourceFormulaId,
+        },
+      });
+      return;
+    }
+
+    // TODO(Prisma)：未生成 PlayerProductionEffect 前，以生产操作记录保留可追溯降级数据。
+    await tx.equipmentOperationRecord.create({
+      data: {
+        recordId: effectId,
+        playerId: input.playerId,
+        eraId: defaultEraId,
+        equipmentInstanceId: null,
+        operationType: "player_production_effect",
+        materialSnapshot: {},
+        resultSnapshot: {
+          effect_type: input.effectType,
+          effect_value: input.effectValue,
+          remaining_uses: 1,
+          source_formula_id: input.sourceFormulaId,
+          source_item_id: input.sourceItemId,
+          source_pill_use_record_id: input.sourcePillUseRecordId,
+        } as Prisma.InputJsonValue,
+        configVersion: productionConfigVersion,
+      },
+    });
+  }
+
   private async withEquipmentOperation(
     input: {
       accountId: string;
@@ -1144,25 +1727,27 @@ export class ProductionService {
     tx: Tx,
     input: {
       playerId: string;
-      equipmentInstanceId: string;
+      equipmentInstanceId: string | null;
       operationType: string;
       materials: RewardBundle;
       result: unknown;
       idempotencyKey: string;
+      formulaId?: string | null;
+      compositionHash?: string | null;
     },
   ) {
-    return tx.equipmentOperationRecord.create({
-      data: {
-        recordId: `equipment_op_${randomUUID()}`,
-        playerId: input.playerId,
-        eraId: defaultEraId,
-        equipmentInstanceId: input.equipmentInstanceId,
-        operationType: input.operationType,
-        materialSnapshot: input.materials as unknown as Prisma.InputJsonValue,
-        resultSnapshot: input.result as unknown as Prisma.InputJsonValue,
-        configVersion: productionConfigVersion,
-        idempotencyKey: input.idempotencyKey,
-      },
+    return this.createEquipmentOperationRecord(tx, {
+      recordId: `equipment_op_${randomUUID()}`,
+      playerId: input.playerId,
+      eraId: defaultEraId,
+      equipmentInstanceId: input.equipmentInstanceId,
+      operationType: input.operationType,
+      materialSnapshot: input.materials as unknown as Prisma.InputJsonValue,
+      resultSnapshot: input.result as unknown as Prisma.InputJsonValue,
+      configVersion: productionConfigVersion,
+      idempotencyKey: input.idempotencyKey,
+      formulaId: input.formulaId ?? null,
+      compositionHash: input.compositionHash ?? null,
     });
   }
 
@@ -1250,13 +1835,415 @@ function normalizeSetItemLockRequest(body: SetItemLockRequest): SetItemLockReque
   return { item_instance_id: body.item_instance_id, locked: Boolean(body.locked) };
 }
 
-function normalizeRecipeRequest(recipeId: string): { recipe_id: string } {
-  const normalized = recipeId?.trim();
-  if (!normalized) {
-    throw new BadRequestException("缺少配方");
+function normalizeProductionCraftRequest(
+  body: ProductionCraftRequest,
+  kind: ProductionFormulaKind,
+): { materials: ProductionMaterialInput[]; formula_id?: string } {
+  const formulaId = typeof body?.formula_id === "string" ? body.formula_id.trim() : "";
+  const rawMaterials = body?.materials;
+  if (rawMaterials !== undefined && !Array.isArray(rawMaterials)) {
+    throw new BadRequestException("材料必须为数组");
+  }
+  if (!formulaId && !rawMaterials?.length) {
+    throw new BadRequestException("请至少投入一种可投炉材料，或指定已保存的单方");
+  }
+  if ((rawMaterials?.length ?? 0) > 8) {
+    throw new BadRequestException("一次最多投入 8 种材料");
   }
 
-  return { recipe_id: normalized };
+  const materials = (rawMaterials ?? []).map((material) => {
+    const itemId = typeof material?.item_id === "string" ? material.item_id.trim() : "";
+    const count = Number(material?.count);
+    if (!itemId || !Number.isSafeInteger(count) || count <= 0 || count > 99) {
+      throw new BadRequestException("材料名称或数量不合法");
+    }
+    if (!isProductionCraftMaterial(itemId, kind)) {
+      throw new BadRequestException(
+        `${getItemMeta(itemId).name}不可投入${kind === "alchemy" ? "丹炉" : "器炉"}`,
+      );
+    }
+    return { item_id: itemId, count };
+  });
+
+  return {
+    materials: normalizeProductionMaterials(materials),
+    ...(formulaId ? { formula_id: normalizeFormulaId(formulaId) } : {}),
+  };
+}
+
+function normalizeSaveProductionFormulaRequest(
+  body: SaveProductionFormulaRequest,
+): SaveProductionFormulaRequest {
+  const kind = body?.kind;
+  if (kind !== "alchemy" && kind !== "forge") {
+    throw new BadRequestException("单方类型必须为炼丹或炼器");
+  }
+  const sourceRecordId = body?.source_record_id?.trim();
+  if (!sourceRecordId || sourceRecordId.length > 120) {
+    throw new BadRequestException("来源记录不合法");
+  }
+  const name = body?.name?.trim();
+  if (!name || name.length > 24) {
+    throw new BadRequestException("单方名称需为 1-24 个字符");
+  }
+  return { kind, source_record_id: sourceRecordId, name };
+}
+
+function normalizeFormulaListQuery(query: ProductionFormulaListQuery): {
+  kind?: ProductionFormulaKind;
+  scope: "mine" | "public";
+  keyword: string;
+} {
+  const kind = query.kind;
+  if (kind !== undefined && kind !== "alchemy" && kind !== "forge") {
+    throw new BadRequestException("单方类型不合法");
+  }
+  const scope = query.scope ?? "mine";
+  if (scope !== "mine" && scope !== "public") {
+    throw new BadRequestException("单方查询范围不合法");
+  }
+  const keyword = query.keyword?.trim() ?? "";
+  if (keyword.length > 24) {
+    throw new BadRequestException("搜索关键词不能超过 24 个字符");
+  }
+  return { kind, scope, keyword };
+}
+
+function normalizeFormulaId(value: string): string {
+  const formulaId = value.trim();
+  if (!formulaId || formulaId.length > 120) {
+    throw new BadRequestException("单方标识不合法");
+  }
+  return formulaId;
+}
+
+function resolveFormulaMaterials(
+  submitted: ProductionMaterialInput[],
+  formula: ProductionFormulaState,
+  kind: ProductionFormulaKind,
+): ProductionMaterialInput[] {
+  if (formula.kind !== kind) {
+    throw new BadRequestException("单方不能用于当前炉型");
+  }
+  if (
+    submitted.length > 0 &&
+    materialCompositionSignature(submitted) !== materialCompositionSignature(formula.materials)
+  ) {
+    throw new BadRequestException("引用单方时提交的材料必须与单方完全一致");
+  }
+  return formula.materials;
+}
+
+function buildDiscoveryCost(
+  materials: ProductionMaterialInput[],
+  configuredCost?: string,
+): RewardBundle {
+  const total = materials.reduce((sum, material) => sum + material.count, 0);
+  const configured = configuredCost ? Number(configuredCost) : Number.NaN;
+  const spiritStone =
+    Number.isSafeInteger(configured) && configured > 0 ? configured : Math.max(20, total * 20);
+  return {
+    spirit_stone: String(spiritStone),
+    items: materials.map((material) => ({
+      item_id: material.item_id,
+      name: getItemMeta(material.item_id).name,
+      count: material.count,
+      bind_type: "bound",
+    })),
+  };
+}
+
+function buildAlchemyFailureReturns(materials: ProductionMaterialInput[]): RewardBundle {
+  const total = materials.reduce((sum, material) => sum + material.count, 0);
+  return {
+    items: [
+      {
+        item_id: "pill_dust",
+        name: getItemMeta("pill_dust").name,
+        count: Math.max(1, Math.floor(total / 2)),
+        bind_type: "bound",
+      },
+    ],
+  };
+}
+
+function buildForgeFailureReturns(materials: ProductionMaterialInput[]): RewardBundle {
+  const total = materials.reduce((sum, material) => sum + material.count, 0);
+  return {
+    items:
+      total >= 4
+        ? [
+            {
+              item_id: "artifact_soul",
+              name: getItemMeta("artifact_soul").name,
+              count: 1,
+              bind_type: "bound",
+            },
+          ]
+        : [],
+  };
+}
+
+function withFormulaContext(
+  rewards: RewardBundle,
+  context: Record<string, unknown>,
+): Prisma.InputJsonValue {
+  return {
+    ...rewards,
+    formula_context: context,
+  } as unknown as Prisma.InputJsonValue;
+}
+
+function getFormulaSourceFromSnapshots(
+  kind: ProductionFormulaKind,
+  materialSnapshot: Prisma.JsonValue,
+  resultSnapshot: Prisma.JsonValue,
+): { materials: ProductionMaterialInput[]; template: FormulaResultTemplate } {
+  const materials = extractFormulaMaterials(materialSnapshot, kind);
+  const result = asRecord(resultSnapshot);
+  const context = asRecord(result.formula_context);
+  const template = parseFormulaResultTemplate(context.result_template, kind);
+  if (!materials.length || !template) {
+    throw new BadRequestException("该生产记录不包含可保存的自研单方");
+  }
+  return { materials, template };
+}
+
+function extractFormulaMaterials(
+  snapshot: Prisma.JsonValue,
+  kind: ProductionFormulaKind,
+): ProductionMaterialInput[] {
+  const source = Array.isArray(snapshot) ? snapshot : asRecord(snapshot).items;
+  if (!Array.isArray(source)) {
+    return [];
+  }
+  const materials: ProductionMaterialInput[] = [];
+  for (const item of source) {
+    const record = asRecord(item);
+    const itemId = typeof record.item_id === "string" ? record.item_id : "";
+    const count = Number(record.count);
+    if (!itemId || !Number.isSafeInteger(count) || count <= 0) {
+      return [];
+    }
+    if (!isProductionCraftMaterial(itemId, kind)) {
+      return [];
+    }
+    materials.push({ item_id: itemId, count });
+  }
+  return normalizeProductionMaterials(materials);
+}
+
+function parseFormulaResultTemplate(
+  value: unknown,
+  expectedKind?: ProductionFormulaKind,
+): FormulaResultTemplate | null {
+  const record = asRecord(value);
+  const kind = record.kind;
+  const name = record.name;
+  const successRate = Number(record.success_rate);
+  const spiritStoneCost = record.spirit_stone_cost;
+  if (
+    (kind !== "alchemy" && kind !== "forge") ||
+    (expectedKind && kind !== expectedKind) ||
+    typeof name !== "string" ||
+    !name ||
+    !Number.isSafeInteger(successRate) ||
+    successRate < 0 ||
+    successRate > 10000 ||
+    typeof spiritStoneCost !== "string"
+  ) {
+    return null;
+  }
+  if (kind === "alchemy") {
+    const alchemy = asRecord(record.alchemy);
+    const effectKind = alchemy.effect_kind;
+    const effectMin = Number(alchemy.effect_min);
+    const effectMax = Number(alchemy.effect_max);
+    if (
+      typeof alchemy.pill_item_id !== "string" ||
+      typeof alchemy.pill_type !== "string" ||
+      !Number.isSafeInteger(Number(alchemy.pill_rank)) ||
+      (effectKind !== "cultivation" &&
+        effectKind !== "breakthrough_support" &&
+        effectKind !== "explore_boost") ||
+      !Number.isSafeInteger(effectMin) ||
+      !Number.isSafeInteger(effectMax) ||
+      effectMin <= 0 ||
+      effectMax < effectMin
+    ) {
+      return null;
+    }
+    const nextExploreBonus = Number(alchemy.next_explore_bonus_percent);
+    return {
+      kind,
+      name,
+      success_rate: successRate,
+      spirit_stone_cost: spiritStoneCost,
+      alchemy: {
+        pill_item_id: alchemy.pill_item_id,
+        pill_rank: Number(alchemy.pill_rank),
+        pill_type: alchemy.pill_type,
+        effect_kind: effectKind,
+        effect_min: effectMin,
+        effect_max: effectMax,
+        ...(Number.isSafeInteger(nextExploreBonus) && nextExploreBonus > 0
+          ? { next_explore_bonus_percent: nextExploreBonus }
+          : {}),
+      },
+    };
+  }
+
+  const forge = asRecord(record.forge);
+  const affixProfile = forge.affix_profile;
+  if (
+    typeof forge.equipment_id !== "string" ||
+    typeof forge.equipment_type !== "string" ||
+    typeof forge.rarity !== "string" ||
+    (affixProfile !== "weapon" && affixProfile !== "armor" && affixProfile !== "talisman")
+  ) {
+    return null;
+  }
+  return {
+    kind,
+    name,
+    success_rate: successRate,
+    spirit_stone_cost: spiritStoneCost,
+    forge: {
+      equipment_id: forge.equipment_id,
+      equipment_type: forge.equipment_type,
+      rarity: forge.rarity,
+      affix_profile: affixProfile,
+    },
+  };
+}
+
+function isSuccessfulForgeSnapshot(snapshot: Prisma.JsonValue): boolean {
+  return asRecord(snapshot).craft_success === true;
+}
+
+function toProductionFormulaState(
+  formula: StoredProductionFormula,
+  viewerPlayerId: string,
+  creatorName?: string,
+): ProductionFormulaState {
+  const kind = formula.kind === "alchemy" || formula.kind === "forge" ? formula.kind : null;
+  const visibility =
+    formula.visibility === "public" || formula.visibility === "private" ? formula.visibility : null;
+  if (!kind || !visibility) {
+    throw new BadRequestException("单方数据异常");
+  }
+  const materials = extractFormulaMaterials(formula.materialSnapshot, kind);
+  const resultTemplate = parseFormulaResultTemplate(formula.resultTemplateSnapshot, kind);
+  if (!materials.length || !resultTemplate) {
+    throw new BadRequestException("单方数据异常");
+  }
+  return {
+    formula_id: formula.formulaId,
+    player_id: formula.playerId,
+    ...(creatorName ? { creator_name: creatorName } : {}),
+    kind,
+    name: formula.name,
+    composition_hash: formula.compositionHash,
+    materials,
+    result_template: resultTemplate,
+    visibility,
+    source_record_id: formula.sourceRecordId,
+    rule_version: formula.ruleVersion,
+    published_at: formula.publishedAt?.toISOString() ?? null,
+    created_at: formula.createdAt.toISOString(),
+    updated_at: formula.updatedAt.toISOString(),
+    reusable: formula.playerId === viewerPlayerId || visibility === "public",
+  };
+}
+
+function serializeStoredFormula(formula: StoredProductionFormula): Record<string, unknown> {
+  return {
+    formula_id: formula.formulaId,
+    player_id: formula.playerId,
+    kind: formula.kind,
+    name: formula.name,
+    composition_hash: formula.compositionHash,
+    result_template_snapshot: formula.resultTemplateSnapshot,
+    visibility: formula.visibility,
+    source_record_id: formula.sourceRecordId,
+    rule_version: formula.ruleVersion,
+    published_at: formula.publishedAt?.toISOString() ?? null,
+    created_at: formula.createdAt.toISOString(),
+    updated_at: formula.updatedAt.toISOString(),
+  };
+}
+
+function storedFormulaFromFallbackRecord(record: {
+  recordId: string;
+  playerId: string;
+  materialSnapshot: Prisma.JsonValue;
+  resultSnapshot: Prisma.JsonValue;
+  createdAt: Date;
+}): StoredProductionFormula | null {
+  const stored = asRecord(asRecord(record.resultSnapshot).production_formula);
+  const formulaId = typeof stored.formula_id === "string" ? stored.formula_id : record.recordId;
+  const playerId = typeof stored.player_id === "string" ? stored.player_id : record.playerId;
+  const kind = typeof stored.kind === "string" ? stored.kind : "";
+  const name = typeof stored.name === "string" ? stored.name : "";
+  const compositionHash =
+    typeof stored.composition_hash === "string" ? stored.composition_hash : "";
+  const visibility = typeof stored.visibility === "string" ? stored.visibility : "";
+  const sourceRecordId = typeof stored.source_record_id === "string" ? stored.source_record_id : "";
+  const ruleVersion = typeof stored.rule_version === "string" ? stored.rule_version : "";
+  const resultTemplateSnapshot = stored.result_template_snapshot;
+  if (
+    !formulaId ||
+    !playerId ||
+    !kind ||
+    !name ||
+    !compositionHash ||
+    !visibility ||
+    !sourceRecordId ||
+    !ruleVersion ||
+    !resultTemplateSnapshot
+  ) {
+    return null;
+  }
+  return {
+    formulaId,
+    playerId,
+    kind,
+    name,
+    compositionHash,
+    materialSnapshot: record.materialSnapshot,
+    resultTemplateSnapshot: resultTemplateSnapshot as Prisma.JsonValue,
+    visibility,
+    sourceRecordId,
+    ruleVersion,
+    publishedAt: parseOptionalDate(stored.published_at),
+    createdAt: parseOptionalDate(stored.created_at) ?? record.createdAt,
+    updatedAt: parseOptionalDate(stored.updated_at) ?? record.createdAt,
+  };
+}
+
+function getProductionFormulaDelegate(tx: DbClient): ProductionFormulaDelegate | undefined {
+  return (tx as unknown as FormulaDelegateHolder).productionFormula;
+}
+
+function getPlayerProductionEffectDelegate(tx: Tx): PlayerProductionEffectDelegate | undefined {
+  return (tx as unknown as PlayerProductionEffectDelegateHolder).playerProductionEffect;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function parseOptionalDate(value: unknown): Date | null {
+  if (value instanceof Date) {
+    return value;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function normalizePillUseRequest(body: PillUseRequest): PillUseRequest {
@@ -1341,329 +2328,6 @@ function isRouteAvailable(targetRoute: CultivationRoute | "all", playerRoute: st
   return targetRoute === "all" || targetRoute === playerRoute;
 }
 
-function recipeCostBundle(recipe: {
-  materials: Array<{ item_id: string; count: number }>;
-  spirit_stone_cost: string;
-}): RewardBundle {
-  return {
-    spirit_stone: recipe.spirit_stone_cost,
-    items: recipe.materials.map((item) => ({
-      item_id: item.item_id,
-      name: getItemMeta(item.item_id).name,
-      count: item.count,
-      bind_type: "bound",
-    })),
-  };
-}
-
-function withProductionRecommendation<TRecipe extends AlchemyRecipeSummary | ForgeRecipeSummary>(
-  recipe: TRecipe,
-  input: {
-    bag: BagSummaryResponse;
-    kind: "alchemy" | "forge";
-    playerRoute: string;
-    recentBattles: BattleSummary[];
-    spiritStone: string;
-  },
-): TRecipe {
-  const materialGaps = [
-    ...recipe.materials.map((material) => {
-      const owned = countBagItem(input.bag, material.item_id);
-      const missing = Math.max(0, material.count - owned);
-      return {
-        item_id: material.item_id,
-        name: material.name,
-        owned,
-        required: material.count,
-        missing,
-        shortage_hint: materialShortageHint(material.item_id, missing),
-        source_hints: buildMaterialSourceHints(material.item_id, missing),
-      };
-    }),
-    {
-      item_id: "spirit_stone",
-      name: "灵石",
-      owned: Number(input.spiritStone),
-      required: Number(recipe.spirit_stone_cost),
-      missing: Math.max(0, Number(recipe.spirit_stone_cost) - Number(input.spiritStone)),
-      shortage_hint: materialShortageHint(
-        "spirit_stone",
-        Math.max(0, Number(recipe.spirit_stone_cost) - Number(input.spiritStone)),
-      ),
-      source_hints: buildMaterialSourceHints(
-        "spirit_stone",
-        Math.max(0, Number(recipe.spirit_stone_cost) - Number(input.spiritStone)),
-      ),
-    },
-  ];
-  const canCraft = materialGaps.every((item) => item.missing <= 0);
-  const routeMatched = recipe.route === "all" || recipe.route === input.playerRoute;
-  const recentContext = buildRecentProductionContext(recipe, input.kind, input.recentBattles);
-  const priorityScore = productionPriorityScore({
-    canCraft,
-    kind: input.kind,
-    recentContext,
-    recipe,
-    routeMatched,
-    playerRoute: input.playerRoute,
-  });
-  const recommended = canCraft && routeMatched && priorityScore >= 60;
-  const recipeItemIds = new Set([
-    ...recipe.materials.map((material) => material.item_id),
-    "spirit_stone",
-  ]);
-
-  return {
-    ...recipe,
-    recommendation: {
-      can_craft: canCraft,
-      balance_warnings: buildProductionBalanceWarnings().filter((warning) =>
-        recipeItemIds.has(warning.item_id),
-      ),
-      material_gaps: materialGaps,
-      next_action_hint: productionNextActionHint(recipe, input.kind, canCraft, recentContext),
-      priority_score: priorityScore,
-      reason: productionRecommendationReason({
-        canCraft,
-        kind: input.kind,
-        recommended,
-        recentContext,
-        recipe,
-      }),
-      recommendation_tags: buildProductionRecommendationTags({
-        canCraft,
-        kind: input.kind,
-        recentContext,
-        recommended,
-        routeMatched,
-      }),
-      recommended,
-      result_hint: productionResultHint(recipe, input.kind),
-      usage_hint: productionUsageHint(recipe, input.kind),
-    },
-  };
-}
-
-function countBagItem(bag: BagSummaryResponse, itemId: string): number {
-  return bag.items
-    .filter((item) => item.item_id === itemId && !item.expired && !item.locked)
-    .reduce((sum, item) => sum + Number(item.count), 0);
-}
-
-function productionResultHint(
-  recipe: AlchemyRecipeSummary | ForgeRecipeSummary,
-  kind: "alchemy" | "forge",
-): string {
-  if (kind === "alchemy") {
-    const alchemyRecipe = recipe as AlchemyRecipeSummary;
-    return alchemyRecipe.pill_type === "breakthrough"
-      ? `${alchemyRecipe.name}成功后进入背包，可作为突破准备；服用时会显示品质和同阶递减。`
-      : `${alchemyRecipe.name}成功后进入背包，品质会影响修为收益，适合补今日成长。`;
-  }
-
-  const forgeRecipe = recipe as ForgeRecipeSummary;
-  return `${forgeRecipe.name}会产出${equipmentRarityText(
-    forgeRecipe.rarity,
-  )}法宝，词条会影响战报中的输出、防护或速度表现。`;
-}
-
-function productionNextActionHint(
-  recipe: AlchemyRecipeSummary | ForgeRecipeSummary,
-  kind: "alchemy" | "forge",
-  canCraft: boolean,
-  recentContext: RecentProductionContext,
-): string {
-  if (!canCraft) {
-    return "先按材料来源补齐缺口，再回到成长页选择所需丹方或配方。";
-  }
-  if (kind === "alchemy") {
-    return recentContext.matchedMaterialNames.length
-      ? `最近已获得${recentContext.matchedMaterialNames.join("、")}，炼成后去背包选择丹药服用。`
-      : "炼成后去背包选择丹药服用，再回到今日路线推进玄铁塔。";
-  }
-
-  const forgeRecipe = recipe as ForgeRecipeSummary;
-  return forgeRecipe.rarity === "ancient_craft"
-    ? "古器胚用于长期养成，第一件法宝可先选择路线普通配方。"
-    : recentContext.traitHints.length
-      ? `${recentContext.traitHints[0]}，炼成后查看战报验证词条表现。`
-      : "炼成后查看战报，观察法宝触发和胜负原因。";
-}
-
-type RecentProductionContext = {
-  matchedMaterialNames: string[];
-  traitHints: string[];
-};
-
-function materialShortageHint(itemId: string, missing: number): string | undefined {
-  if (missing <= 0) {
-    return undefined;
-  }
-
-  const sources = buildMaterialSourceHints(itemId, missing);
-  if (!sources.length) {
-    return `还缺 ${missing} 个，先完成今日任务或探索补齐。`;
-  }
-
-  const primary = sources[0];
-  const estimate = primary.estimated_runs ? `约 ${primary.estimated_runs} 次` : "数次";
-  return `还缺 ${missing} 个，可通过${primary.name}${estimate}补齐。`;
-}
-
-function productionRecommendationReason(input: {
-  recipe: AlchemyRecipeSummary | ForgeRecipeSummary;
-  kind: "alchemy" | "forge";
-  canCraft: boolean;
-  recommended: boolean;
-  recentContext: RecentProductionContext;
-}): string {
-  if (!input.canCraft) {
-    return "材料或灵石不足，先按缺口来源探索、处理奇遇或收取洞府。";
-  }
-  if (input.recommended) {
-    if (input.recentContext.matchedMaterialNames.length) {
-      return `最近探索已经接上${input.recentContext.matchedMaterialNames.join(
-        "、",
-      )}，现在炼制不会浪费材料链。`;
-    }
-    return input.kind === "alchemy"
-      ? "当前路线可直接炼制，适合推进服丹成长。"
-      : "当前路线可直接炼制，适合补一件能影响战报表现的法宝。";
-  }
-  return "可以炼制，但优先级低于当前路线和当前材料缺口。";
-}
-
-function productionUsageHint(
-  recipe: AlchemyRecipeSummary | ForgeRecipeSummary,
-  kind: "alchemy" | "forge",
-): string {
-  if (kind === "alchemy") {
-    const alchemyRecipe = recipe as AlchemyRecipeSummary;
-    return alchemyRecipe.pill_type === "breakthrough"
-      ? "用于突破准备，建议在突破条件接近满足时炼制。"
-      : "用于服丹提升修为，服用后今日路线会继续指向九塔或章节目标。";
-  }
-
-  const forgeRecipe = recipe as ForgeRecipeSummary;
-  return forgeRecipe.rarity === "ancient_craft"
-    ? "用于长期收藏和养成，前期不是必须入口。"
-    : "用于补强自动战斗表现，适合探索承伤偏高或输出不足时炼制。";
-}
-
-function buildRecentProductionContext(
-  recipe: AlchemyRecipeSummary | ForgeRecipeSummary,
-  kind: "alchemy" | "forge",
-  recentBattles: BattleSummary[],
-): RecentProductionContext {
-  const materialIds = new Set(recipe.materials.map((material) => material.item_id));
-  const matchedMaterialNames = uniqueStrings(
-    recentBattles.flatMap((battle) =>
-      (battle.rewards.items ?? [])
-        .filter((item) => materialIds.has(item.item_id))
-        .map((item) => item.name),
-    ),
-  );
-  const traits = uniqueStrings(recentBattles.flatMap((battle) => battle.enemy_traits ?? []));
-  const traitHints = traits
-    .map((trait) => productionTraitHint(trait, kind))
-    .filter((hint): hint is string => Boolean(hint));
-
-  return {
-    matchedMaterialNames,
-    traitHints: uniqueStrings(traitHints),
-  };
-}
-
-function productionTraitHint(trait: string, kind: "alchemy" | "forge"): string | undefined {
-  if (kind === "alchemy") {
-    if (trait === "毒蚀" || trait === "快攻") {
-      return "近期敌人压血较快，服丹提升修为能提高容错";
-    }
-    if (trait === "高防" || trait === "护盾") {
-      return "近期敌人防护较厚，服丹后再挑战更稳";
-    }
-    return undefined;
-  }
-
-  if (trait === "高防" || trait === "护盾" || trait === "阵痕") {
-    return "近期敌人防护较厚，优先补法宝输出或词条";
-  }
-  if (trait === "灵敏" || trait === "快攻") {
-    return "近期敌人出手较快，法宝速度和防护词条更有意义";
-  }
-  return undefined;
-}
-
-function productionPriorityScore(input: {
-  recipe: AlchemyRecipeSummary | ForgeRecipeSummary;
-  kind: "alchemy" | "forge";
-  canCraft: boolean;
-  routeMatched: boolean;
-  playerRoute: string;
-  recentContext: RecentProductionContext;
-}): number {
-  let score = 0;
-  if (input.routeMatched) {
-    score += input.recipe.route === input.playerRoute ? 25 : 12;
-  }
-  if (input.canCraft) {
-    score += 40;
-  } else {
-    score -= 10;
-  }
-  if (input.recentContext.matchedMaterialNames.length) {
-    score += 12;
-  }
-  if (input.recentContext.traitHints.length) {
-    score += input.kind === "forge" ? 12 : 8;
-  }
-  if (
-    input.kind === "alchemy" &&
-    (input.recipe as AlchemyRecipeSummary).pill_type === "cultivation"
-  ) {
-    score += 10;
-  }
-  if (input.kind === "forge" && (input.recipe as ForgeRecipeSummary).rarity === "ordinary") {
-    score += 10;
-  }
-
-  return Math.max(0, Math.min(100, score));
-}
-
-function buildProductionRecommendationTags(input: {
-  kind: "alchemy" | "forge";
-  canCraft: boolean;
-  routeMatched: boolean;
-  recommended: boolean;
-  recentContext: RecentProductionContext;
-}): string[] {
-  const tags = [input.canCraft ? "材料足够" : "材料缺口"];
-  if (input.routeMatched) {
-    tags.push("当前路线");
-  }
-  if (input.recommended) {
-    tags.push(input.kind === "alchemy" ? "推荐炼丹" : "推荐炼器");
-  }
-  if (input.recentContext.matchedMaterialNames.length) {
-    tags.push("近期掉落可衔接");
-  }
-  if (input.recentContext.traitHints.length) {
-    tags.push("战报提示");
-  }
-  return uniqueStrings(tags);
-}
-
-function equipmentRarityText(rarity: string): string {
-  const labels: Record<string, string> = {
-    ancient_craft: "古器胚",
-    earth: "地品",
-    heaven: "天品",
-    immortal: "仙品",
-    ordinary: "凡品",
-  };
-  return labels[rarity] ?? rarity;
-}
-
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)));
 }
@@ -1691,6 +2355,85 @@ function getPillQualityFromItem(item: PlayerItem): PillQuality {
   return typeof quality === "string" && pillQualityConfigs.some((item) => item.quality === quality)
     ? (quality as PillQuality)
     : "middle";
+}
+
+type PillRuntimeEffect = {
+  pill_effect: "cultivation" | "breakthrough_support" | "explore_boost";
+  pill_type: string;
+  pill_rank: number;
+  effect_value: number;
+  next_explore_bonus_percent?: number;
+  formula_id: string | null;
+};
+
+/** 历史背包丹药仅用于兼容存量，不再对应任何可选默认药方。 */
+const legacyPillEffects: Record<string, Omit<PillRuntimeEffect, "formula_id">> = {
+  pill_juling_1: {
+    pill_effect: "cultivation",
+    pill_type: "cultivation",
+    pill_rank: 1,
+    effect_value: 100,
+  },
+  pill_feixue_1: {
+    pill_effect: "cultivation",
+    pill_type: "cultivation",
+    pill_rank: 1,
+    effect_value: 100,
+  },
+  pill_pojing_1: {
+    pill_effect: "breakthrough_support",
+    pill_type: "breakthrough",
+    pill_rank: 1,
+    effect_value: 500,
+  },
+};
+
+function getPillEffectFromItem(item: PlayerItem): PillRuntimeEffect | null {
+  const metadata = asRecord(item.metadata);
+  const pillEffect = metadata.pill_effect;
+  const effectValue = Number(metadata.effect_value);
+  const pillRank = Number(metadata.pill_rank);
+  const pillType = metadata.pill_type;
+  if (
+    (pillEffect === "cultivation" ||
+      pillEffect === "breakthrough_support" ||
+      pillEffect === "explore_boost") &&
+    Number.isSafeInteger(effectValue) &&
+    effectValue > 0 &&
+    Number.isSafeInteger(pillRank) &&
+    pillRank > 0 &&
+    typeof pillType === "string" &&
+    pillType
+  ) {
+    const nextExploreBonus = Number(metadata.next_explore_bonus_percent);
+    return {
+      pill_effect: pillEffect,
+      pill_type: pillType,
+      pill_rank: pillRank,
+      effect_value: effectValue,
+      ...(Number.isSafeInteger(nextExploreBonus) && nextExploreBonus > 0
+        ? { next_explore_bonus_percent: nextExploreBonus }
+        : {}),
+      formula_id: typeof metadata.formula_id === "string" ? metadata.formula_id : null,
+    };
+  }
+
+  const legacy = legacyPillEffects[item.itemId];
+  return legacy ? { ...legacy, formula_id: null } : null;
+}
+
+function pillEffectNote(
+  effectKind: PillRuntimeEffect["pill_effect"],
+  effectValue: number,
+  effect: PillRuntimeEffect,
+): string {
+  if (effectKind === "cultivation") {
+    return `药力化为 ${effectValue} 点修为。`;
+  }
+  if (effectKind === "breakthrough_support") {
+    return `获得 ${effectValue} 点破境辅助药力，将在下一次突破时结算。`;
+  }
+  return `获得下一次探索 +${effect.next_explore_bonus_percent ?? effectValue}% 的行云增益。`;
 }
 
 function getPillEffectiveRate(previousUseCount: number): number {
@@ -1733,6 +2476,84 @@ function createAffixRows(seed: string): Prisma.EquipmentAffixCreateWithoutEquipm
   }
 
   return rows;
+}
+
+function createForgeAffixRows(
+  seed: string,
+  profile: "weapon" | "armor" | "talisman",
+  rarity: string,
+): Prisma.EquipmentAffixCreateWithoutEquipmentInput[] {
+  const mainPool =
+    profile === "weapon"
+      ? mainAffixes.filter((affix) => affix.affixKey === "attack")
+      : profile === "armor"
+        ? mainAffixes.filter((affix) => affix.affixKey === "life" || affix.affixKey === "defense")
+        : mainAffixes.filter((affix) => affix.affixKey === "attack" || affix.affixKey === "life");
+  const subPool =
+    profile === "weapon"
+      ? subAffixes.filter((affix) => affix.affixKey === "crit" || affix.affixKey === "speed")
+      : profile === "armor"
+        ? subAffixes.filter(
+            (affix) => affix.affixKey === "anti_crit" || affix.affixKey === "forge_bonus",
+          )
+        : subAffixes.filter(
+            (affix) =>
+              affix.affixKey === "speed" ||
+              affix.affixKey === "alchemy_bonus" ||
+              affix.affixKey === "forge_bonus",
+          );
+  const main = pickAffix(mainPool, `${seed}:main`);
+  const firstSub = pickAffix(subPool, `${seed}:sub:1`);
+  const secondSub = pickAffix(
+    subPool.filter((affix) => affix.affixKey !== firstSub.affixKey),
+    `${seed}:sub:2`,
+  );
+  const multiplier = forgeRarityMultiplier(rarity);
+  const rows: Prisma.EquipmentAffixCreateWithoutEquipmentInput[] = [
+    affixCreateInput(scaleAffix(main, multiplier), "main", `${seed}:main:value`),
+    affixCreateInput(scaleAffix(firstSub, multiplier), "sub", `${seed}:sub:1:value`),
+    affixCreateInput(scaleAffix(secondSub, multiplier), "sub", `${seed}:sub:2:value`),
+  ];
+  const hiddenThreshold =
+    rarity === "heaven" ? 4200 : rarity === "immortal" ? 6000 : rarity === "earth" ? 2500 : 1200;
+  if (roll10000(`${seed}:hidden`) < hiddenThreshold) {
+    const hiddenPool =
+      profile === "armor"
+        ? hiddenAffixes.filter((affix) => affix.affixKey === "hidden_body")
+        : profile === "weapon"
+          ? hiddenAffixes.filter((affix) => affix.affixKey === "hidden_spirit")
+          : hiddenAffixes;
+    rows.push(
+      affixCreateInput(
+        scaleAffix(pickAffix(hiddenPool, `${seed}:hidden:key`), multiplier),
+        "hidden",
+        `${seed}:hidden:value`,
+      ),
+    );
+  }
+  return rows;
+}
+
+function forgeRarityMultiplier(rarity: string): number {
+  const multipliers: Record<string, number> = {
+    ordinary: 1,
+    earth: 1.2,
+    heaven: 1.5,
+    immortal: 1.8,
+    ancient_craft: 1.1,
+  };
+  return multipliers[rarity] ?? 1;
+}
+
+function scaleAffix(
+  affix: { affixKey: string; name: string; minValue: number; maxValue: number },
+  multiplier: number,
+) {
+  return {
+    ...affix,
+    minValue: Math.max(1, Math.floor(affix.minValue * multiplier)),
+    maxValue: Math.max(1, Math.floor(affix.maxValue * multiplier)),
+  };
 }
 
 function affixCreateInput(

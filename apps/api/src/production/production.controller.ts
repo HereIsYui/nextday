@@ -1,8 +1,5 @@
-import { Body, Controller, Get, Inject, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
 import type {
-  AlchemyCraftRequest,
-  AlchemyCraftResponse,
-  AlchemyRecipeListResponse,
   AlchemyRecordListResponse,
   BagSummaryResponse,
   EquipmentInscribeRequest,
@@ -10,12 +7,10 @@ import type {
   EquipmentOperationRecordListResponse,
   EquipmentOperationResponse,
   EquipmentTargetRequest,
-  ForgeCraftRequest,
-  ForgeRecipeListResponse,
   LearnSkillRequest,
   LearnSkillResponse,
   PillUseRequest,
-  PillUseResponse,
+  ProductionCraftMaterialListResponse,
   SaveSkillLoadoutRequest,
   SetEquipmentLockRequest,
   SetItemLockRequest,
@@ -24,6 +19,17 @@ import type {
 } from "@nextday/shared";
 import type { Request } from "express";
 import { BearerAuthGuard } from "../auth/bearer-auth.guard";
+import type {
+  DiscoveredAlchemyCraftResponse,
+  DiscoveredForgeCraftResponse,
+  DiscoveredPillUseResponse,
+  FormulaCraftResponse,
+  ProductionCraftRequest,
+  ProductionFormulaListQuery,
+  ProductionFormulaListResponse,
+  ProductionFormulaResponse,
+  SaveProductionFormulaRequest,
+} from "./production.formula-types";
 import { ProductionService } from "./production.service";
 
 @Controller("api/production")
@@ -48,11 +54,6 @@ export class ProductionController {
     });
   }
 
-  @Get("alchemy/recipes")
-  alchemyRecipes(@Req() request: Request): Promise<AlchemyRecipeListResponse> {
-    return this.productionService.getAlchemyRecipes(requireAccountId(request));
-  }
-
   @Get("alchemy/records")
   alchemyRecords(@Req() request: Request): Promise<AlchemyRecordListResponse> {
     return this.productionService.getAlchemyRecords(requireAccountId(request));
@@ -60,9 +61,9 @@ export class ProductionController {
 
   @Post("alchemy/craft")
   craftAlchemy(
-    @Body() body: AlchemyCraftRequest,
+    @Body() body: ProductionCraftRequest,
     @Req() request: Request,
-  ): Promise<AlchemyCraftResponse> {
+  ): Promise<DiscoveredAlchemyCraftResponse> {
     return this.productionService.craftAlchemy({
       accountId: requireAccountId(request),
       body,
@@ -71,7 +72,10 @@ export class ProductionController {
   }
 
   @Post("pills/use")
-  usePill(@Body() body: PillUseRequest, @Req() request: Request): Promise<PillUseResponse> {
+  usePill(
+    @Body() body: PillUseRequest,
+    @Req() request: Request,
+  ): Promise<DiscoveredPillUseResponse> {
     return this.productionService.usePill({
       accountId: requireAccountId(request),
       body,
@@ -79,19 +83,81 @@ export class ProductionController {
     });
   }
 
-  @Get("forge/recipes")
-  forgeRecipes(@Req() request: Request): Promise<ForgeRecipeListResponse> {
-    return this.productionService.getForgeRecipes(requireAccountId(request));
-  }
-
   @Post("forge/craft")
   craftForge(
-    @Body() body: ForgeCraftRequest,
+    @Body() body: ProductionCraftRequest,
     @Req() request: Request,
-  ): Promise<EquipmentOperationResponse> {
+  ): Promise<DiscoveredForgeCraftResponse> {
     return this.productionService.craftForge({
       accountId: requireAccountId(request),
       body,
+      idempotencyKey: requireIdempotencyKey(request),
+    });
+  }
+
+  @Get("materials")
+  craftableMaterials(
+    @Query("kind") kind: string | undefined,
+    @Req() request: Request,
+  ): Promise<ProductionCraftMaterialListResponse> {
+    return this.productionService.getCraftableMaterials(
+      requireAccountId(request),
+      kind === "alchemy" || kind === "forge" ? kind : undefined,
+    );
+  }
+
+  @Get("formulas")
+  formulas(
+    @Query() query: ProductionFormulaListQuery,
+    @Req() request: Request,
+  ): Promise<ProductionFormulaListResponse> {
+    return this.productionService.listProductionFormulas(requireAccountId(request), query);
+  }
+
+  @Post("formulas")
+  saveFormula(
+    @Body() body: SaveProductionFormulaRequest,
+    @Req() request: Request,
+  ): Promise<ProductionFormulaResponse> {
+    return this.productionService.saveProductionFormula({
+      accountId: requireAccountId(request),
+      body,
+      idempotencyKey: requireIdempotencyKey(request),
+    });
+  }
+
+  @Post("formulas/:formulaId/publish")
+  publishFormula(
+    @Param("formulaId") formulaId: string,
+    @Req() request: Request,
+  ): Promise<ProductionFormulaResponse> {
+    return this.productionService.publishProductionFormula({
+      accountId: requireAccountId(request),
+      formulaId,
+      idempotencyKey: requireIdempotencyKey(request),
+    });
+  }
+
+  @Post("formulas/:formulaId/unpublish")
+  unpublishFormula(
+    @Param("formulaId") formulaId: string,
+    @Req() request: Request,
+  ): Promise<ProductionFormulaResponse> {
+    return this.productionService.unpublishProductionFormula({
+      accountId: requireAccountId(request),
+      formulaId,
+      idempotencyKey: requireIdempotencyKey(request),
+    });
+  }
+
+  @Post("formulas/:formulaId/craft")
+  craftFormula(
+    @Param("formulaId") formulaId: string,
+    @Req() request: Request,
+  ): Promise<FormulaCraftResponse> {
+    return this.productionService.craftProductionFormula({
+      accountId: requireAccountId(request),
+      formulaId,
       idempotencyKey: requireIdempotencyKey(request),
     });
   }

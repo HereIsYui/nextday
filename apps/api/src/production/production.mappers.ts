@@ -55,9 +55,20 @@ function extractPillQuality(item: PlayerItem): BagItemState["quality"] {
 }
 
 export function toAlchemyRecordState(record: AlchemyRecord): AlchemyRecordState {
+  const extendedRecord = record as AlchemyRecord & {
+    formulaId?: string | null;
+    compositionHash?: string | null;
+  };
+  const context = getFormulaContext(record.resultSnapshot);
+
   return {
     record_id: record.recordId,
-    recipe_id: record.recipeId,
+    formula_id:
+      extendedRecord.formulaId ??
+      (typeof context.formula_id === "string" ? context.formula_id : null),
+    composition_hash:
+      extendedRecord.compositionHash ??
+      (typeof context.composition_hash === "string" ? context.composition_hash : record.recipeId),
     pill_item_id: record.pillItemId,
     quality: record.quality as AlchemyRecordState["quality"],
     success: record.success,
@@ -70,7 +81,17 @@ export function toAlchemyRecordState(record: AlchemyRecord): AlchemyRecordState 
     config_version: record.configVersion,
     reward_config_version: record.rewardConfigVersion,
     created_at: record.createdAt.toISOString(),
-  };
+  } as unknown as AlchemyRecordState;
+}
+
+function getFormulaContext(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  const context = (value as Record<string, unknown>).formula_context;
+  return context && typeof context === "object" && !Array.isArray(context)
+    ? (context as Record<string, unknown>)
+    : {};
 }
 
 export function toEquipmentState(

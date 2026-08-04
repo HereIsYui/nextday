@@ -1,20 +1,26 @@
+import { createHash } from "node:crypto";
 import type {
-  AlchemyRecipeSummary,
   CultivationRoute,
   EquipmentRarity,
-  ForgeRecipeSummary,
   ItemCategory,
   MaterialSourceState,
   PillQuality,
   ProductionBalanceWarningState,
+  ProductionCraftMaterialState,
   RewardBundle,
   SkillLoadoutResponse,
   SkillSummary,
 } from "@nextday/shared";
+import type {
+  FormulaResultTemplate,
+  ProductionFormulaKind,
+  ProductionMaterialInput,
+} from "./production.formula-types";
 
-export const productionConfigVersion = "m3_production_v1";
-export const productionRewardConfigVersion = "reward_m3_v1";
-export const materialChainConfigVersion = "material_chain_p3_v1";
+export const productionConfigVersion = "text_cultivation_production_v1";
+export const productionRewardConfigVersion = "reward_text_cultivation_v1";
+export const materialChainConfigVersion = "material_chain_text_cultivation_v1";
+export const productionFormulaRuleVersion = "formula_discovery_v1";
 export const skillLearningConfigVersion = "skill_learning_p3_v1";
 
 export interface ItemMeta {
@@ -50,6 +56,34 @@ export const itemCatalog: ItemMeta[] = [
   { itemId: "pill_juling_1", name: "聚灵丹", category: "pill", tradeable: false },
   { itemId: "pill_feixue_1", name: "沸血丹", category: "pill", tradeable: false },
   { itemId: "pill_pojing_1", name: "破境丹", category: "pill", tradeable: false },
+  { itemId: "alch_moon_dew_herb", name: "月露草", category: "material", tradeable: false },
+  { itemId: "alch_sunfire_petal", name: "赤阳花", category: "material", tradeable: false },
+  { itemId: "alch_void_moss", name: "玄阴苔", category: "material", tradeable: false },
+  { itemId: "alch_spirit_resin", name: "灵髓露", category: "material", tradeable: false },
+  { itemId: "alch_break_marrow_root", name: "破脉根", category: "material", tradeable: false },
+  { itemId: "forge_star_iron", name: "星纹铁", category: "equipment_material", tradeable: false },
+  {
+    itemId: "forge_spiritwood_core",
+    name: "灵木芯",
+    category: "equipment_material",
+    tradeable: false,
+  },
+  {
+    itemId: "forge_thunder_crystal",
+    name: "雷纹晶",
+    category: "equipment_material",
+    tradeable: false,
+  },
+  { itemId: "forge_void_silk", name: "空冥丝", category: "equipment_material", tradeable: false },
+  {
+    itemId: "forge_artifact_marrow",
+    name: "器心髓",
+    category: "equipment_material",
+    tradeable: false,
+  },
+  { itemId: "pill_nourishing_essence", name: "蕴灵丹", category: "pill", tradeable: false },
+  { itemId: "pill_barrier_breaking", name: "破障丹", category: "pill", tradeable: false },
+  { itemId: "pill_cloud_walking", name: "行云丹", category: "pill", tradeable: false },
 ];
 
 export interface MaterialSourceConfig extends MaterialSourceState {
@@ -153,6 +187,120 @@ export const materialSourceConfigs: MaterialSourceConfig[] = [
     average_per_run: 1,
     note: "铭纹砂主要来自活动和后续生产玩法，前期不作为必备材料。",
   },
+  {
+    item_id: "alch_moon_dew_herb",
+    item_name: "月露草",
+    source_type: "explore",
+    source_id: "province_qing",
+    province_id: "qing",
+    province_name: "青州",
+    name: "青州潮汐采药",
+    action_label: "去青州探索",
+    average_per_run: 0.35,
+    note: "潮汐退去时才会显露的丹材，适合作为蕴灵类丹药的主材。",
+  },
+  {
+    item_id: "alch_sunfire_petal",
+    item_name: "赤阳花",
+    source_type: "explore",
+    source_id: "province_jing",
+    province_id: "jing",
+    province_name: "荆州",
+    name: "荆州泽林采药",
+    action_label: "去荆州探索",
+    average_per_run: 0.28,
+    note: "泽林火脉附近的阳性花材，可与破脉根试配突破辅助丹。",
+  },
+  {
+    item_id: "alch_void_moss",
+    item_name: "玄阴苔",
+    source_type: "event",
+    source_id: "tower_chaosheng",
+    province_id: "qing",
+    province_name: "青州",
+    name: "潮生塔余波",
+    action_label: "参与九塔行动",
+    average_per_run: 0.2,
+    note: "九塔事件中的阴性丹材，适合摸索与探索增益相关的丹药。",
+  },
+  {
+    item_id: "alch_spirit_resin",
+    item_name: "灵髓露",
+    source_type: "cave",
+    source_id: "alchemy_room",
+    name: "洞府丹炉凝露",
+    action_label: "收取洞府",
+    average_per_run: 0.45,
+    note: "洞府丹炉凝成的中和辅材，可用于稳定多种丹材药性。",
+  },
+  {
+    item_id: "alch_break_marrow_root",
+    item_name: "破脉根",
+    source_type: "event",
+    source_id: "tower_zhenyue",
+    province_id: "liang",
+    province_name: "梁州",
+    name: "镇岳塔地脉试炼",
+    action_label: "参与九塔行动",
+    average_per_run: 0.18,
+    note: "地脉裂隙中的根材，炼制时可定向形成突破辅助效果。",
+  },
+  {
+    item_id: "forge_star_iron",
+    item_name: "星纹铁",
+    source_type: "explore",
+    source_id: "province_xu",
+    province_id: "xu",
+    province_name: "徐州",
+    name: "徐州古战场采矿",
+    action_label: "去徐州探索",
+    average_per_run: 0.3,
+    note: "古战场夜空坠落的主材，决定法宝的骨架与基础类型。",
+  },
+  {
+    item_id: "forge_spiritwood_core",
+    item_name: "灵木芯",
+    source_type: "cave",
+    source_id: "refinery_room",
+    name: "洞府炼器室温养",
+    action_label: "收取洞府",
+    average_per_run: 0.35,
+    note: "温养后的灵木核心，更容易导向兵刃与攻势词条。",
+  },
+  {
+    item_id: "forge_thunder_crystal",
+    item_name: "雷纹晶",
+    source_type: "event",
+    source_id: "tower_geyang",
+    province_id: "xu",
+    province_name: "徐州",
+    name: "戈阳塔雷痕",
+    action_label: "参与九塔行动",
+    average_per_run: 0.2,
+    note: "塔影雷痕中析出的晶体，适合试出防具和防护词条。",
+  },
+  {
+    item_id: "forge_void_silk",
+    item_name: "空冥丝",
+    source_type: "explore",
+    source_id: "province_yang",
+    province_id: "yang",
+    province_name: "扬州",
+    name: "扬州商路遗迹",
+    action_label: "去扬州探索",
+    average_per_run: 0.2,
+    note: "可牵引灵力流向的细丝，能定向形成符器与灵巧词条。",
+  },
+  {
+    item_id: "forge_artifact_marrow",
+    item_name: "器心髓",
+    source_type: "event",
+    source_id: "tower_rift_event",
+    name: "九塔裂隙奇遇",
+    action_label: "处理奇遇",
+    average_per_run: 0.15,
+    note: "稀有器材，只在九塔裂隙相关奇遇中产出，能提高定向炼器品阶。",
+  },
 ];
 
 export interface MaterialBalanceProfile {
@@ -191,6 +339,22 @@ export const materialBalanceProfiles: MaterialBalanceProfile[] = [
     stockpile_threshold: 800,
     suggestion: "灵石应保持轻微富余，避免新手被基础生产卡住。",
   },
+  {
+    item_id: "alch_moon_dew_herb",
+    item_name: "月露草",
+    daily_supply: 3,
+    daily_demand: 2,
+    stockpile_threshold: 10,
+    suggestion: "月露草适合与灵髓露尝试，先保存成功组合再扩大投入。",
+  },
+  {
+    item_id: "forge_star_iron",
+    item_name: "星纹铁",
+    daily_supply: 2,
+    daily_demand: 2,
+    stockpile_threshold: 8,
+    suggestion: "星纹铁是炼器骨架，优先保留给已发现的组合，避免盲目堆叠。",
+  },
 ];
 
 export interface PillQualityConfig {
@@ -208,97 +372,259 @@ export const pillQualityConfigs: PillQualityConfig[] = [
   { quality: "flawless", name: "无瑕", multiplier: 2, weight: 200 },
 ];
 
-export interface AlchemyRecipeConfig extends AlchemyRecipeSummary {
-  failure_returns: RewardBundle;
-}
+export type ProductionCraftMaterial = ProductionCraftMaterialState;
 
-export const alchemyRecipes: AlchemyRecipeConfig[] = [
+/**
+ * 仅这些专用材料允许投入丹炉或器炉。普通背包材料不会被生产接口消耗。
+ * 组合规则不从此列表导出，避免客户端通过配置枚举默认药方。
+ */
+export const productionCraftMaterials: ProductionCraftMaterial[] = [
   {
-    recipe_id: "recipe_juling_1",
-    name: "聚灵丹方",
-    route: "qi",
-    pill_item_id: "pill_juling_1",
-    pill_rank: 1,
-    pill_type: "cultivation",
-    base_effect: 100,
-    success_rate: 9200,
-    materials: [{ item_id: "low_herb", name: "凝露草", count: 2 }],
-    spirit_stone_cost: "50",
-    failure_returns: {
-      items: [{ item_id: "pill_dust", name: "丹尘", count: 1, bind_type: "bound" }],
+    item_id: "alch_moon_dew_herb",
+    name: "月露草",
+    kind: "alchemy",
+    source_hint: "青州探索",
+  },
+  {
+    item_id: "alch_sunfire_petal",
+    name: "赤阳花",
+    kind: "alchemy",
+    source_hint: "荆州探索",
+  },
+  {
+    item_id: "alch_void_moss",
+    name: "玄阴苔",
+    kind: "alchemy",
+    source_hint: "潮生塔事件",
+  },
+  {
+    item_id: "alch_spirit_resin",
+    name: "灵髓露",
+    kind: "alchemy",
+    source_hint: "洞府丹炉",
+  },
+  {
+    item_id: "alch_break_marrow_root",
+    name: "破脉根",
+    kind: "alchemy",
+    source_hint: "镇岳塔事件",
+  },
+  {
+    item_id: "forge_star_iron",
+    name: "星纹铁",
+    kind: "forge",
+    source_hint: "徐州探索",
+  },
+  {
+    item_id: "forge_spiritwood_core",
+    name: "灵木芯",
+    kind: "forge",
+    source_hint: "洞府炼器室",
+  },
+  {
+    item_id: "forge_thunder_crystal",
+    name: "雷纹晶",
+    kind: "forge",
+    source_hint: "戈阳塔事件",
+  },
+  {
+    item_id: "forge_void_silk",
+    name: "空冥丝",
+    kind: "forge",
+    source_hint: "扬州探索",
+  },
+  {
+    item_id: "forge_artifact_marrow",
+    name: "器心髓",
+    kind: "forge",
+    source_hint: "九塔裂隙奇遇",
+  },
+];
+
+type CombinationRule = {
+  signature: string;
+  template: FormulaResultTemplate;
+};
+
+/**
+ * 服务端隐藏的组合表。客户端只会收到可投炉材料和自己已经保存的单方，
+ * 不会通过配置接口取得本表。
+ */
+const alchemyCombinationRules: CombinationRule[] = [
+  {
+    signature: "alch_moon_dew_herb:2|alch_spirit_resin:1",
+    template: {
+      kind: "alchemy",
+      name: "蕴灵丹",
+      success_rate: 8800,
+      spirit_stone_cost: "60",
+      alchemy: {
+        pill_item_id: "pill_nourishing_essence",
+        pill_rank: 1,
+        pill_type: "cultivation",
+        effect_kind: "cultivation",
+        effect_min: 110,
+        effect_max: 150,
+      },
     },
   },
   {
-    recipe_id: "recipe_feixue_1",
-    name: "沸血丹方",
-    route: "body",
-    pill_item_id: "pill_feixue_1",
-    pill_rank: 1,
-    pill_type: "cultivation",
-    base_effect: 100,
-    success_rate: 9200,
-    materials: [{ item_id: "low_herb", name: "凝露草", count: 2 }],
-    spirit_stone_cost: "50",
-    failure_returns: {
-      items: [{ item_id: "pill_dust", name: "丹尘", count: 1, bind_type: "bound" }],
+    signature: "alch_break_marrow_root:1|alch_spirit_resin:1|alch_sunfire_petal:1",
+    template: {
+      kind: "alchemy",
+      name: "破障丹",
+      success_rate: 7600,
+      spirit_stone_cost: "110",
+      alchemy: {
+        pill_item_id: "pill_barrier_breaking",
+        pill_rank: 1,
+        pill_type: "breakthrough",
+        effect_kind: "breakthrough_support",
+        effect_min: 220,
+        effect_max: 300,
+      },
     },
   },
   {
-    recipe_id: "recipe_pojing_1",
-    name: "破境丹方",
-    route: "all",
-    pill_item_id: "pill_pojing_1",
-    pill_rank: 1,
-    pill_type: "breakthrough",
-    base_effect: 500,
-    success_rate: 7000,
-    materials: [{ item_id: "low_herb", name: "凝露草", count: 5 }],
-    spirit_stone_cost: "120",
-    failure_returns: {
-      items: [{ item_id: "pill_dust", name: "丹尘", count: 2, bind_type: "bound" }],
+    signature: "alch_moon_dew_herb:1|alch_spirit_resin:1|alch_void_moss:1",
+    template: {
+      kind: "alchemy",
+      name: "行云丹",
+      success_rate: 8200,
+      spirit_stone_cost: "80",
+      alchemy: {
+        pill_item_id: "pill_cloud_walking",
+        pill_rank: 1,
+        pill_type: "explore",
+        effect_kind: "explore_boost",
+        effect_min: 1,
+        effect_max: 1,
+        next_explore_bonus_percent: 20,
+      },
     },
   },
 ];
 
-export interface ForgeRecipeConfig extends ForgeRecipeSummary {
-  affix_seed: string;
-}
-
-export const forgeRecipes: ForgeRecipeConfig[] = [
+const forgeCombinationRules: CombinationRule[] = [
   {
-    recipe_id: "forge_xuantie_sword_1",
-    name: "玄铁剑胚",
-    route: "qi",
-    equipment_id: "eq_xuantie_sword_1",
-    equipment_type: "weapon",
-    rarity: "ordinary",
-    materials: [{ item_id: "raw_iron", name: "玄铁砂", count: 3 }],
-    spirit_stone_cost: "80",
-    affix_seed: "qi_weapon",
+    signature: "forge_spiritwood_core:1|forge_star_iron:3",
+    template: {
+      kind: "forge",
+      name: "星木长锋",
+      success_rate: 9000,
+      spirit_stone_cost: "100",
+      forge: {
+        equipment_id: "equipment_starwood_blade",
+        equipment_type: "weapon",
+        rarity: "ordinary",
+        affix_profile: "weapon",
+      },
+    },
   },
   {
-    recipe_id: "forge_jinshi_bracer_1",
-    name: "金石护臂",
-    route: "body",
-    equipment_id: "eq_jinshi_bracer_1",
-    equipment_type: "armor",
-    rarity: "ordinary",
-    materials: [{ item_id: "raw_iron", name: "玄铁砂", count: 3 }],
-    spirit_stone_cost: "80",
-    affix_seed: "body_armor",
+    signature: "forge_star_iron:2|forge_void_silk:1",
+    template: {
+      kind: "forge",
+      name: "空冥引符",
+      success_rate: 8400,
+      spirit_stone_cost: "120",
+      forge: {
+        equipment_id: "equipment_voidweave_talisman",
+        equipment_type: "talisman",
+        rarity: "earth",
+        affix_profile: "talisman",
+      },
+    },
   },
   {
-    recipe_id: "forge_lingwen_core_1",
-    name: "灵纹古器胚",
-    route: "all",
-    equipment_id: "eq_lingwen_core_1",
-    equipment_type: "talisman",
-    rarity: "ancient_craft",
-    materials: [{ item_id: "raw_iron", name: "玄铁砂", count: 6 }],
-    spirit_stone_cost: "180",
-    affix_seed: "ancient_craft",
+    signature: "forge_artifact_marrow:1|forge_star_iron:2|forge_thunder_crystal:2",
+    template: {
+      kind: "forge",
+      name: "镇雷玄甲",
+      success_rate: 7000,
+      spirit_stone_cost: "220",
+      forge: {
+        equipment_id: "equipment_thunderward_armor",
+        equipment_type: "armor",
+        rarity: "heaven",
+        affix_profile: "armor",
+      },
+    },
   },
 ];
+
+export function getProductionCraftMaterials(
+  kind?: ProductionFormulaKind,
+): ProductionCraftMaterial[] {
+  return productionCraftMaterials.filter((material) => !kind || material.kind === kind);
+}
+
+export function isProductionCraftMaterial(itemId: string, kind: ProductionFormulaKind): boolean {
+  return productionCraftMaterials.some(
+    (material) => material.item_id === itemId && material.kind === kind,
+  );
+}
+
+export function normalizeProductionMaterials(
+  materials: ProductionMaterialInput[],
+): ProductionMaterialInput[] {
+  const counts = new Map<string, number>();
+  for (const material of materials) {
+    const itemId = material.item_id.trim();
+    const current = counts.get(itemId) ?? 0;
+    counts.set(itemId, current + material.count);
+  }
+
+  return Array.from(counts.entries())
+    .map(([item_id, count]) => ({ item_id, count }))
+    .sort((left, right) => left.item_id.localeCompare(right.item_id));
+}
+
+export function materialCompositionSignature(materials: ProductionMaterialInput[]): string {
+  return normalizeProductionMaterials(materials)
+    .map((material) => `${material.item_id}:${material.count}`)
+    .join("|");
+}
+
+export function getMaterialCompositionHash(
+  kind: ProductionFormulaKind,
+  materials: ProductionMaterialInput[],
+): string {
+  const signature = `${productionFormulaRuleVersion}:${kind}:${materialCompositionSignature(materials)}`;
+  return createHash("sha256").update(signature).digest("hex").slice(0, 24);
+}
+
+export function resolveAlchemyCombination(
+  materials: ProductionMaterialInput[],
+): FormulaResultTemplate | null {
+  return cloneCombinationTemplate(alchemyCombinationRules, materials, "alchemy");
+}
+
+export function resolveForgeCombination(
+  materials: ProductionMaterialInput[],
+): FormulaResultTemplate | null {
+  return cloneCombinationTemplate(forgeCombinationRules, materials, "forge");
+}
+
+function cloneCombinationTemplate(
+  rules: CombinationRule[],
+  materials: ProductionMaterialInput[],
+  kind: ProductionFormulaKind,
+): FormulaResultTemplate | null {
+  const signature = materialCompositionSignature(materials);
+  const rule = rules.find(
+    (candidate) => candidate.signature === signature && candidate.template.kind === kind,
+  );
+  if (!rule) {
+    return null;
+  }
+
+  return {
+    ...rule.template,
+    alchemy: rule.template.alchemy ? { ...rule.template.alchemy } : undefined,
+    forge: rule.template.forge ? { ...rule.template.forge } : undefined,
+  };
+}
 
 export interface AffixConfig {
   affixKey: string;

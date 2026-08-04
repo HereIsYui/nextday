@@ -8,7 +8,6 @@ import type {
   GachaCostType,
   GachaPoolType,
   GachaResultState,
-  ResourcePointSummary,
   RewardBundle,
   RiskStatus,
   SectWarehouseItemState,
@@ -382,69 +381,6 @@ export function buildBossExperience(input: {
         code: "mirror_boss",
         label: "镜像挑战",
         description: "玩家随时挑战镜像 Boss，伤害汇总到全服阶段血量池。",
-        tone: "neutral",
-      },
-    ],
-  };
-}
-
-export function buildPvpExperience(input: {
-  result: "win" | "lose";
-  attackerPower: number;
-  defenderPower: number;
-  scoreDelta: number;
-  rewards: RewardBundle;
-  riskStatus: RiskStatus;
-  settlementStatus: SettlementStatus;
-  resourcePoint: ResourcePointSummary | null;
-  log: BattleRoundLog[];
-}): ExperiencePayload {
-  const riskTag = riskReasonTag(input.riskStatus, input.settlementStatus);
-  return {
-    title: "资源点攻防回放",
-    summary: `${input.result === "win" ? "进攻胜利" : "进攻失败"}，积分 ${
-      input.scoreDelta >= 0 ? "+" : ""
-    }${input.scoreDelta}。`,
-    timeline: [
-      {
-        step: 1,
-        title: "防守镜像载入",
-        description: `我方战力 ${input.attackerPower}，防守镜像 ${input.defenderPower}。`,
-        tone: "neutral",
-      },
-      {
-        step: 2,
-        title: "自动攻防",
-        description: formatBattleLog(input.log),
-        tone: input.result === "win" ? "success" : "warning",
-      },
-      {
-        step: 3,
-        title: "资源点结算",
-        description: input.resourcePoint
-          ? `${input.resourcePoint.name} 控制分 ${input.resourcePoint.control_score}，${settlementLabel(input.settlementStatus)}。`
-          : settlementLabel(input.settlementStatus),
-        tone: input.settlementStatus === "settled" ? "success" : "warning",
-      },
-    ],
-    delta_summary: [
-      { label: "积分", delta: input.scoreDelta, tone: "success" },
-      rewardDelta(input.rewards),
-    ].filter(Boolean) as ExperiencePayload["delta_summary"],
-    next_recommendations: [
-      {
-        label: "查看风控标签",
-        reason: "重复目标、境界压制或高频操作可能触发收益衰减或延迟结算。",
-        action_hint: "multiplayer",
-        priority: "medium",
-      },
-    ],
-    reason_tags: [
-      riskTag,
-      {
-        code: "loss_not_destroy",
-        label: "失败不毁号",
-        description: "强 PVP 影响临时收益和积分，不摧毁核心法宝或付费道具。",
         tone: "neutral",
       },
     ],

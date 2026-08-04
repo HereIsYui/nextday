@@ -7,15 +7,11 @@ import type {
   ClaimRankTitleResponse,
   CreateSectRequest,
   JoinSectRequest,
-  PvpAttackRequest,
-  PvpBattleResponse,
   RankEntryState,
   RankListResponse,
   RankTargetType,
   RankTitleRewardState,
   RankType,
-  ResourcePointListResponse,
-  ResourcePointSummary,
   RewardBundle,
   SectDetailResponse,
   SectListResponse,
@@ -45,7 +41,6 @@ import { incrementPlayerTasks } from "../game/task-progress.utils";
 import { writeJournalFromResponse } from "../journal/journal.utils";
 import {
   buildBossExperience,
-  buildPvpExperience,
   buildSectTaskExperience,
   buildSectWarehouseExperience,
   buildTowerExperience,
@@ -61,7 +56,6 @@ import {
   maxTowerActionBatch,
   multiplayerConfigVersion,
   multiplayerRewardConfigVersion,
-  pvpActionPointCost,
   rankAntiBrushRule,
   rankConfigVersion,
   rankRewardBoundary,
@@ -69,7 +63,6 @@ import {
   rankRewardPreview,
   rankRulesetVersion,
   rankTitleRewards,
-  resourcePointConfigs,
   sectCreateCost,
   sectTaskConfigs,
   sectWarehouseWhitelist,
@@ -81,7 +74,6 @@ import {
 import {
   toBossStateSummary,
   toRankEntryState,
-  toResourcePointSummary,
   toSectDetailResponse,
   toSectSummary,
   toSectWarehouseItemState,
@@ -801,214 +793,6 @@ export class MultiplayerService {
     });
   }
 
-  async getResourcePoints(): Promise<ResourcePointListResponse> {
-    await this.ensureResourcePoints();
-    const points = await this.prisma.resourcePointState.findMany({
-      where: { eraId: defaultEraId },
-    });
-
-    return { resource_points: sortByProvinceConfig(points).map(toResourcePointSummary) };
-  }
-
-  async attackPlayer(input: {
-    accountId: string;
-    body: PvpAttackRequest;
-    idempotencyKey: string;
-  }): Promise<PvpBattleResponse> {
-    const attacker = await this.requirePlayer(input.accountId);
-    const body = normalizePvpAttackRequest(input.body);
-    if (body.defender_player_id === attacker.playerId) {
-      throw new BadRequestException("不能攻击自己");
-    }
-
-    return this.withIdempotency({
-      accountId: input.accountId,
-      endpoint: "POST /api/multiplayer/pvp/attack",
-      idempotencyKey: input.idempotencyKey,
-      requestBody: body,
-      handler: async (tx) => {
-        await this.ensureResourcePoints(tx);
-        const defender = await tx.player.findUnique({
-          where: { playerId: body.defender_player_id },
-        });
-        if (!defender) {
-          throw new BadRequestException("防守目标不存在");
-        }
-        const resourcePoint = body.resource_point_id
-          ? await tx.resourcePointState.findUnique({
-              where: { resourcePointId: body.resource_point_id },
-            })
-          : await tx.resourcePointState.findFirst({
-              where: { eraId: defaultEraId },
-              orderBy: { provinceId: "asc" },
-            });
-        if (!resourcePoint) {
-          throw new BadRequestException("资源点不存在");
-        }
-        const actionState = await this.consumeActionPoints(
-          tx,
-          attacker.playerId,
-          pvpActionPointCost,
-        );
-        const [attackerPower, defenderPower] = await Promise.all([
-          this.calculatePlayerPower(tx, attacker.playerId),
-          this.calculatePlayerPower(tx, defender.playerId),
-        ]);
-        const win = attackerPower >= defenderPower;
-        const repeatedCount = await tx.pvpBattleRecord.count({
-          where: {
-            attackerPlayerId: attacker.playerId,
-            defenderPlayerId: defender.playerId,
-            createdAt: { gt: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-          },
-        });
-        const realmGap = attacker.currentRealm - defender.currentRealm;
-        const risk = await this.riskService.evaluateAndRecord(
-          {
-            accountId: input.accountId,
-            playerId: attacker.playerId,
-            riskDomain: "pvp",
-            actionType: "attack",
-            targetType: "player",
-            targetId: defender.playerId,
-            path: "/api/multiplayer/pvp/attack",
-            targetRepeatCount: repeatedCount,
-            highImpact: true,
-            forceRiskStatus: realmGap > 1 ? "decayed" : undefined,
-            idempotencyKey: input.idempotencyKey,
-            metadata: {
-              defender_player_id: defender.playerId,
-              resource_point_id: resourcePoint.resourcePointId,
-              realm_gap: realmGap,
-            },
-          },
-          tx,
-        );
-        const decayed =
-          risk.risk_status === "decayed" ||
-          risk.risk_status === "delayed_settlement" ||
-          realmGap > 1;
-        const baseScore = win ? 30 : 10;
-        const scoreDelta = decayed ? Math.max(1, Math.floor(baseScore * 0.3)) : baseScore;
-        const rewards: RewardBundle = {
-          spirit_stone: String(scoreDelta * 3),
-          items: [{ item_id: "battle_mark", name: "战备符", count: 1, bind_type: "bound" }],
-        };
-        const attackerMember = await this.getSectMemberByPlayer(tx, attacker.playerId);
-        const defenderMember = await this.getSectMemberByPlayer(tx, defender.playerId);
-        const settlementStatus: SettlementStatus =
-          risk.settlement_status === "delayed" ? "delayed" : "settled";
-        const updatedResourcePoint =
-          win && settlementStatus === "settled"
-            ? await tx.resourcePointState.update({
-                where: { resourcePointId: resourcePoint.resourcePointId },
-                data: {
-                  ownerPlayerId: attacker.playerId,
-                  ownerSectId: attackerMember?.sectId,
-                  controlScore: { increment: scoreDelta },
-                },
-              })
-            : resourcePoint;
-        if (settlementStatus === "settled") {
-          await this.applyReward(tx, attacker.playerId, rewards, {
-            sourceType: "pvp_attack",
-            sourceId: defender.playerId,
-            idempotencyKey: `${input.idempotencyKey}:reward`,
-          });
-        }
-        const log = createSimpleBattleLog({
-          attackerName: attacker.name,
-          defenderName: defender.name,
-          attackerSkill: "破阵一击",
-          defenderSkill: "防守镜像",
-          damageDone: attackerPower,
-          damageTaken: Math.floor(defenderPower / 2),
-        });
-        const record = await tx.pvpBattleRecord.create({
-          data: {
-            recordId: `pvp_${randomUUID()}`,
-            attackerPlayerId: attacker.playerId,
-            defenderPlayerId: defender.playerId,
-            attackerSectId: attackerMember?.sectId,
-            defenderSectId: defenderMember?.sectId,
-            eraId: defaultEraId,
-            sceneType: "resource_point",
-            resourcePointId: resourcePoint.resourcePointId,
-            result: win ? "win" : "lose",
-            scoreDelta,
-            rewardSnapshot: rewards as unknown as Prisma.InputJsonValue,
-            battleLog: log as unknown as Prisma.InputJsonValue,
-            riskStatus: risk.risk_status,
-            settlementStatus,
-            configVersion: multiplayerConfigVersion,
-            idempotencyKey: input.idempotencyKey,
-          },
-        });
-        await this.riskService.attachSourceRecord(tx, risk.risk_record_id, record.recordId);
-        if (settlementStatus === "delayed") {
-          await this.riskService.createDelayedSettlement(tx, {
-            playerId: attacker.playerId,
-            sourceType: "pvp_attack",
-            sourceId: defender.playerId,
-            sourceRecordId: record.recordId,
-            riskRecordId: risk.risk_record_id,
-            amountSnapshot: {
-              source_record_id: record.recordId,
-              defender_player_id: defender.playerId,
-              resource_point_id: resourcePoint.resourcePointId,
-              score_delta: scoreDelta,
-              rewards,
-            },
-            configVersion: multiplayerConfigVersion,
-            rewardConfigVersion: multiplayerRewardConfigVersion,
-            idempotencyKey: `${input.idempotencyKey}:delayed`,
-          });
-        }
-
-        const pvpInsight = buildPvpBattleInsight({
-          result: win ? "win" : "lose",
-          attackerPower,
-          defenderPower,
-          scoreDelta,
-          settlementStatus,
-          riskStatus: risk.risk_status,
-          resourcePoint: toResourcePointSummary(updatedResourcePoint),
-        });
-
-        return {
-          record_id: record.recordId,
-          result: win ? "win" : "lose",
-          score_delta: scoreDelta,
-          risk_status: risk.risk_status,
-          risk_record_id: risk.risk_record_id,
-          settlement_status: settlementStatus,
-          rewards,
-          action_state: actionState,
-          battle: {
-            attacker_player_id: attacker.playerId,
-            defender_player_id: defender.playerId,
-            attacker_power: attackerPower,
-            defender_power: defenderPower,
-            log,
-          },
-          resource_point: toResourcePointSummary(updatedResourcePoint),
-          ...pvpInsight,
-          experience: buildPvpExperience({
-            result: win ? "win" : "lose",
-            attackerPower,
-            defenderPower,
-            scoreDelta,
-            rewards,
-            riskStatus: risk.risk_status,
-            settlementStatus,
-            resourcePoint: toResourcePointSummary(updatedResourcePoint),
-            log,
-          }),
-        };
-      },
-    });
-  }
-
   async getRankList(rankType: RankType): Promise<RankListResponse> {
     if (!supportedRankTypes.includes(rankType)) {
       throw new BadRequestException("未知排行榜");
@@ -1115,9 +899,6 @@ export class MultiplayerService {
     if (rankType === "sect") {
       return this.buildSectRank(periodKey);
     }
-    if (rankType === "pvp_week") {
-      return this.buildPvpRank(periodKey);
-    }
     if (rankType === "tower_week") {
       return this.buildTowerRank(periodKey);
     }
@@ -1139,7 +920,6 @@ export class MultiplayerService {
 
   private async buildPersonalRank(periodKey: string): Promise<RankBuildResult> {
     const tower = await this.buildTowerRank(periodKey);
-    const pvp = await this.buildPvpRank(periodKey);
     const scoreMap = new Map(tower.scoreMap);
     const bossRecords = await this.prisma.worldBossChallengeRecord.findMany({
       where: { eraId: defaultEraId },
@@ -1147,14 +927,12 @@ export class MultiplayerService {
     for (const record of bossRecords) {
       addScore(scoreMap, record.playerId, BigInt(record.contribution));
     }
-    mergeScoreMap(scoreMap, pvp.scoreMap);
-
     return {
       rankType: "personal",
       periodKey,
       targetType: "player",
       scoreMap,
-      excludedDelayedCount: tower.excludedDelayedCount + pvp.excludedDelayedCount,
+      excludedDelayedCount: tower.excludedDelayedCount,
     };
   }
 
@@ -1174,31 +952,6 @@ export class MultiplayerService {
 
     return {
       rankType: "tower_week",
-      periodKey,
-      targetType: "player",
-      scoreMap,
-      excludedDelayedCount,
-    };
-  }
-
-  private async buildPvpRank(periodKey: string): Promise<RankBuildResult> {
-    const scoreMap = new Map<string, bigint>();
-    const [records, excludedDelayedCount] = await Promise.all([
-      this.prisma.pvpBattleRecord.findMany({
-        where: { eraId: defaultEraId, settlementStatus: "settled" },
-      }),
-      this.prisma.pvpBattleRecord.count({
-        where: { eraId: defaultEraId, settlementStatus: { not: "settled" } },
-      }),
-    ]);
-    for (const record of records) {
-      if (record.scoreDelta > 0) {
-        addScore(scoreMap, record.attackerPlayerId, BigInt(record.scoreDelta));
-      }
-    }
-
-    return {
-      rankType: "pvp_week",
       periodKey,
       targetType: "player",
       scoreMap,
@@ -1543,21 +1296,6 @@ export class MultiplayerService {
     });
   }
 
-  private async ensureResourcePoints(tx: DbClient = this.prisma) {
-    for (const config of resourcePointConfigs) {
-      await tx.resourcePointState.upsert({
-        where: { eraId_provinceId: { eraId: defaultEraId, provinceId: config.provinceId } },
-        create: {
-          resourcePointId: config.resourcePointId,
-          eraId: defaultEraId,
-          provinceId: config.provinceId,
-          name: config.name,
-        },
-        update: { name: config.name },
-      });
-    }
-  }
-
   private async requirePlayer(accountId: string, tx: DbClient = this.prisma): Promise<Player> {
     const player = await tx.player.findUnique({ where: { accountId } });
     if (!player) {
@@ -1824,44 +1562,67 @@ export class MultiplayerService {
     handler: (tx: Tx) => Promise<TResponse>;
   }): Promise<TResponse> {
     const requestHash = hashRequestBody(input.requestBody);
+    const replay = (record: {
+      accountId: string | null;
+      endpoint: string;
+      requestHash: string;
+      responseData: Prisma.JsonValue;
+    }): TResponse => {
+      if (
+        record.accountId !== input.accountId ||
+        record.endpoint !== input.endpoint ||
+        record.requestHash !== requestHash
+      ) {
+        throw new BadRequestException("幂等键已被其他请求使用");
+      }
+
+      return record.responseData as unknown as TResponse;
+    };
     const existingRecord = await this.prisma.idempotencyRecord.findUnique({
       where: { idempotencyKey: input.idempotencyKey },
     });
 
     if (existingRecord) {
-      if (
-        existingRecord.accountId !== input.accountId ||
-        existingRecord.endpoint !== input.endpoint ||
-        existingRecord.requestHash !== requestHash
-      ) {
-        throw new BadRequestException("幂等键已被其他请求使用");
-      }
-
-      return existingRecord.responseData as unknown as TResponse;
+      return replay(existingRecord);
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const response = await input.handler(tx);
-      await tx.idempotencyRecord.create({
-        data: {
-          idempotencyKey: input.idempotencyKey,
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const response = await input.handler(tx);
+        await tx.idempotencyRecord.create({
+          data: {
+            idempotencyKey: input.idempotencyKey,
+            accountId: input.accountId,
+            endpoint: input.endpoint,
+            requestHash,
+            responseData: response as unknown as Prisma.InputJsonValue,
+            statusCode: 200,
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          },
+        });
+        await writeJournalFromResponse(tx, {
           accountId: input.accountId,
           endpoint: input.endpoint,
-          requestHash,
-          responseData: response as unknown as Prisma.InputJsonValue,
-          statusCode: 200,
-          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        },
-      });
-      await writeJournalFromResponse(tx, {
-        accountId: input.accountId,
-        endpoint: input.endpoint,
-        response,
-        idempotencyKey: input.idempotencyKey,
-      });
+          response,
+          idempotencyKey: input.idempotencyKey,
+        });
 
-      return response;
-    });
+        return response;
+      });
+    } catch (error) {
+      if (!isIdempotencyConflict(error)) {
+        throw error;
+      }
+
+      const concurrentRecord = await this.prisma.idempotencyRecord.findUnique({
+        where: { idempotencyKey: input.idempotencyKey },
+      });
+      if (!concurrentRecord) {
+        throw error;
+      }
+
+      return replay(concurrentRecord);
+    }
   }
 }
 
@@ -1916,18 +1677,6 @@ function normalizeWarehouseWithdrawRequest(
   }
 
   return { item_id: itemId, count };
-}
-
-function normalizePvpAttackRequest(body: PvpAttackRequest): PvpAttackRequest {
-  const defenderPlayerId = body?.defender_player_id?.trim();
-  if (!defenderPlayerId) {
-    throw new BadRequestException("请选择防守目标");
-  }
-
-  return {
-    defender_player_id: defenderPlayerId,
-    resource_point_id: body.resource_point_id?.trim() || undefined,
-  };
 }
 
 function normalizeRankType(value: unknown): RankType {
@@ -2074,42 +1823,6 @@ function buildBossBattleInsight(input: {
   };
 }
 
-function buildPvpBattleInsight(input: {
-  result: PvpBattleResponse["result"];
-  attackerPower: number;
-  defenderPower: number;
-  scoreDelta: number;
-  settlementStatus: SettlementStatus;
-  riskStatus: string;
-  resourcePoint: ResourcePointSummary | null;
-}): Pick<PvpBattleResponse, "reason_summary" | "counter_suggestions" | "battle_hint"> {
-  const resultText = input.result === "win" ? "进攻成功" : "进攻受阻";
-  const settlementText =
-    input.settlementStatus === "delayed"
-      ? "收益暂缓结算，需要等待整理。"
-      : `积分变化 +${input.scoreDelta}。`;
-  const gapSuggestion =
-    input.attackerPower >= input.defenderPower
-      ? "若要扩大优势，可继续提升技能释放顺序和法宝词条。"
-      : "战力低于防守镜像时，先补服丹、炼器或调整主动技能。";
-  const riskSuggestion =
-    input.riskStatus === "decayed" || input.settlementStatus === "delayed"
-      ? "重复目标或境界差过大时收益会收敛，建议更换目标或等待冷却。"
-      : "选择战力接近的目标更稳定，失败也不会摧毁核心法宝。";
-
-  return {
-    reason_summary: [
-      `${resultText}：进攻战力 ${input.attackerPower}，防守镜像 ${input.defenderPower}。`,
-      settlementText,
-      input.resourcePoint
-        ? `${input.resourcePoint.name}控制权按本次结果更新。`
-        : "本次未绑定资源点。",
-    ],
-    counter_suggestions: [gapSuggestion, riskSuggestion],
-    battle_hint: "PVP 战报重点看战力差、收益状态和是否需要更换目标。",
-  };
-}
-
 function towerActionLabel(actionType: TowerActionType): string {
   const labels: Record<TowerActionType, string> = {
     break: "破封",
@@ -2123,6 +1836,15 @@ function towerActionLabel(actionType: TowerActionType): string {
 
 function formatSigned(value: number): string {
   return value > 0 ? `+${value}` : String(value);
+}
+
+function isIdempotencyConflict(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "P2002"
+  );
 }
 
 function addScore(map: Map<string, bigint>, key: string, score: bigint) {

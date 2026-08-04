@@ -59,10 +59,10 @@ export const towerConfigs: TowerConfig[] = [
     towerId: "tower_geyang",
     provinceId: "xu",
     towerName: "戈阳塔",
-    mechanism: "PVP 驻守和战备贡献加权",
+    mechanism: "古战场净化与战魂材料回收",
     bossName: "戈阳战魂",
     materialName: "战备符",
-    stateEffect: "影响资源点争夺、战备材料和阵营战线",
+    stateEffect: "影响古战场探索、战备材料和战魂事件",
   },
   {
     towerId: "tower_liuguang",
@@ -201,19 +201,6 @@ export const sectWarehouseWhitelist = new Set([
   "battle_mark",
 ]);
 
-export const resourcePointConfigs = [
-  { resourcePointId: "resource_ji_mine", provinceId: "ji", name: "冀州玄铁脉" },
-  { resourcePointId: "resource_yan_array", provinceId: "yan", name: "兖州礼阵台" },
-  { resourcePointId: "resource_qing_tide", provinceId: "qing", name: "青州潮汐渡" },
-  { resourcePointId: "resource_xu_front", provinceId: "xu", name: "徐州戈阳关" },
-  { resourcePointId: "resource_yang_trade", provinceId: "yang", name: "扬州琉光商路" },
-  { resourcePointId: "resource_jing_grove", provinceId: "jing", name: "荆州万木药泽" },
-  { resourcePointId: "resource_yu_eye", provinceId: "yu", name: "豫州天衡阵眼" },
-  { resourcePointId: "resource_liang_vein", provinceId: "liang", name: "梁州镇岳地脉" },
-  { resourcePointId: "resource_yong_relic", provinceId: "yong", name: "雍州太初遗迹" },
-];
-
-export const pvpActionPointCost = 2;
 export const rankRewardPreview: Record<RankType, RewardBundle> = {
   personal: {
     spirit_stone: "300",
@@ -222,10 +209,6 @@ export const rankRewardPreview: Record<RankType, RewardBundle> = {
   sect: {
     spirit_stone: "500",
     items: [{ item_id: "array_sand", name: "阵砂", count: 3, bind_type: "bound" }],
-  },
-  pvp_week: {
-    spirit_stone: "300",
-    items: [{ item_id: "battle_mark", name: "战备符", count: 2, bind_type: "bound" }],
   },
   tower_week: {
     spirit_stone: "300",
@@ -252,7 +235,6 @@ export const rankRewardPreview: Record<RankType, RewardBundle> = {
 export const supportedRankTypes: RankType[] = [
   "personal",
   "sect",
-  "pvp_week",
   "tower_week",
   "production",
   "era",

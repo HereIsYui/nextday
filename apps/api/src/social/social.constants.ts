@@ -55,7 +55,7 @@ export const diplomacyRules = [
   {
     diplomacy_type: "hostility",
     name: "敌对",
-    assist_scope: ["宣告立场", "资源点竞争提醒"],
+    assist_scope: ["宣告立场", "阵营事务提醒"],
     cooldown_hours: 24,
   },
   {

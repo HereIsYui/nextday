@@ -1547,51 +1547,9 @@ export interface SectWarehouseResponse {
   experience?: ExperiencePayload;
 }
 
-export interface ResourcePointSummary {
-  resource_point_id: string;
-  province_id: string;
-  name: string;
-  owner_sect_id: string | null;
-  owner_player_id: string | null;
-  control_score: number;
-}
-
-export interface ResourcePointListResponse {
-  resource_points: ResourcePointSummary[];
-}
-
-export interface PvpAttackRequest {
-  defender_player_id: string;
-  resource_point_id?: string;
-}
-
-export interface PvpBattleResponse {
-  record_id: string;
-  result: "win" | "lose";
-  score_delta: number;
-  risk_status: RiskStatus;
-  risk_record_id?: string | null;
-  settlement_status: SettlementStatus;
-  rewards: RewardBundle;
-  action_state: ActionState;
-  battle: {
-    attacker_player_id: string;
-    defender_player_id: string;
-    attacker_power: number;
-    defender_power: number;
-    log: BattleRoundLog[];
-  };
-  resource_point: ResourcePointSummary | null;
-  reason_summary?: string[];
-  counter_suggestions?: string[];
-  battle_hint?: string;
-  experience?: ExperiencePayload;
-}
-
 export type RankType =
   | "personal"
   | "sect"
-  | "pvp_week"
   | "tower_week"
   | "production"
   | "era"
@@ -1964,7 +1922,7 @@ export interface ConvenienceBatchPreviewResponse {
 
 export interface SaveConvenienceStrategyRequest {
   strategy_name: string;
-  strategy_type: "daily" | "tower" | "boss" | "pvp";
+  strategy_type: "daily" | "tower" | "boss";
   config: Record<string, unknown>;
 }
 
@@ -2499,7 +2457,6 @@ export type ConfigType =
   | "tower"
   | "boss"
   | "sect"
-  | "pvp"
   | "rank"
   | "gacha"
   | "monthly_card"
@@ -2573,7 +2530,7 @@ export interface AdminGachaRecordState {
 export interface AdminActionRecordState {
   record_id: string;
   action_type: string;
-  source: "tower" | "boss" | "pvp" | "cave";
+  source: "tower" | "boss" | "cave";
   summary: string;
   settlement_status: string;
   created_at: string;

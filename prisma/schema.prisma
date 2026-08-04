@@ -80,8 +80,6 @@ model Player {
   sectMembership            SectMember?
   towerActionRecords        TowerActionRecord[]
   bossChallengeRecords      WorldBossChallengeRecord[]
-  pvpAttacks                PvpBattleRecord[]          @relation("PvpAttacker")
-  pvpDefenses               PvpBattleRecord[]          @relation("PvpDefender")
   sectTaskRecords           SectTaskRecord[]
   purchaseOrders            PurchaseOrder[]
   monthlyCards              MonthlyCardState[]
@@ -1488,59 +1486,6 @@ model SectWarehouseLog {
   @@index([operationType])
   @@index([createdAt])
   @@map("sect_warehouse_log")
-}
-
-model ResourcePointState {
-  resourcePointId String   @id @map("resource_point_id")
-  eraId           String   @default("era_mvp_001") @map("era_id")
-  provinceId      String   @map("province_id")
-  name            String
-  ownerSectId     String?  @map("owner_sect_id")
-  ownerPlayerId   String?  @map("owner_player_id")
-  controlScore    Int      @default(0) @map("control_score")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-
-  pvpRecords PvpBattleRecord[]
-
-  @@unique([eraId, provinceId])
-  @@index([eraId])
-  @@index([ownerSectId])
-  @@index([ownerPlayerId])
-  @@map("resource_point_state")
-}
-
-model PvpBattleRecord {
-  recordId         String   @id @map("record_id")
-  attackerPlayerId String   @map("attacker_player_id")
-  defenderPlayerId String   @map("defender_player_id")
-  attackerSectId   String?  @map("attacker_sect_id")
-  defenderSectId   String?  @map("defender_sect_id")
-  eraId            String   @default("era_mvp_001") @map("era_id")
-  sceneType        String   @default("resource_point") @map("scene_type")
-  resourcePointId  String?  @map("resource_point_id")
-  result           String
-  scoreDelta       Int      @map("score_delta")
-  rewardSnapshot   Json     @map("reward_snapshot")
-  battleLog        Json     @map("battle_log")
-  riskStatus       String   @default("normal") @map("risk_status")
-  settlementStatus String   @default("settled") @map("settlement_status")
-  configVersion    String   @map("config_version")
-  idempotencyKey   String?  @unique @map("idempotency_key")
-  createdAt        DateTime @default(now()) @map("created_at")
-
-  attacker      Player              @relation("PvpAttacker", fields: [attackerPlayerId], references: [playerId])
-  defender      Player              @relation("PvpDefender", fields: [defenderPlayerId], references: [playerId])
-  resourcePoint ResourcePointState? @relation(fields: [resourcePointId], references: [resourcePointId])
-
-  @@index([attackerPlayerId])
-  @@index([defenderPlayerId])
-  @@index([attackerSectId])
-  @@index([defenderSectId])
-  @@index([eraId])
-  @@index([sceneType])
-  @@index([resourcePointId])
-  @@index([createdAt])
-  @@map("pvp_battle_record")
 }
 
 model RankSnapshot {

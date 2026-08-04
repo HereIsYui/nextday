@@ -5,14 +5,24 @@ import { PrismaClient } from "@prisma/client";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AppModule } from "../src/app.module";
-import { defaultEraId } from "../src/game/game.constants";
 import { configureApp } from "../src/platform/configure-app";
 import {
   buildProductionBalanceWarnings,
+  getMaterialCompositionHash,
   materialSourceConfigs,
 } from "../src/production/production.constants";
 
-describe("P3-2 生产材料链", () => {
+type CraftKind = "alchemy" | "forge";
+type CraftMaterial = { item_id: string; count: number };
+type ProductionEffectRow = {
+  effectId: string;
+  effectType: string;
+  effectValue: number;
+  remainingUses: number;
+  consumedAt: Date | null;
+};
+
+describe("P3-2 自研丹器与材料链", () => {
   let app: INestApplication;
   let prisma: PrismaClient;
 
@@ -37,85 +47,443 @@ describe("P3-2 生产材料链", () => {
     await app.close();
   });
 
-  it("无材料时丹方和器方返回缺口来源与预计补齐次数", async () => {
+  it("材料接口只公开专用可投炉材料，默认配方路由已移除", async () => {
     const { token } = await createP3ProductionPlayer(app, prisma);
 
     const alchemy = await request(app.getHttpServer())
-      .get("/api/production/alchemy/recipes")
+      .get("/api/production/materials?kind=alchemy")
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
-    const juling = alchemy.body.data.recipes.find(
-      (recipe: { recipe_id: string }) => recipe.recipe_id === "recipe_juling_1",
+    expect(alchemy.body.data.materials).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ item_id: "alch_moon_dew_herb", kind: "alchemy" }),
+        expect.objectContaining({ item_id: "alch_break_marrow_root", kind: "alchemy" }),
+        expect.objectContaining({ item_id: "alch_void_moss", kind: "alchemy" }),
+      ]),
     );
-    expect(juling.recommendation.can_craft).toBe(false);
-    expect(juling.recommendation.material_gaps[0].source_hints[0]).toMatchObject({
-      action_label: "去冀州探索",
-      source_type: "explore",
+    expect(
+      alchemy.body.data.materials.every(
+        (material: { kind: string }) => material.kind === "alchemy",
+      ),
+    ).toBe(true);
+    expect(
+      alchemy.body.data.materials.some(
+        (material: { item_id: string }) => material.item_id === "low_herb",
+      ),
+    ).toBe(false);
+
+    const forge = await request(app.getHttpServer())
+      .get("/api/production/materials?kind=forge")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(forge.body.data.materials).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ item_id: "forge_star_iron", kind: "forge" }),
+        expect.objectContaining({ item_id: "forge_spiritwood_core", kind: "forge" }),
+        expect.objectContaining({ item_id: "forge_artifact_marrow", kind: "forge" }),
+      ]),
+    );
+    expect(
+      forge.body.data.materials.every((material: { kind: string }) => material.kind === "forge"),
+    ).toBe(true);
+
+    await request(app.getHttpServer())
+      .get("/api/production/alchemy/recipes")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get("/api/production/forge/recipes")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(404);
+  });
+
+  it("无序材料组合稳定结算、扣除材料，未知组合失败且不可保存单方", async () => {
+    const { token, playerId } = await createP3ProductionPlayer(app, prisma);
+    const materials: CraftMaterial[] = [
+      { item_id: "alch_moon_dew_herb", count: 2 },
+      { item_id: "alch_spirit_resin", count: 1 },
+    ];
+    await grantProductionMaterials(prisma, playerId, {
+      alch_moon_dew_herb: 4,
+      alch_spirit_resin: 2,
+      alch_sunfire_petal: 1,
     });
-    expect(juling.recommendation.material_gaps[0].shortage_hint).toContain("约");
+    const beforeMoonHerb = await getItemCount(prisma, playerId, "alch_moon_dew_herb");
+    const beforeSpiritResin = await getItemCount(prisma, playerId, "alch_spirit_resin");
 
-    const forge = await request(app.getHttpServer())
-      .get("/api/production/forge/recipes")
-      .set("Authorization", `Bearer ${token}`)
-      .expect(200);
-    const sword = forge.body.data.recipes.find(
-      (recipe: { recipe_id: string }) => recipe.recipe_id === "forge_xuantie_sword_1",
-    );
-    expect(sword.recommendation.can_craft).toBe(false);
-    expect(sword.recommendation.material_gaps[0].source_hints[0].name).toContain("玄铁");
-    expect(sword.recommendation.balance_warnings.length).toBeGreaterThan(0);
-  });
-
-  it("补齐材料和近期战报后，丹器推荐能解释推荐原因、标签和用途", async () => {
-    const { token, playerId } = await createP3ProductionPlayer(app, prisma);
-    await grantProductionMaterials(prisma, playerId);
-    await createRecentExploreBattle(prisma, playerId);
-
-    const alchemy = await request(app.getHttpServer())
-      .get("/api/production/alchemy/recipes")
-      .set("Authorization", `Bearer ${token}`)
-      .expect(200);
-    const recommendedAlchemy = alchemy.body.data.recipes.find(
-      (recipe: { recommendation?: { recommended: boolean } }) => recipe.recommendation?.recommended,
-    );
-    expect(recommendedAlchemy.recommendation.priority_score).toBeGreaterThanOrEqual(60);
-    expect(recommendedAlchemy.recommendation.reason).toContain("最近探索");
-    expect(recommendedAlchemy.recommendation.recommendation_tags).toContain("近期掉落可衔接");
-    expect(recommendedAlchemy.recommendation.usage_hint).toContain("服丹");
-
-    const forge = await request(app.getHttpServer())
-      .get("/api/production/forge/recipes")
-      .set("Authorization", `Bearer ${token}`)
-      .expect(200);
-    const recommendedForge = forge.body.data.recipes.find(
-      (recipe: { recipe_id: string }) => recipe.recipe_id === "forge_xuantie_sword_1",
-    );
-    expect(recommendedForge.recommendation.recommended).toBe(true);
-    expect(recommendedForge.recommendation.next_action_hint).toMatch(/战报|词条/);
-    expect(recommendedForge.recommendation.recommendation_tags).toContain("战报提示");
-  });
-
-  it("生产结果展示品质、词条、返还和下一步用途", async () => {
-    const { token, playerId } = await createP3ProductionPlayer(app, prisma);
-    await grantProductionMaterials(prisma, playerId);
-
-    const alchemy = await request(app.getHttpServer())
+    const firstKey = findCraftSuccessKey("p3_unordered_first", "alchemy", materials, 8800);
+    const first = await request(app.getHttpServer())
       .post("/api/production/alchemy/craft")
       .set("Authorization", `Bearer ${token}`)
-      .set("Idempotency-Key", `idem_p3_alchemy_${Date.now()}_${randomSuffix()}`)
-      .send({ recipe_id: "recipe_juling_1" })
+      .set("Idempotency-Key", firstKey)
+      .send({
+        materials: [
+          { item_id: "alch_spirit_resin", count: 1 },
+          { item_id: "alch_moon_dew_herb", count: 1 },
+          { item_id: "alch_moon_dew_herb", count: 1 },
+        ],
+      })
       .expect(201);
-    expect(alchemy.body.data.experience.summary).toMatch(/品质|失败/);
-    expect(alchemy.body.data.experience.next_recommendations[0].reason).toContain("递减");
+    const replayedFirst = await request(app.getHttpServer())
+      .post("/api/production/alchemy/craft")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", firstKey)
+      .send({ materials })
+      .expect(201);
+    const second = await request(app.getHttpServer())
+      .post("/api/production/alchemy/craft")
+      .set("Authorization", `Bearer ${token}`)
+      .set(
+        "Idempotency-Key",
+        findCraftSuccessKey("p3_unordered_second", "alchemy", materials, 8800),
+      )
+      .send({ materials })
+      .expect(201);
 
-    const forge = await request(app.getHttpServer())
+    expect(first.body.data.record.success).toBe(true);
+    expect(replayedFirst.body.data.record_id).toBe(first.body.data.record_id);
+    expect(second.body.data.record.success).toBe(true);
+    expect(first.body.data.record.pill_item_id).toBe("pill_nourishing_essence");
+    expect(second.body.data.record.pill_item_id).toBe("pill_nourishing_essence");
+    expect(first.body.data.discovery.composition_hash).toBe(
+      second.body.data.discovery.composition_hash,
+    );
+    expect(first.body.data.discovery.result_template).toEqual(
+      second.body.data.discovery.result_template,
+    );
+    expect(await getItemCount(prisma, playerId, "alch_moon_dew_herb")).toBe(beforeMoonHerb - 4);
+    expect(await getItemCount(prisma, playerId, "alch_spirit_resin")).toBe(beforeSpiritResin - 2);
+
+    const failed = await request(app.getHttpServer())
+      .post("/api/production/alchemy/craft")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_p3_unknown_${Date.now()}_${randomSuffix()}`)
+      .send({ materials: [{ item_id: "alch_sunfire_petal", count: 1 }] })
+      .expect(201);
+    expect(failed.body.data.record.success).toBe(false);
+    expect(failed.body.data.record.pill_item_id).toBeNull();
+    expect(failed.body.data.record.failure_returns.items).toEqual(
+      expect.arrayContaining([expect.objectContaining({ item_id: "pill_dust" })]),
+    );
+
+    const failedSave = await request(app.getHttpServer())
+      .post("/api/production/formulas")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_p3_failed_formula_${Date.now()}_${randomSuffix()}`)
+      .send({ kind: "alchemy", source_record_id: failed.body.data.record_id, name: "炉灰残卷" })
+      .expect(400);
+    expect(failedSave.body.message).toContain("成功的炼丹记录");
+  });
+
+  it("炼器组合稳定决定法宝模板，词条随炼制记录变化且成功记录可保存器方", async () => {
+    const { token, playerId } = await createP3ProductionPlayer(app, prisma);
+    const materials: CraftMaterial[] = [
+      { item_id: "forge_star_iron", count: 3 },
+      { item_id: "forge_spiritwood_core", count: 1 },
+    ];
+    await grantProductionMaterials(prisma, playerId, {
+      forge_star_iron: 6,
+      forge_spiritwood_core: 2,
+    });
+
+    const firstKey = findCraftSuccessKey("p3_forge_first", "forge", materials, 9000);
+    const first = await request(app.getHttpServer())
       .post("/api/production/forge/craft")
       .set("Authorization", `Bearer ${token}`)
-      .set("Idempotency-Key", `idem_p3_forge_${Date.now()}_${randomSuffix()}`)
-      .send({ recipe_id: "forge_xuantie_sword_1" })
+      .set("Idempotency-Key", firstKey)
+      .send({ materials })
       .expect(201);
-    expect(forge.body.data.experience.summary).toContain("玄铁剑胚");
-    expect(forge.body.data.experience.next_recommendations[0].reason).toContain("词条");
+    const second = await request(app.getHttpServer())
+      .post("/api/production/forge/craft")
+      .set("Authorization", `Bearer ${token}`)
+      .set(
+        "Idempotency-Key",
+        findForgeSuccessKeyWithDifferentMainValue("p3_forge_second", materials, firstKey),
+      )
+      .send({
+        materials: [
+          { item_id: "forge_spiritwood_core", count: 1 },
+          { item_id: "forge_star_iron", count: 3 },
+        ],
+      })
+      .expect(201);
+
+    expect(first.body.data.discovery.success).toBe(true);
+    expect(second.body.data.discovery.success).toBe(true);
+    expect(first.body.data.discovery.result_template).toEqual(
+      second.body.data.discovery.result_template,
+    );
+    expect(first.body.data.equipment).toMatchObject({
+      equipment_id: "equipment_starwood_blade",
+      equipment_type: "weapon",
+      rarity: "ordinary",
+    });
+    expect(second.body.data.equipment.equipment_instance_id).not.toBe(
+      first.body.data.equipment.equipment_instance_id,
+    );
+    const firstMain = first.body.data.equipment.affixes.find(
+      (affix: { affix_type: string }) => affix.affix_type === "main",
+    );
+    const secondMain = second.body.data.equipment.affixes.find(
+      (affix: { affix_type: string }) => affix.affix_type === "main",
+    );
+    expect(firstMain.value).not.toBe(secondMain.value);
+
+    const saved = await request(app.getHttpServer())
+      .post("/api/production/formulas")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_p3_save_forge_${Date.now()}_${randomSuffix()}`)
+      .send({ kind: "forge", source_record_id: first.body.data.record_id, name: "星木长锋器方" })
+      .expect(201);
+    expect(saved.body.data.formula).toMatchObject({
+      kind: "forge",
+      visibility: "private",
+      source_record_id: first.body.data.record_id,
+    });
+    expect(saved.body.data.formula.result_template.forge.equipment_id).toBe(
+      "equipment_starwood_blade",
+    );
+  });
+
+  it("单方仅作者可公开，公开后其他玩家可检索并复用，取消公开后立即收回", async () => {
+    const owner = await createP3ProductionPlayer(app, prisma);
+    const visitor = await createP3ProductionPlayer(app, prisma);
+    const materials: CraftMaterial[] = [
+      { item_id: "alch_moon_dew_herb", count: 2 },
+      { item_id: "alch_spirit_resin", count: 1 },
+    ];
+    await grantProductionMaterials(prisma, owner.playerId, {
+      alch_moon_dew_herb: 2,
+      alch_spirit_resin: 1,
+    });
+    await grantProductionMaterials(prisma, visitor.playerId, {
+      alch_moon_dew_herb: 2,
+      alch_spirit_resin: 1,
+    });
+
+    const crafted = await request(app.getHttpServer())
+      .post("/api/production/alchemy/craft")
+      .set("Authorization", `Bearer ${owner.token}`)
+      .set("Idempotency-Key", findCraftSuccessKey("p3_formula_owner", "alchemy", materials, 8800))
+      .send({ materials })
+      .expect(201);
+    const saved = await request(app.getHttpServer())
+      .post("/api/production/formulas")
+      .set("Authorization", `Bearer ${owner.token}`)
+      .set("Idempotency-Key", `idem_p3_formula_save_${Date.now()}_${randomSuffix()}`)
+      .send({ kind: "alchemy", source_record_id: crafted.body.data.record_id, name: "月露蕴灵方" })
+      .expect(201);
+    const formulaId = saved.body.data.formula.formula_id as string;
+    expect(saved.body.data.formula.visibility).toBe("private");
+
+    const privateCraft = await request(app.getHttpServer())
+      .post(`/api/production/formulas/${formulaId}/craft`)
+      .set("Authorization", `Bearer ${visitor.token}`)
+      .set("Idempotency-Key", `idem_p3_private_craft_${Date.now()}_${randomSuffix()}`)
+      .expect(400);
+    expect(privateCraft.body.message).toContain("尚未公开");
+
+    const unauthorizedPublish = await request(app.getHttpServer())
+      .post(`/api/production/formulas/${formulaId}/publish`)
+      .set("Authorization", `Bearer ${visitor.token}`)
+      .set("Idempotency-Key", `idem_p3_unauthorized_publish_${Date.now()}_${randomSuffix()}`)
+      .expect(400);
+    expect(unauthorizedPublish.body.message).toContain("无权修改");
+
+    const beforePublish = await request(app.getHttpServer())
+      .get("/api/production/formulas?scope=public&kind=alchemy")
+      .set("Authorization", `Bearer ${visitor.token}`)
+      .expect(200);
+    expect(
+      beforePublish.body.data.formulas.some(
+        (formula: { formula_id: string }) => formula.formula_id === formulaId,
+      ),
+    ).toBe(false);
+
+    const published = await request(app.getHttpServer())
+      .post(`/api/production/formulas/${formulaId}/publish`)
+      .set("Authorization", `Bearer ${owner.token}`)
+      .set("Idempotency-Key", `idem_p3_publish_${Date.now()}_${randomSuffix()}`)
+      .expect(201);
+    expect(published.body.data.formula.visibility).toBe("public");
+    expect(published.body.data.formula.published_at).toBeTruthy();
+
+    const publicList = await request(app.getHttpServer())
+      .get("/api/production/formulas?scope=public&kind=alchemy&keyword=月露")
+      .set("Authorization", `Bearer ${visitor.token}`)
+      .expect(200);
+    const publicFormula = publicList.body.data.formulas.find(
+      (formula: { formula_id: string }) => formula.formula_id === formulaId,
+    );
+    expect(publicFormula).toMatchObject({ reusable: true, visibility: "public" });
+
+    const reused = await request(app.getHttpServer())
+      .post(`/api/production/formulas/${formulaId}/craft`)
+      .set("Authorization", `Bearer ${visitor.token}`)
+      .set("Idempotency-Key", findCraftSuccessKey("p3_formula_reuse", "alchemy", materials, 8800))
+      .expect(201);
+    expect(reused.body.data.kind).toBe("alchemy");
+    expect(reused.body.data.result.discovery.formula_id).toBe(formulaId);
+    expect(reused.body.data.result.record.success).toBe(true);
+
+    await request(app.getHttpServer())
+      .post(`/api/production/formulas/${formulaId}/unpublish`)
+      .set("Authorization", `Bearer ${owner.token}`)
+      .set("Idempotency-Key", `idem_p3_unpublish_${Date.now()}_${randomSuffix()}`)
+      .expect(201);
+    const afterUnpublish = await request(app.getHttpServer())
+      .get("/api/production/formulas?scope=public&kind=alchemy")
+      .set("Authorization", `Bearer ${visitor.token}`)
+      .expect(200);
+    expect(
+      afterUnpublish.body.data.formulas.some(
+        (formula: { formula_id: string }) => formula.formula_id === formulaId,
+      ),
+    ).toBe(false);
+  });
+
+  it("三类自研丹药分别作用于修为、下一次突破和下一次探索，并在使用后消费效果", async () => {
+    const { token, playerId } = await createP3ProductionPlayer(app, prisma);
+    const cultivationMaterials: CraftMaterial[] = [
+      { item_id: "alch_moon_dew_herb", count: 2 },
+      { item_id: "alch_spirit_resin", count: 1 },
+    ];
+    const breakthroughMaterials: CraftMaterial[] = [
+      { item_id: "alch_break_marrow_root", count: 1 },
+      { item_id: "alch_spirit_resin", count: 1 },
+      { item_id: "alch_sunfire_petal", count: 1 },
+    ];
+    const exploreMaterials: CraftMaterial[] = [
+      { item_id: "alch_moon_dew_herb", count: 1 },
+      { item_id: "alch_spirit_resin", count: 1 },
+      { item_id: "alch_void_moss", count: 1 },
+    ];
+    await grantProductionMaterials(prisma, playerId, {
+      alch_moon_dew_herb: 3,
+      alch_spirit_resin: 3,
+      alch_break_marrow_root: 1,
+      alch_sunfire_petal: 1,
+      alch_void_moss: 1,
+    });
+
+    const cultivationCraft = await craftAlchemy(
+      app,
+      token,
+      "p3_effect_cultivation",
+      cultivationMaterials,
+      8800,
+    );
+    const breakthroughCraft = await craftAlchemy(
+      app,
+      token,
+      "p3_effect_breakthrough",
+      breakthroughMaterials,
+      7600,
+    );
+    const exploreCraft = await craftAlchemy(
+      app,
+      token,
+      "p3_effect_explore",
+      exploreMaterials,
+      8200,
+    );
+
+    const cultivationUse = await useCraftedPill(
+      app,
+      token,
+      cultivationCraft,
+      "pill_nourishing_essence",
+      "p3_use_cultivation",
+    );
+    expect(cultivationUse.body.data.pill_effect).toBe("cultivation");
+    expect(BigInt(cultivationUse.body.data.after_cultivation)).toBeGreaterThan(
+      BigInt(cultivationUse.body.data.before_cultivation),
+    );
+
+    const breakthroughUse = await useCraftedPill(
+      app,
+      token,
+      breakthroughCraft,
+      "pill_barrier_breaking",
+      "p3_use_breakthrough",
+    );
+    expect(breakthroughUse.body.data.pill_effect).toBe("breakthrough_support");
+    const breakthroughEffect = (await getProductionEffects(prisma, playerId)).find(
+      (effect) => effect.effectType === "breakthrough_support",
+    );
+    expect(breakthroughEffect).toMatchObject({ remainingUses: 1, consumedAt: null });
+
+    const supportValue = Number(breakthroughUse.body.data.effect_value);
+    await prisma.player.update({ where: { playerId }, data: { currentLevel: 9, currentRealm: 1 } });
+    await prisma.playerProgress.update({
+      where: { playerId },
+      data: { cultivationValue: BigInt(600 - supportValue) },
+    });
+    const breakthrough = await request(app.getHttpServer())
+      .post("/api/game/cultivation/breakthrough")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_p3_breakthrough_${Date.now()}_${randomSuffix()}`)
+      .expect(201);
+    expect(breakthrough.body.data.success).toBe(true);
+    expect(breakthrough.body.data.message).toContain("破障丹助你抵消");
+    const consumedBreakthroughEffect = (await getProductionEffects(prisma, playerId)).find(
+      (effect) => effect.effectId === breakthroughEffect?.effectId,
+    );
+    expect(consumedBreakthroughEffect).toMatchObject({ remainingUses: 0 });
+    expect(consumedBreakthroughEffect?.consumedAt).toBeTruthy();
+
+    const exploreUse = await useCraftedPill(
+      app,
+      token,
+      exploreCraft,
+      "pill_cloud_walking",
+      "p3_use_explore",
+    );
+    expect(exploreUse.body.data.pill_effect).toBe("explore_boost");
+    const exploreBonus = Number(exploreUse.body.data.effect_value);
+    expect(exploreBonus).toBeGreaterThan(0);
+    const exploreEffect = (await getProductionEffects(prisma, playerId)).find(
+      (effect) => effect.effectType === "explore_boost",
+    );
+    expect(exploreEffect).toMatchObject({
+      effectValue: exploreBonus,
+      remainingUses: 1,
+      consumedAt: null,
+    });
+
+    await prisma.playerActionState.update({
+      where: { playerId },
+      data: { actionPoints: 10 },
+    });
+    const started = await request(app.getHttpServer())
+      .post("/api/game/explore")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_p3_explore_boost_${Date.now()}_${randomSuffix()}`)
+      .send({ province_id: "ji", count: 1 })
+      .expect(201);
+    expect(started.body.data.explore_boost_percent).toBe(exploreBonus);
+    const consumedExploreEffect = (await getProductionEffects(prisma, playerId)).find(
+      (effect) => effect.effectId === exploreEffect?.effectId,
+    );
+    expect(consumedExploreEffect).toMatchObject({ remainingUses: 0 });
+    expect(consumedExploreEffect?.consumedAt).toBeTruthy();
+
+    await prisma.exploreActionRecord.update({
+      where: { recordId: started.body.data.record_id },
+      data: { completesAt: new Date(Date.now() - 1000) },
+    });
+    const claimed = await request(app.getHttpServer())
+      .post("/api/game/explore/claim")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_p3_explore_boost_claim_${Date.now()}_${randomSuffix()}`)
+      .send({ record_id: started.body.data.record_id })
+      .expect(201);
+    expect(claimed.body.data.rewards.cultivation).toBe(
+      String(Math.floor(40 * (1 + exploreBonus / 100))),
+    );
+    expect(claimed.body.data.rewards.spirit_stone).toBe(
+      String(Math.floor(35 * (1 + exploreBonus / 100))),
+    );
   });
 
   it("材料链配置与断供预警不包含付费或唯一战力产物", async () => {
@@ -124,7 +492,7 @@ describe("P3-2 生产材料链", () => {
     expect(warnings.some((warning) => warning.item_id === "raw_iron")).toBe(true);
 
     const config = await request(app.getHttpServer()).get("/api/config/material_chain").expect(200);
-    expect(config.body.data.config_version).toBe("material_chain_p3_v1");
+    expect(config.body.data.config_version).toMatch(/^material_chain_/);
     expect(config.body.data.payload.warnings.length).toBeGreaterThan(0);
     const serialized = JSON.stringify(config.body.data.payload);
     expect(serialized).not.toContain("paid_jade_reward");
@@ -159,59 +527,129 @@ async function createP3ProductionPlayer(
   return { token, playerId };
 }
 
-async function grantProductionMaterials(prisma: PrismaClient, playerId: string) {
+async function grantProductionMaterials(
+  prisma: PrismaClient,
+  playerId: string,
+  items: Record<string, number>,
+) {
   await prisma.playerWallet.update({
     where: { playerId },
-    data: { spiritStone: 2000n },
+    data: { spiritStone: 5000n },
   });
   await prisma.playerItem.createMany({
-    data: [
-      {
-        itemInstanceId: `item_p3_herb_${Date.now()}_${randomSuffix()}`,
+    data: Object.entries(items)
+      .filter(([, count]) => count > 0)
+      .map(([itemId, count]) => ({
+        itemInstanceId: `item_p3_${itemId}_${Date.now()}_${randomSuffix()}`,
         playerId,
-        itemId: "low_herb",
-        count: 12n,
+        itemId,
+        count: BigInt(count),
         bindType: "bound",
         sourceType: "p3_production_test",
-      },
-      {
-        itemInstanceId: `item_p3_iron_${Date.now()}_${randomSuffix()}`,
-        playerId,
-        itemId: "raw_iron",
-        count: 12n,
-        bindType: "bound",
-        sourceType: "p3_production_test",
-      },
-    ],
+      })),
   });
 }
 
-async function createRecentExploreBattle(prisma: PrismaClient, playerId: string) {
-  await prisma.battleLog.create({
-    data: {
-      battleId: `battle_p3_production_${Date.now()}_${randomSuffix()}`,
-      playerId,
-      eraId: defaultEraId,
-      battleType: "explore",
-      provinceId: "ji",
-      enemyId: "ji_ta_shadow",
-      enemyName: "塔影残魇",
-      result: "win",
-      rounds: 2,
-      damageDone: 120,
-      damageTaken: 36,
-      rewardSnapshot: {
-        items: [
-          { item_id: "low_herb", name: "凝露草", count: 1, bind_type: "bound" },
-          { item_id: "raw_iron", name: "玄铁砂", count: 1, bind_type: "bound" },
-        ],
-      },
-      battleLog: [
-        { round: 1, actor: "player", skill: "御火诀", damage: 70, target_hp: 50 },
-        { round: 2, actor: "player", skill: "小周天剑气", damage: 50, target_hp: 0 },
-      ],
-    },
+async function getItemCount(
+  prisma: PrismaClient,
+  playerId: string,
+  itemId: string,
+): Promise<number> {
+  const items = await prisma.playerItem.findMany({ where: { playerId, itemId } });
+  return items.reduce((total, item) => total + Number(item.count), 0);
+}
+
+async function craftAlchemy(
+  app: INestApplication,
+  token: string,
+  prefix: string,
+  materials: CraftMaterial[],
+  successRate: number,
+) {
+  return request(app.getHttpServer())
+    .post("/api/production/alchemy/craft")
+    .set("Authorization", `Bearer ${token}`)
+    .set("Idempotency-Key", findCraftSuccessKey(prefix, "alchemy", materials, successRate))
+    .send({ materials })
+    .expect(201);
+}
+
+async function useCraftedPill(
+  app: INestApplication,
+  token: string,
+  crafted: {
+    body: { data: { bag: { items: Array<{ item_id: string; item_instance_id: string }> } } };
+  },
+  itemId: string,
+  prefix: string,
+) {
+  const pill = crafted.body.data.bag.items.find((item) => item.item_id === itemId);
+  expect(pill).toBeTruthy();
+  return request(app.getHttpServer())
+    .post("/api/production/pills/use")
+    .set("Authorization", `Bearer ${token}`)
+    .set("Idempotency-Key", `idem_${prefix}_${Date.now()}_${randomSuffix()}`)
+    .send({ item_instance_id: pill?.item_instance_id })
+    .expect(201);
+}
+
+async function getProductionEffects(
+  prisma: PrismaClient,
+  playerId: string,
+): Promise<ProductionEffectRow[]> {
+  const delegate = prisma as unknown as {
+    playerProductionEffect: {
+      findMany(input: { where: { playerId: string }; orderBy: { createdAt: "asc" } }): Promise<
+        ProductionEffectRow[]
+      >;
+    };
+  };
+  return delegate.playerProductionEffect.findMany({
+    where: { playerId },
+    orderBy: { createdAt: "asc" },
   });
+}
+
+function findCraftSuccessKey(
+  prefix: string,
+  kind: CraftKind,
+  materials: CraftMaterial[],
+  successRate: number,
+): string {
+  const compositionHash = getMaterialCompositionHash(kind, materials);
+  for (let index = 0; index < 1000; index += 1) {
+    const key = `idem_${prefix}_${Date.now()}_${randomSuffix()}_${index}`;
+    if (roll10000(`${key}:${compositionHash}:success`) < successRate) {
+      return key;
+    }
+  }
+  throw new Error("未找到可成功结算的幂等键");
+}
+
+function findForgeSuccessKeyWithDifferentMainValue(
+  prefix: string,
+  materials: CraftMaterial[],
+  previousKey: string,
+): string {
+  const compositionHash = getMaterialCompositionHash("forge", materials);
+  const previousMainValue = roll10000(`${previousKey}:${compositionHash}:main:value`) % 13;
+  for (let index = 0; index < 1000; index += 1) {
+    const key = `idem_${prefix}_${Date.now()}_${randomSuffix()}_${index}`;
+    const success = roll10000(`${key}:${compositionHash}:success`) < 9000;
+    const mainValue = roll10000(`${key}:${compositionHash}:main:value`) % 13;
+    if (success && mainValue !== previousMainValue) {
+      return key;
+    }
+  }
+  throw new Error("未找到词条数值不同的成功幂等键");
+}
+
+function roll10000(seed: string): number {
+  let hash = 0;
+  for (const char of seed) {
+    hash = (hash * 31 + char.charCodeAt(0)) % 10000;
+  }
+  return hash;
 }
 
 function randomSuffix(): string {

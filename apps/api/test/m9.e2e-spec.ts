@@ -6,6 +6,7 @@ import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AppModule } from "../src/app.module";
 import { configureApp } from "../src/platform/configure-app";
+import { getMaterialCompositionHash } from "../src/production/production.constants";
 
 const adminToken = "nextday-admin-dev";
 
@@ -51,7 +52,6 @@ describe("M9 MVP 总体验收与小纪元演练", () => {
       "tower",
       "boss",
       "sect",
-      "pvp",
       "rank",
       "gacha",
       "monthly_card",
@@ -77,9 +77,8 @@ describe("M9 MVP 总体验收与小纪元演练", () => {
   it("30-45 天小纪元压缩演练能产出排行、称号、邮件和复盘数据", async () => {
     const leader = await createM9Player(app, prisma, "纪元甲", "qi");
     const attacker = await createM9Player(app, prisma, "纪元乙", "body");
-    const defender = await createM9Player(app, prisma, "纪元丙", "qi");
     const support = await createM9Player(app, prisma, "纪元丁", "qi");
-    for (const player of [leader, attacker, defender, support]) {
+    for (const player of [leader, attacker, support]) {
       await seedM9Resources(prisma, player.playerId);
     }
     await prisma.player.update({
@@ -168,15 +167,19 @@ describe("M9 MVP 总体验收与小纪元演练", () => {
       .expect(201);
     expect(Number(cave.body.data.rewards.spirit_stone)).toBeGreaterThan(0);
 
+    const alchemyMaterials = [
+      { item_id: "alch_moon_dew_herb", count: 2 },
+      { item_id: "alch_spirit_resin", count: 1 },
+    ];
     const alchemy = await request(app.getHttpServer())
       .post("/api/production/alchemy/craft")
       .set("Authorization", `Bearer ${leader.token}`)
-      .set("Idempotency-Key", findIdempotencyKey("m9_alchemy", "recipe_juling_1", 9200, true))
-      .send({ recipe_id: "recipe_juling_1" })
+      .set("Idempotency-Key", findCraftSuccessKey("m9_alchemy", "alchemy", alchemyMaterials, 8800))
+      .send({ materials: alchemyMaterials })
       .expect(201);
     expect(alchemy.body.data.record.success).toBe(true);
     const pill = alchemy.body.data.bag.items.find(
-      (item: { item_id: string }) => item.item_id === "pill_juling_1",
+      (item: { item_id: string }) => item.item_id === "pill_nourishing_essence",
     );
     expect(pill).toBeTruthy();
     await request(app.getHttpServer())
@@ -186,11 +189,15 @@ describe("M9 MVP 总体验收与小纪元演练", () => {
       .send({ item_instance_id: pill.item_instance_id })
       .expect(201);
 
+    const forgeMaterials = [
+      { item_id: "forge_star_iron", count: 3 },
+      { item_id: "forge_spiritwood_core", count: 1 },
+    ];
     const forged = await request(app.getHttpServer())
       .post("/api/production/forge/craft")
       .set("Authorization", `Bearer ${leader.token}`)
-      .set("Idempotency-Key", `idem_m9_forge_${randomSuffix()}`)
-      .send({ recipe_id: "forge_xuantie_sword_1" })
+      .set("Idempotency-Key", findCraftSuccessKey("m9_forge", "forge", forgeMaterials, 9000))
+      .send({ materials: forgeMaterials })
       .expect(201);
     expect(forged.body.data.equipment.name).not.toContain("古宝");
     await request(app.getHttpServer())
@@ -278,23 +285,6 @@ describe("M9 MVP 总体验收与小纪元演练", () => {
       .set("Idempotency-Key", `idem_m9_boss_${randomSuffix()}`)
       .send({ boss_id: boss.body.data.boss.boss_id })
       .expect(201);
-
-    const resourcePoints = await request(app.getHttpServer())
-      .get("/api/multiplayer/resource-points")
-      .set("Authorization", `Bearer ${attacker.token}`)
-      .expect(200);
-    const resourcePointId = resourcePoints.body.data.resource_points[0].resource_point_id as string;
-    const pvpStatuses: string[] = [];
-    for (let index = 0; index < 3; index += 1) {
-      const response = await request(app.getHttpServer())
-        .post("/api/multiplayer/pvp/attack")
-        .set("Authorization", `Bearer ${attacker.token}`)
-        .set("Idempotency-Key", `idem_m9_pvp_${index}_${randomSuffix()}`)
-        .send({ defender_player_id: defender.playerId, resource_point_id: resourcePointId })
-        .expect(201);
-      pvpStatuses.push(response.body.data.risk_status);
-    }
-    expect(pvpStatuses).toContain("decayed");
 
     const purchaseKey = `idem_m9_monthly_${randomSuffix()}`;
     const purchased = await request(app.getHttpServer())
@@ -393,7 +383,7 @@ describe("M9 MVP 总体验收与小纪元演练", () => {
     expect(mail.body.data.operation.action).toBe("send_mail");
     expect(announcement.body.data.operation.action).toBe("create_announcement");
 
-    for (const rankType of ["personal", "sect", "pvp_week", "tower_week"]) {
+    for (const rankType of ["personal", "sect", "tower_week"]) {
       const rank = await request(app.getHttpServer())
         .get(`/api/multiplayer/ranks/${rankType}`)
         .set("Authorization", `Bearer ${leader.token}`)
@@ -494,6 +484,10 @@ async function seedM9Resources(prisma: PrismaClient, playerId: string) {
   });
   await createItem(prisma, playerId, "low_herb", 80, "bound", "test_seed");
   await createItem(prisma, playerId, "raw_iron", 80, "bound", "test_seed");
+  await createItem(prisma, playerId, "alch_moon_dew_herb", 6, "bound", "test_seed");
+  await createItem(prisma, playerId, "alch_spirit_resin", 3, "bound", "test_seed");
+  await createItem(prisma, playerId, "forge_star_iron", 6, "bound", "test_seed");
+  await createItem(prisma, playerId, "forge_spiritwood_core", 2, "bound", "test_seed");
   await createItem(prisma, playerId, "ancient_page", 30, "bound", "m9_era_drill");
 }
 
@@ -520,16 +514,17 @@ async function createItem(
   return itemInstanceId;
 }
 
-function findIdempotencyKey(
+function findCraftSuccessKey(
   prefix: string,
-  recipeId: string,
+  kind: "alchemy" | "forge",
+  materials: Array<{ item_id: string; count: number }>,
   threshold: number,
-  shouldSucceed: boolean,
 ): string {
+  const compositionHash = getMaterialCompositionHash(kind, materials);
   for (let index = 0; index < 1000; index += 1) {
     const key = `idem_${prefix}_${Date.now()}_${randomSuffix()}_${index}`;
-    const roll = roll10000(`${key}:${recipeId}:success`);
-    if ((shouldSucceed && roll < threshold) || (!shouldSucceed && roll >= threshold)) {
+    const roll = roll10000(`${key}:${compositionHash}:success`);
+    if (roll < threshold) {
       return key;
     }
   }

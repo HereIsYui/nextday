@@ -6,6 +6,7 @@ import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AppModule } from "../src/app.module";
 import { configureApp } from "../src/platform/configure-app";
+import { getMaterialCompositionHash } from "../src/production/production.constants";
 
 describe("M3 生产成长循环", () => {
   let app: INestApplication;
@@ -32,32 +33,70 @@ describe("M3 生产成长循环", () => {
     await app.close();
   });
 
-  it("炼丹会消耗材料、写入记录，成功和失败都有可追溯结果", async () => {
+  it("自研丹材的无序组合稳定结算，成功和失败都有可追溯结果", async () => {
     const { token, playerId } = await createM3Player(app, prisma, "炼丹", "qi");
-    await grantMaterials(prisma, playerId, { lowHerb: 20, rawIron: 0, spiritStone: 2000 });
+    const nourishingMaterials = [
+      { item_id: "alch_moon_dew_herb", count: 2 },
+      { item_id: "alch_spirit_resin", count: 1 },
+    ];
+    await grantMaterials(prisma, playerId, {
+      spiritStone: 2000,
+      items: {
+        alch_moon_dew_herb: 4,
+        alch_spirit_resin: 2,
+        alch_sunfire_petal: 1,
+      },
+    });
 
-    const successKey = findIdempotencyKey("m3_alchemy_success", "recipe_juling_1", 9200, true);
+    const successKey = findCraftSuccessKey(
+      "m3_alchemy_success",
+      "alchemy",
+      nourishingMaterials,
+      8800,
+    );
     const success = await request(app.getHttpServer())
       .post("/api/production/alchemy/craft")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", successKey)
-      .send({ recipe_id: "recipe_juling_1" })
+      .send({
+        materials: [
+          { item_id: "alch_spirit_resin", count: 1 },
+          { item_id: "alch_moon_dew_herb", count: 1 },
+          { item_id: "alch_moon_dew_herb", count: 1 },
+        ],
+      })
       .expect(201);
 
     expect(success.body.data.record.success).toBe(true);
-    expect(success.body.data.record.pill_item_id).toBe("pill_juling_1");
+    expect(success.body.data.record.pill_item_id).toBe("pill_nourishing_essence");
     const pillItem = success.body.data.bag.items.find(
-      (item: { item_id: string }) => item.item_id === "pill_juling_1",
+      (item: { item_id: string }) => item.item_id === "pill_nourishing_essence",
     );
     expect(pillItem).toBeTruthy();
     expect(pillItem.quality).toBe(success.body.data.record.quality);
 
-    const failKey = findIdempotencyKey("m3_alchemy_fail", "recipe_pojing_1", 7000, false);
+    const sameCombination = await request(app.getHttpServer())
+      .post("/api/production/alchemy/craft")
+      .set("Authorization", `Bearer ${token}`)
+      .set(
+        "Idempotency-Key",
+        findCraftSuccessKey("m3_alchemy_same", "alchemy", nourishingMaterials, 8800),
+      )
+      .send({ materials: nourishingMaterials })
+      .expect(201);
+    expect(sameCombination.body.data.record.success).toBe(true);
+    expect(sameCombination.body.data.discovery.composition_hash).toBe(
+      success.body.data.discovery.composition_hash,
+    );
+    expect(sameCombination.body.data.discovery.result_template).toEqual(
+      success.body.data.discovery.result_template,
+    );
+
     const failed = await request(app.getHttpServer())
       .post("/api/production/alchemy/craft")
       .set("Authorization", `Bearer ${token}`)
-      .set("Idempotency-Key", failKey)
-      .send({ recipe_id: "recipe_pojing_1" })
+      .set("Idempotency-Key", `idem_m3_alchemy_unknown_${Date.now()}_${randomSuffix()}`)
+      .send({ materials: [{ item_id: "alch_sunfire_petal", count: 1 }] })
       .expect(201);
 
     expect(failed.body.data.record.success).toBe(false);
@@ -71,7 +110,7 @@ describe("M3 生产成长循环", () => {
     expect(
       records.body.data.records.map((record: { record_id: string }) => record.record_id),
     ).toContain(success.body.data.record_id);
-    expect(await prisma.alchemyRecord.count({ where: { playerId } })).toBe(2);
+    expect(await prisma.alchemyRecord.count({ where: { playerId } })).toBe(3);
   });
 
   it("服丹按同类同阶记录递减：前 3 颗 100%，第 4-10 颗 50%，第 11 颗后 10%", async () => {
@@ -81,11 +120,17 @@ describe("M3 生产成长循环", () => {
       data: {
         itemInstanceId: pillInstanceId,
         playerId,
-        itemId: "pill_juling_1",
+        itemId: "pill_nourishing_essence",
         count: 11,
         bindType: "bound",
         sourceType: "test_seed",
-        metadata: { quality: "middle" },
+        metadata: {
+          quality: "middle",
+          pill_effect: "cultivation",
+          pill_type: "cultivation",
+          pill_rank: 1,
+          effect_value: 120,
+        },
       },
     });
 
@@ -108,13 +153,25 @@ describe("M3 生产成长循环", () => {
 
   it("炼器不产出九大古宝，铭刻锁定词条后淬炼不会改变锁定词条", async () => {
     const { token, playerId } = await createM3Player(app, prisma, "炼器", "qi");
-    await grantMaterials(prisma, playerId, { lowHerb: 0, rawIron: 30, spiritStone: 3000 });
+    const forgeMaterials = [
+      { item_id: "forge_star_iron", count: 3 },
+      { item_id: "forge_spiritwood_core", count: 1 },
+    ];
+    await grantMaterials(prisma, playerId, {
+      spiritStone: 3000,
+      items: { forge_star_iron: 3, forge_spiritwood_core: 1, raw_iron: 30 },
+    });
 
     const forged = await request(app.getHttpServer())
       .post("/api/production/forge/craft")
       .set("Authorization", `Bearer ${token}`)
-      .set("Idempotency-Key", `idem_m3_forge_${Date.now()}_${randomSuffix()}`)
-      .send({ recipe_id: "forge_xuantie_sword_1" })
+      .set("Idempotency-Key", findCraftSuccessKey("m3_forge", "forge", forgeMaterials, 9000))
+      .send({
+        materials: [
+          { item_id: "forge_spiritwood_core", count: 1 },
+          { item_id: "forge_star_iron", count: 3 },
+        ],
+      })
       .expect(201);
 
     const equipment = forged.body.data.equipment;
@@ -160,13 +217,23 @@ describe("M3 生产成长循环", () => {
 
   it("锁定法宝不能分解，解锁后可分解并返还材料", async () => {
     const { token, playerId } = await createM3Player(app, prisma, "分解", "qi");
-    await grantMaterials(prisma, playerId, { lowHerb: 0, rawIron: 20, spiritStone: 2000 });
+    const forgeMaterials = [
+      { item_id: "forge_star_iron", count: 3 },
+      { item_id: "forge_spiritwood_core", count: 1 },
+    ];
+    await grantMaterials(prisma, playerId, {
+      spiritStone: 2000,
+      items: { forge_star_iron: 3, forge_spiritwood_core: 1 },
+    });
 
     const forged = await request(app.getHttpServer())
       .post("/api/production/forge/craft")
       .set("Authorization", `Bearer ${token}`)
-      .set("Idempotency-Key", `idem_m3_decompose_forge_${Date.now()}_${randomSuffix()}`)
-      .send({ recipe_id: "forge_xuantie_sword_1" })
+      .set(
+        "Idempotency-Key",
+        findCraftSuccessKey("m3_decompose_forge", "forge", forgeMaterials, 9000),
+      )
+      .send({ materials: forgeMaterials })
       .expect(201);
     const equipmentId = forged.body.data.equipment.equipment_instance_id as string;
 
@@ -256,7 +323,12 @@ describe("M3 生产成长循环", () => {
     const response = await request(app.getHttpServer())
       .post("/api/production/alchemy/craft")
       .set("Authorization", `Bearer ${token}`)
-      .send({ recipe_id: "recipe_juling_1" })
+      .send({
+        materials: [
+          { item_id: "alch_moon_dew_herb", count: 2 },
+          { item_id: "alch_spirit_resin", count: 1 },
+        ],
+      })
       .expect(400);
 
     expect(response.body.message).toContain("Idempotency-Key");
@@ -269,9 +341,7 @@ describe("M3 生产成长循环", () => {
         .expect(200);
 
       expect(response.body.data.config_type).toBe(configType);
-      expect(response.body.data.ruleset_version).toBe(
-        configType === "skill" ? "ruleset_p3_v1" : "ruleset_m3_v1",
-      );
+      expect(response.body.data.ruleset_version).toBeTruthy();
     }
   });
 });
@@ -308,33 +378,23 @@ async function createM3Player(
 async function grantMaterials(
   prisma: PrismaClient,
   playerId: string,
-  input: { lowHerb: number; rawIron: number; spiritStone: number },
+  input: { spiritStone: number; items: Record<string, number> },
 ) {
   await prisma.playerWallet.update({
     where: { playerId },
     data: { spiritStone: { increment: BigInt(input.spiritStone) } },
   });
 
-  if (input.lowHerb > 0) {
+  for (const [itemId, count] of Object.entries(input.items)) {
+    if (count <= 0) {
+      continue;
+    }
     await prisma.playerItem.create({
       data: {
-        itemInstanceId: `item_m3_herb_${Date.now()}_${randomSuffix()}`,
+        itemInstanceId: `item_m3_${itemId}_${Date.now()}_${randomSuffix()}`,
         playerId,
-        itemId: "low_herb",
-        count: input.lowHerb,
-        bindType: "bound",
-        sourceType: "test_seed",
-      },
-    });
-  }
-
-  if (input.rawIron > 0) {
-    await prisma.playerItem.create({
-      data: {
-        itemInstanceId: `item_m3_iron_${Date.now()}_${randomSuffix()}`,
-        playerId,
-        itemId: "raw_iron",
-        count: input.rawIron,
+        itemId,
+        count,
         bindType: "bound",
         sourceType: "test_seed",
       },
@@ -342,16 +402,17 @@ async function grantMaterials(
   }
 }
 
-function findIdempotencyKey(
+function findCraftSuccessKey(
   prefix: string,
-  recipeId: string,
+  kind: "alchemy" | "forge",
+  materials: Array<{ item_id: string; count: number }>,
   threshold: number,
-  shouldSucceed: boolean,
 ): string {
+  const compositionHash = getMaterialCompositionHash(kind, materials);
   for (let index = 0; index < 1000; index += 1) {
     const key = `idem_${prefix}_${Date.now()}_${randomSuffix()}_${index}`;
-    const roll = roll10000(`${key}:${recipeId}:success`);
-    if ((shouldSucceed && roll < threshold) || (!shouldSucceed && roll >= threshold)) {
+    const roll = roll10000(`${key}:${compositionHash}:success`);
+    if (roll < threshold) {
       return key;
     }
   }

@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AppModule } from "../src/app.module";
 import { exploreEventConfigs } from "../src/game/game.constants";
 import { configureApp } from "../src/platform/configure-app";
+import { getMaterialCompositionHash } from "../src/production/production.constants";
 
 describe("P1-9 新手 30 分钟体验与玩法厚度", () => {
   let app: INestApplication;
@@ -128,29 +129,45 @@ describe("P1-9 新手 30 分钟体验与玩法厚度", () => {
     expect(chapterRouteStep.action_label).toBe("查看章节任务");
   });
 
-  it("生产接口返回推荐、材料缺口和结果说明", async () => {
+  it("生产接口只公开可投炉材料，不再暴露默认丹方和器方", async () => {
     const { token, playerId } = await createP19Player(app, prisma);
     await grantStarterMaterials(prisma, playerId);
 
     const alchemy = await request(app.getHttpServer())
-      .get("/api/production/alchemy/recipes")
+      .get("/api/production/materials?kind=alchemy")
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
-    const recommendedAlchemy = alchemy.body.data.recipes.find(
-      (recipe: { recommendation?: { recommended: boolean } }) => recipe.recommendation?.recommended,
+    expect(alchemy.body.data.materials).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ item_id: "alch_moon_dew_herb", kind: "alchemy" }),
+        expect.objectContaining({ item_id: "alch_spirit_resin", kind: "alchemy" }),
+      ]),
     );
-    expect(recommendedAlchemy.recommendation.can_craft).toBe(true);
-    expect(recommendedAlchemy.recommendation.result_hint).toMatch(/第一炉丹|今日成长/);
+    expect(
+      alchemy.body.data.materials.some(
+        (material: { item_id: string }) => material.item_id === "low_herb",
+      ),
+    ).toBe(false);
 
     const forge = await request(app.getHttpServer())
-      .get("/api/production/forge/recipes")
+      .get("/api/production/materials?kind=forge")
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
-    const recommendedForge = forge.body.data.recipes.find(
-      (recipe: { recommendation?: { recommended: boolean } }) => recipe.recommendation?.recommended,
+    expect(forge.body.data.materials).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ item_id: "forge_star_iron", kind: "forge" }),
+        expect.objectContaining({ item_id: "forge_spiritwood_core", kind: "forge" }),
+      ]),
     );
-    expect(recommendedForge.recommendation.can_craft).toBe(true);
-    expect(recommendedForge.recommendation.result_hint).toContain("法宝");
+
+    await request(app.getHttpServer())
+      .get("/api/production/alchemy/recipes")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get("/api/production/forge/recipes")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(404);
   });
 
   it("新手主线可按探索、奇遇、炼丹、玄铁塔推进到章节奖励", async () => {
@@ -165,16 +182,15 @@ describe("P1-9 新手 30 分钟体验与玩法厚度", () => {
       .send({ choice_id: event.choices[0].choice_id, event_id: event.event_id })
       .expect(201);
 
-    const alchemyRecipes = await request(app.getHttpServer())
-      .get("/api/production/alchemy/recipes")
-      .set("Authorization", `Bearer ${token}`)
-      .expect(200);
-    const recipeId = alchemyRecipes.body.data.recipes[0].recipe_id as string;
+    const alchemyMaterials = [
+      { item_id: "alch_moon_dew_herb", count: 2 },
+      { item_id: "alch_spirit_resin", count: 1 },
+    ];
     const alchemy = await request(app.getHttpServer())
       .post("/api/production/alchemy/craft")
       .set("Authorization", `Bearer ${token}`)
-      .set("Idempotency-Key", `idem_p19_alchemy_${Date.now()}_${randomSuffix()}`)
-      .send({ recipe_id: recipeId })
+      .set("Idempotency-Key", findCraftSuccessKey("p19_alchemy", "alchemy", alchemyMaterials, 8800))
+      .send({ materials: alchemyMaterials })
       .expect(201);
     expect(alchemy.body.data.completed_task_ids).toContain("novice_craft_alchemy");
 
@@ -275,18 +291,34 @@ async function grantStarterMaterials(prisma: PrismaClient, playerId: string) {
   await prisma.playerItem.createMany({
     data: [
       {
-        itemInstanceId: `item_p19_herb_${Date.now()}_${randomSuffix()}`,
+        itemInstanceId: `item_p19_moon_herb_${Date.now()}_${randomSuffix()}`,
         playerId,
-        itemId: "low_herb",
-        count: 10n,
+        itemId: "alch_moon_dew_herb",
+        count: 4n,
         bindType: "bound",
         sourceType: "p1_9_test",
       },
       {
-        itemInstanceId: `item_p19_iron_${Date.now()}_${randomSuffix()}`,
+        itemInstanceId: `item_p19_spirit_resin_${Date.now()}_${randomSuffix()}`,
         playerId,
-        itemId: "raw_iron",
-        count: 10n,
+        itemId: "alch_spirit_resin",
+        count: 2n,
+        bindType: "bound",
+        sourceType: "p1_9_test",
+      },
+      {
+        itemInstanceId: `item_p19_star_iron_${Date.now()}_${randomSuffix()}`,
+        playerId,
+        itemId: "forge_star_iron",
+        count: 3n,
+        bindType: "bound",
+        sourceType: "p1_9_test",
+      },
+      {
+        itemInstanceId: `item_p19_spiritwood_core_${Date.now()}_${randomSuffix()}`,
+        playerId,
+        itemId: "forge_spiritwood_core",
+        count: 1n,
         bindType: "bound",
         sourceType: "p1_9_test",
       },
@@ -296,4 +328,28 @@ async function grantStarterMaterials(prisma: PrismaClient, playerId: string) {
 
 function randomSuffix() {
   return Math.random().toString(36).slice(2, 8);
+}
+
+function findCraftSuccessKey(
+  prefix: string,
+  kind: "alchemy" | "forge",
+  materials: Array<{ item_id: string; count: number }>,
+  threshold: number,
+): string {
+  const compositionHash = getMaterialCompositionHash(kind, materials);
+  for (let index = 0; index < 1000; index += 1) {
+    const key = `idem_${prefix}_${Date.now()}_${randomSuffix()}_${index}`;
+    if (roll10000(`${key}:${compositionHash}:success`) < threshold) {
+      return key;
+    }
+  }
+  throw new Error("未找到可成功结算的幂等键");
+}
+
+function roll10000(seed: string): number {
+  let hash = 0;
+  for (const char of seed) {
+    hash = (hash * 31 + char.charCodeAt(0)) % 10000;
+  }
+  return hash;
 }

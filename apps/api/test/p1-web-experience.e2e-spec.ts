@@ -6,6 +6,7 @@ import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AppModule } from "../src/app.module";
 import { configureApp } from "../src/platform/configure-app";
+import { getMaterialCompositionHash } from "../src/production/production.constants";
 
 describe("P1 Web 玩法过程反馈", () => {
   let app: INestApplication;
@@ -72,22 +73,44 @@ describe("P1 Web 玩法过程反馈", () => {
 
   it("炼丹和炼器返回生产过程反馈，且炼器继续不产出九大古宝", async () => {
     const { token, playerId } = await createP1Player(app, prisma, "生产", "qi");
-    await grantMaterials(prisma, playerId, { lowHerb: 20, rawIron: 30, spiritStone: 3000 });
+    const alchemyMaterials = [
+      { item_id: "alch_moon_dew_herb", count: 2 },
+      { item_id: "alch_spirit_resin", count: 1 },
+    ];
+    const forgeMaterials = [
+      { item_id: "forge_star_iron", count: 3 },
+      { item_id: "forge_spiritwood_core", count: 1 },
+    ];
+    await grantMaterials(prisma, playerId, {
+      spiritStone: 3000,
+      items: {
+        alch_moon_dew_herb: 2,
+        alch_spirit_resin: 1,
+        forge_star_iron: 3,
+        forge_spiritwood_core: 1,
+      },
+    });
 
     const alchemy = await request(app.getHttpServer())
       .post("/api/production/alchemy/craft")
       .set("Authorization", `Bearer ${token}`)
-      .set("Idempotency-Key", `idem_p1_alchemy_${Date.now()}_${randomSuffix()}`)
-      .send({ recipe_id: "recipe_juling_1" })
+      .set("Idempotency-Key", findCraftSuccessKey("p1_alchemy", "alchemy", alchemyMaterials, 8800))
+      .send({
+        materials: [
+          { item_id: "alch_spirit_resin", count: 1 },
+          { item_id: "alch_moon_dew_herb", count: 2 },
+        ],
+      })
       .expect(201);
     expect(alchemy.body.data.record.record_id).toBe(alchemy.body.data.record_id);
+    expect(alchemy.body.data.discovery.result_template.name).toBe("蕴灵丹");
     expectExperience(alchemy.body.data.experience);
 
     const forged = await request(app.getHttpServer())
       .post("/api/production/forge/craft")
       .set("Authorization", `Bearer ${token}`)
-      .set("Idempotency-Key", `idem_p1_forge_${Date.now()}_${randomSuffix()}`)
-      .send({ recipe_id: "forge_xuantie_sword_1" })
+      .set("Idempotency-Key", findCraftSuccessKey("p1_forge", "forge", forgeMaterials, 9000))
+      .send({ materials: forgeMaterials })
       .expect(201);
     expect(forged.body.data.equipment.name).not.toContain("古宝");
     expectExperience(forged.body.data.experience);
@@ -96,9 +119,8 @@ describe("P1 Web 玩法过程反馈", () => {
     ).toContain("no_ancient_treasure");
   });
 
-  it("九塔、Boss、宗门和 PVP 返回异步多人玩法反馈", async () => {
+  it("九塔、Boss 与宗门返回异步多人玩法反馈", async () => {
     const attacker = await createP1Player(app, prisma, "进攻", "qi");
-    const defender = await createP1Player(app, prisma, "防守", "body");
 
     const towers = await request(app.getHttpServer())
       .get("/api/multiplayer/towers")
@@ -172,29 +194,6 @@ describe("P1 Web 玩法过程反馈", () => {
     expect(
       withdrawn.body.data.experience.reason_tags.map((tag: { code: string }) => tag.code),
     ).toContain("warehouse_audit");
-
-    const resources = await request(app.getHttpServer())
-      .get("/api/multiplayer/resource-points")
-      .set("Authorization", `Bearer ${attacker.token}`)
-      .expect(200);
-    await prisma.playerActionState.update({
-      where: { playerId: attacker.playerId },
-      data: { actionPoints: 10 },
-    });
-    const pvp = await request(app.getHttpServer())
-      .post("/api/multiplayer/pvp/attack")
-      .set("Authorization", `Bearer ${attacker.token}`)
-      .set("Idempotency-Key", `idem_p1_pvp_${Date.now()}_${randomSuffix()}`)
-      .send({
-        defender_player_id: defender.playerId,
-        resource_point_id: resources.body.data.resource_points[0].resource_point_id,
-      })
-      .expect(201);
-    expect(pvp.body.data.battle.log.length).toBeGreaterThan(0);
-    expectExperience(pvp.body.data.experience);
-    expect(pvp.body.data.experience.reason_tags.map((tag: { code: string }) => tag.code)).toContain(
-      "loss_not_destroy",
-    );
   });
 
   it("常驻机缘和九大古宝抽卡返回保底与来源反馈", async () => {
@@ -284,33 +283,23 @@ function expectExperience(experience: unknown) {
 async function grantMaterials(
   prisma: PrismaClient,
   playerId: string,
-  input: { lowHerb: number; rawIron: number; spiritStone: number },
+  input: { spiritStone: number; items: Record<string, number> },
 ) {
   await prisma.playerWallet.update({
     where: { playerId },
     data: { spiritStone: { increment: BigInt(input.spiritStone) } },
   });
 
-  if (input.lowHerb > 0) {
+  for (const [itemId, count] of Object.entries(input.items)) {
+    if (count <= 0) {
+      continue;
+    }
     await prisma.playerItem.create({
       data: {
-        itemInstanceId: `item_p1_herb_${Date.now()}_${randomSuffix()}`,
+        itemInstanceId: `item_p1_${itemId}_${Date.now()}_${randomSuffix()}`,
         playerId,
-        itemId: "low_herb",
-        count: input.lowHerb,
-        bindType: "bound",
-        sourceType: "test_seed",
-      },
-    });
-  }
-
-  if (input.rawIron > 0) {
-    await prisma.playerItem.create({
-      data: {
-        itemInstanceId: `item_p1_iron_${Date.now()}_${randomSuffix()}`,
-        playerId,
-        itemId: "raw_iron",
-        count: input.rawIron,
+        itemId,
+        count,
         bindType: "bound",
         sourceType: "test_seed",
       },
@@ -364,4 +353,28 @@ async function createItem(
 
 function randomSuffix(): string {
   return Math.random().toString(36).slice(2, 8);
+}
+
+function findCraftSuccessKey(
+  prefix: string,
+  kind: "alchemy" | "forge",
+  materials: Array<{ item_id: string; count: number }>,
+  threshold: number,
+): string {
+  const compositionHash = getMaterialCompositionHash(kind, materials);
+  for (let index = 0; index < 1000; index += 1) {
+    const key = `idem_${prefix}_${Date.now()}_${randomSuffix()}_${index}`;
+    if (roll10000(`${key}:${compositionHash}:success`) < threshold) {
+      return key;
+    }
+  }
+  throw new Error("未找到可成功结算的幂等键");
+}
+
+function roll10000(seed: string): number {
+  let hash = 0;
+  for (const char of seed) {
+    hash = (hash * 31 + char.charCodeAt(0)) % 10000;
+  }
+  return hash;
 }

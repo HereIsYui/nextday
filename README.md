@@ -22,7 +22,8 @@ npm run dev
 
 ## 文档
 
-- [《择日飞升：九塔封魔》游戏设计文档 v1.18](docs/GAME_DESIGN.md)
+- [当前主玩法：文字修行玩法说明](docs/TEXT_CULTIVATION_DESIGN.md)
+- [《择日飞升：九塔封魔》游戏设计文档 v1.18（历史设定）](docs/GAME_DESIGN.md)
 - [数值配置总表](docs/NUMERIC_DESIGN.md)
 - [战斗与技能表](docs/COMBAT_SKILL_DESIGN.md)
 - [怪物与 Boss 设计](docs/ENEMY_BOSS_DESIGN.md)
@@ -43,7 +44,6 @@ npm run dev
 - [文案与运营规范](docs/COPYWRITING_OPS_GUIDE.md)
 - [MVP 范围设计](docs/MVP_SCOPE_DESIGN.md)
 - [数值模拟与平衡验证](docs/SIMULATION_BALANCE_DESIGN.md)
-- [PVP 匹配与防骚扰设计](docs/PVP_MATCHMAKING_DESIGN.md)
 - [服务器生命周期设计](docs/SERVER_LIFECYCLE_DESIGN.md)
 - [章节剧本与剧情配置设计](docs/STORY_CHAPTER_SCRIPT_DESIGN.md)
 - [研发 Backlog 拆分](docs/DEVELOPMENT_BACKLOG_DESIGN.md)

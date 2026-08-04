@@ -17,19 +17,43 @@ import type {
   TaskClaimRequest,
   TaskClaimResponse,
   TaskSummaryResponse,
+  TextCommandHelpResponse,
+  TextCommandRequest,
+  TextCommandResponse,
 } from "@nextday/shared";
 import type { Request } from "express";
 import { BearerAuthGuard } from "../auth/bearer-auth.guard";
+import { GameCommandService } from "./game-command.service";
 import { GameService } from "./game.service";
 
 @Controller("api/game")
 @UseGuards(BearerAuthGuard)
 export class GameController {
-  constructor(@Inject(GameService) private readonly gameService: GameService) {}
+  constructor(
+    @Inject(GameService) private readonly gameService: GameService,
+    @Inject(GameCommandService) private readonly gameCommandService: GameCommandService,
+  ) {}
 
   @Get("overview")
   overview(@Req() request: Request): Promise<GameOverviewResponse> {
     return this.gameService.getOverview(requireAccountId(request));
+  }
+
+  @Get("command-help")
+  commandHelp(): TextCommandHelpResponse {
+    return this.gameCommandService.getHelp();
+  }
+
+  @Post("commands")
+  commands(
+    @Body() body: TextCommandRequest,
+    @Req() request: Request,
+  ): Promise<TextCommandResponse> {
+    return this.gameCommandService.execute({
+      accountId: requireAccountId(request),
+      body,
+      idempotencyKey: requireIdempotencyKey(request),
+    });
   }
 
   @Get("daily-route")

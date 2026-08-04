@@ -8,5 +8,6 @@ import { StoryService } from "./story.service";
   imports: [AuthModule, DatabaseModule],
   controllers: [StoryController],
   providers: [StoryService],
+  exports: [StoryService],
 })
 export class StoryModule {}

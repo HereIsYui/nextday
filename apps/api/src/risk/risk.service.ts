@@ -123,19 +123,6 @@ export class RiskService {
     }
 
     const targetRepeatCount = input.targetRepeatCount ?? 0;
-    if (targetRepeatCount >= riskConfig.pvpDecayRepeatThreshold && input.riskDomain === "pvp") {
-      riskScore += riskConfig.score.repeatedTarget;
-      ruleCodes.push("repeat_pvp_target");
-      riskStatus = pickRiskStatus(riskStatus, "decayed");
-      decisionAction = pickDecision(decisionAction, "decay");
-    }
-    if (targetRepeatCount >= riskConfig.pvpDelayedRepeatThreshold && input.riskDomain === "pvp") {
-      riskScore += riskConfig.score.delayedRepeatedTarget;
-      ruleCodes.push("repeat_pvp_target_delayed");
-      riskStatus = pickRiskStatus(riskStatus, "delayed_settlement");
-      decisionAction = pickDecision(decisionAction, "delay_settlement");
-      settlementStatus = "delayed";
-    }
     if (
       targetRepeatCount >= riskConfig.towerDelayedRepeatThreshold &&
       input.riskDomain === "tower"

@@ -67,7 +67,6 @@ import {
   rankRewardPreview,
   rankRulesetVersion,
   rankTitleRewards,
-  resourcePointConfigs,
   sectTaskConfigs,
   supportedRankTypes,
   towerActionConfigs,
@@ -399,17 +398,6 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
       warehouse_rule: "仅未绑定白名单材料可流通，付费与限定产物禁止入库",
     },
   },
-  pvp: {
-    config_type: "pvp",
-    config_version: "pvp_m4_v1",
-    ruleset_version: "ruleset_m4_v1",
-    reward_config_version: "reward_m4_v1",
-    payload: {
-      resource_points: resourcePointConfigs,
-      mode: "async_attack_defense_mirror",
-      loss_rule: "失败不掉级、不爆付费道具、不摧毁核心法宝",
-    },
-  },
   rank: {
     config_type: "rank",
     config_version: rankConfigVersion,
@@ -677,7 +665,7 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
       diplomacy_rules: diplomacyRules,
       boundary: diplomacyBoundary,
       settlement_rule:
-        "宗门外交只改变协作关系和公告展示，不绕过 PVP 匹配、新手保护、九塔行动令和贡献衰减。",
+        "宗门外交只改变协作关系和公告展示，不改变九塔行动令、贡献结算和探索奖励。",
     },
   },
   sect_hire: {

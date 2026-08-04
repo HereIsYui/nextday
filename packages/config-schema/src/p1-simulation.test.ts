@@ -71,25 +71,4 @@ describe("P1 数值模拟配置", () => {
     expect(report.warnings.every((warning) => warning.severity !== "critical")).toBe(true);
   });
 
-  it("PVP 付费强度超过上限时能触发阻断级预警", () => {
-    const unsafeConfig: P1SimulationConfig = {
-      ...config,
-      profiles: config.profiles.map((profile) =>
-        profile.profile_id === "whale_light"
-          ? { ...profile, pvp_effective_strength_bonus: 0.18 }
-          : profile,
-      ),
-    };
-    const report = runP1Simulation(unsafeConfig);
-
-    expect(report.warnings).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          code: "pvp_strength_over_cap",
-          severity: "critical",
-          subject: "重氪轻肝",
-        }),
-      ]),
-    );
-  });
 });

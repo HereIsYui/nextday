@@ -103,7 +103,7 @@ export const storyScrollConfigs: StoryScrollConfig[] = [
     chapterId: 2,
     unlockCondition: "章节 2 后解锁",
     sourceTypes: ["rank", "event", "tower", "faction"],
-    battleTypes: ["boss", "pvp", "tower"],
+    battleTypes: ["boss", "tower"],
     fallbackText: "本纪元仍在书写，史官先留下空白。",
     fragments: [
       {
@@ -116,7 +116,7 @@ export const storyScrollConfigs: StoryScrollConfig[] = [
       {
         fragmentId: "ch03_conflict",
         title: "争衡",
-        body: "Boss、PVP 与九塔战报会被压缩成关键句，留下胜负原因，而不是让数字淹没故事。",
+        body: "Boss 与九塔战报会被压缩成关键句，留下胜负原因，而不是让数字淹没故事。",
         fragmentType: "battle_ref",
         unlockHint: "产生多人战报后引用",
       },

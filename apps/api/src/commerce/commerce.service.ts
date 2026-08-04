@@ -1309,7 +1309,7 @@ function normalizeStrategyRequest(
   if (!strategyName || strategyName.length > 16) {
     throw new BadRequestException("策略名需为 1-16 个字符");
   }
-  if (!["daily", "tower", "boss", "pvp"].includes(strategyType)) {
+  if (!["daily", "tower", "boss"].includes(strategyType)) {
     throw new BadRequestException("策略类型不合法");
   }
 

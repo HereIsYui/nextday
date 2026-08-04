@@ -4,11 +4,8 @@ import type {
   ClaimRankTitleResponse,
   CreateSectRequest,
   JoinSectRequest,
-  PvpAttackRequest,
-  PvpBattleResponse,
   RankListResponse,
   RankType,
-  ResourcePointListResponse,
   SectDetailResponse,
   SectListResponse,
   SectMutationResponse,
@@ -130,20 +127,6 @@ export class MultiplayerController {
     @Req() request: Request,
   ): Promise<SectWarehouseResponse> {
     return this.multiplayerService.withdrawWarehouse({
-      accountId: requireAccountId(request),
-      body,
-      idempotencyKey: requireIdempotencyKey(request),
-    });
-  }
-
-  @Get("resource-points")
-  resourcePoints(): Promise<ResourcePointListResponse> {
-    return this.multiplayerService.getResourcePoints();
-  }
-
-  @Post("pvp/attack")
-  pvpAttack(@Body() body: PvpAttackRequest, @Req() request: Request): Promise<PvpBattleResponse> {
-    return this.multiplayerService.attackPlayer({
       accountId: requireAccountId(request),
       body,
       idempotencyKey: requireIdempotencyKey(request),

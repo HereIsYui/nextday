@@ -67,44 +67,27 @@ describe("M6 行为风控闭环", () => {
     expect(records.body.data.records.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("重复 PVP 目标触发收益衰减，并能追溯到风控记录", async () => {
-    const attacker = await createM6Player(app, prisma, "玄争", "qi");
-    const defender = await createM6Player(app, prisma, "守境", "body");
-    await prisma.player.update({
-      where: { playerId: attacker.playerId },
-      data: { currentLevel: 9 },
-    });
-    const resources = await request(app.getHttpServer())
-      .get("/api/multiplayer/resource-points")
-      .set("Authorization", `Bearer ${attacker.token}`)
+  it("公共 Boss 挑战保留个人伤害记录与结算日志", async () => {
+    const { token, playerId } = await createM6Player(app, prisma, "镇邪", "qi");
+    const boss = await request(app.getHttpServer())
+      .get("/api/multiplayer/boss")
+      .set("Authorization", `Bearer ${token}`)
       .expect(200);
-    const resourcePoint = resources.body.data.resource_points[0];
 
-    const results: Array<{ risk_status: string; risk_record_id: string | null }> = [];
-    for (let index = 0; index < 3; index += 1) {
-      const response = await request(app.getHttpServer())
-        .post("/api/multiplayer/pvp/attack")
-        .set("Authorization", `Bearer ${attacker.token}`)
-        .set("Idempotency-Key", `idem_m6_pvp_${index}_${Date.now()}_${randomSuffix()}`)
-        .send({
-          defender_player_id: defender.playerId,
-          resource_point_id: resourcePoint.resource_point_id,
-        })
-        .expect(201);
-      results.push({
-        risk_status: response.body.data.risk_status,
-        risk_record_id: response.body.data.risk_record_id,
-      });
-    }
+    const challenged = await request(app.getHttpServer())
+      .post("/api/multiplayer/boss/challenge")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_m6_boss_${Date.now()}_${randomSuffix()}`)
+      .send({ boss_id: boss.body.data.boss.boss_id })
+      .expect(201);
 
-    expect(results.map((item) => item.risk_status)).toEqual(["normal", "normal", "decayed"]);
-    expect(results[2].risk_record_id).toBeTruthy();
-
-    const record = await prisma.behaviorRiskRecord.findUniqueOrThrow({
-      where: { riskRecordId: results[2].risk_record_id ?? "" },
+    expect(challenged.body.data.damage_done).toBeGreaterThan(0);
+    expect(challenged.body.data.log).toHaveLength(2);
+    const record = await prisma.worldBossChallengeRecord.findUniqueOrThrow({
+      where: { recordId: challenged.body.data.record_id },
     });
-    expect(record.ruleCodes).toContain("repeat_pvp_target");
-    expect(record.sourceRecordId).toBeTruthy();
+    expect(record.playerId).toBe(playerId);
+    expect(record.damageDone).toBe(challenged.body.data.damage_done);
   });
 
   it("同一九塔低价值重复提交进入延迟结算池，并可后台审核放行", async () => {

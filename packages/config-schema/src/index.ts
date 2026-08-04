@@ -42,9 +42,7 @@ export interface P1SimulationProfile {
   daily_material_income: number;
   daily_material_sink: number;
   daily_tower_contribution: number;
-  daily_pvp_score: number;
   pve_efficiency_bonus: number;
-  pvp_effective_strength_bonus: number;
   ancient_treasure_daily_draws: number;
   ancient_page_daily_gain: number;
   monthly_point_cost: number;
@@ -52,7 +50,6 @@ export interface P1SimulationProfile {
 }
 
 export interface P1SimulationRiskThresholds {
-  max_pvp_strength_bonus: number;
   spirit_inflation_net_ratio: number;
   material_shortage_ratio: number;
   material_surplus_ratio: number;
@@ -135,7 +132,6 @@ export interface P1ProfileSimulationReport {
   ancient_treasure_draws: number;
   ancient_treasure_pity_cycles: number;
   limited_gacha_draw_budget: number;
-  pvp_effective_strength_bonus: number;
   day_reports: Array<{
     day: number;
     cultivation: number;
@@ -343,9 +339,6 @@ export function validateP1SimulationConfig(
       errors.push(`${profile.profile_id} daily_completion_rate 超出合理范围`);
     }
 
-    if (profile.pvp_effective_strength_bonus > 0.5) {
-      errors.push(`${profile.profile_id} PVP 强度优势配置异常`);
-    }
   }
 
   const profileIds = new Set((config.profiles ?? []).map((profile) => profile.profile_id));
@@ -421,17 +414,15 @@ export function formatP1SimulationReport(report: P1SimulationReport): string {
     "",
     "## 玩家画像",
     "",
-    "| 画像 | 360 天境界 | 核心耗时 | 灵石结余 | 材料结余 | 古宝抽数 | 限定池预算抽 | PVP 优势 |",
-    "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    "| 画像 | 360 天境界 | 核心耗时 | 灵石结余 | 材料结余 | 古宝抽数 | 限定池预算抽 |",
+    "| --- | --- | ---: | ---: | ---: | ---: | ---: |",
     ...report.profiles.map(
       (profile) =>
         `| ${profile.label} | ${profile.final_realm} | ${profile.active_minutes_per_day} 分钟 | ${Math.round(
           profile.spirit_stone_balance,
         )} | ${Math.round(profile.material_balance)} | ${Math.round(
           profile.ancient_treasure_draws,
-        )} | ${Math.round(profile.limited_gacha_draw_budget)} | ${formatPercent(
-          profile.pvp_effective_strength_bonus,
-        )} |`,
+        )} | ${Math.round(profile.limited_gacha_draw_budget)} |`,
     ),
     "",
     "## 服务器规模",
@@ -596,7 +587,6 @@ function simulateProfile(
     ancient_treasure_draws: ancientTreasureDraws,
     ancient_treasure_pity_cycles: ancientTreasureDraws / 60,
     limited_gacha_draw_budget: limitedGachaDrawBudget,
-    pvp_effective_strength_bonus: profile.pvp_effective_strength_bonus,
     day_reports: reportDays.map((day) => {
       const cultivation = cultivationPerDay * day;
 
@@ -762,18 +752,6 @@ function collectP1SimulationWarnings(
   const warnings: P1SimulationWarning[] = [];
 
   for (const profile of profiles) {
-    if (profile.pvp_effective_strength_bonus > config.risk_thresholds.max_pvp_strength_bonus) {
-      warnings.push({
-        code: "pvp_strength_over_cap",
-        severity: "critical",
-        subject: profile.label,
-        value: profile.pvp_effective_strength_bonus,
-        threshold: config.risk_thresholds.max_pvp_strength_bonus,
-        message: `PVP 有效强度优势达到 ${formatPercent(profile.pvp_effective_strength_bonus)}`,
-        suggestion: "下调付费属性软阈值、机制触发频率或 PVP 回复护盾修正",
-      });
-    }
-
     const spiritNetRatio =
       profile.spirit_stone_balance /
       Math.max(1, Math.abs(profile.spirit_stone_balance) + config.era_days);

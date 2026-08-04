@@ -74,7 +74,7 @@ export const diplomacyRules = [
 
 export const diplomacyBoundary = {
   approval_rule: "宗主或长老可发起和审批外交提案。",
-  pvp_boundary_rule: "外交不绕过 PVP 匹配、新手保护和收益衰减。",
+  cooperation_boundary_rule: "外交只影响公告与协作关系，不改变个人探索、背包或修为。",
   tower_boundary_rule: "外交不改变九塔贡献结算、行动令消耗或延迟结算。",
 };
 

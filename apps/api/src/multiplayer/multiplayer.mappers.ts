@@ -1,7 +1,6 @@
 import type {
   RankEntryState,
   RankTargetType,
-  ResourcePointSummary,
   SectDetailResponse,
   SectMemberSummary,
   SectSummary,
@@ -11,7 +10,6 @@ import type {
 } from "@nextday/shared";
 import type {
   Player,
-  ResourcePointState,
   Sect,
   SectMember,
   SectWarehouseItem,
@@ -111,17 +109,6 @@ export function toSectDetailResponse(input: {
     sect: toSectSummary(input.sect, input.myMember),
     members: input.sect.members.map(toSectMemberSummary),
     warehouse: input.sect.warehouse.map(toSectWarehouseItemState),
-  };
-}
-
-export function toResourcePointSummary(point: ResourcePointState): ResourcePointSummary {
-  return {
-    resource_point_id: point.resourcePointId,
-    province_id: point.provinceId,
-    name: point.name,
-    owner_sect_id: point.ownerSectId,
-    owner_player_id: point.ownerPlayerId,
-    control_score: point.controlScore,
   };
 }
 

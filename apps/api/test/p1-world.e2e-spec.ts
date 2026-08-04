@@ -136,28 +136,34 @@ describe("P1 九州全域与九塔机制", () => {
     }
   });
 
-  it("九州资源点全域返回，支撑后续 PVP 和州域事件扩展", async () => {
-    const { token } = await createP1WorldPlayer(app, prisma, "资源", "qi");
+  it("九州作为文字地点保留州域探索与战报", async () => {
+    const { token } = await createP1WorldPlayer(app, prisma, "游历", "qi");
 
-    const resources = await request(app.getHttpServer())
-      .get("/api/multiplayer/resource-points")
+    const started = await request(app.getHttpServer())
+      .post("/api/game/explore")
       .set("Authorization", `Bearer ${token}`)
-      .expect(200);
+      .set("Idempotency-Key", `idem_p1_world_explore_${Date.now()}_${randomSuffix()}`)
+      .send({ province_id: "ji", count: 1 })
+      .expect(201);
 
-    expect(resources.body.data.resource_points).toHaveLength(9);
-    expect(
-      resources.body.data.resource_points.map((point: { name: string }) => point.name),
-    ).toEqual([
-      "冀州玄铁脉",
-      "兖州礼阵台",
-      "青州潮汐渡",
-      "徐州戈阳关",
-      "扬州琉光商路",
-      "荆州万木药泽",
-      "豫州天衡阵眼",
-      "梁州镇岳地脉",
-      "雍州太初遗迹",
-    ]);
+    expect(started.body.data).toMatchObject({
+      province_id: "ji",
+      province_name: "冀州",
+      status: "pending",
+    });
+    await prisma.exploreActionRecord.update({
+      where: { recordId: started.body.data.record_id },
+      data: { completesAt: new Date(Date.now() - 1000) },
+    });
+    const claimed = await request(app.getHttpServer())
+      .post("/api/game/explore/claim")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_p1_world_claim_${Date.now()}_${randomSuffix()}`)
+      .send({ record_id: started.body.data.record_id })
+      .expect(201);
+
+    expect(claimed.body.data.status).toBe("claimed");
+    expect(claimed.body.data.battles).toHaveLength(1);
   });
 });
 

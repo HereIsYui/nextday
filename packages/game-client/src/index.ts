@@ -135,15 +135,12 @@ import type {
   PublishAdminConfigResponse,
   PurchaseMonthlyCardRequest,
   PurchaseMonthlyCardResponse,
-  PvpAttackRequest,
-  PvpBattleResponse,
   RankListResponse,
   RankType,
   ResolveExploreEventRequest,
   ResolveExploreEventResponse,
   ResolveRiskRecordRequest,
   ResolveRiskRecordResponse,
-  ResourcePointListResponse,
   ReviewDelayedSettlementRequest,
   ReviewDelayedSettlementResponse,
   ReviewMentorRequest,
@@ -844,19 +841,6 @@ export class GameClient {
       body,
       { idempotencyKey },
     );
-  }
-
-  resourcePoints(): Promise<ApiResponse<ResourcePointListResponse>> {
-    return this.get<ResourcePointListResponse>("/api/multiplayer/resource-points");
-  }
-
-  pvpAttack(
-    body: PvpAttackRequest,
-    idempotencyKey: string,
-  ): Promise<ApiResponse<PvpBattleResponse>> {
-    return this.post<PvpBattleResponse, PvpAttackRequest>("/api/multiplayer/pvp/attack", body, {
-      idempotencyKey,
-    });
   }
 
   ranks(rankType: RankType): Promise<ApiResponse<RankListResponse>> {

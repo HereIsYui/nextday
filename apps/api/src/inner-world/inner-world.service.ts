@@ -952,7 +952,7 @@ function innerWorldTagDescription(tag: string): string {
     bound_only: "奖励只进入个人绑定材料循环，不能交易套利。",
     no_paid_output: "不会发放付费仙玉、九大古宝本体或限定法宝。",
     growth_upgrade: "升级只提高队列、容量和长期效率，不提高全服贡献倍率。",
-    creature_growth: "生灵等级影响派驻效率，不造成 PVP 直接碾压。",
+    creature_growth: "生灵等级影响派驻效率，不改变其他玩家的探索与修行进度。",
     province_support: "支援影响州域状态摘要，不跳过九塔和主线结算。",
   };
   return descriptions[tag] ?? tag;

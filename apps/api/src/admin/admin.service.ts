@@ -78,7 +78,6 @@ export class AdminService {
       battles,
       towerActions,
       bossActions,
-      pvpActions,
       caveActions,
       mails,
       risk,
@@ -105,11 +104,6 @@ export class AdminService {
       }),
       this.prisma.worldBossChallengeRecord.findMany({
         where: { playerId },
-        orderBy: { createdAt: "desc" },
-        take: 8,
-      }),
-      this.prisma.pvpBattleRecord.findMany({
-        where: { attackerPlayerId: playerId },
         orderBy: { createdAt: "desc" },
         take: 8,
       }),
@@ -154,14 +148,6 @@ export class AdminService {
           source: "boss" as const,
           summary: `${record.bossId} 伤害 ${record.damageDone}`,
           settlement_status: "settled",
-          created_at: record.createdAt.toISOString(),
-        })),
-        ...pvpActions.map((record) => ({
-          record_id: record.recordId,
-          action_type: "pvp_attack",
-          source: "pvp" as const,
-          summary: `${record.result} 分差 ${record.scoreDelta}`,
-          settlement_status: record.settlementStatus,
           created_at: record.createdAt.toISOString(),
         })),
         ...caveActions.map((record) => ({

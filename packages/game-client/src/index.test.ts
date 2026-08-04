@@ -190,6 +190,8 @@ describe("game-client HTTP 客户端", () => {
         "sectRallies",
         "provinceWar",
         "worldRankings",
+        "resourcePoints",
+        "pvpAttack",
       ]),
     );
   });

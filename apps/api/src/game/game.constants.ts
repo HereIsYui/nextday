@@ -87,11 +87,11 @@ export const provinceConfigs: ProvinceConfig[] = [
     theme: "兵争州，古战场",
     towerName: "戈阳塔",
     chapterRequired: 3,
-    recommendedAction: "兵争巡守",
+    recommendedAction: "古战场巡游",
     resources: ["战魂铁", "血晶", "战备符"],
-    lowLevelEntry: "战备运输、资源点巡守、战场残魂清理",
-    longTermGoal: "提高资源点收益权和 PVP 阵线优势",
-    towerEffect: "影响资源点争夺、战备材料和阵营战线",
+    lowLevelEntry: "战魂采集、古阵巡查、战场残魂清理",
+    longTermGoal: "积累战魂材料并推进戈阳塔净化",
+    towerEffect: "影响古战场探索、战备材料和战魂事件",
     enemyId: "kui",
     enemyName: "夔",
     enemyPower: 300,
@@ -331,12 +331,12 @@ export const exploreLootPools: Record<string, ExploreLootConfig[]> = {
   qing: [
     createExploreLoot("low_herb", "凝露草", "海岱潮汐草滩", "炼制低阶丹药"),
     createExploreLoot("pill_dust", "丹尘", "丹火蟹巢旁的火粉", "炼丹补材"),
-    createExploreLoot("battle_mark", "战备符", "潮生塔镜潮余波", "PVP 和战备准备"),
+    createExploreLoot("battle_mark", "战备符", "潮生塔镜潮余波", "九塔补给与战备整理"),
     createExploreLoot("spirit_wood", "灵木", "海岱水脉旁的灵枝", "内天地和洞府培养"),
   ],
   xu: [
     createExploreLoot("raw_iron", "玄铁砂", "古战场锈甲残片", "炼器和淬炼"),
-    createExploreLoot("battle_mark", "战备符", "旧战旗残纹", "PVP 和战备准备"),
+    createExploreLoot("battle_mark", "战备符", "旧战旗残纹", "九塔补给与战备整理"),
     createExploreLoot("artifact_soul", "器魂", "断兵残魂", "法宝淬炼和分解循环"),
     createExploreLoot("tower_sigil", "镇塔符", "戈阳塔影裂隙", "提交九塔镇封"),
   ],
@@ -354,7 +354,7 @@ export const exploreLootPools: Record<string, ExploreLootConfig[]> = {
   ],
   yu: [
     createExploreLoot("array_sand", "阵砂", "天衡阵眼砂痕", "宗门阵法和协防"),
-    createExploreLoot("battle_mark", "战备符", "中州旗影残纹", "PVP 和阵营战准备"),
+    createExploreLoot("battle_mark", "战备符", "中州旗影残纹", "九塔补给与阵营事务"),
     createExploreLoot("law_dust", "法则尘", "中州阵核余辉", "内天地法则经验"),
     createExploreLoot("tower_sigil", "镇塔符", "天衡塔衡尺裂痕", "提交九塔镇封"),
   ],
@@ -368,7 +368,7 @@ export const exploreLootPools: Record<string, ExploreLootConfig[]> = {
     createExploreLoot("taichu_stone", "太初石", "太初塔裂隙", "终局封印和内天地支援"),
     createExploreLoot("law_dust", "法则尘", "圣遗残境余辉", "内天地法则经验"),
     createExploreLoot("tower_sigil", "镇塔符", "终局封印边缘", "提交九塔镇封"),
-    createExploreLoot("battle_mark", "战备符", "古都禁卫遗痕", "PVP 和终局战备"),
+    createExploreLoot("battle_mark", "战备符", "古都禁卫遗痕", "终局九塔补给"),
   ],
 };
 

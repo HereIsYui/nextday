@@ -26,6 +26,8 @@ const retiredTableNames = [
   "world_cycle_settlement",
   "world_cycle_reward",
   "world_chronicle_event",
+  "resource_point_state",
+  "pvp_battle_record",
 ];
 
 describe("文字修行城池退役", () => {
@@ -53,7 +55,7 @@ describe("文字修行城池退役", () => {
     await app.close();
   });
 
-  it("城池与世界地图路由不再存在", async () => {
+  it("城池、世界地图、资源点与 PVP 路由不再存在", async () => {
     const { token } = await createTextGamePlayer(app, "路由");
 
     await request(app.getHttpServer())
@@ -64,9 +66,19 @@ describe("文字修行城池退役", () => {
       .get("/api/world/map")
       .set("Authorization", `Bearer ${token}`)
       .expect(404);
+    await request(app.getHttpServer())
+      .get("/api/multiplayer/resource-points")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .post("/api/multiplayer/pvp/attack")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_text_retirement_pvp_${Date.now()}`)
+      .send({ defender_player_id: "retired", resource_point_id: "retired" })
+      .expect(404);
   });
 
-  it("关键城池战略表已经删除，新角色不会产生迁移资产", async () => {
+  it("关键城池、资源点与 PVP 表已经删除，新角色不会产生迁移资产", async () => {
     const { playerId } = await createTextGamePlayer(app, "新角");
     const remainingTables = await prisma.$queryRaw<Array<{ table_name: string }>>(
       Prisma.sql`

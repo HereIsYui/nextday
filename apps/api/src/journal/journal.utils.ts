@@ -21,7 +21,6 @@ const journalSourceLabels: Record<string, string> = {
   "POST /api/inner-world/support": "九州支援",
   "POST /api/inner-world/upgrade": "内天地培养",
   "POST /api/multiplayer/boss/challenge": "挑战 Boss",
-  "POST /api/multiplayer/pvp/attack": "资源点争夺",
   "POST /api/multiplayer/sects/tasks/complete": "宗门任务",
   "POST /api/multiplayer/sects/warehouse/deposit": "宗门入库",
   "POST /api/multiplayer/sects/warehouse/withdraw": "宗门出库",

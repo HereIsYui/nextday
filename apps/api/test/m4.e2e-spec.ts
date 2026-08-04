@@ -180,51 +180,30 @@ describe("M4 多人异步玩法", () => {
     ).toBe(true);
   });
 
-  it("异步 PVP 使用防守镜像，失败不毁号，重复目标触发收益衰减", async () => {
-    const attacker = await createM4Player(app, prisma, "进攻", "qi");
-    const defender = await createM4Player(app, prisma, "防守", "body");
-    await prisma.player.update({
-      where: { playerId: attacker.playerId },
-      data: { currentLevel: 9 },
-    });
-    const defenderBefore = await prisma.player.findUniqueOrThrow({
-      where: { playerId: defender.playerId },
-    });
-    const resources = await request(app.getHttpServer())
-      .get("/api/multiplayer/resource-points")
-      .set("Authorization", `Bearer ${attacker.token}`)
-      .expect(200);
-    const resourcePoint = resources.body.data.resource_points[0];
+  it("九塔行动可结算专用炼制材料，并保留个人行动记录", async () => {
+    const { token, playerId } = await createM4Player(app, prisma, "材料", "qi");
 
-    const results: string[] = [];
-    for (let index = 0; index < 3; index += 1) {
-      const response = await request(app.getHttpServer())
-        .post("/api/multiplayer/pvp/attack")
-        .set("Authorization", `Bearer ${attacker.token}`)
-        .set("Idempotency-Key", `idem_m4_pvp_${index}_${Date.now()}_${randomSuffix()}`)
-        .send({
-          defender_player_id: defender.playerId,
-          resource_point_id: resourcePoint.resource_point_id,
-        })
-        .expect(201);
-      results.push(response.body.data.risk_status);
-    }
+    const response = await request(app.getHttpServer())
+      .post("/api/multiplayer/towers/action")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_m4_tower_material_${Date.now()}_${randomSuffix()}`)
+      .send({ tower_id: "tower_chaosheng", action_type: "seal", count: 1 })
+      .expect(201);
 
-    expect(results).toEqual(["normal", "normal", "decayed"]);
-    const defenderAfter = await prisma.player.findUniqueOrThrow({
-      where: { playerId: defender.playerId },
+    expect(response.body.data.rewards.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ item_id: "alch_void_moss", name: "玄阴苔", count: 1 }),
+      ]),
+    );
+    const record = await prisma.towerActionRecord.findUniqueOrThrow({
+      where: { recordId: response.body.data.record_id },
     });
-    expect(defenderAfter.currentLevel).toBe(defenderBefore.currentLevel);
-    expect(defenderAfter.currentRealm).toBe(defenderBefore.currentRealm);
-
-    const pvpCount = await prisma.pvpBattleRecord.count({
-      where: { attackerPlayerId: attacker.playerId, defenderPlayerId: defender.playerId },
-    });
-    expect(pvpCount).toBe(3);
+    expect(record.playerId).toBe(playerId);
+    expect(record.towerId).toBe("tower_chaosheng");
   });
 
-  it("个人、宗门、PVP、九塔排行榜可读取，奖励预览不发唯一战力道具", async () => {
-    for (const rankType of ["personal", "sect", "pvp_week", "tower_week"]) {
+  it("个人、宗门与九塔排行榜可读取，奖励预览不发唯一战力道具", async () => {
+    for (const rankType of ["personal", "sect", "tower_week"]) {
       const response = await request(app.getHttpServer())
         .get(`/api/multiplayer/ranks/${rankType}`)
         .set(
@@ -245,7 +224,7 @@ describe("M4 多人异步玩法", () => {
 
   it("M4 配置类型和幂等键校验可用", async () => {
     const { token } = await createM4Player(app, prisma, "配置", "qi");
-    for (const configType of ["tower", "boss", "sect", "pvp", "rank"]) {
+    for (const configType of ["tower", "boss", "sect", "rank"]) {
       const response = await request(app.getHttpServer())
         .get(`/api/config/${configType}`)
         .expect(200);

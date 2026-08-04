@@ -10,8 +10,6 @@ export const riskConfig = {
   sameIpPlayersWindowMs: 60 * 60 * 1000,
   sameIpPlayerThreshold: 3,
   towerDelayedRepeatThreshold: 3,
-  pvpDecayRepeatThreshold: 2,
-  pvpDelayedRepeatThreshold: 5,
   score: {
     highFrequency: 35,
     fixedInterval: 20,

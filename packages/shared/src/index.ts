@@ -268,29 +268,7 @@ export interface EraChronicleEntryState {
   highlights: string[];
   visibility_rule: "public" | "server" | "sect" | "personal" | "admin" | string;
   related_source_ids: string[];
-  strategic_summary?: EraChronicleStrategicSummary | null;
   created_at: string;
-}
-
-export interface EraChronicleStrategicSummary {
-  champion_province: string | null;
-  dominant_sect: string | null;
-  territory_distribution: Array<{
-    province_id: string;
-    province_name: string;
-    owned_blocks: number;
-    city_count: number;
-  }>;
-  tower_controls: Array<{
-    province_id: string;
-    controller_name: string;
-  }>;
-  captured_sub_city_count: number;
-  top_players: Array<{
-    rank_no: number;
-    player_name: string;
-    merit: number;
-  }>;
 }
 
 export interface EraChronicleResponse {
@@ -555,977 +533,6 @@ export interface ProvinceSummary {
   best_explore_stage: number;
 }
 
-export type WorldTileType =
-  | "main_city"
-  | "sub_city"
-  | "wild"
-  | "resource"
-  | "pass"
-  | "capital"
-  | "tower"
-  | "rift";
-
-export type WorldTerrainType = "plain" | "swamp" | "forest" | "mountain" | "desert";
-
-export type WorldTileVisibility = "hidden" | "scouted" | "visible";
-
-export type WorldMapView = "mini" | "detail";
-
-export type TerritoryNodeType =
-  | "main_city"
-  | "sub_city"
-  | "farm"
-  | "mine"
-  | "forest"
-  | "vein"
-  | "pass"
-  | "capital"
-  | "tower"
-  | "rift";
-
-export type TerritoryNodeStatus = "idle" | "occupied" | "contested" | "protected" | "locked";
-
-export interface WorldOwnerState {
-  owner_player_id: string | null;
-  owner_player_name: string | null;
-  owner_sect_id: string | null;
-  owner_sect_name: string | null;
-  owner_province_id: string | null;
-  owner_province_name: string | null;
-}
-
-export interface ProvinceWarState {
-  province_id: string;
-  province_name: string;
-  rank: number;
-  score: number;
-  city_occupancy_rate: number;
-  spirit_vein_control_rate: number;
-  pass_control_count: number;
-  tower_state: "sealed" | "stable" | "contested" | "polluted";
-  dominant_sect_name: string | null;
-  daily_settlement_at: string;
-  weekly_settlement_at: string;
-}
-
-export interface WorldCommanderyState {
-  commandery_id: string;
-  province_id: string;
-  name: string;
-  terrain: string;
-  birth_available: boolean;
-  recommended_birth: boolean;
-  congestion: "low" | "medium" | "high";
-  resource_theme: string[];
-  safety_level: number;
-  tile_count: number;
-  birth_plain_count: number;
-}
-
-export interface WorldProvinceState {
-  province_id: string;
-  name: string;
-  theme: string;
-  tower_name: string;
-  birth_available: boolean;
-  recommended_birth: boolean;
-  congestion: "low" | "medium" | "high";
-  map_focus: string;
-  block_count: number;
-  tower_block_count: number;
-  birth_plain_count: number;
-  commanderies: WorldCommanderyState[];
-  war_state: ProvinceWarState;
-}
-
-export interface TerritoryNodeState {
-  node_id: string;
-  tile_id: string;
-  node_type: TerritoryNodeType;
-  node_name: string;
-  level: number;
-  status: TerritoryNodeStatus;
-  occupiable: boolean;
-  contestable: boolean;
-  protected: boolean;
-  production_summary: string;
-  defense_summary: string;
-  owner: WorldOwnerState;
-}
-
-export interface WorldBlockOwnershipState {
-  ownership_id: string | null;
-  owner_player_id: string | null;
-  owner_player_name: string | null;
-  ownership_type: "main_city" | "sub_city" | "purchase" | "system" | null;
-  owned_at: string | null;
-}
-
-export interface WorldBlockPurchaseState {
-  purchasable: boolean;
-  reason: string;
-  cost_spirit_stone: string;
-  adjacent_owned: boolean;
-  requires_clearance: boolean;
-  clearance_status: "not_required" | "required" | "cleared";
-}
-
-export interface MapTileState {
-  tile_id: string;
-  province_id: string;
-  province_name: string;
-  commandery_id: string;
-  commandery_name: string;
-  tile_type: WorldTileType;
-  terrain_type: WorldTerrainType;
-  terrain_label: string;
-  terrain_effects: string[];
-  landmark_group_id: string | null;
-  tile_name: string;
-  x: number;
-  y: number;
-  visibility: WorldTileVisibility;
-  status: "peace" | "wild" | "occupied" | "contested" | "protected" | "locked";
-  controllable: boolean;
-  occupiable: boolean;
-  protected: boolean;
-  danger_level: number;
-  travel_seconds: number;
-  labels: string[];
-  state_summary: string;
-  owner: WorldOwnerState;
-  ownership: WorldBlockOwnershipState;
-  garrison: TerritoryGarrisonState | null;
-  strategic_control: StrategicControlState | null;
-  purchase_state: WorldBlockPurchaseState;
-  nodes: TerritoryNodeState[];
-}
-
-export interface WorldMiniMapSummary {
-  province_id: string;
-  total_blocks: number;
-  owned_blocks: number;
-  neutral_blocks: number;
-  contested_blocks: number;
-  tower_blocks: number;
-  capital_blocks: number;
-  pass_blocks: number;
-  my_blocks: number;
-  terrain_counts: Record<WorldTerrainType, number>;
-}
-
-export interface WorldProvinceListResponse {
-  provinces: WorldProvinceState[];
-  recommended_province_id: string;
-  config_version: string;
-}
-
-export interface WorldMapResponse {
-  view: WorldMapView;
-  province: WorldProvinceState;
-  commanderies: WorldCommanderyState[];
-  tiles: MapTileState[];
-  block_count: number;
-  viewport: WorldMapViewportState;
-  mini_map_summary: WorldMiniMapSummary;
-  visible_tile_count: number;
-  occupiable_tile_count: number;
-  player_city_hint: string;
-  config_version: string;
-}
-
-export interface WorldMapViewportState {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  total_width: number;
-  total_height: number;
-}
-
-export interface WorldMapViewportRequest {
-  x?: number;
-  y?: number;
-  width?: number;
-  height?: number;
-}
-
-export type WorldAtlasCellControl = "neutral" | "mine" | "other" | "landmark";
-
-export interface WorldAtlasCellState {
-  x: number;
-  y: number;
-  control: WorldAtlasCellControl;
-  terrain_type: WorldTerrainType;
-  landmark: "tower" | "capital" | "pass" | null;
-}
-
-export interface WorldAtlasProvinceState {
-  province: WorldProvinceState;
-  layout_x: number;
-  layout_y: number;
-  layout_width: number;
-  layout_height: number;
-  my_blocks: number;
-  neutral_blocks: number;
-  owned_blocks: number;
-  player_count: number;
-  my_city_count: number;
-  my_garrison_soldiers: number;
-  active_march_count: number;
-  available_birth_blocks: number;
-  terrain_distribution: Record<WorldTerrainType, number>;
-  resource_summary: string;
-  has_active_march: boolean;
-  war_score: number;
-  war_rank: number;
-  controlled_landmarks: number;
-  cells: WorldAtlasCellState[];
-  terrain_rows: string[];
-  control_rows: string[];
-  landmark_rows: string[];
-  /** 1-9 为城池等级，g 为州府、关隘、九塔等公共地标。 */
-  city_rows: string[];
-  birth_rows: string[];
-  march_rows: string[];
-}
-
-export interface ProvinceWarLeaderboardEntry {
-  province_id: string;
-  province_name: string;
-  rank: number;
-  score: number;
-  pass_controls: number;
-  capital_controls: number;
-  tower_controls: number;
-  dominant_sect_name: string | null;
-}
-
-export interface ProvinceWarLeaderboardResponse {
-  provinces: ProvinceWarLeaderboardEntry[];
-  calculated_at: string;
-}
-
-export type WarMeritSourceType = "siege" | "strategic_control" | "sect_rally";
-
-export interface WarMeritEntryState {
-  record_id: string;
-  province_id: string;
-  province_name: string;
-  source_type: WarMeritSourceType;
-  source_label: string;
-  source_id: string;
-  merit: number;
-  result: "won" | "lost" | "captured" | "defended";
-  summary: string;
-  created_at: string;
-}
-
-export interface WarMeritSummaryResponse {
-  total_merit: number;
-  daily_merit: number;
-  weekly_merit: number;
-  province_merit: number;
-  sect_merit: number;
-  entries: WarMeritEntryState[];
-  calculated_at: string;
-}
-
-export interface WarMeritRankingEntry {
-  rank_no: number;
-  target_type: "player" | "sect" | "province";
-  target_id: string;
-  display_name: string;
-  score: number;
-}
-
-export interface WarMeritPeriodSnapshot {
-  rank_type: "daily_player" | "weekly_player" | "weekly_sect" | "weekly_province";
-  period_key: string;
-  generated_at: string;
-  entries: WarMeritRankingEntry[];
-}
-
-export type WorldRankingCycleType = "daily" | "weekly" | "legacy";
-
-export interface WorldCycleRewardBundle {
-  spirit_stone: number;
-  grain: number;
-  ore: number;
-  wood: number;
-  herb: number;
-}
-
-export interface WorldCycleRewardState {
-  reward_id: string;
-  cycle_type: WorldRankingCycleType;
-  period_key: string;
-  rank_no: number;
-  merit: number;
-  rewards: WorldCycleRewardBundle;
-  status: "claimable" | "claimed";
-  claimed_at: string | null;
-}
-
-export interface WorldCycleSettlementState {
-  settlement_id: string;
-  cycle_type: WorldRankingCycleType;
-  period_key: string;
-  started_at: string;
-  ended_at: string;
-  settled_at: string;
-  rankings: WarMeritPeriodSnapshot[];
-}
-
-export interface WorldRankingSummaryResponse {
-  total_merit: number;
-  daily_merit: number;
-  weekly_merit: number;
-  province_merit: number;
-  sect_merit: number;
-  entries: WarMeritEntryState[];
-  daily: WarMeritPeriodSnapshot;
-  weekly: WarMeritPeriodSnapshot[];
-  last_daily_settlement: WorldCycleSettlementState | null;
-  last_weekly_settlement: WorldCycleSettlementState | null;
-  pending_rewards: WorldCycleRewardState[];
-  calculated_at: string;
-}
-
-export interface ClaimWorldCycleRewardRequest {
-  reward_id: string;
-}
-
-export interface ClaimWorldCycleRewardResponse {
-  reward: WorldCycleRewardState;
-  city: PlayerCityState;
-}
-
-export type WorldChronicleScope = "all" | "province" | "sect" | "personal";
-
-export type WorldChronicleEventType =
-  | "sub_city_captured"
-  | "strategic_control"
-  | "sect_rally"
-  | "city_milestone"
-  | "legacy_settlement"
-  | "legacy_chronicle";
-
-export interface WorldChronicleEventState {
-  event_id: string;
-  event_type: WorldChronicleEventType | string;
-  province_id: string | null;
-  province_name: string | null;
-  sect_id: string | null;
-  sect_name: string | null;
-  player_id: string | null;
-  title: string;
-  summary: string;
-  highlights: string[];
-  source_type: string;
-  source_id: string;
-  visibility: "public" | "server" | "sect" | "personal";
-  occurred_at: string;
-}
-
-export interface WorldChronicleListResponse {
-  entries: WorldChronicleEventState[];
-  next_cursor: string | null;
-}
-
-export interface WorldAtlasResponse {
-  provinces: WorldAtlasProvinceState[];
-  home_province_id: string | null;
-  config_version: string;
-}
-
-export type PlayerCityType = "main" | "sub";
-
-export type PlayerCityStatus = "normal" | "protected" | "damaged" | "besieged" | "vassal";
-
-export interface CityResourceSnapshot {
-  spirit_stone: string;
-  grain: string;
-  ore: string;
-  wood: string;
-  herb: string;
-  soldier: string;
-}
-
-export interface CityDefenseSnapshot {
-  wall_durability: number;
-  wall_durability_cap: number;
-  garrison_power: number;
-  protection_label: string;
-}
-
-export interface PlayerCityState {
-  city_id: string;
-  city_type: PlayerCityType;
-  province_id: string;
-  province_name: string;
-  commandery_id: string;
-  commandery_name: string;
-  tile_id: string;
-  city_name: string;
-  city_level: number;
-  status: PlayerCityStatus;
-  protection_until: string | null;
-  owner_sect_id: string | null;
-  defense: CityDefenseSnapshot;
-  resources: CityResourceSnapshot;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface CityBirthOptionState {
-  province_id: string;
-  province_name: string;
-  commandery_id: string;
-  commandery_name: string;
-  tile_id: string;
-  tile_name: string;
-  available: boolean;
-  recommended: boolean;
-  congestion: "low" | "medium" | "high";
-  safety_level: number;
-  unavailable_reason: string | null;
-}
-
-export interface CityOverviewResponse {
-  main_city: PlayerCityState | null;
-  sub_cities: PlayerCityState[];
-  birth_options: CityBirthOptionState[];
-  strategic_hint: string;
-  config_version: string;
-}
-
-export interface SettleMainCityRequest {
-  province_id: string;
-  commandery_id?: string;
-  city_name?: string;
-}
-
-export interface SettleMainCityResponse {
-  record_id: string;
-  city: PlayerCityState;
-  overview: CityOverviewResponse;
-}
-
-export interface EstablishSubCityRequest {
-  tile_id: string;
-  city_name?: string;
-}
-
-export interface EstablishSubCityResponse {
-  record_id: string;
-  city: PlayerCityState;
-  overview: CityOverviewResponse;
-}
-
-export type MarchQueueStatus = "marching" | "arrived" | "resolved" | "cancelled";
-
-export type MarchType = "scout" | "clear_wild" | "reinforce" | "siege" | "contest";
-
-export interface StrategicControlState {
-  control_id: string;
-  landmark_group_id: string;
-  tile_id: string;
-  province_id: string;
-  control_type: "pass" | "capital" | "tower";
-  control_label: string;
-  controller_type: "player" | "sect";
-  controller_id: string;
-  controller_name: string;
-  is_mine: boolean;
-  status: "active" | "failed" | "expired";
-  starts_at: string;
-  expires_at: string;
-  remaining_seconds: number;
-}
-
-export interface MarchTeamSnapshot {
-  preset_id: string | null;
-  commander_id: string;
-  leader_name: string;
-  formation: ArmyFormation;
-  soldier_count: number;
-  team_power: number;
-  supply_cost: number;
-}
-
-export interface MarchQueueState {
-  march_id: string;
-  source_city_id: string;
-  source_city_name: string;
-  source_tile_id: string;
-  target_tile_id: string;
-  target_name: string;
-  province_id: string;
-  province_name: string;
-  commandery_id: string;
-  commandery_name: string;
-  march_type: MarchType;
-  status: MarchQueueStatus;
-  team: MarchTeamSnapshot;
-  travel_seconds: number;
-  remaining_seconds: number;
-  started_at: string;
-  arrives_at: string;
-  resolved_at: string | null;
-  action_hint: string;
-}
-
-export interface WorldMarchListResponse {
-  marches: MarchQueueState[];
-  active_count: number;
-  config_version: string;
-}
-
-export interface StartWorldMarchRequest {
-  target_tile_id: string;
-  source_city_id?: string;
-  march_type?: MarchType;
-  preset_id?: string;
-}
-
-export interface StartWorldMarchResponse {
-  record_id: string;
-  march: MarchQueueState;
-  marches: WorldMarchListResponse;
-}
-
-export interface ResolveStrategicControlRequest {
-  march_id: string;
-}
-
-export interface ResolveStrategicControlResponse {
-  record_id: string;
-  won: boolean;
-  attacker_power: number;
-  defender_power: number;
-  control: StrategicControlState;
-  march: MarchQueueState;
-  map: WorldMapResponse;
-}
-
-export interface ResolveWorldClearanceRequest {
-  march_id: string;
-}
-
-export interface WorldBlockClearanceState {
-  clearance_id: string;
-  tile_id: string;
-  province_id: string;
-  commandery_id: string;
-  status: "cleared" | "failed";
-  team_power: number;
-  enemy_power: number;
-  battle_id: string;
-  resolved_at: string;
-}
-
-export interface ResolveWorldClearanceResponse {
-  record_id: string;
-  cleared: boolean;
-  clearance: WorldBlockClearanceState;
-  battle: BattleSummary;
-  march: MarchQueueState;
-  marches: WorldMarchListResponse;
-  map: WorldMapResponse;
-}
-
-export interface ScoutWorldRequest {
-  march_id: string;
-}
-
-export interface WorldScoutIntelState {
-  tile_id: string;
-  tile_name: string;
-  owner_player_name: string | null;
-  city_name: string | null;
-  city_type: PlayerCityType | null;
-  city_level: number | null;
-  city_status: PlayerCityStatus | null;
-  wall_condition: "unknown" | "weak" | "steady" | "strong";
-  garrison_estimate: "unknown" | "few" | "moderate" | "many";
-  resource_estimate: "unknown" | "scarce" | "normal" | "rich";
-  protected: boolean;
-  scouted_at: string;
-}
-
-export interface ScoutWorldResponse {
-  record_id: string;
-  march: MarchQueueState;
-  intel: WorldScoutIntelState;
-}
-
-export interface TerritoryGarrisonState {
-  tile_id: string;
-  owner_player_id: string;
-  soldier_count: number;
-  defense_power: number;
-  preset_id: string | null;
-  commander_name: string;
-  formation: ArmyFormation;
-  is_mine: boolean;
-  updated_at: string;
-}
-
-export interface DefendWorldRequest {
-  tile_id: string;
-  soldier_count: number;
-  preset_id?: string;
-}
-
-export interface DefendWorldResponse {
-  record_id: string;
-  operation: "increase" | "decrease" | "withdraw" | "unchanged";
-  target_soldier_count: number;
-  garrison: TerritoryGarrisonState | null;
-  city: PlayerCityState;
-  map: WorldMapResponse;
-}
-
-export interface SiegeWorldRequest {
-  march_id: string;
-}
-
-export interface SiegeRecordState {
-  siege_id: string;
-  target_city_id: string;
-  target_tile_id: string;
-  target_city_name: string;
-  status: "won" | "lost" | "captured";
-  attacker_power: number;
-  defender_power: number;
-  wall_damage: number;
-  wall_durability_after: number;
-  reward_rate_percent: number;
-  captured: boolean;
-  ownership_transferred: boolean;
-  plunder: Omit<CityResourceSnapshot, "herb" | "soldier">;
-  protection_until: string | null;
-  resolved_at: string;
-}
-
-export interface SiegeWorldResponse {
-  record_id: string;
-  march: MarchQueueState;
-  won: boolean;
-  attacker_power: number;
-  defender_power: number;
-  siege: SiegeRecordState;
-  city: PlayerCityState | null;
-  map: WorldMapResponse;
-}
-
-export interface PurchaseWorldBlockRequest {
-  tile_id: string;
-}
-
-export interface PurchaseWorldBlockResponse {
-  record_id: string;
-  tile: MapTileState;
-  map: WorldMapResponse;
-  wallet: WalletSnapshot;
-}
-
-export interface TerritoryHourlyOutputState {
-  spirit_stone: number;
-  grain: number;
-  ore: number;
-  wood: number;
-  herb: number;
-}
-
-export interface TerritoryTerrainSummaryState {
-  terrain_type: WorldTerrainType;
-  terrain_label: string;
-  block_count: number;
-  hourly_output: TerritoryHourlyOutputState;
-}
-
-export interface TerritoryBlockState {
-  tile_id: string;
-  tile_name: string;
-  x: number;
-  y: number;
-  province_id: string;
-  province_name: string;
-  commandery_id: string;
-  commandery_name: string;
-  terrain_type: WorldTerrainType;
-  terrain_label: string;
-  ownership_type: NonNullable<WorldBlockOwnershipState["ownership_type"]>;
-  owned_at: string;
-  hourly_output: TerritoryHourlyOutputState;
-  garrison: TerritoryGarrisonState | null;
-  city_expansion_eligible: boolean;
-}
-
-export interface TerritoryExpansionCandidateState {
-  tile_id: string;
-  tile_name: string;
-  province_id: string;
-  province_name: string;
-  x: number;
-  y: number;
-  terrain_type: WorldTerrainType;
-  terrain_label: string;
-  action: "purchase" | "clear_wild";
-  recommendation_reason: string;
-  cost_spirit_stone: string;
-  hourly_output: TerritoryHourlyOutputState;
-}
-
-export interface CityExpansionCostState {
-  spirit_stone: number;
-  grain: number;
-  ore: number;
-  wood: number;
-}
-
-export interface CityExpansionState {
-  city_level: number;
-  next_city_level: number | null;
-  maximum_city_level: number;
-  building_slots: number;
-  owned_plain_blocks: number;
-  required_plain_blocks: number;
-  eligible: boolean;
-  reason: string;
-  cost: CityExpansionCostState | null;
-}
-
-export interface TerritoryOverviewResponse {
-  main_city: PlayerCityState | null;
-  owned_block_count: number;
-  total_garrison_soldiers: number;
-  total_garrison_power: number;
-  block_limit: number;
-  remaining_block_capacity: number;
-  hourly_output: TerritoryHourlyOutputState;
-  terrain_summary: TerritoryTerrainSummaryState[];
-  blocks: TerritoryBlockState[];
-  expansion_candidates: TerritoryExpansionCandidateState[];
-  recommended_terrain_type: WorldTerrainType | null;
-  expansion: CityExpansionState | null;
-  next_purchase_hint: string;
-  config_version: string;
-}
-
-export interface ExpandCityResponse {
-  record_id: string;
-  city: PlayerCityState;
-  expansion: CityExpansionState;
-}
-
-export type CityBuildingType = "warehouse" | "barracks" | "fortification" | "workshop";
-
-export type CityBuildingStatus = "idle" | "upgrading";
-
-export interface CityBuildingCostState {
-  spirit_stone: number;
-  grain: number;
-  ore: number;
-  wood: number;
-}
-
-export interface CityBuildingState {
-  building_id: string;
-  building_type: CityBuildingType;
-  name: string;
-  level: number;
-  target_level: number | null;
-  status: CityBuildingStatus;
-  upgrade_started_at: string | null;
-  upgrade_ends_at: string | null;
-  remaining_seconds: number;
-  next_cost: CityBuildingCostState | null;
-  effect_summary: string;
-}
-
-export interface CityStorageCapacityState {
-  spirit_stone: number;
-  grain: number;
-  ore: number;
-  wood: number;
-  herb: number;
-}
-
-export interface TerritoryCollectState {
-  last_collected_at: string;
-  elapsed_seconds: number;
-  capped_seconds: number;
-  remaining_cap_seconds: number;
-  claimable: TerritoryHourlyOutputState;
-  storage_capacity: CityStorageCapacityState;
-}
-
-export type CityStoredResourceType = "spirit_stone" | "grain" | "ore" | "wood" | "herb";
-
-export interface CityResourceStatusState {
-  resource_type: CityStoredResourceType;
-  resource_label: string;
-  current: number;
-  capacity: number;
-  claimable: number;
-  collectable: number;
-  overflow: number;
-  fullness_percent: number;
-  status: "normal" | "near_full" | "overflow";
-}
-
-export interface CityManagementResponse {
-  city: PlayerCityState | null;
-  buildings: CityBuildingState[];
-  territory_collect: TerritoryCollectState | null;
-  resource_statuses: CityResourceStatusState[];
-  active_building: CityBuildingState | null;
-  upgrade_queue_capacity: number;
-  recommended_building_type: CityBuildingType | null;
-  recommendation_reason: string;
-  config_version: string;
-}
-
-export interface CollectTerritoryResponse {
-  record_id: string;
-  city: PlayerCityState;
-  collected: TerritoryHourlyOutputState;
-  overflow: TerritoryHourlyOutputState;
-  territory_collect: TerritoryCollectState;
-  buildings: CityBuildingState[];
-}
-
-export interface UpgradeCityBuildingRequest {
-  building_type: CityBuildingType;
-}
-
-export interface UpgradeCityBuildingResponse {
-  record_id: string;
-  city: PlayerCityState;
-  building: CityBuildingState;
-  buildings: CityBuildingState[];
-}
-
-export type ArmyPresetType = "march" | "garrison";
-export type ArmyFormation = "balanced" | "assault" | "defense" | "scout";
-
-export interface ArmyCommanderState {
-  commander_id: string;
-  commander_name: string;
-  role: string;
-  power_bonus_percent: number;
-  unlocked: boolean;
-  unlock_reason: string;
-}
-
-export interface CityArmyPresetState {
-  preset_id: string;
-  preset_type: ArmyPresetType;
-  preset_name: string;
-  commander_id: string;
-  commander_name: string;
-  soldier_count: number;
-  formation: ArmyFormation;
-  power: number;
-  updated_at: string;
-}
-
-export interface CityArmyState {
-  city_id: string | null;
-  current_realm: number;
-  current_realm_name: string;
-  available_soldiers: number;
-  soldier_capacity: number;
-  train_cost_per_soldier: { spirit_stone: number; grain: number };
-  commanders: ArmyCommanderState[];
-  formations: Array<{
-    formation: ArmyFormation;
-    label: string;
-    required_realm: number;
-    unlocked: boolean;
-  }>;
-  march_preset: CityArmyPresetState | null;
-  garrison_preset: CityArmyPresetState | null;
-  config_version: string;
-}
-
-export interface TrainCitySoldiersRequest {
-  soldier_count: number;
-}
-
-export interface TrainCitySoldiersResponse {
-  record_id: string;
-  trained_soldiers: number;
-  cost: { spirit_stone: number; grain: number };
-  city: PlayerCityState;
-  army: CityArmyState;
-}
-
-export interface SaveCityArmyPresetRequest {
-  preset_type: ArmyPresetType;
-  preset_name?: string;
-  commander_id: string;
-  soldier_count: number;
-  formation: ArmyFormation;
-}
-
-export interface SaveCityArmyPresetResponse {
-  record_id: string;
-  preset: CityArmyPresetState;
-  army: CityArmyState;
-}
-
-export type HerbGardenPlotStatus = "empty" | "growing" | "ready";
-
-export interface HerbGardenPlotState {
-  plot_id: string;
-  plot_index: number;
-  herb_id: string | null;
-  herb_name: string | null;
-  status: HerbGardenPlotStatus;
-  planted_at: string | null;
-  ready_at: string | null;
-  remaining_seconds: number;
-  harvest_count: number;
-}
-
-export interface HerbGardenState {
-  unlocked: boolean;
-  unlock_hint: string;
-  plot_count: number;
-  growing_count: number;
-  ready_count: number;
-  plant_cost_spirit_stone: number;
-  grow_seconds: number;
-  plots: HerbGardenPlotState[];
-  config_version: string;
-}
-
-export interface PlantHerbRequest {
-  plot_id: string;
-}
-
-export interface PlantHerbResponse {
-  record_id: string;
-  city: PlayerCityState;
-  garden: HerbGardenState;
-}
-
-export interface HarvestHerbRequest {
-  plot_id: string;
-}
-
-export interface HarvestHerbResponse {
-  record_id: string;
-  garden: HerbGardenState;
-  harvested_item_id: string;
-  harvested_item_name: string;
-  harvested_count: number;
-}
-
 export interface BattleRoundLog {
   round: number;
   actor: string;
@@ -1624,6 +631,7 @@ export interface ExploreResponse {
   status: ExploreActionStatus;
   seconds_per_explore: number;
   total_seconds: number;
+  explore_boost_percent: number;
   started_at: string;
   completes_at: string;
   claimed_at: string | null;
@@ -2038,31 +1046,22 @@ export interface SetItemLockResponse {
 
 export type PillQuality = "low" | "middle" | "high" | "best" | "flawless";
 
-export interface AlchemyRecipeSummary {
-  recipe_id: string;
+/** 可投炉材料；仅接口明确返回的材料可以消耗。 */
+export interface ProductionCraftMaterialState {
+  item_id: string;
   name: string;
-  route: CultivationRoute | "all";
-  pill_item_id: string;
-  pill_rank: number;
-  pill_type: string;
-  base_effect: number;
-  success_rate: number;
-  materials: Array<{ item_id: string; name: string; count: number }>;
-  spirit_stone_cost: string;
-  recommendation?: ProductionRecommendationState;
+  kind: ProductionFormulaKind;
+  source_hint: string;
 }
 
-export interface AlchemyRecipeListResponse {
-  recipes: AlchemyRecipeSummary[];
-}
-
-export interface AlchemyCraftRequest {
-  recipe_id: string;
+export interface ProductionCraftMaterialListResponse {
+  materials: ProductionCraftMaterialState[];
 }
 
 export interface AlchemyRecordState {
   record_id: string;
-  recipe_id: string;
+  formula_id: string | null;
+  composition_hash: string | null;
   pill_item_id: string | null;
   quality: PillQuality | null;
   success: boolean;
@@ -2139,18 +1138,6 @@ export interface EquipmentListResponse {
   equipments: EquipmentState[];
 }
 
-export interface ForgeRecipeSummary {
-  recipe_id: string;
-  name: string;
-  route: CultivationRoute | "all";
-  equipment_id: string;
-  equipment_type: string;
-  rarity: EquipmentRarity;
-  materials: Array<{ item_id: string; name: string; count: number }>;
-  spirit_stone_cost: string;
-  recommendation?: ProductionRecommendationState;
-}
-
 export interface MaterialSourceState {
   source_type: "explore" | "cave" | "event" | "decompose" | "task" | "commerce" | "system";
   source_id: string;
@@ -2195,14 +1182,6 @@ export interface ProductionRecommendationState {
   balance_warnings?: ProductionBalanceWarningState[];
 }
 
-export interface ForgeRecipeListResponse {
-  recipes: ForgeRecipeSummary[];
-}
-
-export interface ForgeCraftRequest {
-  recipe_id: string;
-}
-
 export interface EquipmentOperationResponse {
   record_id: string;
   operation_type: "forge" | "refine" | "inscribe" | "decompose" | "lock";
@@ -2212,6 +1191,115 @@ export interface EquipmentOperationResponse {
   bag?: BagSummaryResponse;
   completed_task_ids?: string[];
   experience?: ExperiencePayload;
+}
+
+export type ProductionFormulaKind = "alchemy" | "forge";
+export type ProductionFormulaVisibility = "private" | "public";
+export type PillEffectKind = "cultivation" | "breakthrough_support" | "explore_boost";
+
+/** 投炉材料不区分顺序，服务端会统一归并并校验数量。 */
+export interface ProductionMaterialInput {
+  item_id: string;
+  count: number;
+}
+
+export interface ProductionCraftRequest {
+  materials?: ProductionMaterialInput[];
+  /** 引用已保存单方时可省略材料；同时提交时必须与单方一致。 */
+  formula_id?: string;
+}
+
+export interface FormulaResultTemplate {
+  kind: ProductionFormulaKind;
+  name: string;
+  success_rate: number;
+  spirit_stone_cost: string;
+  alchemy?: {
+    pill_item_id: string;
+    pill_rank: number;
+    pill_type: string;
+    effect_kind: PillEffectKind;
+    effect_min: number;
+    effect_max: number;
+    next_explore_bonus_percent?: number;
+  };
+  forge?: {
+    equipment_id: string;
+    equipment_type: string;
+    rarity: string;
+    affix_profile: "weapon" | "armor" | "talisman";
+  };
+}
+
+export interface ProductionFormulaState {
+  formula_id: string;
+  player_id: string;
+  creator_name?: string;
+  kind: ProductionFormulaKind;
+  name: string;
+  composition_hash: string;
+  materials: ProductionMaterialInput[];
+  result_template: FormulaResultTemplate;
+  visibility: ProductionFormulaVisibility;
+  source_record_id: string;
+  rule_version: string;
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+  reusable: boolean;
+}
+
+export interface ProductionFormulaListQuery {
+  kind?: ProductionFormulaKind;
+  /** 默认查询自己的单方；public 仅查询公开单方。 */
+  scope?: "mine" | "public";
+  keyword?: string;
+}
+
+export interface ProductionFormulaListResponse {
+  formulas: ProductionFormulaState[];
+}
+
+export interface SaveProductionFormulaRequest {
+  kind: ProductionFormulaKind;
+  source_record_id: string;
+  name: string;
+}
+
+export interface ProductionFormulaResponse {
+  formula: ProductionFormulaState;
+}
+
+export interface DiscoveredAlchemyCraftResponse extends AlchemyCraftResponse {
+  record: AlchemyRecordState;
+  discovery: {
+    composition_hash: string;
+    formula_id: string | null;
+    result_template: FormulaResultTemplate | null;
+  };
+}
+
+export interface DiscoveredForgeCraftResponse extends EquipmentOperationResponse {
+  operation_type: "forge";
+  equipment: EquipmentState | null;
+  discovery: {
+    composition_hash: string;
+    formula_id: string | null;
+    result_template: FormulaResultTemplate | null;
+    success: boolean;
+  };
+}
+
+export interface FormulaCraftResponse {
+  kind: ProductionFormulaKind;
+  formula: ProductionFormulaState;
+  result: DiscoveredAlchemyCraftResponse | DiscoveredForgeCraftResponse;
+}
+
+export interface DiscoveredPillUseResponse extends PillUseResponse {
+  pill_effect: PillEffectKind;
+  next_explore_bonus_percent?: number;
+  effect_note: string;
 }
 
 export interface EquipmentOperationRecordState {
@@ -2457,51 +1545,6 @@ export interface SectWarehouseResponse {
   warehouse: SectWarehouseItemState[];
   bag?: BagSummaryResponse;
   experience?: ExperiencePayload;
-}
-
-export type SectRallyType = "attack" | "defend";
-export type SectRallyStatus = "open" | "resolved" | "expired" | "failed";
-
-export interface SectRallyState {
-  rally_id: string;
-  sect_id: string;
-  sect_name: string;
-  target_tile_id: string;
-  landmark_group_id: string;
-  province_id: string;
-  rally_type: SectRallyType;
-  status: SectRallyStatus;
-  created_by_name: string;
-  participant_count: number;
-  total_power: number;
-  minimum_participants: number;
-  ends_at: string;
-  remaining_seconds: number;
-  joined: boolean;
-}
-
-export interface SectRallyListResponse {
-  rallies: SectRallyState[];
-}
-
-export interface CreateSectRallyRequest {
-  target_tile_id: string;
-  rally_type: SectRallyType;
-}
-
-export interface JoinSectRallyRequest {
-  rally_id: string;
-}
-
-export interface ResolveSectRallyRequest {
-  rally_id: string;
-}
-
-export interface SectRallyMutationResponse {
-  record_id: string;
-  rally: SectRallyState;
-  won?: boolean;
-  control?: StrategicControlState | null;
 }
 
 export interface ResourcePointSummary {
@@ -3726,6 +2769,125 @@ export interface AdminPlayerLogsResponse {
   player_id: string;
   type: AdminLogType;
   rows: Array<Record<string, unknown>>;
+}
+
+export type TextCommandId =
+  | "invalid"
+  | "help"
+  | "status"
+  | "cultivation_claim"
+  | "breakthrough"
+  | "explore"
+  | "explore_claim"
+  | "explore_events"
+  | "explore_event_resolve"
+  | "cave_status"
+  | "cave_collect"
+  | "task_list"
+  | "task_claim"
+  | "craft_materials"
+  | "alchemy_craft"
+  | "forge_craft"
+  | "pill_use"
+  | "formula_list"
+  | "formula_save"
+  | "formula_publish"
+  | "formula_unpublish"
+  | "formula_craft"
+  | "tower_list"
+  | "tower_action"
+  | "scroll_list"
+  | "scroll_detail"
+  | "battle_list"
+  | "battle_detail";
+
+export type TextCommandLogTone = "info" | "success" | "warning" | "error";
+
+export interface TextCommandRequest {
+  command: string;
+}
+
+export interface TextCommandLogEntry {
+  entry_id: string;
+  tone: TextCommandLogTone;
+  text: string;
+}
+
+export type LogEntry = TextCommandLogEntry;
+
+export interface TextCommandSuggestion {
+  label: string;
+  command: string;
+}
+
+export type TextCommandRefreshTarget =
+  | "overview"
+  | "explore"
+  | "events"
+  | "tasks"
+  | "cave"
+  | "bag"
+  | "equipment"
+  | "formulas"
+  | "towers"
+  | "scrolls"
+  | "battles";
+
+export type TextCommandResult =
+  | GameOverviewResponse
+  | CultivationClaimResponse
+  | BreakthroughResponse
+  | ExploreResponse
+  | ExploreCurrentResponse
+  | ExploreEventListResponse
+  | ResolveExploreEventResponse
+  | CaveCollectResponse
+  | TaskSummaryResponse
+  | TaskClaimResponse
+  | AlchemyCraftResponse
+  | DiscoveredAlchemyCraftResponse
+  | EquipmentOperationResponse
+  | DiscoveredForgeCraftResponse
+  | PillUseResponse
+  | DiscoveredPillUseResponse
+  | ProductionCraftMaterialListResponse
+  | ProductionFormulaListResponse
+  | ProductionFormulaResponse
+  | FormulaCraftResponse
+  | TowerListResponse
+  | TowerActionResponse
+  | StoryScrollListResponse
+  | StoryScrollDetailResponse
+  | BattleListResponse
+  | BattleNarrativeResponse;
+
+export interface TextCommandState {
+  refresh: TextCommandRefreshTarget[];
+  result?: TextCommandResult;
+  suggestions: TextCommandSuggestion[];
+}
+
+export interface TextCommandResponse {
+  command_id: TextCommandId;
+  entries: TextCommandLogEntry[];
+  state?: TextCommandState;
+}
+
+export interface TextCommandHelpItem {
+  command_id: Exclude<TextCommandId, "invalid">;
+  syntax: string;
+  aliases: string[];
+  description: string;
+}
+
+export interface TextCommandHelpGroup {
+  group_id: string;
+  title: string;
+  items: TextCommandHelpItem[];
+}
+
+export interface TextCommandHelpResponse {
+  groups: TextCommandHelpGroup[];
 }
 
 export function createTraceId(prefix = "req"): string {

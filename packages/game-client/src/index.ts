@@ -17,9 +17,6 @@ import type {
   AdminReviewTransferRequest,
   AdminReviewTransferResponse,
   AdminRiskRecordListResponse,
-  AlchemyCraftRequest,
-  AlchemyCraftResponse,
-  AlchemyRecipeListResponse,
   AlchemyRecordListResponse,
   AncientTreasureListResponse,
   AnnouncementListResponse,
@@ -38,9 +35,6 @@ import type {
   CaveCollectResponse,
   ChooseFactionRouteRequest,
   ChooseFactionRouteResponse,
-  CityArmyState,
-  CityManagementResponse,
-  CityOverviewResponse,
   ClaimActivityRewardRequest,
   ClaimActivityRewardResponse,
   ClaimAppearanceRequest,
@@ -49,9 +43,6 @@ import type {
   ClaimMonthlyDailyResponse,
   ClaimRankTitleRequest,
   ClaimRankTitleResponse,
-  ClaimWorldCycleRewardRequest,
-  ClaimWorldCycleRewardResponse,
-  CollectTerritoryResponse,
   CollectionSummaryResponse,
   ConfigEnvelope,
   ConfigType,
@@ -66,14 +57,14 @@ import type {
   CreatePlayerRequest,
   CreatePlayerResponse,
   CreateSectHireRequest,
-  CreateSectRallyRequest,
   CreateSectRequest,
   CreateTransferRequestRequest,
   CreateTransferRequestResponse,
   CultivationClaimResponse,
   DailyRouteResponse,
-  DefendWorldRequest,
-  DefendWorldResponse,
+  DiscoveredAlchemyCraftResponse,
+  DiscoveredForgeCraftResponse,
+  DiscoveredPillUseResponse,
   EntitlementOverviewResponse,
   EquipAppearancePlusRequest,
   EquipAppearancePlusResponse,
@@ -87,11 +78,8 @@ import type {
   EquipmentTargetRequest,
   EraChronicleResponse,
   EraMuseumResponse,
-  EstablishSubCityRequest,
-  EstablishSubCityResponse,
   ExecuteMergeReservedRequest,
   ExecuteMergeReservedResponse,
-  ExpandCityResponse,
   ExploreClaimRequest,
   ExploreCurrentResponse,
   ExploreEventListResponse,
@@ -99,8 +87,7 @@ import type {
   ExploreResponse,
   FactionReputationResponse,
   FactionRoutesResponse,
-  ForgeCraftRequest,
-  ForgeRecipeListResponse,
+  FormulaCraftResponse,
   GachaDrawRequest,
   GachaDrawResponse,
   GachaHistoryResponse,
@@ -108,9 +95,6 @@ import type {
   GameOverviewResponse,
   GraduateMentorRequest,
   GuestLoginRequest,
-  HarvestHerbRequest,
-  HarvestHerbResponse,
-  HerbGardenState,
   InnerWorldAssignmentListResponse,
   InnerWorldClaimRequest,
   InnerWorldClaimResponse,
@@ -121,7 +105,6 @@ import type {
   InnerWorldSupportResponse,
   InnerWorldUpgradeRequest,
   InnerWorldUpgradeResponse,
-  JoinSectRallyRequest,
   JoinSectRequest,
   JournalListResponse,
   LearnSkillRequest,
@@ -132,9 +115,6 @@ import type {
   MergeDryRunReportResponse,
   MockFishpiLoginRequest,
   PillUseRequest,
-  PillUseResponse,
-  PlantHerbRequest,
-  PlantHerbResponse,
   PlayerProfileResponse,
   PluginExpandedPanelResponse,
   PluginNavigationLinksResponse,
@@ -143,15 +123,18 @@ import type {
   PluginStatusCardResponse,
   PluginSubmitPresetRequest,
   PluginSubmitPresetResponse,
+  ProductionCraftMaterialListResponse,
+  ProductionCraftRequest,
+  ProductionFormulaKind,
+  ProductionFormulaListQuery,
+  ProductionFormulaListResponse,
+  ProductionFormulaResponse,
   ProposeSectDiplomacyRequest,
   ProvinceSummary,
-  ProvinceWarLeaderboardResponse,
   PublishAdminConfigRequest,
   PublishAdminConfigResponse,
   PurchaseMonthlyCardRequest,
   PurchaseMonthlyCardResponse,
-  PurchaseWorldBlockRequest,
-  PurchaseWorldBlockResponse,
   PvpAttackRequest,
   PvpBattleResponse,
   RankListResponse,
@@ -160,11 +143,6 @@ import type {
   ResolveExploreEventResponse,
   ResolveRiskRecordRequest,
   ResolveRiskRecordResponse,
-  ResolveSectRallyRequest,
-  ResolveStrategicControlRequest,
-  ResolveStrategicControlResponse,
-  ResolveWorldClearanceRequest,
-  ResolveWorldClearanceResponse,
   ResourcePointListResponse,
   ReviewDelayedSettlementRequest,
   ReviewDelayedSettlementResponse,
@@ -172,13 +150,10 @@ import type {
   ReviewSectDiplomacyRequest,
   RollbackAdminConfigRequest,
   RollbackAdminConfigResponse,
-  SaveCityArmyPresetRequest,
-  SaveCityArmyPresetResponse,
   SaveConvenienceStrategyRequest,
   SaveConvenienceStrategyResponse,
+  SaveProductionFormulaRequest,
   SaveSkillLoadoutRequest,
-  ScoutWorldRequest,
-  ScoutWorldResponse,
   SectDetailResponse,
   SectDiplomacyMutationResponse,
   SectDiplomacySummaryResponse,
@@ -186,8 +161,6 @@ import type {
   SectHireMutationResponse,
   SectListResponse,
   SectMutationResponse,
-  SectRallyListResponse,
-  SectRallyMutationResponse,
   SectTaskResponse,
   SectWarehouseDepositRequest,
   SectWarehouseResponse,
@@ -197,14 +170,8 @@ import type {
   SetEquipmentLockRequest,
   SetItemLockRequest,
   SetItemLockResponse,
-  SettleMainCityRequest,
-  SettleMainCityResponse,
   SettleSectHireRequest,
-  SiegeWorldRequest,
-  SiegeWorldResponse,
   SkillLoadoutResponse,
-  StartWorldMarchRequest,
-  StartWorldMarchResponse,
   StoryScrollDetailResponse,
   StoryScrollListResponse,
   SubmitActivityProgressRequest,
@@ -214,31 +181,20 @@ import type {
   TaskClaimRequest,
   TaskClaimResponse,
   TaskSummaryResponse,
-  TerritoryOverviewResponse,
+  TextCommandHelpResponse,
+  TextCommandRequest,
+  TextCommandResponse,
   TitleCollectionResponse,
   TowerActionRequest,
   TowerActionResponse,
   TowerListResponse,
-  TrainCitySoldiersRequest,
-  TrainCitySoldiersResponse,
   TransferFactionRouteRequest,
   TransferFactionRouteResponse,
   TransferRuleResponse,
   TransferStatusResponse,
-  UpgradeCityBuildingRequest,
-  UpgradeCityBuildingResponse,
-  WorldAtlasResponse,
   WorldBossChallengeRequest,
   WorldBossChallengeResponse,
   WorldBossResponse,
-  WorldChronicleListResponse,
-  WorldChronicleScope,
-  WorldMapResponse,
-  WorldMapView,
-  WorldMapViewportRequest,
-  WorldMarchListResponse,
-  WorldProvinceListResponse,
-  WorldRankingSummaryResponse,
 } from "@nextday/shared";
 
 export interface GameClientOptions {
@@ -466,260 +422,21 @@ export class GameClient {
     return this.get<GameOverviewResponse>("/api/game/overview");
   }
 
+  commandHelp(): Promise<ApiResponse<TextCommandHelpResponse>> {
+    return this.get<TextCommandHelpResponse>("/api/game/command-help");
+  }
+
+  executeCommand(
+    body: TextCommandRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<TextCommandResponse>> {
+    return this.post<TextCommandResponse, TextCommandRequest>("/api/game/commands", body, {
+      idempotencyKey,
+    });
+  }
+
   dailyRoute(): Promise<ApiResponse<DailyRouteResponse>> {
     return this.get<DailyRouteResponse>("/api/game/daily-route");
-  }
-
-  worldProvinces(): Promise<ApiResponse<WorldProvinceListResponse>> {
-    return this.get<WorldProvinceListResponse>("/api/world/provinces");
-  }
-
-  provinceWar(): Promise<ApiResponse<ProvinceWarLeaderboardResponse>> {
-    return this.get<ProvinceWarLeaderboardResponse>("/api/world/province-war");
-  }
-
-  worldRankings(limit = 20): Promise<ApiResponse<WorldRankingSummaryResponse>> {
-    return this.get<WorldRankingSummaryResponse>(`/api/world/rankings?limit=${limit}`);
-  }
-
-  claimWorldCycleReward(
-    body: ClaimWorldCycleRewardRequest,
-    idempotencyKey: string,
-  ): Promise<ApiResponse<ClaimWorldCycleRewardResponse>> {
-    return this.post<ClaimWorldCycleRewardResponse, ClaimWorldCycleRewardRequest>(
-      "/api/world/rankings/rewards/claim",
-      body,
-      { idempotencyKey },
-    );
-  }
-
-  worldChronicle(input: { before?: string; limit?: number; scope?: WorldChronicleScope } = {}) {
-    const query = new URLSearchParams();
-    if (input.before) query.set("before", input.before);
-    if (input.limit) query.set("limit", String(input.limit));
-    if (input.scope) query.set("scope", input.scope);
-    const suffix = query.size ? `?${query.toString()}` : "";
-    return this.get<WorldChronicleListResponse>(`/api/world/chronicle${suffix}`);
-  }
-
-  worldAtlas(): Promise<ApiResponse<WorldAtlasResponse>> {
-    return this.get<WorldAtlasResponse>("/api/world/atlas");
-  }
-
-  worldMap(
-    provinceId?: string,
-    view?: WorldMapView,
-    viewport?: WorldMapViewportRequest,
-  ): Promise<ApiResponse<WorldMapResponse>> {
-    const params = new URLSearchParams();
-    if (provinceId) {
-      params.set("province_id", provinceId);
-    }
-    if (view) {
-      params.set("view", view);
-    }
-    if (viewport?.x !== undefined) params.set("x", String(viewport.x));
-    if (viewport?.y !== undefined) params.set("y", String(viewport.y));
-    if (viewport?.width !== undefined) params.set("width", String(viewport.width));
-    if (viewport?.height !== undefined) params.set("height", String(viewport.height));
-    const query = params.toString();
-    return this.get<WorldMapResponse>(`/api/world/map${query ? `?${query}` : ""}`);
-  }
-
-  cityOverview(): Promise<ApiResponse<CityOverviewResponse>> {
-    return this.get<CityOverviewResponse>("/api/city/overview");
-  }
-
-  cityManagement(): Promise<ApiResponse<CityManagementResponse>> {
-    return this.get<CityManagementResponse>("/api/city/management");
-  }
-
-  cityArmy(): Promise<ApiResponse<CityArmyState>> {
-    return this.get<CityArmyState>("/api/city/army");
-  }
-
-  trainCitySoldiers(
-    body: TrainCitySoldiersRequest,
-    idempotencyKey: string,
-  ): Promise<ApiResponse<TrainCitySoldiersResponse>> {
-    return this.post<TrainCitySoldiersResponse, TrainCitySoldiersRequest>(
-      "/api/city/army/train",
-      body,
-      { idempotencyKey },
-    );
-  }
-
-  saveCityArmyPreset(
-    body: SaveCityArmyPresetRequest,
-    idempotencyKey: string,
-  ): Promise<ApiResponse<SaveCityArmyPresetResponse>> {
-    return this.post<SaveCityArmyPresetResponse, SaveCityArmyPresetRequest>(
-      "/api/city/army/preset",
-      body,
-      { idempotencyKey },
-    );
-  }
-
-  herbGarden(): Promise<ApiResponse<HerbGardenState>> {
-    return this.get<HerbGardenState>("/api/city/garden");
-  }
-
-  plantHerb(
-    body: PlantHerbRequest,
-    idempotencyKey: string,
-  ): Promise<ApiResponse<PlantHerbResponse>> {
-    return this.post<PlantHerbResponse, PlantHerbRequest>("/api/city/garden/plant", body, {
-      idempotencyKey,
-    });
-  }
-
-  harvestHerb(
-    body: HarvestHerbRequest,
-    idempotencyKey: string,
-  ): Promise<ApiResponse<HarvestHerbResponse>> {
-    return this.post<HarvestHerbResponse, HarvestHerbRequest>("/api/city/garden/harvest", body, {
-      idempotencyKey,
-    });
-  }
-
-  expandCity(idempotencyKey: string): Promise<ApiResponse<ExpandCityResponse>> {
-    return this.post<ExpandCityResponse>("/api/city/expand", {}, { idempotencyKey });
-  }
-
-  collectTerritory(idempotencyKey: string): Promise<ApiResponse<CollectTerritoryResponse>> {
-    return this.post<CollectTerritoryResponse>(
-      "/api/city/territory/collect",
-      {},
-      { idempotencyKey },
-    );
-  }
-
-  upgradeCityBuilding(
-    body: UpgradeCityBuildingRequest,
-    idempotencyKey: string,
-  ): Promise<ApiResponse<UpgradeCityBuildingResponse>> {
-    return this.post<UpgradeCityBuildingResponse, UpgradeCityBuildingRequest>(
-      "/api/city/buildings/upgrade",
-      body,
-      { idempotencyKey },
-    );
-  }
-
-  settleMainCity(
-    body: SettleMainCityRequest,
-    idempotencyKey: string,
-  ): Promise<ApiResponse<SettleMainCityResponse>> {
-    return this.post<SettleMainCityResponse, SettleMainCityRequest>("/api/city/settle", body, {
-      idempotencyKey,
-    });
-  }
-
-  establishSubCity(
-    body: EstablishSubCityRequest,
-    idempotencyKey: string,
-  ): Promise<ApiResponse<EstablishSubCityResponse>> {
-    return this.post<EstablishSubCityResponse, EstablishSubCityRequest>("/api/city/subcity", body, {
-      idempotencyKey,
-    });
-  }
-
-  worldMarches(): Promise<ApiResponse<WorldMarchListResponse>> {
-    return this.get<WorldMarchListResponse>("/api/world/marches");
-  }
-
-  worldTerritory(): Promise<ApiResponse<TerritoryOverviewResponse>> {
-    return this.get<TerritoryOverviewResponse>("/api/world/territory");
-  }
-
-  startWorldMarch(
-    body: StartWorldMarchRequest,
-    idempotencyKey: string,
-  ): Promise<ApiResponse<StartWorldMarchResponse>> {
-    return this.post<StartWorldMarchResponse, StartWorldMarchRequest>("/api/world/march", body, {
-      idempotencyKey,
-    });
-  }
-
-  defendWorld(
-    body: DefendWorldRequest,
-    idempotencyKey: string,
-  ): Promise<ApiResponse<DefendWorldResponse>> {
-    return this.post<DefendWorldResponse, DefendWorldRequest>("/api/world/defend", body, {
-      idempotencyKey,
-    });
-  }
-
-  resolveWorldClearance(
-    body: ResolveWorldClearanceRequest,
-    idempotencyKey: string,
-  ): Promise<ApiResponse<ResolveWorldClearanceResponse>> {
-    return this.post<ResolveWorldClearanceResponse, ResolveWorldClearanceRequest>(
-      "/api/world/clear-wild/resolve",
-      body,
-      { idempotencyKey },
-    );
-  }
-
-  resolveWorldSiege(
-    body: SiegeWorldRequest,
-    idempotencyKey: string,
-  ): Promise<ApiResponse<SiegeWorldResponse>> {
-    return this.post<SiegeWorldResponse, SiegeWorldRequest>("/api/world/siege/resolve", body, {
-      idempotencyKey,
-    });
-  }
-
-  resolveWorldScout(
-    body: ScoutWorldRequest,
-    idempotencyKey: string,
-  ): Promise<ApiResponse<ScoutWorldResponse>> {
-    return this.post<ScoutWorldResponse, ScoutWorldRequest>("/api/world/scout/resolve", body, {
-      idempotencyKey,
-    });
-  }
-
-  resolveStrategicControl(
-    body: ResolveStrategicControlRequest,
-    idempotencyKey: string,
-  ): Promise<ApiResponse<ResolveStrategicControlResponse>> {
-    return this.post<ResolveStrategicControlResponse, ResolveStrategicControlRequest>(
-      "/api/world/strategic-control/resolve",
-      body,
-      { idempotencyKey },
-    );
-  }
-
-  sectRallies(): Promise<ApiResponse<SectRallyListResponse>> {
-    return this.get("/api/world/rallies");
-  }
-  createSectRally(
-    body: CreateSectRallyRequest,
-    idempotencyKey: string,
-  ): Promise<ApiResponse<SectRallyMutationResponse>> {
-    return this.post("/api/world/rallies", body, { idempotencyKey });
-  }
-  joinSectRally(
-    body: JoinSectRallyRequest,
-    idempotencyKey: string,
-  ): Promise<ApiResponse<SectRallyMutationResponse>> {
-    return this.post("/api/world/rallies/join", body, { idempotencyKey });
-  }
-  resolveSectRally(
-    body: ResolveSectRallyRequest,
-    idempotencyKey: string,
-  ): Promise<ApiResponse<SectRallyMutationResponse>> {
-    return this.post("/api/world/rallies/resolve", body, { idempotencyKey });
-  }
-
-  purchaseWorldBlock(
-    body: PurchaseWorldBlockRequest,
-    idempotencyKey: string,
-  ): Promise<ApiResponse<PurchaseWorldBlockResponse>> {
-    return this.post<PurchaseWorldBlockResponse, PurchaseWorldBlockRequest>(
-      "/api/world/blocks/purchase",
-      body,
-      { idempotencyKey },
-    );
   }
 
   battles(
@@ -861,33 +578,90 @@ export class GameClient {
     );
   }
 
-  alchemyRecipes(): Promise<ApiResponse<AlchemyRecipeListResponse>> {
-    return this.get<AlchemyRecipeListResponse>("/api/production/alchemy/recipes");
-  }
-
   alchemyRecords(): Promise<ApiResponse<AlchemyRecordListResponse>> {
     return this.get<AlchemyRecordListResponse>("/api/production/alchemy/records");
   }
 
   alchemyCraft(
-    body: AlchemyCraftRequest,
+    body: ProductionCraftRequest,
     idempotencyKey: string,
-  ): Promise<ApiResponse<AlchemyCraftResponse>> {
-    return this.post<AlchemyCraftResponse, AlchemyCraftRequest>(
+  ): Promise<ApiResponse<DiscoveredAlchemyCraftResponse>> {
+    return this.post<DiscoveredAlchemyCraftResponse, ProductionCraftRequest>(
       "/api/production/alchemy/craft",
       body,
       { idempotencyKey },
     );
   }
 
-  pillUse(body: PillUseRequest, idempotencyKey: string): Promise<ApiResponse<PillUseResponse>> {
-    return this.post<PillUseResponse, PillUseRequest>("/api/production/pills/use", body, {
+  pillUse(
+    body: PillUseRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<DiscoveredPillUseResponse>> {
+    return this.post<DiscoveredPillUseResponse, PillUseRequest>("/api/production/pills/use", body, {
       idempotencyKey,
     });
   }
 
-  forgeRecipes(): Promise<ApiResponse<ForgeRecipeListResponse>> {
-    return this.get<ForgeRecipeListResponse>("/api/production/forge/recipes");
+  productionMaterials(
+    kind?: ProductionFormulaKind,
+  ): Promise<ApiResponse<ProductionCraftMaterialListResponse>> {
+    const suffix = kind ? `?kind=${encodeURIComponent(kind)}` : "";
+    return this.get<ProductionCraftMaterialListResponse>(`/api/production/materials${suffix}`);
+  }
+
+  productionFormulas(
+    query: ProductionFormulaListQuery = {},
+  ): Promise<ApiResponse<ProductionFormulaListResponse>> {
+    const params = new URLSearchParams();
+    if (query.kind) params.set("kind", query.kind);
+    if (query.scope) params.set("scope", query.scope);
+    if (query.keyword) params.set("keyword", query.keyword);
+    const suffix = params.size ? `?${params.toString()}` : "";
+    return this.get<ProductionFormulaListResponse>(`/api/production/formulas${suffix}`);
+  }
+
+  saveProductionFormula(
+    body: SaveProductionFormulaRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<ProductionFormulaResponse>> {
+    return this.post<ProductionFormulaResponse, SaveProductionFormulaRequest>(
+      "/api/production/formulas",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  publishProductionFormula(
+    formulaId: string,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<ProductionFormulaResponse>> {
+    return this.post<ProductionFormulaResponse>(
+      `/api/production/formulas/${encodeURIComponent(formulaId)}/publish`,
+      {},
+      { idempotencyKey },
+    );
+  }
+
+  unpublishProductionFormula(
+    formulaId: string,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<ProductionFormulaResponse>> {
+    return this.post<ProductionFormulaResponse>(
+      `/api/production/formulas/${encodeURIComponent(formulaId)}/unpublish`,
+      {},
+      { idempotencyKey },
+    );
+  }
+
+  reuseProductionFormula(
+    formulaId: string,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<FormulaCraftResponse>> {
+    return this.post<FormulaCraftResponse>(
+      `/api/production/formulas/${encodeURIComponent(formulaId)}/craft`,
+      {},
+      { idempotencyKey },
+    );
   }
 
   equipmentList(): Promise<ApiResponse<EquipmentListResponse>> {
@@ -899,10 +673,10 @@ export class GameClient {
   }
 
   forgeCraft(
-    body: ForgeCraftRequest,
+    body: ProductionCraftRequest,
     idempotencyKey: string,
-  ): Promise<ApiResponse<EquipmentOperationResponse>> {
-    return this.post<EquipmentOperationResponse, ForgeCraftRequest>(
+  ): Promise<ApiResponse<DiscoveredForgeCraftResponse>> {
+    return this.post<DiscoveredForgeCraftResponse, ProductionCraftRequest>(
       "/api/production/forge/craft",
       body,
       { idempotencyKey },

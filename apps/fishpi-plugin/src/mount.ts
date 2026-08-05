@@ -3,6 +3,8 @@ import type {
   ApiResponse,
   PluginExpandedPanelResponse,
   PluginStatusCardResponse,
+  TextCommandLogEntry,
+  TextCommandLogTone,
 } from "@nextday/shared";
 
 const tokenStorageKey = "nextday_m1_token";
@@ -30,6 +32,21 @@ export function mountPluginCard(container: HTMLElement, options: PluginCardOptio
     <div class="nextday-card__panel" hidden>
       <div class="nextday-card__state" data-role="state">正在读取随身状态</div>
       <div class="nextday-card__body" data-role="body"></div>
+      <form class="nextday-card__command" data-role="command-form">
+        <input
+          aria-label="九州指令"
+          autocomplete="off"
+          data-role="command-input"
+          maxlength="120"
+          placeholder="输入指令，如：奇遇 事件ID 选项ID"
+          type="text"
+        />
+        <button data-action="command" type="submit">发送</button>
+      </form>
+      <div aria-live="polite" class="nextday-card__command-result" data-role="command-result" hidden>
+        <strong>九州传音</strong>
+        <p data-role="command-result-text"></p>
+      </div>
       <div class="nextday-card__actions">
         <button type="button" data-action="claim">一键领取</button>
         <button type="button" data-action="preset">预设提交</button>
@@ -44,6 +61,11 @@ export function mountPluginCard(container: HTMLElement, options: PluginCardOptio
   const panel = card.querySelector<HTMLElement>(".nextday-card__panel");
   const state = card.querySelector<HTMLElement>('[data-role="state"]');
   const body = card.querySelector<HTMLElement>('[data-role="body"]');
+  const commandForm = card.querySelector<HTMLFormElement>('[data-role="command-form"]');
+  const commandInput = card.querySelector<HTMLInputElement>('[data-role="command-input"]');
+  const commandButton = card.querySelector<HTMLButtonElement>('[data-action="command"]');
+  const commandResult = card.querySelector<HTMLElement>('[data-role="command-result"]');
+  const commandResultText = card.querySelector<HTMLElement>('[data-role="command-result-text"]');
   const claimButton = card.querySelector<HTMLButtonElement>('[data-action="claim"]');
   const presetButton = card.querySelector<HTMLButtonElement>('[data-action="preset"]');
   const webButton = card.querySelector<HTMLButtonElement>('[data-action="web"]');
@@ -87,6 +109,67 @@ export function mountPluginCard(container: HTMLElement, options: PluginCardOptio
   function updateState(text: string) {
     if (state) {
       state.textContent = text;
+    }
+  }
+
+  function showCommandResult(text: string, tone: TextCommandLogTone) {
+    if (commandResult) {
+      commandResult.hidden = false;
+      commandResult.dataset.tone = tone;
+    }
+    if (commandResultText) {
+      commandResultText.textContent = text;
+    }
+  }
+
+  async function submitCommand() {
+    const input = commandInput;
+    if (!input) {
+      return;
+    }
+
+    const command = input.value.trim();
+    if (!command) {
+      showCommandResult("请输入指令，例如：奇遇 <事件ID> <选项ID>。", "error");
+      input.focus();
+      return;
+    }
+
+    const token = getToken();
+    if (!token) {
+      showCommandResult("请先打开 Web 登录。", "error");
+      return;
+    }
+
+    if (commandButton) {
+      commandButton.disabled = true;
+    }
+    if (input) {
+      input.disabled = true;
+    }
+
+    try {
+      const response = await createClient(token).executeCommand(
+        { command },
+        createIdempotencyKey("fishpi_command"),
+      );
+      ensureOk(response);
+      const result = mergeCommandEntries(response.data.entries);
+      showCommandResult(result.text, result.tone);
+      input.value = "";
+      await loadStatus();
+      if (!panel?.hidden) {
+        await loadPanel();
+      }
+    } catch (error) {
+      showCommandResult(error instanceof Error ? error.message : "指令提交失败", "error");
+    } finally {
+      if (commandButton) {
+        commandButton.disabled = false;
+      }
+      if (input) {
+        input.disabled = false;
+      }
     }
   }
 
@@ -152,6 +235,11 @@ export function mountPluginCard(container: HTMLElement, options: PluginCardOptio
     } finally {
       presetButton.disabled = false;
     }
+  });
+
+  commandForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void submitCommand();
   });
 
   webButton?.addEventListener("click", options.openWeb);
@@ -298,6 +386,30 @@ function ensureOk<TData>(response: ApiResponse<TData>) {
   }
 }
 
+function mergeCommandEntries(entries: TextCommandLogEntry[]): {
+  text: string;
+  tone: TextCommandLogTone;
+} {
+  const messages = entries.map((entry) => entry.text.trim()).filter(Boolean);
+  const tone = entries.reduce<TextCommandLogTone>(
+    (currentTone, entry) =>
+      commandTonePriority[entry.tone] > commandTonePriority[currentTone] ? entry.tone : currentTone,
+    "info",
+  );
+
+  return {
+    text: messages.length ? messages.join("\n") : "指令已完成。",
+    tone,
+  };
+}
+
+const commandTonePriority: Record<TextCommandLogTone, number> = {
+  info: 0,
+  success: 1,
+  warning: 2,
+  error: 3,
+};
+
 function createIdempotencyKey(prefix: string): string {
   const id = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2, 12);
   return `${prefix}_${Date.now()}_${id}`;
@@ -422,6 +534,62 @@ function injectStyles(documentRef: Document) {
       font-size: 12px;
       line-height: 1.5;
       margin: 0;
+    }
+
+    .nextday-card__command {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .nextday-card__command input {
+      border: 1px solid #b9cbc5;
+      border-radius: 6px;
+      font: inherit;
+      min-width: 0;
+      padding: 8px;
+    }
+
+    .nextday-card__command button {
+      background: #2f6f73;
+      border: 0;
+      border-radius: 6px;
+      color: #ffffff;
+      cursor: pointer;
+      min-width: 52px;
+    }
+
+    .nextday-card__command button:disabled,
+    .nextday-card__actions button:disabled {
+      cursor: wait;
+      opacity: 0.65;
+    }
+
+    .nextday-card__command-result {
+      background: #eef5f2;
+      border-radius: 6px;
+      color: #244a4d;
+      display: grid;
+      font-size: 12px;
+      gap: 4px;
+      line-height: 1.5;
+      padding: 8px;
+    }
+
+    .nextday-card__command-result[data-tone="warning"] {
+      background: #fff5df;
+      color: #745418;
+    }
+
+    .nextday-card__command-result[data-tone="error"] {
+      background: #fff0ee;
+      color: #9b3427;
+    }
+
+    .nextday-card__command-result p {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
     }
 
     .nextday-card__actions {

@@ -19,6 +19,14 @@ import {
   useState,
 } from "react";
 import {
+  type PendingExploreEvent,
+  buildExploreEventCommand,
+  exploreEventIdFromCommandState,
+  mergePendingExploreEvents,
+  pendingExploreEventsFromCommandState,
+  pendingExploreEventsFromValues,
+} from "./explore-event-actions";
+import {
   createExploreCompletionNotice,
   createExploreEventNotice,
   getExplorePollDelay,
@@ -114,6 +122,8 @@ export default function HomePage() {
   const [command, setCommand] = useState("");
   const [commandHistory, setCommandHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [pendingExploreEvents, setPendingExploreEvents] = useState<PendingExploreEvent[]>([]);
+  const [resolvingExploreEventId, setResolvingExploreEventId] = useState<string | null>(null);
   const [terminalEntries, setTerminalEntries] = useState<TerminalEntry[]>([
     {
       id: "welcome",
@@ -127,6 +137,7 @@ export default function HomePage() {
   const notificationSessionKeyRef = useRef<string | null>(null);
   const notifiedExploreRecordIdsRef = useRef(new Set<string>());
   const notifiedExploreEventIdsRef = useRef(new Set<string>());
+  const resolvingExploreEventIdsRef = useRef(new Set<string>());
 
   const activeProfile = overview?.profile ?? profile;
   const player = activeProfile?.player ?? login?.player ?? null;
@@ -305,6 +316,9 @@ export default function HomePage() {
       notificationSessionKeyRef.current = sessionKey;
       notifiedExploreRecordIdsRef.current.clear();
       notifiedExploreEventIdsRef.current.clear();
+      resolvingExploreEventIdsRef.current.clear();
+      setPendingExploreEvents([]);
+      setResolvingExploreEventId(null);
     }
 
     const client = createClient(token);
@@ -367,6 +381,7 @@ export default function HomePage() {
         if (eventsResult.status === "fulfilled") {
           try {
             const { events } = readResponse(eventsResult.value);
+            setPendingExploreEvents(pendingExploreEventsFromValues(events));
             for (const event of events) {
               const notice = createExploreEventNotice(event);
               if (!notice || notifiedExploreEventIdsRef.current.has(event.event_id)) {
@@ -551,7 +566,21 @@ export default function HomePage() {
       );
       applyCommandState(data.state, { setOverview, setProfile, setScrolls });
       if (data.command_id === "explore_claim" || data.command_id === "explore_events") {
+        const pendingEvents = pendingExploreEventsFromCommandState(data.state);
+        if (data.command_id === "explore_events") {
+          setPendingExploreEvents(pendingEvents);
+        } else if (pendingEvents.length > 0) {
+          setPendingExploreEvents((current) => mergePendingExploreEvents(current, pendingEvents));
+        }
         markDeliveredExploreEvents(data.state, notifiedExploreEventIdsRef.current);
+      }
+      if (data.command_id === "explore_event_resolve") {
+        const eventId = exploreEventIdFromCommandState(data.state);
+        if (eventId) {
+          setPendingExploreEvents((current) =>
+            current.filter((event) => event.eventId !== eventId),
+          );
+        }
       }
 
       await refreshDashboard(token, true).catch(() => undefined);
@@ -564,6 +593,21 @@ export default function HomePage() {
       setMessage("指令执行失败");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleExploreEventChoice(eventId: string, choiceId: string) {
+    if (busy || hydrating || resolvingExploreEventIdsRef.current.has(eventId)) {
+      return;
+    }
+
+    resolvingExploreEventIdsRef.current.add(eventId);
+    setResolvingExploreEventId(eventId);
+    try {
+      await executeCommand(buildExploreEventCommand(eventId, choiceId));
+    } finally {
+      resolvingExploreEventIdsRef.current.delete(eventId);
+      setResolvingExploreEventId((current) => (current === eventId ? null : current));
     }
   }
 
@@ -602,6 +646,12 @@ export default function HomePage() {
     setProfile(null);
     setOverview(null);
     setScrolls(null);
+    setPendingExploreEvents([]);
+    setResolvingExploreEventId(null);
+    notificationSessionKeyRef.current = null;
+    notifiedExploreRecordIdsRef.current.clear();
+    notifiedExploreEventIdsRef.current.clear();
+    resolvingExploreEventIdsRef.current.clear();
     setSessionError(null);
     setMessage("已离开本次行旅");
     appendTerminalEntries([terminalEntry("system", "九州传音", ["行旅凭证已从本机移除。"])]);
@@ -727,6 +777,57 @@ export default function HomePage() {
                 ))}
                 <div ref={terminalEndRef} />
               </div>
+              {pendingExploreEvents.length > 0 ? (
+                <section
+                  className="explore-event-actions"
+                  aria-label="待选择探索奇遇"
+                  aria-live="polite"
+                >
+                  <div className="explore-event-actions-heading">
+                    <p className="console-eyebrow">探索奇遇</p>
+                    <h3>机缘已至，请择其一</h3>
+                  </div>
+                  <div className="explore-event-card-list">
+                    {pendingExploreEvents.map((event) => (
+                      <article className="explore-event-card" key={event.eventId}>
+                        <div className="explore-event-copy">
+                          <strong>{event.title}</strong>
+                          {event.description ? <p>{event.description}</p> : null}
+                        </div>
+                        <div className="explore-event-choice-list">
+                          {event.choices.map((choice) => {
+                            const selectionCommand = buildExploreEventCommand(
+                              event.eventId,
+                              choice.choiceId,
+                            );
+                            const isResolving = resolvingExploreEventId === event.eventId;
+                            return (
+                              <button
+                                aria-label={`选择奇遇“${event.title}”的“${choice.label}”`}
+                                className="explore-event-choice"
+                                disabled={busy || hydrating || isResolving}
+                                key={choice.choiceId}
+                                onClick={() =>
+                                  void handleExploreEventChoice(event.eventId, choice.choiceId)
+                                }
+                                title={`执行：${selectionCommand}`}
+                                type="button"
+                              >
+                                <strong>{choice.label}</strong>
+                                {choice.description ? <span>{choice.description}</span> : null}
+                                {choice.rewardPreview ? (
+                                  <small>奖励预览：{choice.rewardPreview}</small>
+                                ) : null}
+                                <em>{isResolving ? "择取中…" : "选择此项"}</em>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
               <form className="command-form" onSubmit={handleCommandSubmit}>
                 <label className="command-input-wrap">
                   <span aria-hidden="true">&gt;</span>

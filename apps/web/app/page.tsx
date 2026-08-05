@@ -18,10 +18,10 @@ import {
   useRef,
   useState,
 } from "react";
+import { type TerminalTone, mergeCommandEntries } from "./terminal-message-batch";
 
 type HealthText = "检测中" | "正常" | "不可用";
 type RouteValue = "qi" | "body";
-type TerminalTone = "system" | "command" | "success" | "warning" | "error";
 
 interface CommandHelpItem {
   aliases: string[];
@@ -827,30 +827,8 @@ function normalizeHelpItem(value: unknown): CommandHelpItem | null {
 }
 
 function normalizeCommandEntries(entries: unknown[]): TerminalEntry[] {
-  return entries.flatMap((entry, index) => {
-    if (typeof entry === "string") {
-      return [terminalEntry("success", "九州传音", [entry])];
-    }
-    const record = asRecord(entry);
-    if (!record) {
-      return [];
-    }
-    const lines = uniqueText([
-      ...textList(record.lines ?? record.messages ?? record.details),
-      pickText(record.message, record.summary, record.content, record.text, record.description),
-    ]);
-    if (lines.length === 0) {
-      return [];
-    }
-    return [
-      {
-        id: `result_${Date.now()}_${index}_${randomId()}`,
-        title: pickText(record.title, record.label, record.type) || "九州传音",
-        lines,
-        tone: normalizeTone(pickText(record.tone, record.level, record.status, record.type)),
-      },
-    ];
-  });
+  const batch = mergeCommandEntries(entries);
+  return batch ? [terminalEntry(batch.tone, "九州传音", batch.lines)] : [];
 }
 
 function normalizeSuggestions(value: unknown[] | undefined): string[] {
@@ -879,27 +857,6 @@ function terminalEntry(tone: TerminalTone, title: string, lines: string[]): Term
     title,
     tone,
   };
-}
-
-function normalizeTone(value: string): TerminalTone {
-  const normalized = value.toLowerCase();
-  if (
-    normalized.includes("error") ||
-    normalized.includes("fail") ||
-    normalized.includes("danger")
-  ) {
-    return "error";
-  }
-  if (normalized.includes("warn") || normalized.includes("pending")) {
-    return "warning";
-  }
-  if (normalized.includes("command")) {
-    return "command";
-  }
-  if (normalized.includes("system") || normalized.includes("info")) {
-    return "system";
-  }
-  return "success";
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

@@ -1129,7 +1129,15 @@ export default function HomePage() {
                   <button
                     disabled={busy || hydrating}
                     key={item.command}
-                    onClick={() => void executeCommand(item.command)}
+                    onClick={() => {
+                      if (item.command === "探索") {
+                        setCommand("探索");
+                        setHistoryIndex(-1);
+                        commandInputRef.current?.focus();
+                        return;
+                      }
+                      void executeCommand(item.command);
+                    }}
                     type="button"
                   >
                     {item.label}
@@ -1263,7 +1271,10 @@ export default function HomePage() {
                               disabled={busy || hydrating}
                               onClick={() => {
                                 setActiveOverlay(null);
-                                void executeCommand(`服丹 ${item.name}`);
+                                void executeCommand(`服丹 ${item.item_instance_id}`, {
+                                  displayCommand: `服丹 ${item.name}`,
+                                  saveToHistory: false,
+                                });
                               }}
                               type="button"
                             >

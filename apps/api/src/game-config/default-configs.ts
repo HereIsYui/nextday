@@ -333,7 +333,7 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
   },
   bag: {
     config_type: "bag",
-    config_version: "bag_m3_v1",
+    config_version: "bag_m3_v2",
     ruleset_version: "ruleset_m3_v1",
     reward_config_version: "reward_m3_v1",
     payload: {

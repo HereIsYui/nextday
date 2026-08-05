@@ -311,14 +311,14 @@ export class GameCommandService {
     idempotencyKey: string;
   }): Promise<TextCommandResponse> {
     const parsed = parseCommand(input.body);
-    if (parsed.commandId === "invalid") {
-      if (isBareExploreCommand(input.body.command)) {
-        return this.exploreProvinceHint(input.accountId, parsed.message);
-      }
-      return this.failure("invalid", parsed.message);
-    }
-
     try {
+      if (parsed.commandId === "invalid") {
+        if (isBareExploreCommand(input.body?.command)) {
+          return await this.exploreProvinceHint(input.accountId, parsed.message);
+        }
+        return this.failure("invalid", parsed.message);
+      }
+
       switch (parsed.commandId) {
         case "help":
           return this.withSuggestions("help", buildHelpEntries());
@@ -379,11 +379,9 @@ export class GameCommandService {
       }
     } catch (error) {
       if (error instanceof HttpException) {
-        return this.failure(
-          parsed.commandId,
-          getExceptionMessage(error),
-          suggestionsFor(parsed.commandId),
-        );
+        const suggestions =
+          parsed.commandId === "invalid" ? defaultSuggestions : suggestionsFor(parsed.commandId);
+        return this.failure(parsed.commandId, getExceptionMessage(error), suggestions);
       }
 
       throw error;

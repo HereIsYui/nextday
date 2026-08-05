@@ -1,3 +1,4 @@
+import { BadRequestException } from "@nestjs/common";
 import { describe, expect, it, vi } from "vitest";
 import type { MultiplayerService } from "../multiplayer/multiplayer.service";
 import type { ProductionService } from "../production/production.service";
@@ -168,6 +169,22 @@ describe("文字命令服务", () => {
     expect(response.entries[0]?.text).toContain("当前可选州域：冀州");
   });
 
+  it("裸探索的州域查询失败时仍返回文字指令响应", async () => {
+    const gameService = {
+      getProvinces: vi.fn().mockRejectedValue(new BadRequestException("请先创建角色。")),
+    };
+    const service = createService({ gameService });
+
+    const response = await service.execute({
+      accountId: "account_test",
+      body: { command: "探索" },
+      idempotencyKey: "idem_invalid_explore",
+    });
+
+    expect(response.command_id).toBe("invalid");
+    expect(response.entries[0]?.text).toContain("请先创建角色");
+  });
+
   it("背包指令会返回物品用途，且可按名称筛选", async () => {
     const productionService = {
       getBagItems: vi.fn().mockResolvedValue({
@@ -245,6 +262,63 @@ describe("文字命令服务", () => {
       accountId: "account_test",
       body: { item_instance_id: "item_pill_test" },
       idempotencyKey: "idem_pill_name",
+    });
+  });
+
+  it("服丹可按实例ID精确选择同名不同品质的丹药", async () => {
+    const productionService = {
+      getBagItems: vi.fn().mockResolvedValue({
+        items: [
+          {
+            bind_type: "bound",
+            category: "pill",
+            count: "1",
+            expired: false,
+            expire_at: null,
+            item_id: "pill_nourishing_essence",
+            item_instance_id: "item_pill_low",
+            locked: false,
+            name: "蕴灵丹",
+            quality: "low",
+            source_type: "alchemy",
+            tradeable: false,
+            usage_hint: "可直接服用，获得修为。",
+          },
+          {
+            bind_type: "bound",
+            category: "pill",
+            count: "1",
+            expired: false,
+            expire_at: null,
+            item_id: "pill_nourishing_essence",
+            item_instance_id: "item_pill_flawless",
+            locked: false,
+            name: "蕴灵丹",
+            quality: "flawless",
+            source_type: "alchemy",
+            tradeable: false,
+            usage_hint: "可直接服用，获得修为。",
+          },
+        ],
+      }),
+      usePill: vi.fn().mockResolvedValue({
+        after_cultivation: "300",
+        before_cultivation: "0",
+        effect_note: "药力化为 300 点修为。",
+      }),
+    };
+    const service = createService({ productionService });
+
+    await service.execute({
+      accountId: "account_test",
+      body: { command: "服丹 item_pill_flawless" },
+      idempotencyKey: "idem_pill_instance",
+    });
+
+    expect(productionService.usePill).toHaveBeenCalledWith({
+      accountId: "account_test",
+      body: { item_instance_id: "item_pill_flawless" },
+      idempotencyKey: "idem_pill_instance",
     });
   });
 

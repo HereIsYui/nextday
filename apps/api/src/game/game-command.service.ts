@@ -1665,7 +1665,7 @@ function towerActionLabel(actionType: TowerActionType): string {
 function formatRewards(rewards: {
   cultivation?: string;
   spirit_stone?: string;
-  items?: Array<{ name: string; count: number }>;
+  items?: Array<{ item_id?: string; name: string; count: number }>;
 }): string {
   const parts: string[] = [];
   if (rewards.cultivation && rewards.cultivation !== "0") {
@@ -1674,11 +1674,23 @@ function formatRewards(rewards: {
   if (rewards.spirit_stone && rewards.spirit_stone !== "0") {
     parts.push(`灵石 +${rewards.spirit_stone}`);
   }
+
+  const mergedItems = new Map<string, { name: string; count: number }>();
   for (const item of rewards.items ?? []) {
     if (item.count > 0) {
-      parts.push(`${item.name} ×${item.count}`);
+      const key = item.item_id ?? item.name;
+      const current = mergedItems.get(key);
+      if (current) {
+        current.count += item.count;
+      } else {
+        mergedItems.set(key, { name: item.name, count: item.count });
+      }
     }
   }
+  for (const item of mergedItems.values()) {
+    parts.push(`${item.name} ×${item.count}`);
+  }
+
   return parts.length ? `获得：${parts.join("、")}。` : "未获得额外奖励。";
 }
 

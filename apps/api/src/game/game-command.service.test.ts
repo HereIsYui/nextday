@@ -120,6 +120,36 @@ describe("文字命令服务", () => {
     });
   });
 
+  it("领取探索会合并显示重复材料", async () => {
+    const gameService = {
+      claimExplore: vi.fn().mockResolvedValue({
+        battles: [{ result: "win" }, { result: "win" }, { result: "lose" }],
+        count: 3,
+        province_name: "冀州",
+        rewards: {
+          cultivation: "200",
+          items: [
+            { item_id: "herb_dew", name: "凝露草", count: 1 },
+            { item_id: "iron_sand", name: "玄铁砂", count: 2 },
+            { item_id: "herb_dew", name: "凝露草", count: 3 },
+          ],
+          spirit_stone: "175",
+        },
+      }),
+    };
+    const service = createService({ gameService });
+
+    const response = await service.execute({
+      accountId: "account_test",
+      body: { command: "领取探索" },
+      idempotencyKey: "idem_explore_claim_merged_items",
+    });
+
+    expect(response.entries.map((entry) => entry.text)).toEqual([
+      "探索结算完成：冀州共 3 战，胜 2 场。获得：修为 +200、灵石 +175、凝露草 ×4、玄铁砂 ×2。",
+    ]);
+  });
+
   it("单条待选奇遇可省略过长的事件ID", async () => {
     const gameService = {
       getExploreEvents: vi.fn().mockResolvedValue({

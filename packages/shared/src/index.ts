@@ -1025,6 +1025,7 @@ export interface BagItemState {
   item_instance_id: string;
   item_id: string;
   name: string;
+  usage_hint: string;
   category: ItemCategory;
   count: string;
   quality?: PillQuality | null;
@@ -2738,6 +2739,7 @@ export type TextCommandId =
   | "invalid"
   | "help"
   | "status"
+  | "bag"
   | "cultivation_claim"
   | "breakthrough"
   | "explore"
@@ -2798,6 +2800,7 @@ export type TextCommandRefreshTarget =
 
 export type TextCommandResult =
   | GameOverviewResponse
+  | BagSummaryResponse
   | CultivationClaimResponse
   | BreakthroughResponse
   | ExploreResponse

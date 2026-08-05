@@ -150,7 +150,12 @@ describe("文字命令服务", () => {
   });
 
   it("对含糊探索输入返回中文用法", async () => {
-    const service = createService();
+    const gameService = {
+      getProvinces: vi.fn().mockResolvedValue({
+        provinces: [{ name: "冀州", unlocked: true }],
+      }),
+    };
+    const service = createService({ gameService });
 
     const response = await service.execute({
       accountId: "account_test",
@@ -160,6 +165,87 @@ describe("文字命令服务", () => {
 
     expect(response.command_id).toBe("invalid");
     expect(response.entries[0]?.text).toContain("用法：探索 <州域> [次数]");
+    expect(response.entries[0]?.text).toContain("当前可选州域：冀州");
+  });
+
+  it("背包指令会返回物品用途，且可按名称筛选", async () => {
+    const productionService = {
+      getBagItems: vi.fn().mockResolvedValue({
+        items: [
+          {
+            bind_type: "bound",
+            category: "pill",
+            count: "2",
+            expired: false,
+            expire_at: null,
+            item_id: "pill_nourishing_essence",
+            item_instance_id: "item_pill_test",
+            locked: false,
+            name: "蕴灵丹",
+            quality: "middle",
+            source_type: "alchemy",
+            tradeable: false,
+            usage_hint: "可直接服用，获得修为。",
+          },
+        ],
+      }),
+    };
+    const service = createService({ productionService });
+
+    const response = await service.execute({
+      accountId: "account_test",
+      body: { command: "背包 蕴灵丹" },
+      idempotencyKey: "idem_bag",
+    });
+
+    expect(response.command_id).toBe("bag");
+    expect(response.entries.map((entry) => entry.text).join("\n")).toContain(
+      "可直接服用，获得修为",
+    );
+    expect(productionService.getBagItems).toHaveBeenCalledWith("account_test");
+  });
+
+  it("服丹支持丹药名称，不要求输入实例ID", async () => {
+    const productionService = {
+      getBagItems: vi.fn().mockResolvedValue({
+        items: [
+          {
+            bind_type: "bound",
+            category: "pill",
+            count: "1",
+            expired: false,
+            expire_at: null,
+            item_id: "pill_nourishing_essence",
+            item_instance_id: "item_pill_test",
+            locked: false,
+            name: "蕴灵丹",
+            quality: "middle",
+            source_type: "alchemy",
+            tradeable: false,
+            usage_hint: "可直接服用，获得修为。",
+          },
+        ],
+      }),
+      usePill: vi.fn().mockResolvedValue({
+        after_cultivation: "120",
+        before_cultivation: "0",
+        effect_note: "药力化为 120 点修为。",
+      }),
+    };
+    const service = createService({ productionService });
+
+    const response = await service.execute({
+      accountId: "account_test",
+      body: { command: "服丹 蕴灵丹" },
+      idempotencyKey: "idem_pill_name",
+    });
+
+    expect(response.command_id).toBe("pill_use");
+    expect(productionService.usePill).toHaveBeenCalledWith({
+      accountId: "account_test",
+      body: { item_instance_id: "item_pill_test" },
+      idempotencyKey: "idem_pill_name",
+    });
   });
 
   it("九塔中文行动别名会调用既有幂等结算", async () => {

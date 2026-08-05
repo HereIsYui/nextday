@@ -1,5 +1,7 @@
 import { HttpException, Inject, Injectable } from "@nestjs/common";
 import type {
+  BagItemState,
+  BagSummaryResponse,
   ExploreEventState,
   FormulaCraftResponse,
   ProductionFormulaKind,
@@ -27,6 +29,7 @@ import { GameService } from "./game.service";
 type ParsedCommand =
   | { commandId: "help" }
   | { commandId: "status" }
+  | { commandId: "bag"; selector?: string }
   | { commandId: "cultivation_claim" }
   | { commandId: "breakthrough" }
   | { commandId: "explore"; province: string; count: number }
@@ -40,7 +43,7 @@ type ParsedCommand =
   | { commandId: "craft_materials"; kind: ProductionFormulaKind }
   | { commandId: "alchemy_craft"; materialSpecs: string[] }
   | { commandId: "forge_craft"; materialSpecs: string[] }
-  | { commandId: "pill_use"; itemInstanceId: string }
+  | { commandId: "pill_use"; pillSelector: string }
   | {
       commandId: "formula_list";
       kind?: ProductionFormulaKind;
@@ -84,6 +87,12 @@ const commandHelpGroups: TextCommandHelpGroup[] = [
         syntax: "状态",
         aliases: ["人物", "面板", "status"],
         description: "查看角色、修为、行动令、洞府与任务概况。",
+      },
+      {
+        command_id: "bag",
+        syntax: "背包 [物品名或ID]",
+        aliases: ["纳物囊", "包裹", "bag"],
+        description: "查看背包及物品用途；指定物品可查看单项说明。",
       },
     ],
   },
@@ -183,9 +192,9 @@ const commandHelpGroups: TextCommandHelpGroup[] = [
       },
       {
         command_id: "pill_use",
-        syntax: "服丹 <丹药实例ID>",
+        syntax: "服丹 <丹药名或ID>",
         aliases: [],
-        description: "服用背包中的一枚丹药。",
+        description: "按丹药名称或实例ID服用背包中的一枚丹药。",
       },
       {
         command_id: "formula_list",
@@ -265,6 +274,7 @@ const commandHelpGroups: TextCommandHelpGroup[] = [
 
 const defaultSuggestions: TextCommandSuggestion[] = [
   { label: "查看状态", command: "状态" },
+  { label: "查看背包", command: "背包" },
   { label: "收束修为", command: "修炼" },
   { label: "探索冀州", command: "探索 冀州 1" },
   { label: "查看任务", command: "任务" },
@@ -302,6 +312,9 @@ export class GameCommandService {
   }): Promise<TextCommandResponse> {
     const parsed = parseCommand(input.body);
     if (parsed.commandId === "invalid") {
+      if (isBareExploreCommand(input.body.command)) {
+        return this.exploreProvinceHint(input.accountId, parsed.message);
+      }
       return this.failure("invalid", parsed.message);
     }
 
@@ -311,6 +324,8 @@ export class GameCommandService {
           return this.withSuggestions("help", buildHelpEntries());
         case "status":
           return this.status(input.accountId);
+        case "bag":
+          return this.bag(input.accountId, parsed.selector);
         case "cultivation_claim":
           return this.claimCultivation(input);
         case "breakthrough":
@@ -338,7 +353,7 @@ export class GameCommandService {
         case "forge_craft":
           return this.craftForge(input, parsed.materialSpecs);
         case "pill_use":
-          return this.usePill(input, parsed.itemInstanceId);
+          return this.usePill(input, parsed.pillSelector);
         case "formula_list":
           return this.formulaList(input.accountId, parsed.scope, parsed.kind, parsed.keyword);
         case "formula_save":
@@ -421,9 +436,73 @@ export class GameCommandService {
         ...(cultivation?.can_breakthrough
           ? [{ label: "尝试突破", command: "突破" }]
           : [{ label: "收束修为", command: "修炼" }]),
+        { label: "查看背包", command: "背包" },
         { label: "探索冀州", command: "探索 冀州 1" },
         { label: "查看任务", command: "任务" },
       ],
+    );
+  }
+
+  private async bag(accountId: string, selector: string | undefined): Promise<TextCommandResponse> {
+    const result = await this.productionService.getBagItems(accountId);
+    const matchedItems = selector
+      ? result.items.filter((item) => matchesBagItem(item, selector))
+      : result.items;
+
+    if (matchedItems.length === 0) {
+      return this.failure(
+        "bag",
+        selector
+          ? `背包中未找到“${selector}”。可输入“背包”查看当前持有物品。`
+          : "背包暂为空。完成探索、洞府收取或炼制后会获得物品。",
+        [{ label: "前往探索", command: "探索 冀州 1" }],
+      );
+    }
+
+    const items = summarizeBagItems(matchedItems);
+    const firstPill = items.find(
+      (item) => item.category === "pill" && !item.expired && !item.locked,
+    );
+    const entries: LogInput[] = [
+      {
+        tone: "info",
+        text: selector
+          ? `“${selector}”的用途如下：`
+          : `背包中共有 ${items.length} 类物品。输入“背包 <物品名>”可查看单项说明。`,
+      },
+      ...items.map((item) => ({
+        tone: item.expired ? ("warning" as const) : ("info" as const),
+        text: `${item.name}${formatPillQuality(item.quality)} ×${item.count}${item.expired ? "（已过期）" : ""}：${item.usage_hint}`,
+      })),
+    ];
+
+    return this.success(
+      "bag",
+      entries,
+      result,
+      ["bag"],
+      firstPill
+        ? [{ label: `服用${firstPill.name}`, command: `服丹 ${firstPill.name}` }]
+        : [{ label: "查看状态", command: "状态" }],
+    );
+  }
+
+  private async exploreProvinceHint(
+    accountId: string,
+    baseMessage: string,
+  ): Promise<TextCommandResponse> {
+    const { provinces } = await this.gameService.getProvinces(accountId);
+    const unlockedProvinces = provinces.filter((province) => province.unlocked);
+    const provinceNames = unlockedProvinces.map((province) => province.name);
+    return this.failure(
+      "invalid",
+      provinceNames.length > 0
+        ? `${baseMessage} 当前可选州域：${provinceNames.join("、")}。`
+        : baseMessage,
+      unlockedProvinces.map((province) => ({
+        label: `探索${province.name}`,
+        command: `探索 ${province.name} 1`,
+      })),
     );
   }
 
@@ -527,7 +606,10 @@ export class GameCommandService {
         ? [
             {
               label: "处理首个奇遇",
-              command: `奇遇 ${result.events[0].event_id} ${result.events[0].choices[0].choice_id}`,
+              command:
+                result.events.length === 1
+                  ? `奇遇 ${result.events[0].choices[0].choice_id}`
+                  : `奇遇 ${result.events[0].event_id} ${result.events[0].choices[0].choice_id}`,
             },
           ]
         : [{ label: "继续探索", command: "探索 冀州 1" }],
@@ -776,11 +858,27 @@ export class GameCommandService {
 
   private async usePill(
     input: { accountId: string; idempotencyKey: string },
-    itemInstanceId: string,
+    pillSelector: string,
   ): Promise<TextCommandResponse> {
+    const bag = await this.productionService.getBagItems(input.accountId);
+    const pill = bag.items.find(
+      (item) =>
+        item.category === "pill" &&
+        !item.expired &&
+        !item.locked &&
+        matchesBagItem(item, pillSelector),
+    );
+    if (!pill) {
+      return this.failure(
+        "pill_use",
+        `背包中未找到可服用的丹药“${pillSelector}”。可输入“背包”查看丹药名称。`,
+        [{ label: "查看背包", command: "背包" }],
+      );
+    }
+
     const result = await this.productionService.usePill({
       accountId: input.accountId,
-      body: { item_instance_id: itemInstanceId },
+      body: { item_instance_id: pill.item_instance_id },
       idempotencyKey: input.idempotencyKey,
     });
     return this.success(
@@ -793,7 +891,7 @@ export class GameCommandService {
       ],
       result,
       ["overview", "bag"],
-      [{ label: "查看状态", command: "状态" }],
+      [{ label: "查看背包", command: "背包" }],
     );
   }
 
@@ -1142,6 +1240,12 @@ function parseCommand(input: TextCommandRequest): ParsedCommand | InvalidCommand
   if (["状态", "人物", "面板", "status"].includes(command)) {
     return noArguments("status", args, "状态");
   }
+  if (["背包", "纳物囊", "包裹", "bag"].includes(command)) {
+    if (args.length > 1) {
+      return invalid("背包指令最多接受一个物品名或ID。用法：背包 [物品名或ID]。");
+    }
+    return { commandId: "bag", ...(args[0] ? { selector: args[0] } : {}) };
+  }
   if (["修炼", "吐纳", "收功"].includes(command)) {
     return noArguments("cultivation_claim", args, "修炼");
   }
@@ -1227,9 +1331,9 @@ function parseCommand(input: TextCommandRequest): ParsedCommand | InvalidCommand
   }
   if (["服丹", "服药", "usepill"].includes(command)) {
     if (args.length !== 1) {
-      return invalid("请提供丹药实例ID。用法：服丹 <丹药实例ID>。");
+      return invalid("请提供丹药名或实例ID。用法：服丹 <丹药名或ID>，例如：服丹 蕴灵丹。");
     }
-    return { commandId: "pill_use", itemInstanceId: args[0] };
+    return { commandId: "pill_use", pillSelector: args[0] };
   }
   if (["单方", "单方列表", "formula", "formulas"].includes(command)) {
     return parseFormulaList(args);
@@ -1320,6 +1424,11 @@ function parseCommand(input: TextCommandRequest): ParsedCommand | InvalidCommand
   }
 
   return invalid(`未识别指令“${tokens[0]}”。可输入“帮助”查看可用指令。`);
+}
+
+function isBareExploreCommand(value: string | undefined): boolean {
+  const normalized = normalizeToken((value ?? "").replace(/^\//, ""));
+  return ["探索", "游历", "explore"].includes(normalized);
 }
 
 function parseFormulaList(args: string[]): ParsedCommand | InvalidCommand {
@@ -1495,6 +1604,43 @@ function findScroll(result: StoryScrollListResponse, selector: string) {
 
 function normalizeToken(value: string): string {
   return value.trim().toLocaleLowerCase("en-US");
+}
+
+function matchesBagItem(item: BagItemState, selector: string): boolean {
+  const normalizedSelector = normalizeToken(selector);
+  return [item.item_instance_id, item.item_id, item.name].some(
+    (candidate) => normalizeToken(candidate) === normalizedSelector,
+  );
+}
+
+function summarizeBagItems(items: BagItemState[]): BagItemState[] {
+  const grouped = new Map<string, BagItemState>();
+  for (const item of items) {
+    const key = [item.item_id, item.quality ?? "", item.bind_type, item.locked, item.expired].join(
+      ":",
+    );
+    const existing = grouped.get(key);
+    if (!existing) {
+      grouped.set(key, { ...item });
+      continue;
+    }
+    existing.count = (BigInt(existing.count) + BigInt(item.count)).toString();
+  }
+  return [...grouped.values()];
+}
+
+function formatPillQuality(quality: BagItemState["quality"]): string {
+  if (!quality) {
+    return "";
+  }
+  const labels = {
+    low: "下品",
+    middle: "中品",
+    high: "上品",
+    best: "极品",
+    flawless: "无瑕",
+  } satisfies Record<NonNullable<BagItemState["quality"]>, string>;
+  return `（${labels[quality]}）`;
 }
 
 function taskStatusLabel(status: TaskSummaryResponse["tasks"][number]["status"]): string {

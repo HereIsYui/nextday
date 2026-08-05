@@ -3,11 +3,14 @@
 import { GameClient } from "@nextday/game-client";
 import type {
   ApiResponse,
+  BagItemState,
+  BagSummaryResponse,
   ExploreResponse,
   GameOverviewResponse,
   HealthStatus,
   LoginResponse,
   PlayerProfileResponse,
+  ProvinceSummary,
   StoryScrollListResponse,
 } from "@nextday/shared";
 import {
@@ -43,7 +46,17 @@ import {
 
 type HealthText = "检测中" | "正常" | "不可用";
 type RouteValue = "qi" | "body";
-type OverlayView = "help" | "scrolls" | "battles";
+type OverlayView = "help" | "bag" | "scrolls" | "battles";
+
+interface CommandAction {
+  command: string;
+  label: string;
+}
+
+interface CommandHint {
+  options: CommandAction[];
+  text: string;
+}
 
 interface CommandHelpItem {
   aliases: string[];
@@ -74,14 +87,28 @@ const tokenStorageKey = "nextday_m1_token";
 const deviceStorageKey = "nextday_m1_device_id";
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
 
-const baseQuickCommands = ["状态", "修炼", "突破", "探索", "领取洞府", "任务", "九塔"];
+const baseQuickCommands: CommandAction[] = [
+  { label: "状态", command: "状态" },
+  { label: "背包", command: "背包" },
+  { label: "修炼", command: "修炼" },
+  { label: "突破", command: "突破" },
+  { label: "探索", command: "探索" },
+  { label: "领取洞府", command: "领取洞府" },
+  { label: "任务", command: "任务" },
+  { label: "九塔", command: "九塔" },
+];
 
 const fallbackHelpGroups: CommandHelpGroup[] = [
   {
     id: "basic",
     title: "基础",
     items: [
-      { syntax: "状态", description: "查看当前修为、背包和可进行事项。", aliases: ["面板"] },
+      { syntax: "状态", description: "查看当前修为和可进行事项。", aliases: ["面板"] },
+      {
+        syntax: "背包 [物品名或ID]",
+        description: "查看背包及物品用途；可指定物品查看单项说明。",
+        aliases: ["纳物囊"],
+      },
       { syntax: "帮助 [关键词]", description: "查看全部指令或筛选相关指令。", aliases: ["help"] },
       { syntax: "卷轴", description: "查看已解锁的章节卷轴。", aliases: ["剧情"] },
       { syntax: "战报", description: "查看最近的战斗记录。", aliases: ["记录"] },
@@ -93,10 +120,14 @@ const fallbackHelpGroups: CommandHelpGroup[] = [
     items: [
       { syntax: "修炼", description: "收取本次可得的修为。", aliases: ["吐纳"] },
       { syntax: "突破", description: "在条件满足时尝试突破境界。", aliases: [] },
-      { syntax: "探索 [州域]", description: "前往州域寻访机缘。", aliases: ["游历"] },
       {
-        syntax: "奇遇 <事件ID> <选项ID>",
-        description: "按传音中的指令处理当前等待的奇遇。",
+        syntax: "探索 <州域> [次数]",
+        description: "输入“探索”即可查看当前可前往的州域。",
+        aliases: ["游历 <州域> [次数]"],
+      },
+      {
+        syntax: "奇遇 <选项ID>",
+        description: "单条待选奇遇可直接按选项标识处理；网页中请直接点击选项。",
         aliases: [],
       },
       { syntax: "洞府收取", description: "收取洞府积累的产出。", aliases: ["洞府"] },
@@ -108,7 +139,11 @@ const fallbackHelpGroups: CommandHelpGroup[] = [
     id: "production",
     title: "炼制与单方",
     items: [
-      { syntax: "服丹 <丹药>", description: "服用背包中的丹药。", aliases: ["服用"] },
+      {
+        syntax: "服丹 <丹药名或ID>",
+        description: "按名称直接服用背包中的一枚丹药。",
+        aliases: ["服用"],
+      },
       { syntax: "炼丹 <材料...>", description: "以自选材料尝试炼丹。", aliases: [] },
       { syntax: "炼器 <材料...>", description: "以自选材料尝试炼器。", aliases: [] },
       { syntax: "单方 保存 <名称>", description: "保存最近一次成功炼制的材料组合。", aliases: [] },
@@ -125,6 +160,9 @@ export default function HomePage() {
   const [profile, setProfile] = useState<PlayerProfileResponse | null>(null);
   const [overview, setOverview] = useState<GameOverviewResponse | null>(null);
   const [scrolls, setScrolls] = useState<StoryScrollListResponse | null>(null);
+  const [bag, setBag] = useState<BagSummaryResponse | null>(null);
+  const [bagError, setBagError] = useState<string | null>(null);
+  const [bagLoading, setBagLoading] = useState(false);
   const [helpGroups, setHelpGroups] = useState<CommandHelpGroup[]>(fallbackHelpGroups);
   const [openHelpGroupId, setOpenHelpGroupId] = useState<string | null>(
     fallbackHelpGroups[0]?.id ?? null,
@@ -137,6 +175,7 @@ export default function HomePage() {
   const [playerName, setPlayerName] = useState("");
   const [route, setRoute] = useState<RouteValue>("qi");
   const [command, setCommand] = useState("");
+  const [commandSuggestions, setCommandSuggestions] = useState<CommandAction[]>([]);
   const [commandHistory, setCommandHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [pendingExploreEvents, setPendingExploreEvents] = useState<PendingExploreEvent[]>([]);
@@ -181,10 +220,26 @@ export default function HomePage() {
       .filter((group) => group.items.length > 0);
   }, [helpGroups, pendingExploreEvents.length]);
   const canClaimExplore = currentExplore?.status === "completed" && currentExplore.can_claim;
-  const quickCommands = useMemo(
-    () => (canClaimExplore ? ["领取探索", ...baseQuickCommands] : baseQuickCommands),
-    [canClaimExplore],
+  const bagDisplayItems = useMemo(() => summarizeBagItemsForDisplay(bag?.items ?? []), [bag]);
+  const commandHint = useMemo(
+    () => buildCommandHint(command, overview?.provinces ?? [], helpGroups),
+    [command, helpGroups, overview?.provinces],
   );
+  const quickCommands = useMemo(() => {
+    const actions = [
+      ...(canClaimExplore ? [{ label: "领取探索", command: "领取探索" }] : []),
+      ...commandSuggestions,
+      ...baseQuickCommands,
+    ];
+    const commandSet = new Set<string>();
+    return actions.filter((action) => {
+      if (commandSet.has(action.command)) {
+        return false;
+      }
+      commandSet.add(action.command);
+      return true;
+    });
+  }, [canClaimExplore, commandSuggestions]);
 
   useEffect(() => {
     setOpenHelpGroupId((current) => {
@@ -247,6 +302,19 @@ export default function HomePage() {
     }
     setHelpGroups(groups);
     setHelpError(null);
+  }, []);
+
+  const refreshBag = useCallback(async (activeToken: string) => {
+    setBagLoading(true);
+    setBagError(null);
+    try {
+      const response = await createClient(activeToken).bagItems();
+      setBag(readResponse(response));
+    } catch (error) {
+      setBagError(messageFromError(error));
+    } finally {
+      setBagLoading(false);
+    }
   }, []);
 
   const loadSession = useCallback(
@@ -654,6 +722,12 @@ export default function HomePage() {
         data.command_id === "explore_claim" || data.command_id === "explore_events"
           ? pendingExploreEventsFromCommandState(data.state)
           : [];
+      setCommandSuggestions(
+        commandSuggestionsFromState(
+          data.state,
+          pendingEvents.length > 0 ? pendingEvents : pendingExploreEventsRef.current,
+        ),
+      );
       const entries = normalizeCommandEntries(
         withoutExploreEventInstructions(data.entries, pendingEvents),
       );
@@ -690,7 +764,12 @@ export default function HomePage() {
         shouldRestoreCommandFocus = true;
       }
 
-      await refreshDashboard(token, true).catch(() => undefined);
+      await Promise.all([
+        refreshDashboard(token, true).catch(() => undefined),
+        data.command_id === "bag" || data.command_id === "pill_use"
+          ? refreshBag(token)
+          : Promise.resolve(),
+      ]);
       setMessage("指令已结算");
     } catch (error) {
       const detail = messageFromError(error);
@@ -762,6 +841,10 @@ export default function HomePage() {
     setProfile(null);
     setOverview(null);
     setScrolls(null);
+    setBag(null);
+    setBagError(null);
+    setBagLoading(false);
+    setCommandSuggestions([]);
     pendingExploreEventsRef.current = [];
     setPendingExploreEvents([]);
     setResolvingExploreEventId(null);
@@ -903,6 +986,20 @@ export default function HomePage() {
                     <button
                       aria-haspopup="dialog"
                       className="utility-button"
+                      disabled={bagLoading || busy || hydrating}
+                      onClick={() => {
+                        setActiveOverlay("bag");
+                        if (token) {
+                          void refreshBag(token);
+                        }
+                      }}
+                      type="button"
+                    >
+                      背包
+                    </button>
+                    <button
+                      aria-haspopup="dialog"
+                      className="utility-button"
                       onClick={() => setActiveOverlay("scrolls")}
                       type="button"
                     >
@@ -938,7 +1035,7 @@ export default function HomePage() {
                 >
                   <div className="explore-event-actions-heading">
                     <p className="console-eyebrow">探索奇遇</p>
-                    <h3>机缘已至，请择其一</h3>
+                    <h3>机缘已至</h3>
                   </div>
                   <div className="explore-event-card-list">
                     {pendingExploreEvents.map((event) => (
@@ -959,12 +1056,18 @@ export default function HomePage() {
                                 onClick={() => void handleExploreEventChoice(event, choice)}
                                 type="button"
                               >
-                                <strong>{choice.label}</strong>
-                                {choice.description ? <span>{choice.description}</span> : null}
+                                <span className="explore-event-choice-copy">
+                                  <strong>{choice.label}</strong>
+                                  {choice.description ? <small>{choice.description}</small> : null}
+                                </span>
                                 {choice.rewardPreview ? (
-                                  <small>奖励预览：{choice.rewardPreview}</small>
+                                  <span className="explore-event-choice-reward">
+                                    {choice.rewardPreview}
+                                  </span>
                                 ) : null}
-                                <em>{isResolving ? "择取中…" : "选择此项"}</em>
+                                {isResolving ? (
+                                  <span className="explore-event-choice-state">择取中…</span>
+                                ) : null}
                               </button>
                             );
                           })}
@@ -978,6 +1081,7 @@ export default function HomePage() {
                 <label className="command-input-wrap">
                   <span aria-hidden="true">&gt;</span>
                   <input
+                    aria-describedby={commandHint ? "command-context" : undefined}
                     autoComplete="off"
                     disabled={busy || hydrating}
                     onChange={(event) => {
@@ -985,7 +1089,7 @@ export default function HomePage() {
                       setHistoryIndex(-1);
                     }}
                     onKeyDown={handleCommandKeyDown}
-                    placeholder="输入指令，例如：探索 冀州"
+                    placeholder="输入指令；输入“探索”可查看州域"
                     ref={commandInputRef}
                     value={command}
                   />
@@ -1001,15 +1105,34 @@ export default function HomePage() {
               <p className="command-tip">
                 ↑ ↓ 可翻阅本次输入记录；命令使用确定语法，不识别自然语言描述。
               </p>
+              {commandHint ? (
+                <output className="command-context" id="command-context">
+                  <span>{commandHint.text}</span>
+                  {commandHint.options.map((option) => (
+                    <button
+                      disabled={busy || hydrating}
+                      key={option.command}
+                      onClick={() => {
+                        setCommand(option.command);
+                        setHistoryIndex(-1);
+                        commandInputRef.current?.focus();
+                      }}
+                      type="button"
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </output>
+              ) : null}
               <div className="quick-command-list" aria-label="快捷指令">
                 {quickCommands.map((item) => (
                   <button
                     disabled={busy || hydrating}
-                    key={item}
-                    onClick={() => void executeCommand(item)}
+                    key={item.command}
+                    onClick={() => void executeCommand(item.command)}
                     type="button"
                   >
-                    {item}
+                    {item.label}
                   </button>
                 ))}
               </div>
@@ -1022,16 +1145,20 @@ export default function HomePage() {
               title={
                 activeOverlay === "help"
                   ? "可用语法"
-                  : activeOverlay === "scrolls"
-                    ? "已见故事"
-                    : "斗法余音"
+                  : activeOverlay === "bag"
+                    ? "纳物囊"
+                    : activeOverlay === "scrolls"
+                      ? "已见故事"
+                      : "斗法余音"
               }
               eyebrow={
                 activeOverlay === "help"
                   ? "指令帮助"
-                  : activeOverlay === "scrolls"
-                    ? "章节卷轴"
-                    : "最近战报"
+                  : activeOverlay === "bag"
+                    ? "随身背包"
+                    : activeOverlay === "scrolls"
+                      ? "章节卷轴"
+                      : "最近战报"
               }
             >
               {activeOverlay === "help" ? (
@@ -1086,6 +1213,67 @@ export default function HomePage() {
                       </details>
                     ))}
                   </div>
+                </>
+              ) : null}
+
+              {activeOverlay === "bag" ? (
+                <>
+                  <div className="utility-dialog-actions">
+                    <button
+                      className="quiet-button"
+                      disabled={bagLoading || busy || hydrating || !token}
+                      onClick={() => {
+                        if (token) {
+                          void refreshBag(token);
+                        }
+                      }}
+                      type="button"
+                    >
+                      {bagLoading ? "读取中…" : "刷新背包"}
+                    </button>
+                  </div>
+                  {bagError ? <p className="panel-warning">背包暂时无法读取：{bagError}</p> : null}
+                  {bagLoading && !bag ? <p className="empty-copy">正在整理纳物囊…</p> : null}
+                  {!bagLoading && !bagError && bag && bagDisplayItems.length === 0 ? (
+                    <p className="empty-copy">背包暂为空。探索、洞府收取和炼制都可能带来物品。</p>
+                  ) : null}
+                  {bagDisplayItems.length > 0 ? (
+                    <ul className="bag-list">
+                      {bagDisplayItems.map((item) => (
+                        <li key={item.item_instance_id}>
+                          <div>
+                            <strong>
+                              {item.name} ×{item.count}
+                              {item.quality ? `（${pillQualityLabel(item.quality)}）` : ""}
+                            </strong>
+                            <span>{item.usage_hint}</span>
+                            <small>
+                              {item.expired
+                                ? "已过期"
+                                : item.locked
+                                  ? "已锁定"
+                                  : item.bind_type === "unbound"
+                                    ? "未绑定"
+                                    : "绑定"}
+                            </small>
+                          </div>
+                          {item.category === "pill" && !item.expired && !item.locked ? (
+                            <button
+                              className="quiet-button"
+                              disabled={busy || hydrating}
+                              onClick={() => {
+                                setActiveOverlay(null);
+                                void executeCommand(`服丹 ${item.name}`);
+                              }}
+                              type="button"
+                            >
+                              服用
+                            </button>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </>
               ) : null}
 
@@ -1296,6 +1484,106 @@ function normalizeHelpItem(value: unknown): CommandHelpItem | null {
     description: pickText(record.description, record.summary, record.help) || "",
     aliases: textList(record.aliases ?? record.alias),
   };
+}
+
+function buildCommandHint(
+  value: string,
+  provinces: ProvinceSummary[],
+  helpGroups: CommandHelpGroup[],
+): CommandHint | null {
+  const token = commandHead(value);
+  if (!token) {
+    return null;
+  }
+
+  if (["探索", "游历", "explore"].includes(token)) {
+    const unlockedProvinces = provinces.filter((province) => province.unlocked);
+    if (unlockedProvinces.length === 0) {
+      return { options: [], text: "当前尚无可前往州域，请先查看状态。" };
+    }
+    return {
+      options: unlockedProvinces.map((province) => ({
+        command: `探索 ${province.name}`,
+        label: province.name,
+      })),
+      text: `可选州域：${unlockedProvinces.map((province) => province.name).join("、")}；次数可填 1–5。`,
+    };
+  }
+
+  const matchingItems = helpGroups
+    .flatMap((group) => group.items)
+    .filter((item) =>
+      [item.syntax, ...item.aliases].some((candidate) => {
+        const candidateHead = commandHead(candidate);
+        return candidateHead.startsWith(token) || token.startsWith(candidateHead);
+      }),
+    )
+    .slice(0, 2);
+  if (matchingItems.length === 0) {
+    return null;
+  }
+
+  return {
+    options: [],
+    text: matchingItems
+      .map((item) => `${item.syntax}${item.description ? `：${item.description}` : ""}`)
+      .join("；"),
+  };
+}
+
+function commandSuggestionsFromState(
+  state: unknown,
+  pendingExploreEvents: PendingExploreEvent[],
+): CommandAction[] {
+  const stateRecord = asRecord(state);
+  const hasPendingExploreEvent = pendingExploreEvents.length > 0;
+  const commands = asArray(stateRecord?.suggestions)
+    .map((value) => {
+      const record = asRecord(value);
+      const command = pickText(record?.command);
+      const label = pickText(record?.label) || command;
+      return command ? { command, label } : null;
+    })
+    .filter((item): item is CommandAction => item !== null)
+    .filter((item) => !hasPendingExploreEvent || !/^(奇遇|处理奇遇)\s+\S+/u.test(item.command));
+
+  const unique = new Map<string, CommandAction>();
+  for (const command of commands) {
+    unique.set(command.command, command);
+  }
+  return [...unique.values()].slice(0, 2);
+}
+
+function commandHead(value: string): string {
+  return value.trim().replace(/^\//, "").split(/\s+/u)[0]?.toLocaleLowerCase("en-US") ?? "";
+}
+
+function pillQualityLabel(quality: NonNullable<BagSummaryResponse["items"][number]["quality"]>) {
+  return (
+    {
+      low: "下品",
+      middle: "中品",
+      high: "上品",
+      best: "极品",
+      flawless: "无瑕",
+    }[quality] ?? quality
+  );
+}
+
+function summarizeBagItemsForDisplay(items: BagItemState[]): BagItemState[] {
+  const grouped = new Map<string, BagItemState>();
+  for (const item of items) {
+    const key = [item.item_id, item.quality ?? "", item.bind_type, item.locked, item.expired].join(
+      ":",
+    );
+    const current = grouped.get(key);
+    if (!current) {
+      grouped.set(key, { ...item });
+      continue;
+    }
+    current.count = (BigInt(current.count) + BigInt(item.count)).toString();
+  }
+  return [...grouped.values()];
 }
 
 function normalizeCommandEntries(entries: unknown[]): TerminalEntry[] {

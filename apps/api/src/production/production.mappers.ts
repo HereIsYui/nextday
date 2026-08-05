@@ -25,6 +25,7 @@ export function toBagItemState(item: PlayerItem, now = new Date()): BagItemState
     item_instance_id: item.itemInstanceId,
     item_id: item.itemId,
     name: meta.name,
+    usage_hint: meta.usageHint,
     category: meta.category,
     count: item.count.toString(),
     quality,

@@ -50,6 +50,32 @@ summary:focus-visible {
   padding: 26px clamp(16px, 3vw, 48px) 48px;
 }
 
+.text-console-shell-active {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+  padding-block: clamp(12px, 2.2vh, 24px);
+}
+
+.text-console-shell-active .text-console-header {
+  flex: 0 0 auto;
+  padding-bottom: 12px;
+}
+
+.text-console-shell-active h1 {
+  font-size: clamp(28px, 3vw, 40px);
+  margin-bottom: 6px;
+}
+
+.text-console-shell-active .console-eyebrow {
+  margin-bottom: 4px;
+}
+
+.text-console-shell-active .console-subtitle {
+  line-height: 1.45;
+}
+
 .text-console-header {
   align-items: flex-start;
   border-bottom: 1px solid #425044;
@@ -134,7 +160,6 @@ h2 {
 
 .entry-panel,
 .terminal-panel,
-.side-panel,
 .status-strip,
 .error-notice {
   border: 1px solid #425044;
@@ -171,7 +196,8 @@ h2 {
 .console-button,
 .quick-command-list button,
 .quiet-button,
-.logout-button {
+.logout-button,
+.utility-button {
   background: #1b241d;
   border: 1px solid #69775f;
   color: #e7e5d6;
@@ -181,7 +207,8 @@ h2 {
 .console-button:hover:not(:disabled),
 .quick-command-list button:hover:not(:disabled),
 .quiet-button:hover:not(:disabled),
-.logout-button:hover:not(:disabled) {
+.logout-button:hover:not(:disabled),
+.utility-button:hover:not(:disabled) {
   background: #2a392c;
   border-color: #d1af6a;
 }
@@ -242,6 +269,11 @@ h2 {
   overflow: hidden;
 }
 
+.text-console-shell-active .status-strip {
+  flex: 0 0 auto;
+  margin-top: 12px;
+}
+
 .status-metric {
   background: #161c17;
   display: grid;
@@ -264,6 +296,11 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.text-console-shell-active .status-metric {
+  min-height: 76px;
+  padding: 10px 12px;
+}
+
 .logout-button {
   align-self: stretch;
   border: 0;
@@ -272,22 +309,32 @@ h2 {
 }
 
 .console-layout {
-  align-items: start;
-  display: grid;
-  gap: 20px;
-  grid-template-columns: minmax(0, 1.7fr) minmax(300px, 0.8fr);
+  display: flex;
+  flex: 1;
+  min-height: 0;
   margin-top: 20px;
 }
 
+.text-console-shell-active .console-layout {
+  margin-top: 12px;
+}
+
 .terminal-panel,
-.side-panel {
+.utility-dialog {
   background: #151a16;
 }
 
 .terminal-panel {
   display: flex;
   flex-direction: column;
+  flex: 1;
   min-height: min(720px, calc(100dvh - 250px));
+  min-width: 0;
+}
+
+.text-console-shell-active .terminal-panel {
+  height: 100%;
+  min-height: 0;
 }
 
 .panel-heading {
@@ -307,9 +354,35 @@ h2 {
   margin-bottom: 0;
 }
 
+.text-console-shell-active .panel-heading {
+  padding: 12px 16px 10px;
+}
+
+.terminal-heading-actions,
+.utility-button-list {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.terminal-heading-actions {
+  justify-content: flex-end;
+}
+
+.utility-button-list {
+  gap: 5px;
+}
+
 .quiet-button {
   background: transparent;
   color: #adb9a5;
+  font-size: 12px;
+  padding: 7px 9px;
+}
+
+.utility-button {
+  color: #cdd7c7;
   font-size: 12px;
   padding: 7px 9px;
 }
@@ -324,6 +397,13 @@ h2 {
   overflow-y: auto;
   padding: 20px;
   scrollbar-color: #69775f #151a16;
+}
+
+.text-console-shell-active .terminal-log {
+  gap: 10px;
+  max-height: none;
+  min-height: 0;
+  padding: 14px 16px;
 }
 
 .terminal-entry {
@@ -484,6 +564,10 @@ h2 {
   padding: 14px 20px;
 }
 
+.text-console-shell-active .command-form {
+  padding: 10px 16px;
+}
+
 .command-input-wrap {
   align-items: center;
   background: #111611;
@@ -517,6 +601,10 @@ h2 {
   padding: 0 20px 13px;
 }
 
+.text-console-shell-active .command-tip {
+  padding: 0 16px 9px;
+}
+
 .quick-command-list {
   border-top: 1px solid #394338;
   display: flex;
@@ -525,31 +613,60 @@ h2 {
   padding: 13px 20px 18px;
 }
 
+.text-console-shell-active .quick-command-list {
+  padding: 9px 16px 12px;
+}
+
 .quick-command-list button {
   color: #cdd7c7;
   font-size: 12px;
   padding: 6px 9px;
 }
 
-.side-column {
-  display: grid;
-  gap: 20px;
+.utility-dialog {
+  border: 1px solid #69775f;
+  box-shadow: 0 22px 80px rgba(0, 0, 0, 0.48);
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  max-height: min(760px, calc(100dvh - 40px));
+  max-width: 780px;
+  overflow: hidden;
+  padding: 0;
+  width: min(100%, 780px);
 }
 
-.side-panel {
-  padding: 18px;
+.utility-dialog::backdrop {
+  background: rgba(7, 10, 7, 0.72);
 }
 
-.side-panel > .console-eyebrow {
+.utility-dialog-heading {
+  align-items: flex-start;
+  border-bottom: 1px solid #394338;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 18px 20px 14px;
+}
+
+.utility-dialog-heading .console-eyebrow {
   margin-bottom: 5px;
 }
 
-.side-panel > h2 {
-  margin-bottom: 16px;
+.utility-dialog-heading h2 {
+  margin-bottom: 0;
 }
 
-.side-panel .panel-heading {
-  margin: -18px -18px 16px;
+.utility-dialog-content {
+  overflow-y: auto;
+  padding: 18px 20px 22px;
+  scrollbar-color: #69775f #151a16;
+}
+
+.utility-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
 }
 
 .panel-warning {
@@ -653,17 +770,26 @@ h2 {
   margin-bottom: 0;
 }
 
-@media (max-width: 960px) {
-  .console-layout {
-    grid-template-columns: minmax(0, 1fr);
+@media (max-height: 650px) and (min-width: 701px) {
+  .text-console-shell-active {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+    padding-bottom: 32px;
   }
 
-  .side-column {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .text-console-shell-active .console-layout {
+    flex: none;
   }
 
-  .side-column .side-panel:first-child {
-    grid-column: 1 / -1;
+  .text-console-shell-active .terminal-panel {
+    height: auto;
+    min-height: 620px;
+  }
+
+  .text-console-shell-active .terminal-log {
+    max-height: 460px;
+    min-height: 310px;
   }
 }
 
@@ -672,14 +798,20 @@ h2 {
     padding: 20px 14px 32px;
   }
 
+  .text-console-shell-active {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+    padding-block: 20px 32px;
+  }
+
   .text-console-header {
     flex-direction: column;
     gap: 15px;
   }
 
   .character-form,
-  .status-strip,
-  .side-column {
+  .status-strip {
     grid-template-columns: 1fr;
   }
 
@@ -690,6 +822,11 @@ h2 {
   }
 
   .terminal-panel {
+    min-height: 620px;
+  }
+
+  .text-console-shell-active .terminal-panel {
+    height: auto;
     min-height: 620px;
   }
 
@@ -706,7 +843,17 @@ h2 {
     grid-template-columns: 1fr;
   }
 
-  .side-column .side-panel:first-child {
-    grid-column: auto;
+  .terminal-heading-actions {
+    justify-content: flex-start;
+  }
+
+  .utility-dialog {
+    max-height: calc(100dvh - 24px);
+    width: calc(100% - 24px);
+  }
+
+  .utility-dialog-heading,
+  .utility-dialog-content {
+    padding-inline: 14px;
   }
 }

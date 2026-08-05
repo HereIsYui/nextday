@@ -12,6 +12,7 @@ import type {
 import {
   type FormEvent,
   type KeyboardEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -40,6 +41,7 @@ import {
 
 type HealthText = "检测中" | "正常" | "不可用";
 type RouteValue = "qi" | "body";
+type OverlayView = "help" | "scrolls" | "battles";
 
 interface CommandHelpItem {
   aliases: string[];
@@ -69,7 +71,7 @@ const tokenStorageKey = "nextday_m1_token";
 const deviceStorageKey = "nextday_m1_device_id";
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
 
-const quickCommands = ["状态", "修炼", "突破", "探索", "领取洞府", "任务", "九塔", "卷轴", "战报"];
+const quickCommands = ["状态", "修炼", "突破", "探索", "领取洞府", "任务", "九塔"];
 
 const fallbackHelpGroups: CommandHelpGroup[] = [
   {
@@ -130,6 +132,7 @@ export default function HomePage() {
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [pendingExploreEvents, setPendingExploreEvents] = useState<PendingExploreEvent[]>([]);
   const [resolvingExploreEventId, setResolvingExploreEventId] = useState<string | null>(null);
+  const [activeOverlay, setActiveOverlay] = useState<OverlayView | null>(null);
   const [terminalEntries, setTerminalEntries] = useState<TerminalEntry[]>([
     {
       id: "welcome",
@@ -681,6 +684,7 @@ export default function HomePage() {
     setScrolls(null);
     setPendingExploreEvents([]);
     setResolvingExploreEventId(null);
+    setActiveOverlay(null);
     notificationSessionKeyRef.current = null;
     notifiedExploreRecordIdsRef.current.clear();
     notifiedExploreEventIdsRef.current.clear();
@@ -691,7 +695,7 @@ export default function HomePage() {
   }
 
   return (
-    <main className="text-console-shell">
+    <main className={`text-console-shell${player ? " text-console-shell-active" : ""}`}>
       <header className="text-console-header">
         <div>
           <p className="console-eyebrow">九州纪元 · 文字修行</p>
@@ -784,20 +788,48 @@ export default function HomePage() {
                   <p className="console-eyebrow">叙事日志</p>
                   <h2>九州传音</h2>
                 </div>
-                <button
-                  className="quiet-button"
-                  disabled={hydrating || busy}
-                  onClick={() => {
-                    if (token) {
-                      void refreshDashboard(token).catch((error) =>
-                        setSessionError(messageFromError(error)),
-                      );
-                    }
-                  }}
-                  type="button"
-                >
-                  刷新状态
-                </button>
+                <div className="terminal-heading-actions">
+                  <button
+                    className="quiet-button"
+                    disabled={hydrating || busy}
+                    onClick={() => {
+                      if (token) {
+                        void refreshDashboard(token).catch((error) =>
+                          setSessionError(messageFromError(error)),
+                        );
+                      }
+                    }}
+                    type="button"
+                  >
+                    刷新状态
+                  </button>
+                  <div className="utility-button-list" aria-label="辅助面板">
+                    <button
+                      aria-haspopup="dialog"
+                      className="utility-button"
+                      onClick={() => setActiveOverlay("help")}
+                      type="button"
+                    >
+                      帮助
+                    </button>
+                    <button
+                      aria-haspopup="dialog"
+                      className="utility-button"
+                      onClick={() => setActiveOverlay("scrolls")}
+                      type="button"
+                    >
+                      卷轴
+                    </button>
+                    <button
+                      aria-haspopup="dialog"
+                      className="utility-button"
+                      onClick={() => setActiveOverlay("battles")}
+                      type="button"
+                    >
+                      战报
+                    </button>
+                  </div>
+                </div>
               </div>
               <div className="terminal-log" role="log" aria-live="polite">
                 {terminalEntries.map((entry) => (
@@ -893,59 +925,73 @@ export default function HomePage() {
                 ))}
               </div>
             </section>
+          </section>
 
-            <aside className="side-column">
-              <section className="side-panel" aria-label="指令帮助">
-                <div className="panel-heading">
-                  <div>
-                    <p className="console-eyebrow">指令帮助</p>
-                    <h2>可用语法</h2>
+          {activeOverlay ? (
+            <UtilityOverlay
+              onClose={() => setActiveOverlay(null)}
+              title={
+                activeOverlay === "help"
+                  ? "可用语法"
+                  : activeOverlay === "scrolls"
+                    ? "已见故事"
+                    : "斗法余音"
+              }
+              eyebrow={
+                activeOverlay === "help"
+                  ? "指令帮助"
+                  : activeOverlay === "scrolls"
+                    ? "章节卷轴"
+                    : "最近战报"
+              }
+            >
+              {activeOverlay === "help" ? (
+                <>
+                  <div className="utility-dialog-actions">
+                    <button
+                      className="quiet-button"
+                      disabled={busy || hydrating}
+                      onClick={() => {
+                        if (token) {
+                          void refreshHelp(token).catch((error) =>
+                            setHelpError(messageFromError(error)),
+                          );
+                        }
+                      }}
+                      type="button"
+                    >
+                      更新帮助
+                    </button>
                   </div>
-                  <button
-                    className="quiet-button"
-                    disabled={busy || hydrating}
-                    onClick={() => {
-                      if (token) {
-                        void refreshHelp(token).catch((error) =>
-                          setHelpError(messageFromError(error)),
-                        );
-                      }
-                    }}
-                    type="button"
-                  >
-                    更新
-                  </button>
-                </div>
-                {helpError ? (
-                  <p className="panel-warning">服务帮助暂不可用，以下为本地指引：{helpError}</p>
-                ) : null}
-                <div className="help-groups">
-                  {visibleHelpGroups.map((group) => (
-                    <details key={group.title} open={group.title === visibleHelpGroups[0]?.title}>
-                      <summary>{group.title}</summary>
-                      {group.description ? <p>{group.description}</p> : null}
-                      <ul>
-                        {group.items.map((item) => (
-                          <li key={`${group.title}_${item.syntax}`}>
-                            <code>{item.syntax}</code>
-                            <span>{item.description}</span>
-                            {item.aliases.length > 0 ? (
-                              <small>别名：{item.aliases.join("、")}</small>
-                            ) : null}
-                          </li>
-                        ))}
-                      </ul>
-                    </details>
-                  ))}
-                </div>
-              </section>
+                  {helpError ? (
+                    <p className="panel-warning">服务帮助暂不可用，以下为本地指引：{helpError}</p>
+                  ) : null}
+                  <div className="help-groups">
+                    {visibleHelpGroups.map((group) => (
+                      <details key={group.title} open={group.title === visibleHelpGroups[0]?.title}>
+                        <summary>{group.title}</summary>
+                        {group.description ? <p>{group.description}</p> : null}
+                        <ul>
+                          {group.items.map((item) => (
+                            <li key={`${group.title}_${item.syntax}`}>
+                              <code>{item.syntax}</code>
+                              <span>{item.description}</span>
+                              {item.aliases.length > 0 ? (
+                                <small>别名：{item.aliases.join("、")}</small>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    ))}
+                  </div>
+                </>
+              ) : null}
 
-              <section className="side-panel" aria-label="章节卷轴">
-                <p className="console-eyebrow">章节卷轴</p>
-                <h2>已见故事</h2>
-                {storyScrolls.length > 0 ? (
+              {activeOverlay === "scrolls" ? (
+                storyScrolls.length > 0 ? (
                   <ul className="scroll-list">
-                    {storyScrolls.slice(0, 5).map((scroll) => (
+                    {storyScrolls.map((scroll) => (
                       <li key={scroll.scroll_id}>
                         <strong>{scroll.title}</strong>
                         <span>{scroll.latest_fragment || scroll.subtitle}</span>
@@ -957,15 +1003,13 @@ export default function HomePage() {
                   </ul>
                 ) : (
                   <p className="empty-copy">卷轴会随着探索和九塔推进逐步显现。</p>
-                )}
-              </section>
+                )
+              ) : null}
 
-              <section className="side-panel" aria-label="最近战报">
-                <p className="console-eyebrow">最近战报</p>
-                <h2>斗法余音</h2>
-                {recentBattles.length > 0 ? (
+              {activeOverlay === "battles" ? (
+                recentBattles.length > 0 ? (
                   <ul className="battle-list">
-                    {recentBattles.slice(0, 4).map((battle) => (
+                    {recentBattles.map((battle) => (
                       <li key={battle.battle_id}>
                         <strong>
                           {battle.result === "win" ? "胜" : "败"} · {battle.enemy_name}
@@ -977,13 +1021,64 @@ export default function HomePage() {
                   </ul>
                 ) : (
                   <p className="empty-copy">尚无战报。一次探索或九塔挑战，可能会留下新的记录。</p>
-                )}
-              </section>
-            </aside>
-          </section>
+                )
+              ) : null}
+            </UtilityOverlay>
+          ) : null}
         </>
       )}
     </main>
+  );
+}
+
+function UtilityOverlay({
+  children,
+  eyebrow,
+  onClose,
+  title,
+}: {
+  children: ReactNode;
+  eyebrow: string;
+  onClose: () => void;
+  title: string;
+}) {
+  const dialogRef = useRef<HTMLDialogElement | null>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) {
+      return;
+    }
+
+    dialog.showModal();
+    return () => {
+      if (dialog.open) {
+        dialog.close();
+      }
+    };
+  }, []);
+
+  return (
+    <dialog
+      aria-labelledby="utility-dialog-title"
+      className="utility-dialog"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      ref={dialogRef}
+    >
+      <div className="utility-dialog-heading">
+        <div>
+          <p className="console-eyebrow">{eyebrow}</p>
+          <h2 id="utility-dialog-title">{title}</h2>
+        </div>
+        <button className="quiet-button" onClick={onClose} type="button">
+          关闭
+        </button>
+      </div>
+      <div className="utility-dialog-content">{children}</div>
+    </dialog>
   );
 }
 

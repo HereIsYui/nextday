@@ -444,6 +444,36 @@ h2 {
   white-space: pre-wrap;
 }
 
+.terminal-task-list {
+  display: grid;
+  gap: 4px;
+}
+
+.terminal-task-row {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.terminal-task-row p {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.terminal-task-claim {
+  background: rgba(62, 88, 58, 0.72);
+  border: 1px solid #68795f;
+  color: #f0dfb6;
+  flex: 0 0 auto;
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.terminal-task-claim:hover:not(:disabled) {
+  border-color: #d1af6a;
+}
+
 .terminal-command {
   border-left-color: #d7ad63;
 }
@@ -987,6 +1017,10 @@ h2 {
   .terminal-log {
     max-height: 460px;
     min-height: 310px;
+  }
+
+  .terminal-task-row {
+    align-items: flex-start;
   }
 
   .command-form {

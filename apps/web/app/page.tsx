@@ -39,6 +39,12 @@ import {
   getExplorePollDelay,
 } from "./explore-notifications";
 import {
+  type TerminalTaskItem,
+  formatTaskItem,
+  taskItemFromClaimResult,
+  taskItemsFromResult,
+} from "./task-terminal-items";
+import {
   type TerminalMessageBatch,
   type TerminalTone,
   mergeCommandEntries,
@@ -79,6 +85,7 @@ interface CommandExecutionOptions {
 interface TerminalEntry {
   id: string;
   lines: string[];
+  tasks?: TerminalTaskItem[];
   title?: string;
   tone: TerminalTone;
 }
@@ -722,15 +729,20 @@ export default function HomePage() {
         data.command_id === "explore_claim" || data.command_id === "explore_events"
           ? pendingExploreEventsFromCommandState(data.state)
           : [];
+      const taskItems =
+        data.command_id === "task_list" ? taskItemsFromResult(data.state?.result) : null;
       setCommandSuggestions(
-        commandSuggestionsFromState(
-          data.state,
-          pendingEvents.length > 0 ? pendingEvents : pendingExploreEventsRef.current,
-        ),
+        data.command_id === "task_list"
+          ? []
+          : commandSuggestionsFromState(
+              data.state,
+              pendingEvents.length > 0 ? pendingEvents : pendingExploreEventsRef.current,
+            ),
       );
-      const entries = normalizeCommandEntries(
-        withoutExploreEventInstructions(data.entries, pendingEvents),
-      );
+      const entries =
+        data.command_id === "task_list"
+          ? [taskTerminalEntry(taskItems)]
+          : normalizeCommandEntries(withoutExploreEventInstructions(data.entries, pendingEvents));
       appendTerminalEntries(
         entries.length > 0 ? entries : [terminalEntry("success", "九州传音", ["指令已执行。"])],
       );
@@ -757,6 +769,23 @@ export default function HomePage() {
             pendingExploreEventsRef.current = next;
             return next;
           });
+        }
+      }
+      if (data.command_id === "task_claim") {
+        const claimedTask = taskItemFromClaimResult(data.state?.result);
+        if (claimedTask) {
+          setTerminalEntries((current) =>
+            current.map((entry) =>
+              entry.tasks
+                ? {
+                    ...entry,
+                    tasks: entry.tasks.map((task) =>
+                      task.taskId === claimedTask.taskId ? claimedTask : task,
+                    ),
+                  }
+                : entry,
+            ),
+          );
         }
       }
       if (data.command_id === "explore_claim") {
@@ -1020,9 +1049,33 @@ export default function HomePage() {
                 {terminalEntries.map((entry) => (
                   <article className={`terminal-entry terminal-${entry.tone}`} key={entry.id}>
                     {entry.title ? <strong>{entry.title}</strong> : null}
-                    {entry.lines.map((line, index) => (
-                      <p key={`${entry.id}_${index}`}>{line}</p>
-                    ))}
+                    {entry.tasks ? (
+                      <div className="terminal-task-list">
+                        {entry.tasks.map((task) => (
+                          <div className="terminal-task-row" key={`${entry.id}_${task.taskId}`}>
+                            <p>{formatTaskItem(task)}</p>
+                            {task.status === "completed" ? (
+                              <button
+                                aria-label={`领取任务“${task.title}”`}
+                                className="terminal-task-claim"
+                                disabled={busy || hydrating}
+                                onClick={() => {
+                                  void executeCommand(`领取任务 ${task.taskId}`, {
+                                    displayCommand: `领取任务“${task.title}”`,
+                                    saveToHistory: false,
+                                  });
+                                }}
+                                type="button"
+                              >
+                                领取
+                              </button>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      entry.lines.map((line, index) => <p key={`${entry.id}_${index}`}>{line}</p>)
+                    )}
                   </article>
                 ))}
                 <div ref={terminalEndRef} />
@@ -1624,6 +1677,23 @@ function terminalEntry(tone: TerminalTone, title: string, lines: string[]): Term
     lines,
     title,
     tone,
+  };
+}
+
+function taskTerminalEntry(tasks: TerminalTaskItem[] | null): TerminalEntry {
+  if (tasks === null) {
+    return terminalEntry("warning", "九州传音", ["任务状态暂时无法读取，请稍后重试。"]);
+  }
+  if (tasks.length === 0) {
+    return terminalEntry("system", "九州传音", ["当前没有可显示的任务。"]);
+  }
+  return {
+    ...terminalEntry(
+      tasks.some((task) => task.status === "completed") ? "success" : "system",
+      "九州传音",
+      [],
+    ),
+    tasks,
   };
 }
 

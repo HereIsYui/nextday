@@ -96,7 +96,7 @@ export default function HomePage() {
   const [message, setMessage] = useState("尚未登录");
   const [busy, setBusy] = useState(false);
   const [hydrating, setHydrating] = useState(false);
-  const [playerName, setPlayerName] = useState("云游修士");
+  const [playerName, setPlayerName] = useState("");
   const [route, setRoute] = useState<RouteValue>("qi");
   const [command, setCommand] = useState("");
   const [commandHistory, setCommandHistory] = useState<string[]>([]);
@@ -504,6 +504,7 @@ export default function HomePage() {
                 maxLength={16}
                 minLength={2}
                 onChange={(event) => setPlayerName(event.target.value)}
+                placeholder="例如：云游修士"
                 value={playerName}
               />
             </label>
@@ -518,7 +519,11 @@ export default function HomePage() {
                 <option value="body">炼体</option>
               </select>
             </label>
-            <button className="console-button" disabled={!token || busy || hydrating} type="submit">
+            <button
+              className="console-button"
+              disabled={!token || busy || hydrating || playerName.trim().length < 2}
+              type="submit"
+            >
               登记角色
             </button>
           </form>

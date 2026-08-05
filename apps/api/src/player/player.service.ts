@@ -56,103 +56,117 @@ export class PlayerService {
       return existingRecord.responseData as unknown as CreatePlayerResponse;
     }
 
-    const created = await this.prisma.$transaction(async (tx) => {
-      const account = await tx.account.findUnique({
-        where: { accountId: input.accountId },
-        include: { player: true },
-      });
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const account = await tx.account.findUnique({
+          where: { accountId: input.accountId },
+          include: { player: true },
+        });
 
-      if (!account) {
-        throw new BadRequestException("账号不存在");
+        if (!account) {
+          throw new BadRequestException("账号不存在");
+        }
+
+        if (account.player) {
+          throw new BadRequestException("该账号已经创建角色");
+        }
+
+        const occupiedPlayer = await tx.player.findUnique({
+          where: { name: normalizedBody.name },
+          select: { playerId: true },
+        });
+        if (occupiedPlayer) {
+          throw new BadRequestException("道号已被占用，请更换后重试");
+        }
+
+        const playerId = `player_${randomUUID()}`;
+        const player = await tx.player.create({
+          data: {
+            playerId,
+            accountId: account.accountId,
+            name: normalizedBody.name,
+            route: normalizedBody.route,
+          },
+        });
+        const progress = await tx.playerProgress.create({
+          data: {
+            playerId,
+            eraId: defaultEraId,
+            lastCultivationAt: new Date(Date.now() - 30 * 60 * 1000),
+            newbieProtectionUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          },
+        });
+        const wallet = await tx.playerWallet.create({
+          data: {
+            playerId,
+          },
+        });
+        await tx.playerActionState.create({
+          data: {
+            playerId,
+            eraId: defaultEraId,
+          },
+        });
+        await tx.playerCaveState.create({
+          data: {
+            playerId,
+            lastCollectedAt: new Date(Date.now() - 30 * 60 * 1000),
+          },
+        });
+        await tx.playerProvinceProgress.createMany({
+          data: defaultProvinceIds.map((provinceId) => ({
+            provinceProgressId: `province_progress_${randomUUID()}`,
+            playerId,
+            eraId: defaultEraId,
+            provinceId,
+            unlocked: provinceId === "ji",
+          })),
+        });
+        await tx.playerTaskState.createMany({
+          data: createInitialTaskRows(playerId),
+        });
+
+        const responseData: CreatePlayerResponse = {
+          record_id: `create_player_${randomUUID()}`,
+          profile: toPlayerProfileResponse({ player, progress, wallet }),
+        };
+
+        await tx.auditLog.create({
+          data: {
+            auditLogId: `audit_${randomUUID()}`,
+            accountId: account.accountId,
+            playerId,
+            action: "player_create",
+            targetType: "player",
+            targetId: playerId,
+            afterSnapshot: responseData.profile as unknown as Prisma.InputJsonValue,
+            reason: "开发期创建角色",
+            idempotencyKey: input.idempotencyKey,
+            configVersion: "m1_minimal_player_v1",
+          },
+        });
+
+        await tx.idempotencyRecord.create({
+          data: {
+            idempotencyKey: input.idempotencyKey,
+            accountId: account.accountId,
+            endpoint: input.endpoint,
+            requestHash,
+            responseData: responseData as unknown as Prisma.InputJsonValue,
+            statusCode: 200,
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          },
+        });
+
+        return responseData;
+      });
+    } catch (error) {
+      if (isPlayerNameUniqueConstraintError(error)) {
+        throw new BadRequestException("道号已被占用，请更换后重试");
       }
 
-      if (account.player) {
-        throw new BadRequestException("该账号已经创建角色");
-      }
-
-      const playerId = `player_${randomUUID()}`;
-      const player = await tx.player.create({
-        data: {
-          playerId,
-          accountId: account.accountId,
-          name: normalizedBody.name,
-          route: normalizedBody.route,
-        },
-      });
-      const progress = await tx.playerProgress.create({
-        data: {
-          playerId,
-          eraId: defaultEraId,
-          lastCultivationAt: new Date(Date.now() - 30 * 60 * 1000),
-          newbieProtectionUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        },
-      });
-      const wallet = await tx.playerWallet.create({
-        data: {
-          playerId,
-        },
-      });
-      await tx.playerActionState.create({
-        data: {
-          playerId,
-          eraId: defaultEraId,
-        },
-      });
-      await tx.playerCaveState.create({
-        data: {
-          playerId,
-          lastCollectedAt: new Date(Date.now() - 30 * 60 * 1000),
-        },
-      });
-      await tx.playerProvinceProgress.createMany({
-        data: defaultProvinceIds.map((provinceId) => ({
-          provinceProgressId: `province_progress_${randomUUID()}`,
-          playerId,
-          eraId: defaultEraId,
-          provinceId,
-          unlocked: provinceId === "ji",
-        })),
-      });
-      await tx.playerTaskState.createMany({
-        data: createInitialTaskRows(playerId),
-      });
-
-      const responseData: CreatePlayerResponse = {
-        record_id: `create_player_${randomUUID()}`,
-        profile: toPlayerProfileResponse({ player, progress, wallet }),
-      };
-
-      await tx.auditLog.create({
-        data: {
-          auditLogId: `audit_${randomUUID()}`,
-          accountId: account.accountId,
-          playerId,
-          action: "player_create",
-          targetType: "player",
-          targetId: playerId,
-          afterSnapshot: responseData.profile as unknown as Prisma.InputJsonValue,
-          reason: "开发期创建角色",
-          idempotencyKey: input.idempotencyKey,
-          configVersion: "m1_minimal_player_v1",
-        },
-      });
-
-      await tx.idempotencyRecord.create({
-        data: {
-          idempotencyKey: input.idempotencyKey,
-          accountId: account.accountId,
-          endpoint: input.endpoint,
-          requestHash,
-          responseData: responseData as unknown as Prisma.InputJsonValue,
-          statusCode: 200,
-          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        },
-      });
-
-      return responseData;
-    });
-
-    return created;
+      throw error;
+    }
   }
 }
 
@@ -169,4 +183,17 @@ function normalizeCreatePlayerBody(body: CreatePlayerRequest): CreatePlayerReque
   }
 
   return { name, route };
+}
+
+function isPlayerNameUniqueConstraintError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null || !("code" in error) || error.code !== "P2002") {
+    return false;
+  }
+
+  const target = (error as { meta?: { target?: unknown } }).meta?.target;
+  if (Array.isArray(target)) {
+    return target.includes("name");
+  }
+
+  return target === "name" || (typeof target === "string" && target.includes("name"));
 }

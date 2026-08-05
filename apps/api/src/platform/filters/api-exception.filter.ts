@@ -18,7 +18,10 @@ export class ApiExceptionFilter implements ExceptionFilter {
     const response = context.getResponse<Response>();
     const status =
       exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
-    const message = exception instanceof Error ? exception.message : "系统异常";
+    const message =
+      exception instanceof HttpException
+        ? exception.message
+        : "系统暂时无法处理本次请求，请稍后重试。";
 
     response.status(status).json({
       code: getErrorCode(exception, status),

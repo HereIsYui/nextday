@@ -115,6 +115,48 @@ describe("M1 数据层与模拟登录", () => {
     expect(audit?.targetId).toBe(playerId);
   });
 
+  it("重复道号返回可操作提示且不会遗留半成品角色", async () => {
+    const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const name = `重名${Date.now().toString(36)}`;
+    const firstLogin = await request(app.getHttpServer())
+      .post("/api/auth/guest-login")
+      .send({ device_id: `m1_duplicate_first_${suffix}` })
+      .expect(201);
+    const secondLogin = await request(app.getHttpServer())
+      .post("/api/auth/guest-login")
+      .send({ device_id: `m1_duplicate_second_${suffix}` })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post("/api/player/create")
+      .set("Authorization", `Bearer ${firstLogin.body.data.token}`)
+      .set("Idempotency-Key", `idem_m1_duplicate_first_${suffix}`)
+      .send({ name, route: "qi" })
+      .expect(201);
+
+    const response = await request(app.getHttpServer())
+      .post("/api/player/create")
+      .set("Authorization", `Bearer ${secondLogin.body.data.token}`)
+      .set("Idempotency-Key", `idem_m1_duplicate_second_${suffix}`)
+      .send({ name, route: "body" })
+      .expect(400);
+
+    expect(response.body.message).toContain("道号已被占用");
+    expect(response.body.message).not.toContain("Prisma");
+    expect(response.body.message).not.toContain("Invalid");
+    expect(await prisma.player.count({ where: { name } })).toBe(1);
+    expect(
+      await prisma.player.findUnique({
+        where: { accountId: secondLogin.body.data.account.account_id },
+      }),
+    ).toBeNull();
+    expect(
+      await prisma.idempotencyRecord.findUnique({
+        where: { idempotencyKey: `idem_m1_duplicate_second_${suffix}` },
+      }),
+    ).toBeNull();
+  });
+
   it("角色创建缺少幂等键时被拒绝", async () => {
     const loginResponse = await request(app.getHttpServer())
       .post("/api/auth/guest-login")

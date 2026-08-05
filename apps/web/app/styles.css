@@ -452,12 +452,12 @@ h2 {
 .terminal-task-row {
   align-items: center;
   display: flex;
-  gap: 10px;
-  justify-content: space-between;
+  gap: 6px;
+  justify-content: flex-start;
 }
 
 .terminal-task-row p {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
 }
 

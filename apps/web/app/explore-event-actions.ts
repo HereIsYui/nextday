@@ -16,6 +16,26 @@ export function buildExploreEventCommand(eventId: string, choiceId: string) {
   return `奇遇 ${eventId} ${choiceId}`;
 }
 
+export function withoutExploreEventInstructions<TEntry extends { text: string }>(
+  entries: TEntry[],
+  events: PendingExploreEvent[],
+): TEntry[] {
+  if (events.length === 0) {
+    return entries;
+  }
+
+  const instructions = new Set(
+    events.flatMap((event) => [
+      "请从以下选项中选择，并输入对应指令：",
+      ...event.choices.map(
+        (choice) =>
+          `选项 ${choice.choiceId}：${choice.label}（${choice.rewardPreview}）。输入：奇遇 ${event.eventId} ${choice.choiceId}`,
+      ),
+    ]),
+  );
+  return entries.filter((entry) => !instructions.has(entry.text.trim()));
+}
+
 export function pendingExploreEventsFromCommandState(state: unknown): PendingExploreEvent[] {
   const stateRecord = asRecord(state);
   const result = asRecord(stateRecord?.result);

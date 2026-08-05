@@ -13,53 +13,27 @@ describe("探索主动传音", () => {
       completes_at: "2026-08-05T10:00:00.000Z",
       count: 2,
       province_name: "冀州",
-      record_id: "explore_001",
       status: "completed",
     } satisfies Pick<
       ExploreResponse,
-      "can_claim" | "completes_at" | "count" | "province_name" | "record_id" | "status"
+      "can_claim" | "completes_at" | "count" | "province_name" | "status"
     >;
 
     expect(createExploreCompletionNotice(explore)).toEqual({
-      lines: ["冀州的 2 次探索已结束。输入“领取探索 explore_001”结算战报与奖励。"],
+      lines: ["冀州的 2 次探索已结束。输入“领取探索”结算战报与奖励。"],
       tone: "success",
     });
   });
 
-  it("将待选择奇遇及每个可输入指令主动传出", () => {
+  it("将待选择奇遇主动引导至网页选项卡", () => {
     const event = {
-      choices: [
-        {
-          choice_id: "collect",
-          description: "采集灵草",
-          label: "顺势采药",
-          reward_preview: "凝露草 ×1",
-        },
-        {
-          choice_id: "leave",
-          description: "继续赶路",
-          label: "谨慎离开",
-          reward_preview: "无额外奖励",
-        },
-      ],
-      description: "山道旁有一簇异草。",
       event_id: "event_001",
       status: "pending",
       title: "路遇灵草",
-    } satisfies Pick<
-      ExploreEventState,
-      "choices" | "description" | "event_id" | "status" | "title"
-    >;
+    } satisfies Pick<ExploreEventState, "event_id" | "status" | "title">;
 
     expect(createExploreEventNotice(event)).toEqual({
-      lines: [
-        "探索途中触发奇遇“路遇灵草”：山道旁有一簇异草。",
-        "请从以下选项中选择，并输入对应指令：",
-        "选项 collect：顺势采药（凝露草 ×1）",
-        "输入：奇遇 event_001 collect",
-        "选项 leave：谨慎离开（无额外奖励）",
-        "输入：奇遇 event_001 leave",
-      ],
+      lines: ["探索途中触发奇遇“路遇灵草”，请在下方直接选择。"],
       tone: "warning",
     });
   });

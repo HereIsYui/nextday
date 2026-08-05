@@ -25,6 +25,7 @@ import {
   mergePendingExploreEvents,
   pendingExploreEventsFromCommandState,
   pendingExploreEventsFromValues,
+  withoutExploreEventInstructions,
 } from "./explore-event-actions";
 import {
   createExploreCompletionNotice,
@@ -50,6 +51,11 @@ interface CommandHelpGroup {
   description?: string;
   items: CommandHelpItem[];
   title: string;
+}
+
+interface CommandExecutionOptions {
+  displayCommand?: string;
+  saveToHistory?: boolean;
 }
 
 interface TerminalEntry {
@@ -146,6 +152,18 @@ export default function HomePage() {
   const wallet = activeProfile?.wallet ?? null;
   const recentBattles = overview?.recent_battles ?? [];
   const storyScrolls = scrolls?.scrolls ?? [];
+  const visibleHelpGroups = useMemo(() => {
+    if (pendingExploreEvents.length === 0) {
+      return helpGroups;
+    }
+
+    return helpGroups
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((item) => !item.syntax.includes("<事件ID>")),
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [helpGroups, pendingExploreEvents.length]);
 
   const appendTerminalEntries = useCallback((entries: TerminalEntry[]) => {
     if (entries.length === 0) {
@@ -539,7 +557,7 @@ export default function HomePage() {
     }
   }
 
-  async function executeCommand(rawCommand: string) {
+  async function executeCommand(rawCommand: string, options: CommandExecutionOptions = {}) {
     const nextCommand = rawCommand.trim();
     if (!nextCommand || !token || busy) {
       return;
@@ -548,10 +566,14 @@ export default function HomePage() {
     setBusy(true);
     setCommand("");
     setHistoryIndex(-1);
-    setCommandHistory((current) =>
-      [nextCommand, ...current.filter((item) => item !== nextCommand)].slice(0, 30),
-    );
-    appendTerminalEntries([terminalEntry("command", "你", [`> ${nextCommand}`])]);
+    if (options.saveToHistory !== false) {
+      setCommandHistory((current) =>
+        [nextCommand, ...current.filter((item) => item !== nextCommand)].slice(0, 30),
+      );
+    }
+    appendTerminalEntries([
+      terminalEntry("command", "你", [`> ${options.displayCommand ?? nextCommand}`]),
+    ]);
 
     try {
       const client = createCommandClient(token);
@@ -560,13 +582,18 @@ export default function HomePage() {
         createIdempotencyKey("web_command"),
       );
       const data = readResponse(response);
-      const entries = normalizeCommandEntries(data.entries);
+      const pendingEvents =
+        data.command_id === "explore_claim" || data.command_id === "explore_events"
+          ? pendingExploreEventsFromCommandState(data.state)
+          : [];
+      const entries = normalizeCommandEntries(
+        withoutExploreEventInstructions(data.entries, pendingEvents),
+      );
       appendTerminalEntries(
         entries.length > 0 ? entries : [terminalEntry("success", "九州传音", ["指令已执行。"])],
       );
       applyCommandState(data.state, { setOverview, setProfile, setScrolls });
       if (data.command_id === "explore_claim" || data.command_id === "explore_events") {
-        const pendingEvents = pendingExploreEventsFromCommandState(data.state);
         if (data.command_id === "explore_events") {
           setPendingExploreEvents(pendingEvents);
         } else if (pendingEvents.length > 0) {
@@ -596,18 +623,24 @@ export default function HomePage() {
     }
   }
 
-  async function handleExploreEventChoice(eventId: string, choiceId: string) {
-    if (busy || hydrating || resolvingExploreEventIdsRef.current.has(eventId)) {
+  async function handleExploreEventChoice(
+    event: PendingExploreEvent,
+    choice: PendingExploreEvent["choices"][number],
+  ) {
+    if (busy || hydrating || resolvingExploreEventIdsRef.current.has(event.eventId)) {
       return;
     }
 
-    resolvingExploreEventIdsRef.current.add(eventId);
-    setResolvingExploreEventId(eventId);
+    resolvingExploreEventIdsRef.current.add(event.eventId);
+    setResolvingExploreEventId(event.eventId);
     try {
-      await executeCommand(buildExploreEventCommand(eventId, choiceId));
+      await executeCommand(buildExploreEventCommand(event.eventId, choice.choiceId), {
+        displayCommand: `选择奇遇“${event.title}”：${choice.label}`,
+        saveToHistory: false,
+      });
     } finally {
-      resolvingExploreEventIdsRef.current.delete(eventId);
-      setResolvingExploreEventId((current) => (current === eventId ? null : current));
+      resolvingExploreEventIdsRef.current.delete(event.eventId);
+      setResolvingExploreEventId((current) => (current === event.eventId ? null : current));
     }
   }
 
@@ -796,10 +829,6 @@ export default function HomePage() {
                         </div>
                         <div className="explore-event-choice-list">
                           {event.choices.map((choice) => {
-                            const selectionCommand = buildExploreEventCommand(
-                              event.eventId,
-                              choice.choiceId,
-                            );
                             const isResolving = resolvingExploreEventId === event.eventId;
                             return (
                               <button
@@ -807,10 +836,7 @@ export default function HomePage() {
                                 className="explore-event-choice"
                                 disabled={busy || hydrating || isResolving}
                                 key={choice.choiceId}
-                                onClick={() =>
-                                  void handleExploreEventChoice(event.eventId, choice.choiceId)
-                                }
-                                title={`执行：${selectionCommand}`}
+                                onClick={() => void handleExploreEventChoice(event, choice)}
                                 type="button"
                               >
                                 <strong>{choice.label}</strong>
@@ -894,8 +920,8 @@ export default function HomePage() {
                   <p className="panel-warning">服务帮助暂不可用，以下为本地指引：{helpError}</p>
                 ) : null}
                 <div className="help-groups">
-                  {helpGroups.map((group) => (
-                    <details key={group.title} open={group.title === helpGroups[0]?.title}>
+                  {visibleHelpGroups.map((group) => (
+                    <details key={group.title} open={group.title === visibleHelpGroups[0]?.title}>
                       <summary>{group.title}</summary>
                       {group.description ? <p>{group.description}</p> : null}
                       <ul>

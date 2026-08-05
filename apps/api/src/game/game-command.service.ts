@@ -111,9 +111,9 @@ const commandHelpGroups: TextCommandHelpGroup[] = [
       },
       {
         command_id: "explore_claim",
-        syntax: "领取探索 [探索记录ID]",
+        syntax: "领取探索",
         aliases: ["探索领取", "探索结算"],
-        description: "结算已完成的最近一次探索，或指定探索记录。",
+        description: "自动结算最近一条可领取探索。",
       },
       {
         command_id: "explore_events",

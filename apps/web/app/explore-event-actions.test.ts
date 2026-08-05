@@ -5,6 +5,7 @@ import {
   mergePendingExploreEvents,
   pendingExploreEventsFromCommandState,
   pendingExploreEventsFromValues,
+  withoutExploreEventInstructions,
 } from "./explore-event-actions";
 
 describe("探索奇遇选项", () => {
@@ -69,5 +70,21 @@ describe("探索奇遇选项", () => {
         choices: [expect.objectContaining({ label: "顺势采药（更新）" })],
       }),
     ]);
+  });
+
+  it("网页有选项卡时隐藏文字指令，保留奇遇叙事和结算结果", () => {
+    const events = pendingExploreEventsFromValues([pendingEvent]);
+    const entries = [
+      { text: "探索结算完成：冀州共 1 战，胜 1 场。" },
+      { text: "探索奇遇“路遇灵草”：山道旁有一簇异草。" },
+      { text: "请从以下选项中选择，并输入对应指令：" },
+      { text: "选项 collect：顺势采药（凝露草 ×1）。输入：奇遇 event_001 collect" },
+    ];
+
+    expect(withoutExploreEventInstructions(entries, events)).toEqual([
+      { text: "探索结算完成：冀州共 1 战，胜 1 场。" },
+      { text: "探索奇遇“路遇灵草”：山道旁有一簇异草。" },
+    ]);
+    expect(withoutExploreEventInstructions(entries, [])).toEqual(entries);
   });
 });

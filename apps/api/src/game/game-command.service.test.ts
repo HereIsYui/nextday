@@ -17,6 +17,11 @@ describe("文字命令服务", () => {
 
     expect(response.command_id).toBe("help");
     expect(response.entries.some((entry) => entry.text.includes("探索 <州域> [次数]"))).toBe(true);
+    expect(
+      response.entries.some((entry) =>
+        entry.text.includes("领取探索：自动结算最近一条可领取探索。"),
+      ),
+    ).toBe(true);
   });
 
   it("解析州域别名并透传幂等键", async () => {
@@ -91,6 +96,32 @@ describe("文字命令服务", () => {
         "选项 leave：谨慎离开（无额外奖励）。输入：奇遇 event_test leave",
       ]),
     );
+  });
+
+  it("领取探索会自动结算最近一条可领取记录", async () => {
+    const gameService = {
+      claimExplore: vi.fn().mockResolvedValue({
+        battles: [],
+        count: 1,
+        event: null,
+        province_name: "冀州",
+        rewards: { cultivation: "0", items: [], spirit_stone: "0" },
+      }),
+    };
+    const service = createService({ gameService });
+
+    const response = await service.execute({
+      accountId: "account_test",
+      body: { command: "领取探索" },
+      idempotencyKey: "idem_explore_claim_latest",
+    });
+
+    expect(response.command_id).toBe("explore_claim");
+    expect(gameService.claimExplore).toHaveBeenCalledWith({
+      accountId: "account_test",
+      body: {},
+      idempotencyKey: "idem_explore_claim_latest",
+    });
   });
 
   it("对含糊探索输入返回中文用法", async () => {

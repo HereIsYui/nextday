@@ -48,7 +48,7 @@ describe("文字命令服务", () => {
     });
   });
 
-  it("领取探索后主动传出奇遇选项及对应指令", async () => {
+  it("领取探索只传出结算结果，不在领取时主动传出奇遇", async () => {
     const gameService = {
       claimExplore: vi.fn().mockResolvedValue({
         battles: [{ result: "win" }],
@@ -88,14 +88,9 @@ describe("文字命令服务", () => {
       body: { record_id: "explore_test" },
       idempotencyKey: "idem_explore_claim",
     });
-    expect(response.entries.map((entry) => entry.text)).toEqual(
-      expect.arrayContaining([
-        "探索奇遇“路遇灵草”：山道旁有一簇异草。",
-        "请从以下选项中选择，并输入对应指令：",
-        "选项 collect：顺势采药（凝露草 ×1）。输入：奇遇 event_test collect",
-        "选项 leave：谨慎离开（无额外奖励）。输入：奇遇 event_test leave",
-      ]),
-    );
+    expect(response.entries.map((entry) => entry.text)).toEqual([
+      "探索结算完成：冀州共 1 战，胜 1 场。未获得额外奖励。",
+    ]);
   });
 
   it("领取探索会自动结算最近一条可领取记录", async () => {
@@ -121,6 +116,36 @@ describe("文字命令服务", () => {
       accountId: "account_test",
       body: {},
       idempotencyKey: "idem_explore_claim_latest",
+    });
+  });
+
+  it("单条待选奇遇可省略过长的事件ID", async () => {
+    const gameService = {
+      getExploreEvents: vi.fn().mockResolvedValue({
+        events: [{ event_id: "explore_event_very_long_identifier" }],
+      }),
+      resolveExploreEvent: vi.fn().mockResolvedValue({
+        event: { title: "炉火余温" },
+        rewards: { cultivation: "35", items: [], spirit_stone: "0" },
+      }),
+    };
+    const service = createService({ gameService });
+
+    const response = await service.execute({
+      accountId: "account_test",
+      body: { command: "奇遇 warm_fire" },
+      idempotencyKey: "idem_short_event_choice",
+    });
+
+    expect(response.command_id).toBe("explore_event_resolve");
+    expect(gameService.getExploreEvents).toHaveBeenCalledWith("account_test", {
+      limit: "2",
+      status: "pending",
+    });
+    expect(gameService.resolveExploreEvent).toHaveBeenCalledWith({
+      accountId: "account_test",
+      body: { choice_id: "warm_fire", event_id: "explore_event_very_long_identifier" },
+      idempotencyKey: "idem_short_event_choice",
     });
   });
 

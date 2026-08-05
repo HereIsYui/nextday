@@ -32,18 +32,21 @@ describe("P1.7 持久修行日志与探索事件链", () => {
     await app.close();
   });
 
-  it("探索领取后生成待处理奇遇，并写入可重新读取的修行日志", async () => {
+  it("探索进行中触发奇遇，领取探索不会重复生成", async () => {
     const { token, playerId } = await createP17Player(app, prisma);
 
-    const started = await request(app.getHttpServer())
-      .post("/api/game/explore")
+    const started = await startTriggeredExplore(app, prisma, token);
+    const pending = await request(app.getHttpServer())
+      .get("/api/game/explore/events?status=pending")
       .set("Authorization", `Bearer ${token}`)
-      .set("Idempotency-Key", `idem_p17_explore_${Date.now()}_${randomSuffix()}`)
-      .send({ province_id: "ji", count: 1 })
-      .expect(201);
+      .expect(200);
+
+    expect(pending.body.data.events).toHaveLength(1);
+    expect(pending.body.data.events[0].status).toBe("pending");
+    expect(pending.body.data.events[0].triggered_at).toBeTruthy();
 
     await prisma.exploreActionRecord.update({
-      where: { recordId: started.body.data.record_id },
+      where: { recordId: started.recordId },
       data: { completesAt: new Date(Date.now() - 1000) },
     });
 
@@ -51,19 +54,20 @@ describe("P1.7 持久修行日志与探索事件链", () => {
       .post("/api/game/explore/claim")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_p17_claim_${Date.now()}_${randomSuffix()}`)
-      .send({ record_id: started.body.data.record_id })
+      .send({ record_id: started.recordId })
       .expect(201);
 
-    expect(claimed.body.data.event).toBeTruthy();
-    expect(claimed.body.data.event.status).toBe("pending");
-    expect(claimed.body.data.event.choices.length).toBeGreaterThanOrEqual(2);
+    expect(claimed.body.data.event).toBeNull();
+    expect(claimed.body.data.linked_event_hint).toBeNull();
 
-    const pending = await request(app.getHttpServer())
+    const pendingAfterClaim = await request(app.getHttpServer())
       .get("/api/game/explore/events?status=pending")
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
-    expect(pending.body.data.events).toHaveLength(1);
-    expect(pending.body.data.events[0].event_id).toBe(claimed.body.data.event.event_id);
+    expect(pendingAfterClaim.body.data.events).toHaveLength(1);
+    expect(pendingAfterClaim.body.data.events[0].event_id).toBe(
+      pending.body.data.events[0].event_id,
+    );
 
     const journal = await request(app.getHttpServer())
       .get("/api/game/journal?limit=8")
@@ -79,7 +83,7 @@ describe("P1.7 持久修行日志与探索事件链", () => {
 
   it("探索奇遇选择可发放普通奖励、幂等返回旧结果，且不能重复处理", async () => {
     const { token, playerId } = await createP17Player(app, prisma);
-    const event = await createClaimedExploreEvent(app, prisma, token);
+    const event = await createTriggeredExploreEvent(app, prisma, token);
     const choice = event.choices[0];
     const idempotencyKey = `idem_p17_event_${Date.now()}_${randomSuffix()}`;
 
@@ -125,6 +129,49 @@ describe("P1.7 持久修行日志与探索事件链", () => {
 
     const eventCount = await prisma.exploreEventRecord.count({ where: { playerId } });
     expect(eventCount).toBe(1);
+  });
+
+  it("奇遇久未选择后自动优先选择修为选项", async () => {
+    const { token } = await createP17Player(app, prisma);
+    await startTriggeredExplore(app, prisma, token);
+    const pending = await request(app.getHttpServer())
+      .get("/api/game/explore/events?status=pending")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    const eventId = pending.body.data.events[0].event_id as string;
+    const stored = await prisma.exploreEventRecord.findUniqueOrThrow({ where: { eventId } });
+    const choices = stored.choices as Array<{
+      choiceId: string;
+      rewards: { cultivation?: string };
+    }>;
+    const expectedChoice =
+      choices.find((choice) => BigInt(choice.rewards.cultivation ?? "0") > 0n) ?? choices[0];
+
+    await prisma.exploreEventRecord.update({
+      where: { eventId },
+      data: { autoResolveAt: new Date(Date.now() - 1_000) },
+    });
+
+    await waitForExploreEventStatus(prisma, eventId, "resolved");
+
+    const pendingAfterTimeout = await request(app.getHttpServer())
+      .get("/api/game/explore/events?status=pending")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(pendingAfterTimeout.body.data.events).toHaveLength(0);
+
+    const resolved = await request(app.getHttpServer())
+      .get("/api/game/explore/events?status=resolved")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    const autoResolved = resolved.body.data.events.find(
+      (event: { event_id: string }) => event.event_id === eventId,
+    );
+    expect(autoResolved).toMatchObject({
+      resolution_mode: "auto",
+      selected_choice_id: expectedChoice?.choiceId,
+      status: "resolved",
+    });
   });
 
   it("领取修为后写入可持久读取的修行日志", async () => {
@@ -207,11 +254,25 @@ describe("P1.7 持久修行日志与探索事件链", () => {
   });
 });
 
-async function createClaimedExploreEvent(
+async function createTriggeredExploreEvent(
   app: INestApplication,
   prisma: PrismaClient,
   token: string,
 ): Promise<{ event_id: string; choices: Array<{ choice_id: string }> }> {
+  await startTriggeredExplore(app, prisma, token);
+  const pending = await request(app.getHttpServer())
+    .get("/api/game/explore/events?status=pending")
+    .set("Authorization", `Bearer ${token}`)
+    .expect(200);
+
+  return pending.body.data.events[0];
+}
+
+async function startTriggeredExplore(
+  app: INestApplication,
+  prisma: PrismaClient,
+  token: string,
+): Promise<{ recordId: string }> {
   const started = await request(app.getHttpServer())
     .post("/api/game/explore")
     .set("Authorization", `Bearer ${token}`)
@@ -219,19 +280,21 @@ async function createClaimedExploreEvent(
     .send({ province_id: "ji", count: 1 })
     .expect(201);
 
+  const recordId = `explore_midway_${Date.now()}_${randomSuffix()}`;
+  const now = Date.now();
   await prisma.exploreActionRecord.update({
     where: { recordId: started.body.data.record_id },
-    data: { completesAt: new Date(Date.now() - 1000) },
+    data: {
+      completesAt: new Date(now + 60_000),
+      eventContextSnapshot: { itemIds: ["low_herb"], traits: ["毒蚀"] },
+      eventTriggerAt: new Date(now - 1_000),
+      recordId,
+      startedAt: new Date(now - 10_000),
+      status: "pending",
+    },
   });
 
-  const claimed = await request(app.getHttpServer())
-    .post("/api/game/explore/claim")
-    .set("Authorization", `Bearer ${token}`)
-    .set("Idempotency-Key", `idem_p17_event_claim_${Date.now()}_${randomSuffix()}`)
-    .send({ record_id: started.body.data.record_id })
-    .expect(201);
-
-  return claimed.body.data.event;
+  return { recordId };
 }
 
 async function createP17Player(
@@ -261,4 +324,21 @@ async function createP17Player(
 
 function randomSuffix() {
   return Math.random().toString(36).slice(2, 8);
+}
+
+async function waitForExploreEventStatus(
+  prisma: PrismaClient,
+  eventId: string,
+  expectedStatus: string,
+) {
+  const deadline = Date.now() + 7_000;
+  while (Date.now() < deadline) {
+    const event = await prisma.exploreEventRecord.findUnique({ where: { eventId } });
+    if (event?.status === expectedStatus) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  throw new Error(`探索奇遇未在预期时间内自动处理：${eventId}`);
 }

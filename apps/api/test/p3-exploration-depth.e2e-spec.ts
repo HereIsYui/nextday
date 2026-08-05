@@ -55,7 +55,33 @@ describe("P3-1 探索生态核心", () => {
     }
   });
 
-  it("探索领取后返回怪物特性、掉落线索和奇遇提示", async () => {
+  it("同一玩家同时发起探索时只会保留一条队列", async () => {
+    const { playerId, token } = await createP3Player(app);
+    const responses = await Promise.all(
+      ["first", "second"].map((suffix) =>
+        request(app.getHttpServer())
+          .post("/api/game/explore")
+          .set("Authorization", `Bearer ${token}`)
+          .set(
+            "Idempotency-Key",
+            `idem_p3_parallel_explore_${Date.now()}_${suffix}_${randomSuffix()}`,
+          )
+          .send({ province_id: "ji", count: 1 }),
+      ),
+    );
+
+    expect(responses.map((response) => response.status).sort()).toEqual([201, 400]);
+    const activeRecords = await prisma.exploreActionRecord.findMany({
+      where: {
+        claimedAt: null,
+        playerId,
+        status: { in: ["pending", "completed"] },
+      },
+    });
+    expect(activeRecords).toHaveLength(1);
+  });
+
+  it("探索领取后返回怪物特性和掉落线索，不再新建奇遇", async () => {
     const { token } = await createP3Player(app);
     const started = await request(app.getHttpServer())
       .post("/api/game/explore")
@@ -86,7 +112,8 @@ describe("P3-1 探索生态核心", () => {
     }>;
 
     expect(battles).toHaveLength(5);
-    expect(claimed.body.data.linked_event_hint).toContain("探索奇遇");
+    expect(claimed.body.data.event).toBeNull();
+    expect(claimed.body.data.linked_event_hint).toBeNull();
     expect(claimed.body.data.experience.timeline[0].description).toBe(battles[0].battle_hint);
 
     const droppedItemIds = battles.flatMap((battle) =>

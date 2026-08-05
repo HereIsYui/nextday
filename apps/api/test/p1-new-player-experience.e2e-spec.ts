@@ -80,9 +80,9 @@ describe("P1-9 新手 30 分钟体验与玩法厚度", () => {
     }
   });
 
-  it("探索领取返回战斗原因摘要和带提示的探索奇遇", async () => {
+  it("探索途中触发带提示的奇遇，领取后保留战斗原因摘要", async () => {
     const { token } = await createP19Player(app, prisma);
-    const event = await startAndClaimExplore(app, prisma, token);
+    const event = await triggerEventAndClaimExplore(app, prisma, token);
 
     expect(event.rarity).toBeTruthy();
     expect(event.prerequisite_hint).toBeTruthy();
@@ -174,7 +174,7 @@ describe("P1-9 新手 30 分钟体验与玩法厚度", () => {
     const { token, playerId } = await createP19Player(app, prisma);
     await grantStarterMaterials(prisma, playerId);
 
-    const event = await startAndClaimExplore(app, prisma, token);
+    const event = await triggerEventAndClaimExplore(app, prisma, token);
     await request(app.getHttpServer())
       .post("/api/game/explore/events/resolve")
       .set("Authorization", `Bearer ${token}`)
@@ -224,7 +224,7 @@ describe("P1-9 新手 30 分钟体验与玩法厚度", () => {
   });
 });
 
-async function startAndClaimExplore(
+async function triggerEventAndClaimExplore(
   app: INestApplication,
   prisma: PrismaClient,
   token: string,
@@ -242,20 +242,41 @@ async function startAndClaimExplore(
     .send({ count: 1, province_id: "ji" })
     .expect(201);
 
+  const now = Date.now();
+  const recordId = started.body.data.record_id as string;
   await prisma.exploreActionRecord.update({
-    where: { recordId: started.body.data.record_id },
-    data: { completesAt: new Date(Date.now() - 1000) },
+    where: { recordId },
+    data: {
+      completesAt: new Date(now + 60_000),
+      eventContextSnapshot: { itemIds: ["low_herb"], traits: ["毒蚀"] },
+      eventTriggerAt: new Date(now - 1_000),
+      startedAt: new Date(now - 10_000),
+      status: "pending",
+    },
+  });
+
+  const pending = await request(app.getHttpServer())
+    .get("/api/game/explore/events?status=pending")
+    .set("Authorization", `Bearer ${token}`)
+    .expect(200);
+  const event = pending.body.data.events[0];
+  expect(event).toBeTruthy();
+
+  await prisma.exploreActionRecord.update({
+    where: { recordId },
+    data: { completesAt: new Date(Date.now() - 1_000) },
   });
 
   const claimed = await request(app.getHttpServer())
     .post("/api/game/explore/claim")
     .set("Authorization", `Bearer ${token}`)
     .set("Idempotency-Key", `idem_p19_claim_${Date.now()}_${randomSuffix()}`)
-    .send({ record_id: started.body.data.record_id })
+    .send({ record_id: recordId })
     .expect(201);
 
   expect(claimed.body.data.battles[0].reason_summary.length).toBeGreaterThan(0);
-  return claimed.body.data.event;
+  expect(claimed.body.data.event).toBeNull();
+  return event;
 }
 
 async function createP19Player(

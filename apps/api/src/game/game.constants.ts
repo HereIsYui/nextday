@@ -536,7 +536,7 @@ export const exploreEventConfigs: ExploreEventConfig[] = [
         rewards: { cultivation: "35", spirit_stone: "0", items: [] },
       },
     ],
-    prerequisiteHint: "完成任意州域探索后可能出现。",
+    prerequisiteHint: "探索进行中可能出现。",
     rarity: "common",
     routeStepHint: "新手主线建议优先补足炼丹材料。",
   },
@@ -637,8 +637,8 @@ export const exploreEventConfigs: ExploreEventConfig[] = [
     provinceIds: ["ji", "qing", "jing"],
     title: "封泉暗涌",
     description: "岩缝中有一眼细泉被旧符封住，泉声很轻，却牵动气海。",
-    prerequisiteHint: "低阶州域连续探索后小概率出现。",
-    routeStepHint: "适合在第一次探索后补修为或丹材。",
+    prerequisiteHint: "低阶州域连续探索途中小概率出现。",
+    routeStepHint: "适合在第一次探索途中补修为或丹材。",
     choices: [
       {
         choiceId: "drink",
@@ -718,7 +718,7 @@ export const exploreEventConfigs: ExploreEventConfig[] = [
     rarity: "common",
     title: "妖踪横径",
     description: "泥地上留下新鲜妖兽足印，通往一片低矮林坡。",
-    prerequisiteHint: "任何普通探索后都可能出现。",
+    prerequisiteHint: "任何普通探索途中都可能出现。",
     routeStepHint: "适合让战斗与材料收益产生选择差异。",
     choices: [
       {

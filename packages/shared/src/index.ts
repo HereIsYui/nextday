@@ -621,6 +621,9 @@ export interface ExploreEventState {
   selected_choice_id: string | null;
   rewards: RewardBundle;
   experience?: ExperiencePayload;
+  triggered_at: string | null;
+  auto_resolve_at: string | null;
+  resolution_mode: "manual" | "auto" | null;
   created_at: string;
   resolved_at: string | null;
 }
@@ -635,6 +638,7 @@ export interface ExploreResponse {
   total_seconds: number;
   explore_boost_percent: number;
   started_at: string;
+  event_trigger_at: string | null;
   completes_at: string;
   claimed_at: string | null;
   can_claim: boolean;

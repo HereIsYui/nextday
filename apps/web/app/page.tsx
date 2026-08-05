@@ -3,6 +3,7 @@
 import { GameClient } from "@nextday/game-client";
 import type {
   ApiResponse,
+  ExploreResponse,
   GameOverviewResponse,
   HealthStatus,
   LoginResponse,
@@ -30,6 +31,7 @@ import {
 } from "./explore-event-actions";
 import {
   createExploreCompletionNotice,
+  createExploreEventAutoResolveNotice,
   createExploreEventNotice,
   getExplorePollDelay,
 } from "./explore-notifications";
@@ -51,6 +53,7 @@ interface CommandHelpItem {
 
 interface CommandHelpGroup {
   description?: string;
+  id: string;
   items: CommandHelpItem[];
   title: string;
 }
@@ -71,10 +74,11 @@ const tokenStorageKey = "nextday_m1_token";
 const deviceStorageKey = "nextday_m1_device_id";
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
 
-const quickCommands = ["状态", "修炼", "突破", "探索", "领取洞府", "任务", "九塔"];
+const baseQuickCommands = ["状态", "修炼", "突破", "探索", "领取洞府", "任务", "九塔"];
 
 const fallbackHelpGroups: CommandHelpGroup[] = [
   {
+    id: "basic",
     title: "基础",
     items: [
       { syntax: "状态", description: "查看当前修为、背包和可进行事项。", aliases: ["面板"] },
@@ -84,6 +88,7 @@ const fallbackHelpGroups: CommandHelpGroup[] = [
     ],
   },
   {
+    id: "cultivation",
     title: "修行与探索",
     items: [
       { syntax: "修炼", description: "收取本次可得的修为。", aliases: ["吐纳"] },
@@ -100,6 +105,7 @@ const fallbackHelpGroups: CommandHelpGroup[] = [
     ],
   },
   {
+    id: "production",
     title: "炼制与单方",
     items: [
       { syntax: "服丹 <丹药>", description: "服用背包中的丹药。", aliases: ["服用"] },
@@ -120,6 +126,9 @@ export default function HomePage() {
   const [overview, setOverview] = useState<GameOverviewResponse | null>(null);
   const [scrolls, setScrolls] = useState<StoryScrollListResponse | null>(null);
   const [helpGroups, setHelpGroups] = useState<CommandHelpGroup[]>(fallbackHelpGroups);
+  const [openHelpGroupId, setOpenHelpGroupId] = useState<string | null>(
+    fallbackHelpGroups[0]?.id ?? null,
+  );
   const [helpError, setHelpError] = useState<string | null>(null);
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [message, setMessage] = useState("尚未登录");
@@ -132,6 +141,7 @@ export default function HomePage() {
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [pendingExploreEvents, setPendingExploreEvents] = useState<PendingExploreEvent[]>([]);
   const [resolvingExploreEventId, setResolvingExploreEventId] = useState<string | null>(null);
+  const [currentExplore, setCurrentExplore] = useState<ExploreResponse | null>(null);
   const [activeOverlay, setActiveOverlay] = useState<OverlayView | null>(null);
   const [terminalEntries, setTerminalEntries] = useState<TerminalEntry[]>([
     {
@@ -141,11 +151,14 @@ export default function HomePage() {
       tone: "system",
     },
   ]);
+  const commandInputRef = useRef<HTMLInputElement | null>(null);
   const terminalEndRef = useRef<HTMLDivElement | null>(null);
   const loadVersionRef = useRef(0);
   const notificationSessionKeyRef = useRef<string | null>(null);
   const notifiedExploreRecordIdsRef = useRef(new Set<string>());
   const notifiedExploreEventIdsRef = useRef(new Set<string>());
+  const manuallyResolvedExploreEventIdsRef = useRef(new Set<string>());
+  const pendingExploreEventsRef = useRef<PendingExploreEvent[]>([]);
   const resolvingExploreEventIdsRef = useRef(new Set<string>());
 
   const activeProfile = overview?.profile ?? profile;
@@ -163,10 +176,24 @@ export default function HomePage() {
     return helpGroups
       .map((group) => ({
         ...group,
-        items: group.items.filter((item) => !item.syntax.includes("<事件ID>")),
+        items: group.items.filter((item) => !item.syntax.includes("事件ID")),
       }))
       .filter((group) => group.items.length > 0);
   }, [helpGroups, pendingExploreEvents.length]);
+  const canClaimExplore = currentExplore?.status === "completed" && currentExplore.can_claim;
+  const quickCommands = useMemo(
+    () => (canClaimExplore ? ["领取探索", ...baseQuickCommands] : baseQuickCommands),
+    [canClaimExplore],
+  );
+
+  useEffect(() => {
+    setOpenHelpGroupId((current) => {
+      if (current && visibleHelpGroups.some((group) => group.id === current)) {
+        return current;
+      }
+      return visibleHelpGroups[0]?.id ?? null;
+    });
+  }, [visibleHelpGroups]);
 
   const appendTerminalEntries = useCallback((entries: TerminalEntry[]) => {
     if (entries.length === 0) {
@@ -337,9 +364,12 @@ export default function HomePage() {
       notificationSessionKeyRef.current = sessionKey;
       notifiedExploreRecordIdsRef.current.clear();
       notifiedExploreEventIdsRef.current.clear();
+      manuallyResolvedExploreEventIdsRef.current.clear();
+      pendingExploreEventsRef.current = [];
       resolvingExploreEventIdsRef.current.clear();
       setPendingExploreEvents([]);
       setResolvingExploreEventId(null);
+      setCurrentExplore(null);
     }
 
     const client = createClient(token);
@@ -385,7 +415,11 @@ export default function HomePage() {
         if (currentResult.status === "fulfilled") {
           try {
             const current = readResponse(currentResult.value).current;
-            taskPollDelay = getExplorePollDelay(current);
+            setCurrentExplore(current);
+            taskPollDelay = getExplorePollDelay(
+              current,
+              pendingExploreEventsRef.current.length > 0,
+            );
             const notice = current ? createExploreCompletionNotice(current) : null;
             if (current && notice && !notifiedExploreRecordIdsRef.current.has(current.record_id)) {
               notifiedExploreRecordIdsRef.current.add(current.record_id);
@@ -402,7 +436,10 @@ export default function HomePage() {
         if (eventsResult.status === "fulfilled") {
           try {
             const { events } = readResponse(eventsResult.value);
-            setPendingExploreEvents(pendingExploreEventsFromValues(events));
+            const previousPendingEvents = pendingExploreEventsRef.current;
+            const nextPendingEvents = pendingExploreEventsFromValues(events);
+            pendingExploreEventsRef.current = nextPendingEvents;
+            setPendingExploreEvents(nextPendingEvents);
             for (const event of events) {
               const notice = createExploreEventNotice(event);
               if (!notice || notifiedExploreEventIdsRef.current.has(event.event_id)) {
@@ -411,6 +448,33 @@ export default function HomePage() {
               notifiedExploreEventIdsRef.current.add(event.event_id);
               notifications.push(notice);
               nextMessage = "探索奇遇待选择";
+            }
+
+            const nextEventIds = new Set(nextPendingEvents.map((event) => event.eventId));
+            const disappearedEvents = previousPendingEvents.filter(
+              (event) => !nextEventIds.has(event.eventId),
+            );
+            if (disappearedEvents.length > 0) {
+              const resolvedResult = await client.exploreEvents("resolved");
+              const { events: resolvedEvents } = readResponse(resolvedResult);
+              const disappearedEventIds = new Set(disappearedEvents.map((event) => event.eventId));
+              for (const event of resolvedEvents) {
+                if (
+                  !disappearedEventIds.has(event.event_id) ||
+                  manuallyResolvedExploreEventIdsRef.current.has(event.event_id)
+                ) {
+                  continue;
+                }
+                const notice = createExploreEventAutoResolveNotice(event);
+                if (!notice) {
+                  continue;
+                }
+                notifications.push(notice);
+                nextMessage = "探索奇遇已自动处理";
+              }
+              for (const event of disappearedEvents) {
+                manuallyResolvedExploreEventIdsRef.current.delete(event.eventId);
+              }
             }
           } catch {
             shouldRetry = true;
@@ -577,6 +641,7 @@ export default function HomePage() {
     appendTerminalEntries([
       terminalEntry("command", "你", [`> ${options.displayCommand ?? nextCommand}`]),
     ]);
+    let shouldRestoreCommandFocus = false;
 
     try {
       const client = createCommandClient(token);
@@ -598,19 +663,31 @@ export default function HomePage() {
       applyCommandState(data.state, { setOverview, setProfile, setScrolls });
       if (data.command_id === "explore_claim" || data.command_id === "explore_events") {
         if (data.command_id === "explore_events") {
+          pendingExploreEventsRef.current = pendingEvents;
           setPendingExploreEvents(pendingEvents);
         } else if (pendingEvents.length > 0) {
-          setPendingExploreEvents((current) => mergePendingExploreEvents(current, pendingEvents));
+          setPendingExploreEvents((current) => {
+            const next = mergePendingExploreEvents(current, pendingEvents);
+            pendingExploreEventsRef.current = next;
+            return next;
+          });
         }
         markDeliveredExploreEvents(data.state, notifiedExploreEventIdsRef.current);
       }
       if (data.command_id === "explore_event_resolve") {
         const eventId = exploreEventIdFromCommandState(data.state);
         if (eventId) {
-          setPendingExploreEvents((current) =>
-            current.filter((event) => event.eventId !== eventId),
-          );
+          manuallyResolvedExploreEventIdsRef.current.add(eventId);
+          setPendingExploreEvents((current) => {
+            const next = current.filter((event) => event.eventId !== eventId);
+            pendingExploreEventsRef.current = next;
+            return next;
+          });
         }
+      }
+      if (data.command_id === "explore_claim") {
+        setCurrentExplore(null);
+        shouldRestoreCommandFocus = true;
       }
 
       await refreshDashboard(token, true).catch(() => undefined);
@@ -623,6 +700,9 @@ export default function HomePage() {
       setMessage("指令执行失败");
     } finally {
       setBusy(false);
+      if (shouldRestoreCommandFocus) {
+        window.requestAnimationFrame(() => commandInputRef.current?.focus());
+      }
     }
   }
 
@@ -682,12 +762,15 @@ export default function HomePage() {
     setProfile(null);
     setOverview(null);
     setScrolls(null);
+    pendingExploreEventsRef.current = [];
     setPendingExploreEvents([]);
     setResolvingExploreEventId(null);
+    setCurrentExplore(null);
     setActiveOverlay(null);
     notificationSessionKeyRef.current = null;
     notifiedExploreRecordIdsRef.current.clear();
     notifiedExploreEventIdsRef.current.clear();
+    manuallyResolvedExploreEventIdsRef.current.clear();
     resolvingExploreEventIdsRef.current.clear();
     setSessionError(null);
     setMessage("已离开本次行旅");
@@ -766,22 +849,27 @@ export default function HomePage() {
         </section>
       ) : (
         <>
-          <section className="status-strip" aria-label="个人状态">
-            {metrics.map((metric) => (
-              <article className="status-metric" key={metric.label}>
-                <span>{metric.label}</span>
-                <strong>{metric.value}</strong>
-                <small>{metric.detail}</small>
-              </article>
-            ))}
-            <button className="logout-button" onClick={handleLogout} type="button">
-              离开
-            </button>
-          </section>
-
           {sessionError ? <ErrorNotice message={sessionError} /> : null}
 
           <section className="console-layout" aria-label="文字修行指令台">
+            <aside className="cultivation-panel" aria-label="修行状态">
+              <div className="cultivation-panel-heading">
+                <p className="console-eyebrow">修行状态</p>
+                <h2>道途简报</h2>
+              </div>
+              <div className="status-strip">
+                {metrics.map((metric) => (
+                  <article className="status-metric" key={metric.label}>
+                    <span>{metric.label}</span>
+                    <strong>{metric.value}</strong>
+                    <small>{metric.detail}</small>
+                  </article>
+                ))}
+              </div>
+              <button className="logout-button" onClick={handleLogout} type="button">
+                离开
+              </button>
+            </aside>
             <section className="terminal-panel" aria-label="叙事日志">
               <div className="panel-heading">
                 <div>
@@ -898,6 +986,7 @@ export default function HomePage() {
                     }}
                     onKeyDown={handleCommandKeyDown}
                     placeholder="输入指令，例如：探索 冀州"
+                    ref={commandInputRef}
                     value={command}
                   />
                 </label>
@@ -968,7 +1057,19 @@ export default function HomePage() {
                   ) : null}
                   <div className="help-groups">
                     {visibleHelpGroups.map((group) => (
-                      <details key={group.title} open={group.title === visibleHelpGroups[0]?.title}>
+                      <details
+                        key={group.id}
+                        onToggle={(event) => {
+                          const isOpen = event.currentTarget.open;
+                          setOpenHelpGroupId((current) => {
+                            if (isOpen) {
+                              return group.id;
+                            }
+                            return current === group.id ? null : current;
+                          });
+                        }}
+                        open={openHelpGroupId === group.id}
+                      >
                         <summary>{group.title}</summary>
                         {group.description ? <p>{group.description}</p> : null}
                         <ul>
@@ -1169,6 +1270,7 @@ function normalizeHelpGroups(value: unknown[]): CommandHelpGroup[] {
     }
     const description = pickText(record.description, record.summary);
     groups.push({
+      id: pickText(record.group_id, record.id) || `group_${groupIndex + 1}`,
       title: pickText(record.title, record.label, record.name) || `指令组 ${groupIndex + 1}`,
       ...(description ? { description } : {}),
       items,

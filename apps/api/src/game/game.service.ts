@@ -1,5 +1,12 @@
-import { randomUUID } from "node:crypto";
-import { BadRequestException, Inject, Injectable } from "@nestjs/common";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  type OnModuleDestroy,
+  type OnModuleInit,
+} from "@nestjs/common";
 import type {
   ActionState,
   BattleListResponse,
@@ -86,9 +93,35 @@ type Tx = Prisma.TransactionClient;
 type DbClient = Tx | PrismaService;
 type PlayerWithCore = Player & { progress: PlayerProgress; wallet: PlayerWallet };
 
+const exploreEventTriggerChancePercent = 35;
+const exploreEventAutoResolveMilliseconds = 5 * 60 * 1000;
+const exploreEventLifecycleIntervalMilliseconds = 5 * 1000;
+
+interface ExploreEventPlan {
+  triggerAt: Date;
+}
+
 @Injectable()
-export class GameService {
+export class GameService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(GameService.name);
+  private exploreEventLifecycleTimer: ReturnType<typeof setInterval> | null = null;
+  private isRefreshingDueExploreEvents = false;
+
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+
+  onModuleInit() {
+    void this.refreshDueExploreEventLifecycles();
+    this.exploreEventLifecycleTimer = setInterval(() => {
+      void this.refreshDueExploreEventLifecycles();
+    }, exploreEventLifecycleIntervalMilliseconds);
+  }
+
+  onModuleDestroy() {
+    if (this.exploreEventLifecycleTimer) {
+      clearInterval(this.exploreEventLifecycleTimer);
+      this.exploreEventLifecycleTimer = null;
+    }
+  }
 
   async getOverview(accountId: string): Promise<GameOverviewResponse> {
     const player = await this.requirePlayer(accountId);
@@ -128,6 +161,7 @@ export class GameService {
   async getDailyRoute(accountId: string): Promise<DailyRouteResponse> {
     const player = await this.requirePlayer(accountId);
     await this.ensureM2State(player.playerId);
+    await this.refreshExploreEventLifecycle({ accountId, playerId: player.playerId });
     const todayStart = startOfDay();
     const [
       actionState,
@@ -273,6 +307,7 @@ export class GameService {
     input: { status?: string; limit?: string },
   ): Promise<ExploreEventListResponse> {
     const player = await this.requirePlayer(accountId);
+    await this.refreshExploreEventLifecycle({ accountId, playerId: player.playerId });
     const status = normalizeExploreEventStatusFilter(input.status);
     const limit = normalizeListLimit(input.limit, 10, 20);
     const events = await this.prisma.exploreEventRecord.findMany({
@@ -536,6 +571,7 @@ export class GameService {
           throw new BadRequestException("该州尚未开放");
         }
 
+        await this.lockPlayerExploreQueue(tx, loaded.playerId);
         const activeRecord = await this.findActiveExploreRecord(tx, loaded.playerId);
         if (activeRecord) {
           const refreshedRecord = await this.refreshExploreRecordStatus(tx, activeRecord);
@@ -570,9 +606,14 @@ export class GameService {
         const startedAt = new Date();
         const secondsPerExplore = provinceExploreSeconds[province.province_id] ?? 30;
         const totalSeconds = secondsPerExplore * body.count;
+        const recordId = `explore_${randomUUID()}`;
+        const eventPlan = planExploreEvent(recordId, startedAt, totalSeconds);
+        const eventContext = eventPlan
+          ? buildPlannedExploreEventLinkContext(province.province_id, recordId, body.count)
+          : null;
         const record = await tx.exploreActionRecord.create({
           data: {
-            recordId: `explore_${randomUUID()}`,
+            recordId,
             playerId: loaded.playerId,
             eraId: defaultEraId,
             provinceId: province.province_id,
@@ -587,6 +628,10 @@ export class GameService {
               afterActionState,
             ) as unknown as Prisma.InputJsonValue,
             exploreBoostPercent,
+            eventTriggerAt: eventPlan?.triggerAt ?? null,
+            ...(eventContext
+              ? { eventContextSnapshot: eventContext as unknown as Prisma.InputJsonValue }
+              : {}),
             idempotencyKey: input.idempotencyKey,
             configVersion: "m2_core_loop_v2",
             rulesetVersion: "ruleset_p1_6_v1",
@@ -613,6 +658,7 @@ export class GameService {
   async getCurrentExplore(accountId: string): Promise<ExploreCurrentResponse> {
     const player = await this.requirePlayer(accountId);
     await this.ensureM2State(player.playerId);
+    await this.refreshExploreEventLifecycle({ accountId, playerId: player.playerId });
     const actionState = await this.refreshActionState(player.playerId);
     const activeRecord = await this.findActiveExploreRecord(this.prisma, player.playerId);
     if (activeRecord) {
@@ -637,6 +683,10 @@ export class GameService {
   }): Promise<ExploreResponse> {
     const player = await this.requirePlayer(input.accountId);
     const body = normalizeExploreClaimRequest(input.body);
+    await this.refreshExploreEventLifecycle({
+      accountId: input.accountId,
+      playerId: player.playerId,
+    });
 
     return this.withIdempotency({
       accountId: input.accountId,
@@ -657,12 +707,26 @@ export class GameService {
         }
 
         const record = await this.refreshExploreRecordStatus(tx, selectedRecord);
-        if (record.status === "claimed") {
+        if (record.status === "claimed" || record.claimedAt) {
           throw new BadRequestException("探索奖励已领取");
         }
 
-        if (record.completesAt.getTime() > Date.now()) {
+        if (record.status !== "completed" || record.completesAt.getTime() > Date.now()) {
           throw new BadRequestException("探索尚未完成");
+        }
+
+        const claimedAt = new Date();
+        const reservation = await tx.exploreActionRecord.updateMany({
+          where: {
+            claimedAt: null,
+            playerId: loaded.playerId,
+            recordId: record.recordId,
+            status: "completed",
+          },
+          data: { claimedAt, status: "claimed" },
+        });
+        if (reservation.count === 0) {
+          throw new BadRequestException("探索奖励已领取");
         }
 
         const province = await this.getProvinceForPlayer(tx, loaded.playerId, record.provinceId);
@@ -717,8 +781,6 @@ export class GameService {
         const updatedRecord = await tx.exploreActionRecord.update({
           where: { recordId: record.recordId },
           data: {
-            status: "claimed",
-            claimedAt: new Date(),
             rewardSnapshot: rewardTotal as unknown as Prisma.InputJsonValue,
             battleSnapshot: battles as unknown as Prisma.InputJsonValue,
             completedTaskIds: completedTaskIds as unknown as Prisma.InputJsonValue,
@@ -726,12 +788,7 @@ export class GameService {
             actionStateSnapshot: actionState as unknown as Prisma.InputJsonValue,
           },
         });
-        const event = await this.createExploreEvent(tx, {
-          playerId: loaded.playerId,
-          province,
-          record: updatedRecord,
-        });
-        const response = toExploreResponse(updatedRecord, actionState, event);
+        const response = toExploreResponse(updatedRecord, actionState);
 
         await this.writeAudit(tx, {
           accountId: input.accountId,
@@ -755,6 +812,10 @@ export class GameService {
   }): Promise<ResolveExploreEventResponse> {
     const player = await this.requirePlayer(input.accountId);
     const body = normalizeResolveExploreEventRequest(input.body);
+    await this.refreshExploreEventLifecycle({
+      accountId: input.accountId,
+      playerId: player.playerId,
+    });
 
     return this.withIdempotency({
       accountId: input.accountId,
@@ -778,49 +839,17 @@ export class GameService {
           throw new BadRequestException("探索奇遇选择不存在");
         }
 
-        await this.applyReward(tx, player.playerId, choice.rewards, {
-          sourceType: "explore_event",
-          sourceId: event.eventId,
-          idempotencyKey: input.idempotencyKey,
-        });
-        const completedTaskIds = await incrementPlayerTasks(tx, player.playerId, {
-          novice_resolve_event: 1,
-        });
-        const experience = buildExploreEventExperience(event, choice);
-        const updatedEvent = await tx.exploreEventRecord.update({
-          where: { eventId: event.eventId },
-          data: {
-            status: "resolved",
-            selectedChoiceId: choice.choiceId,
-            rewardSnapshot: choice.rewards as unknown as Prisma.InputJsonValue,
-            experienceSnapshot: experience as unknown as Prisma.InputJsonValue,
-            resolvedIdempotency: input.idempotencyKey,
-            resolvedAt: new Date(),
-          },
-        });
-        const response: ResolveExploreEventResponse = {
-          event: toExploreEventState(updatedEvent),
-          rewards: choice.rewards,
-          experience,
-        };
-        response.experience.delta_summary.push(
-          ...completedTaskIds.map((taskId) => ({
-            label: "主线推进",
-            delta: taskTitleForProgress(taskId),
-            tone: "success" as const,
-          })),
-        );
-
-        await this.writeAudit(tx, {
+        const response = await this.settleExploreEvent(tx, {
           accountId: input.accountId,
-          playerId: player.playerId,
-          action: "explore_event_resolve",
-          targetType: "explore_event",
-          targetId: event.eventId,
-          afterSnapshot: response as unknown as Prisma.InputJsonValue,
+          automatic: false,
+          choice,
+          event,
           idempotencyKey: input.idempotencyKey,
+          playerId: player.playerId,
         });
-
+        if (!response) {
+          throw new BadRequestException("探索奇遇已处理");
+        }
         return response;
       },
     });
@@ -1080,6 +1109,195 @@ export class GameService {
     return toActionState(updated);
   }
 
+  private async refreshDueExploreEventLifecycles() {
+    if (this.isRefreshingDueExploreEvents) {
+      return;
+    }
+
+    this.isRefreshingDueExploreEvents = true;
+    try {
+      const now = new Date();
+      const [dueRecords, overdueEvents] = await Promise.all([
+        this.prisma.exploreActionRecord.findMany({
+          where: {
+            completesAt: { gt: now },
+            eventRecord: { is: null },
+            eventTriggerAt: { lte: now },
+            status: "pending",
+          },
+          orderBy: { eventTriggerAt: "asc" },
+          select: {
+            player: { select: { accountId: true } },
+            playerId: true,
+          },
+          take: 100,
+        }),
+        this.prisma.exploreEventRecord.findMany({
+          where: {
+            autoResolveAt: { lte: now },
+            status: "pending",
+          },
+          orderBy: { autoResolveAt: "asc" },
+          select: {
+            player: { select: { accountId: true } },
+            playerId: true,
+          },
+          take: 100,
+        }),
+      ]);
+      const duePlayers = new Map<string, string>();
+      for (const item of [...dueRecords, ...overdueEvents]) {
+        duePlayers.set(item.playerId, item.player.accountId);
+      }
+
+      for (const [playerId, accountId] of duePlayers) {
+        try {
+          await this.refreshExploreEventLifecycle({ accountId, playerId });
+        } catch (error) {
+          this.logger.error(
+            `刷新玩家 ${playerId} 的探索奇遇生命周期失败`,
+            error instanceof Error ? error.stack : String(error),
+          );
+        }
+      }
+    } catch (error) {
+      this.logger.error(
+        "扫描待触发或待自动结算的探索奇遇失败",
+        error instanceof Error ? error.stack : String(error),
+      );
+    } finally {
+      this.isRefreshingDueExploreEvents = false;
+    }
+  }
+
+  private async refreshExploreEventLifecycle(input: { accountId: string; playerId: string }) {
+    await this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+      const activeRecord = await this.findActiveExploreRecord(tx, input.playerId);
+      const record = activeRecord ? await this.refreshExploreRecordStatus(tx, activeRecord) : null;
+
+      if (
+        record?.status === "pending" &&
+        record.eventTriggerAt &&
+        record.eventTriggerAt.getTime() <= now.getTime() &&
+        record.completesAt.getTime() > now.getTime()
+      ) {
+        const province = await this.getProvinceForPlayer(tx, input.playerId, record.provinceId);
+        await this.createExploreEvent(tx, {
+          context: exploreEventLinkContextFromJson(record.eventContextSnapshot),
+          playerId: input.playerId,
+          province,
+          record,
+          triggeredAt: now,
+        });
+      }
+
+      const overdueEvents = await tx.exploreEventRecord.findMany({
+        where: {
+          autoResolveAt: { lte: now },
+          playerId: input.playerId,
+          status: "pending",
+        },
+        orderBy: { autoResolveAt: "asc" },
+        take: 20,
+      });
+
+      for (const event of overdueEvents) {
+        const choices = exploreEventChoiceConfigsFromJson(event.choices);
+        const choice = pickAutomaticExploreEventChoice(choices);
+        if (!choice) {
+          continue;
+        }
+        const response = await this.settleExploreEvent(tx, {
+          accountId: input.accountId,
+          automatic: true,
+          choice,
+          event,
+          idempotencyKey: `auto_explore_event_${event.eventId}`,
+          playerId: input.playerId,
+        });
+        if (!response) {
+          continue;
+        }
+        await writeJournalFromResponse(tx, {
+          accountId: input.accountId,
+          endpoint: "POST /api/game/explore/events/resolve",
+          response,
+          idempotencyKey: `auto_explore_event_${event.eventId}`,
+        });
+      }
+    });
+  }
+
+  private async settleExploreEvent(
+    tx: Tx,
+    input: {
+      accountId: string;
+      automatic: boolean;
+      choice: ExploreEventChoiceConfig;
+      event: ExploreEventRecord;
+      idempotencyKey: string;
+      playerId: string;
+    },
+  ): Promise<ResolveExploreEventResponse | null> {
+    const claimed = await tx.exploreEventRecord.updateMany({
+      where: { eventId: input.event.eventId, status: "pending" },
+      data: { status: "expired" },
+    });
+    if (claimed.count === 0) {
+      if (input.automatic) {
+        return null;
+      }
+      throw new BadRequestException("探索奇遇已处理");
+    }
+
+    await this.applyReward(tx, input.playerId, input.choice.rewards, {
+      sourceType: "explore_event",
+      sourceId: input.event.eventId,
+      idempotencyKey: input.idempotencyKey,
+    });
+    const completedTaskIds = await incrementPlayerTasks(tx, input.playerId, {
+      novice_resolve_event: 1,
+    });
+    const experience = buildExploreEventExperience(input.event, input.choice, input.automatic);
+    const updatedEvent = await tx.exploreEventRecord.update({
+      where: { eventId: input.event.eventId },
+      data: {
+        status: "resolved",
+        selectedChoiceId: input.choice.choiceId,
+        rewardSnapshot: input.choice.rewards as unknown as Prisma.InputJsonValue,
+        experienceSnapshot: experience as unknown as Prisma.InputJsonValue,
+        resolvedIdempotency: input.idempotencyKey,
+        resolutionMode: input.automatic ? "auto" : "manual",
+        resolvedAt: new Date(),
+      },
+    });
+    const response: ResolveExploreEventResponse = {
+      event: toExploreEventState(updatedEvent),
+      rewards: input.choice.rewards,
+      experience,
+    };
+    response.experience.delta_summary.push(
+      ...completedTaskIds.map((taskId) => ({
+        label: "主线推进",
+        delta: taskTitleForProgress(taskId),
+        tone: "success" as const,
+      })),
+    );
+
+    await this.writeAudit(tx, {
+      accountId: input.accountId,
+      playerId: input.playerId,
+      action: input.automatic ? "explore_event_auto_resolve" : "explore_event_resolve",
+      targetType: "explore_event",
+      targetId: input.event.eventId,
+      afterSnapshot: response as unknown as Prisma.InputJsonValue,
+      idempotencyKey: input.idempotencyKey,
+    });
+
+    return response;
+  }
+
   private async findActiveExploreRecord(
     tx: DbClient,
     playerId: string,
@@ -1092,6 +1310,10 @@ export class GameService {
       },
       orderBy: { createdAt: "desc" },
     });
+  }
+
+  private async lockPlayerExploreQueue(tx: Tx, playerId: string) {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${playerId}))`;
   }
 
   private async refreshExploreRecordStatus(
@@ -1416,11 +1638,11 @@ export class GameService {
           ? "已处理途中见闻，少量普通奖励已入账。"
           : pendingEventCount > 0
             ? "已有探索奇遇待处理，选择一个方式领取普通奖励。"
-            : "领取探索后会出现轻选择奇遇。",
+            : "探索进行中有概率触发轻选择奇遇。",
         status: hasResolvedEvent ? "done" : hasExploredJi ? "active" : "pending",
         step_id: "resolve_event",
         title: "处理奇遇",
-        unlock_hint: "完成一次探索并领取后出现。",
+        unlock_hint: "探索进行中概率触发。",
       },
       {
         action_hint: "growth",
@@ -1545,9 +1767,11 @@ export class GameService {
   private async createExploreEvent(
     tx: Tx,
     input: {
+      context: ExploreEventLinkContext;
       playerId: string;
       province: ProvinceSummary;
       record: ExploreActionRecord;
+      triggeredAt: Date;
     },
   ): Promise<ExploreEventRecord> {
     const existing = await tx.exploreEventRecord.findUnique({
@@ -1557,15 +1781,15 @@ export class GameService {
       return existing;
     }
 
-    const linkContext = buildExploreEventLinkContext(input.record.battleSnapshot);
     const config = pickExploreEventConfig(
       input.record.recordId,
       input.province.province_id,
-      linkContext,
+      input.context,
     );
-    const linkHint = formatExploreEventLinkHint(linkContext);
-    return tx.exploreEventRecord.create({
-      data: {
+    const linkHint = formatExploreEventLinkHint(input.context);
+    return tx.exploreEventRecord.upsert({
+      where: { exploreRecordId: input.record.recordId },
+      create: {
         eventId: `explore_event_${randomUUID()}`,
         playerId: input.playerId,
         eraId: defaultEraId,
@@ -1577,10 +1801,13 @@ export class GameService {
         description: `${input.province.name}途中，${config.description}${linkHint}`,
         choices: config.choices as unknown as Prisma.InputJsonValue,
         status: "pending",
-        configVersion: "p3_explore_event_link_v1",
+        triggeredAt: input.triggeredAt,
+        autoResolveAt: new Date(input.triggeredAt.getTime() + exploreEventAutoResolveMilliseconds),
+        configVersion: "p3_explore_event_link_v2",
         rulesetVersion: "ruleset_p3_exploration_v1",
         rewardConfigVersion: "reward_p1_7_v1",
       },
+      update: {},
     });
   }
 
@@ -1893,6 +2120,7 @@ function toExploreResponse(
     seconds_per_explore: record.secondsPerExplore,
     total_seconds: record.totalSeconds,
     started_at: record.startedAt.toISOString(),
+    event_trigger_at: record.eventTriggerAt?.toISOString() ?? null,
     completes_at: record.completesAt.toISOString(),
     claimed_at: record.claimedAt?.toISOString() ?? null,
     can_claim: record.status === "completed" && !record.claimedAt,
@@ -1928,7 +2156,7 @@ function toExploreEventState(record: ExploreEventRecord): ExploreEventState {
     rarity: config?.rarity ?? "common",
     title: record.title,
     description: record.description,
-    prerequisite_hint: config?.prerequisiteHint ?? "完成探索后出现。",
+    prerequisite_hint: config?.prerequisiteHint ?? "探索进行中可能出现。",
     route_step_hint: config?.routeStepHint ?? "处理后可继续推进今日修行。",
     status: normalizeExploreEventStatus(record.status),
     choices: choices.map((choice) => ({
@@ -1941,6 +2169,12 @@ function toExploreEventState(record: ExploreEventRecord): ExploreEventState {
     selected_choice_id: record.selectedChoiceId,
     rewards,
     experience,
+    triggered_at: record.triggeredAt?.toISOString() ?? null,
+    auto_resolve_at: record.autoResolveAt?.toISOString() ?? null,
+    resolution_mode:
+      record.resolutionMode === "manual" || record.resolutionMode === "auto"
+        ? record.resolutionMode
+        : null,
     created_at: record.createdAt.toISOString(),
     resolved_at: record.resolvedAt?.toISOString() ?? null,
   };
@@ -1978,6 +2212,42 @@ function isExploreEventChoiceConfig(value: unknown): value is ExploreEventChoice
   );
 }
 
+export function planExploreEvent(
+  recordId: string,
+  startedAt: Date,
+  totalSeconds: number,
+): ExploreEventPlan | null {
+  const chance = stableExploreEventNumber(`${recordId}:chance`) % 100;
+  if (chance >= exploreEventTriggerChancePercent) {
+    return null;
+  }
+
+  const durationMilliseconds = Math.max(1_000, totalSeconds * 1_000);
+  const timingPercent = 35 + (stableExploreEventNumber(`${recordId}:timing`) % 31);
+  const triggerOffset = Math.round((durationMilliseconds * timingPercent) / 100);
+  return { triggerAt: new Date(startedAt.getTime() + triggerOffset) };
+}
+
+function stableExploreEventNumber(seed: string): number {
+  return createHash("sha256").update(seed).digest().readUInt32BE(0);
+}
+
+export function pickAutomaticExploreEventChoice(
+  choices: ExploreEventChoiceConfig[],
+): ExploreEventChoiceConfig | null {
+  return (
+    choices.find((choice) => {
+      try {
+        return BigInt(choice.rewards.cultivation ?? "0") > 0n;
+      } catch {
+        return false;
+      }
+    }) ??
+    choices[0] ??
+    null
+  );
+}
+
 function pickExploreEventConfig(
   seed: string,
   provinceId: string,
@@ -2007,32 +2277,41 @@ interface ExploreEventLinkContext {
   itemIds: string[];
 }
 
-function buildExploreEventLinkContext(value: Prisma.JsonValue): ExploreEventLinkContext {
-  if (!Array.isArray(value)) {
-    return { itemIds: [], traits: [] };
-  }
-
+function buildPlannedExploreEventLinkContext(
+  provinceId: string,
+  recordId: string,
+  count: number,
+): ExploreEventLinkContext {
   const traits = new Set<string>();
   const itemIds = new Set<string>();
 
-  for (const item of value) {
-    if (!item || typeof item !== "object") {
+  for (let index = 0; index < count; index += 1) {
+    const enemy = selectExploreEnemy(provinceId, recordId, index);
+    if (!enemy) {
       continue;
     }
-    const battle = item as Partial<BattleSummary>;
-    for (const trait of battle.enemy_traits ?? []) {
-      if (typeof trait === "string") {
-        traits.add(trait);
-      }
+    for (const trait of enemy.traits) {
+      traits.add(trait);
     }
-    for (const rewardItem of battle.rewards?.items ?? []) {
-      if (rewardItem.item_id) {
-        itemIds.add(rewardItem.item_id);
-      }
-    }
+    itemIds.add(selectExploreLoot(provinceId, recordId, index, enemy.enemyId).itemId);
   }
 
   return { itemIds: [...itemIds], traits: [...traits] };
+}
+
+function exploreEventLinkContextFromJson(value: Prisma.JsonValue | null): ExploreEventLinkContext {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { itemIds: [], traits: [] };
+  }
+  const context = value as Partial<ExploreEventLinkContext>;
+  return {
+    itemIds: Array.isArray(context.itemIds)
+      ? context.itemIds.filter((item): item is string => typeof item === "string")
+      : [],
+    traits: Array.isArray(context.traits)
+      ? context.traits.filter((item): item is string => typeof item === "string")
+      : [],
+  };
 }
 
 function getExploreEventLinkWeight(eventType: string, context: ExploreEventLinkContext): number {
@@ -2074,10 +2353,10 @@ function getExploreEventLinkWeight(eventType: string, context: ExploreEventLinkC
 function formatExploreEventLinkHint(context: ExploreEventLinkContext): string {
   const parts: string[] = [];
   if (context.traits.length) {
-    parts.push(`受刚才${context.traits.slice(0, 2).join("、")}气息牵引`);
+    parts.push(`受途中${context.traits.slice(0, 2).join("、")}气息牵引`);
   }
   if (context.itemIds.length) {
-    parts.push("与你带回的材料线索相互呼应");
+    parts.push("与前方材料线索相互呼应");
   }
 
   return parts.length ? ` ${parts.join("，")}。` : "";
@@ -2086,10 +2365,13 @@ function formatExploreEventLinkHint(context: ExploreEventLinkContext): string {
 function buildExploreEventExperience(
   event: ExploreEventRecord,
   choice: ExploreEventChoiceConfig,
+  automatic = false,
 ): ResolveExploreEventResponse["experience"] {
   return buildJournalExperience({
-    title: `${event.title}处理完成`,
-    summary: `${choice.label}：${choice.description}`,
+    title: automatic ? `${event.title}已自动处理` : `${event.title}处理完成`,
+    summary: automatic
+      ? `久未选择，已代为择取“${choice.label}”：${choice.description}`
+      : `${choice.label}：${choice.description}`,
     deltas: [rewardDeltaForEvent(choice.rewards)].filter(
       Boolean,
     ) as ResolveExploreEventResponse["experience"]["delta_summary"],
@@ -2194,14 +2476,14 @@ function buildDailyRouteState(input: {
       action_hint: "claim_explore",
       action_label: canClaimExplore ? "领取探索" : hasRunningExplore ? "等待探索完成" : "查看探索",
       detail: canClaimExplore
-        ? `${input.exploreRecord?.provinceName ?? "州域"}探索已完成，领取后会生成战报、掉落和可能的奇遇。`
+        ? `${input.exploreRecord?.provinceName ?? "州域"}探索已完成，可以领取战报与掉落。`
         : hasRunningExplore
           ? `${input.exploreRecord?.provinceName ?? "州域"}探索正在进行，完成后再领取奖励。`
           : "暂无待领取探索。",
       priority: canClaimExplore ? 96 : hasRunningExplore ? 60 : 20,
       reason_tags: canClaimExplore ? ["可领取", "战报"] : hasRunningExplore ? ["进行中"] : [],
       state_detail: canClaimExplore
-        ? "领取后会写入战报、掉落、修行日志和可能的探索奇遇。"
+        ? "领取后会写入战报、掉落和修行日志；途中触发的奇遇会独立提醒。"
         : hasRunningExplore
           ? "探索正在路上，倒计时结束后回到这里领取结果。"
           : "当前没有待领取探索，可从州域探索开始下一轮。",
@@ -2218,13 +2500,13 @@ function buildDailyRouteState(input: {
       action_label: input.pendingEvent ? "处理奇遇" : "等待奇遇",
       detail: input.pendingEvent
         ? `${input.pendingEvent.title}仍待选择，处理后会获得少量普通奖励。`
-        : "领取探索后有机会出现轻选择奇遇。",
+        : "探索进行中有概率出现轻选择奇遇。",
       priority: input.pendingEvent ? 94 : 28,
-      reason_tags: input.pendingEvent ? ["可选择", "普通奖励"] : ["探索后出现"],
+      reason_tags: input.pendingEvent ? ["可选择", "普通奖励"] : ["途中概率出现"],
       state_detail: input.pendingEvent
         ? "选择处理方式后会给少量普通奖励，并刷新今日下一步。"
-        : "没有待处理奇遇时，这一步只作为探索后的提醒。",
-      state_label: input.pendingEvent ? "可处理" : "探索后出现",
+        : "没有待处理奇遇时，这一步只作为探索途中的提醒。",
+      state_label: input.pendingEvent ? "可处理" : "途中概率出现",
       source_detail: "来自探索事件链",
       status: input.pendingEvent ? "active" : "pending",
       step_id: "resolve_explore_event",

@@ -32,7 +32,7 @@ type ParsedCommand =
   | { commandId: "explore"; province: string; count: number }
   | { commandId: "explore_claim"; recordId?: string }
   | { commandId: "explore_events" }
-  | { commandId: "explore_event_resolve"; eventId: string; choiceId: string }
+  | { commandId: "explore_event_resolve"; eventId?: string; choiceId: string }
   | { commandId: "cave_status" }
   | { commandId: "cave_collect" }
   | { commandId: "task_list" }
@@ -123,9 +123,9 @@ const commandHelpGroups: TextCommandHelpGroup[] = [
       },
       {
         command_id: "explore_event_resolve",
-        syntax: "奇遇 <事件ID> <选项ID>",
-        aliases: ["处理奇遇 <事件ID> <选项ID>"],
-        description: "按奇遇列表中的事件与选项标识完成选择。",
+        syntax: "奇遇 [事件ID] <选项ID>",
+        aliases: ["处理奇遇 [事件ID] <选项ID>"],
+        description: "只有一条待选奇遇时可省略事件ID，直接输入选项标识。",
       },
     ],
   },
@@ -482,7 +482,7 @@ export class GameCommandService {
       ],
       result,
       ["overview", "explore"],
-      [{ label: "领取探索", command: "领取探索" }],
+      [],
     );
   }
 
@@ -501,17 +501,12 @@ export class GameCommandService {
         text: `探索结算完成：${result.province_name}共 ${result.count} 战，胜 ${wins} 场。${formatRewards(result.rewards)}`,
       },
     ];
-    if (result.event) {
-      entries.push(...toExploreEventEntries(result.event));
-    }
     return this.success(
       "explore_claim",
       entries,
       result,
       ["overview", "explore", "events", "tasks", "battles"],
-      result.event
-        ? [{ label: "查看奇遇", command: "奇遇" }]
-        : [{ label: "查看战报", command: "战报" }],
+      [{ label: "查看战报", command: "战报" }],
     );
   }
 
@@ -521,7 +516,7 @@ export class GameCommandService {
       limit: "10",
     });
     const entries: LogInput[] = result.events.length
-      ? result.events.flatMap(toExploreEventEntries)
+      ? result.events.flatMap((event) => toExploreEventEntries(event, result.events.length === 1))
       : [{ tone: "info", text: "暂无待处理奇遇。" }];
     return this.success(
       "explore_events",
@@ -541,12 +536,39 @@ export class GameCommandService {
 
   private async resolveExploreEvent(
     input: { accountId: string; idempotencyKey: string },
-    eventId: string,
+    eventId: string | undefined,
     choiceId: string,
   ): Promise<TextCommandResponse> {
+    let targetEventId = eventId;
+    if (!targetEventId) {
+      const pendingEvents = await this.gameService.getExploreEvents(input.accountId, {
+        limit: "2",
+        status: "pending",
+      });
+      if (pendingEvents.events.length === 0) {
+        return this.failure("explore_event_resolve", "暂无待处理奇遇。", [
+          { label: "继续探索", command: "探索 冀州 1" },
+        ]);
+      }
+      if (pendingEvents.events.length > 1) {
+        return this.failure(
+          "explore_event_resolve",
+          "当前有多条待处理奇遇，请先输入“奇遇”查看事件ID，再指定要处理的那一条。",
+          [{ label: "查看奇遇", command: "奇遇" }],
+        );
+      }
+      targetEventId = pendingEvents.events[0]?.event_id;
+    }
+
+    if (!targetEventId) {
+      return this.failure("explore_event_resolve", "未找到可处理的探索奇遇。", [
+        { label: "查看奇遇", command: "奇遇" },
+      ]);
+    }
+
     const result = await this.gameService.resolveExploreEvent({
       ...input,
-      body: { event_id: eventId, choice_id: choiceId },
+      body: { event_id: targetEventId, choice_id: choiceId },
     });
     return this.success(
       "explore_event_resolve",
@@ -1084,7 +1106,7 @@ interface LogInput {
   text: string;
 }
 
-function toExploreEventEntries(event: ExploreEventState): LogInput[] {
+function toExploreEventEntries(event: ExploreEventState, canOmitEventId: boolean): LogInput[] {
   return [
     {
       tone: "warning",
@@ -1096,7 +1118,7 @@ function toExploreEventEntries(event: ExploreEventState): LogInput[] {
     },
     ...event.choices.map((choice) => ({
       tone: "info" as const,
-      text: `选项 ${choice.choice_id}：${choice.label}（${choice.reward_preview}）。输入：奇遇 ${event.event_id} ${choice.choice_id}`,
+      text: `选项 ${choice.choice_id}：${choice.label}（${choice.reward_preview}）。输入：奇遇 ${canOmitEventId ? choice.choice_id : `${event.event_id} ${choice.choice_id}`}`,
     })),
   ];
 }
@@ -1150,9 +1172,12 @@ function parseCommand(input: TextCommandRequest): ParsedCommand | InvalidCommand
     if (args.length === 0) {
       return { commandId: "explore_events" };
     }
+    if (args.length === 1) {
+      return { commandId: "explore_event_resolve", choiceId: args[0] };
+    }
     if (args.length !== 2) {
       return invalid(
-        "奇遇需要事件ID和选项ID。用法：奇遇 <事件ID> <选项ID>。先输入“奇遇”查看可选项。",
+        "奇遇用法：单条待选奇遇可输入“奇遇 <选项ID>”；多条时输入“奇遇 <事件ID> <选项ID>”。",
       );
     }
     return { commandId: "explore_event_resolve", eventId: args[0], choiceId: args[1] };

@@ -256,11 +256,11 @@ export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
   },
   explore_event_link_rule: {
     config_type: "explore_event_link_rule",
-    config_version: "explore_event_link_rule_p3_v1",
+    config_version: "explore_event_link_rule_p3_v2",
     ruleset_version: "ruleset_p3_exploration_v1",
     reward_config_version: "reward_p1_7_v1",
     payload: {
-      rule: "探索领取后按最近战斗特性和掉落材料为奇遇事件加权，不改变奇遇奖励边界。",
+      rule: "探索开始时按预定途中遭遇与潜在掉落线索为奇遇事件加权；奇遇只会在探索进行中概率触发，不改变奖励边界。",
       links: [
         { event_type: "herb_trace", boosted_by: ["low_herb", "pill_dust", "毒蚀"] },
         {

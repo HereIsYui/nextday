@@ -28,6 +28,29 @@ describe("九州传音消息批次", () => {
     });
   });
 
+  it("合并主动提醒批次时保留单个批次内的重复消息", () => {
+    const batch = mergeCommandEntries([
+      {
+        tone: "success",
+        lines: ["冀州探索已结束。", "冀州探索已结束。"],
+      },
+      {
+        tone: "warning",
+        lines: ["探索奇遇待选择。", "输入：奇遇 event_001 collect"],
+      },
+    ]);
+
+    expect(batch).toEqual({
+      lines: [
+        "冀州探索已结束。",
+        "冀州探索已结束。",
+        "探索奇遇待选择。",
+        "输入：奇遇 event_001 collect",
+      ],
+      tone: "warning",
+    });
+  });
+
   it("忽略无效内容，避免生成空传音", () => {
     expect(mergeCommandEntries([null, {}, "  ", { text: "" }])).toBeNull();
   });

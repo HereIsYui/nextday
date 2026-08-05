@@ -1,5 +1,6 @@
 import { HttpException, Inject, Injectable } from "@nestjs/common";
 import type {
+  ExploreEventState,
   FormulaCraftResponse,
   ProductionFormulaKind,
   ProductionFormulaResponse,
@@ -501,10 +502,7 @@ export class GameCommandService {
       },
     ];
     if (result.event) {
-      entries.push({
-        tone: "warning",
-        text: `触发奇遇“${result.event.title}”。输入“奇遇”查看选项。`,
-      });
+      entries.push(...toExploreEventEntries(result.event));
     }
     return this.success(
       "explore_claim",
@@ -523,20 +521,8 @@ export class GameCommandService {
       limit: "10",
     });
     const entries: LogInput[] = result.events.length
-      ? result.events.map((event) => ({
-          tone: "warning",
-          text: `奇遇“${event.title}”：${event.description} 处理方式：奇遇 ${event.event_id} <选项ID>。`,
-        }))
+      ? result.events.flatMap(toExploreEventEntries)
       : [{ tone: "info", text: "暂无待处理奇遇。" }];
-
-    for (const event of result.events) {
-      for (const choice of event.choices) {
-        entries.push({
-          tone: "info",
-          text: `选项 ${choice.choice_id}：${choice.label}（${choice.reward_preview}）`,
-        });
-      }
-    }
     return this.success(
       "explore_events",
       entries,
@@ -1096,6 +1082,23 @@ export class GameCommandService {
 interface LogInput {
   tone: TextCommandLogTone;
   text: string;
+}
+
+function toExploreEventEntries(event: ExploreEventState): LogInput[] {
+  return [
+    {
+      tone: "warning",
+      text: `探索奇遇“${event.title}”：${event.description}`,
+    },
+    {
+      tone: "info",
+      text: "请从以下选项中选择，并输入对应指令：",
+    },
+    ...event.choices.map((choice) => ({
+      tone: "info" as const,
+      text: `选项 ${choice.choice_id}：${choice.label}（${choice.reward_preview}）。输入：奇遇 ${event.event_id} ${choice.choice_id}`,
+    })),
+  ];
 }
 
 function parseCommand(input: TextCommandRequest): ParsedCommand | InvalidCommand {

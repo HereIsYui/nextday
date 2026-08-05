@@ -18,7 +18,16 @@ import {
   useRef,
   useState,
 } from "react";
-import { type TerminalTone, mergeCommandEntries } from "./terminal-message-batch";
+import {
+  createExploreCompletionNotice,
+  createExploreEventNotice,
+  getExplorePollDelay,
+} from "./explore-notifications";
+import {
+  type TerminalMessageBatch,
+  type TerminalTone,
+  mergeCommandEntries,
+} from "./terminal-message-batch";
 
 type HealthText = "检测中" | "正常" | "不可用";
 type RouteValue = "qi" | "body";
@@ -64,7 +73,11 @@ const fallbackHelpGroups: CommandHelpGroup[] = [
       { syntax: "修炼", description: "收取本次可得的修为。", aliases: ["吐纳"] },
       { syntax: "突破", description: "在条件满足时尝试突破境界。", aliases: [] },
       { syntax: "探索 [州域]", description: "前往州域寻访机缘。", aliases: ["游历"] },
-      { syntax: "奇遇 <选择>", description: "处理当前等待中的奇遇。", aliases: [] },
+      {
+        syntax: "奇遇 <事件ID> <选项ID>",
+        description: "按传音中的指令处理当前等待的奇遇。",
+        aliases: [],
+      },
       { syntax: "洞府收取", description: "收取洞府积累的产出。", aliases: ["洞府"] },
       { syntax: "任务领取", description: "领取已完成任务的报酬。", aliases: ["领任务"] },
       { syntax: "九塔 [塔名]", description: "查看或挑战九塔。", aliases: ["塔"] },
@@ -111,6 +124,9 @@ export default function HomePage() {
   ]);
   const terminalEndRef = useRef<HTMLDivElement | null>(null);
   const loadVersionRef = useRef(0);
+  const notificationSessionKeyRef = useRef<string | null>(null);
+  const notifiedExploreRecordIdsRef = useRef(new Set<string>());
+  const notifiedExploreEventIdsRef = useRef(new Set<string>());
 
   const activeProfile = overview?.profile ?? profile;
   const player = activeProfile?.player ?? login?.player ?? null;
@@ -279,6 +295,140 @@ export default function HomePage() {
   }, [loadSession, token]);
 
   useEffect(() => {
+    const playerId = player?.player_id;
+    if (!token || !playerId || busy || hydrating) {
+      return;
+    }
+
+    const sessionKey = `${token}:${playerId}`;
+    if (notificationSessionKeyRef.current !== sessionKey) {
+      notificationSessionKeyRef.current = sessionKey;
+      notifiedExploreRecordIdsRef.current.clear();
+      notifiedExploreEventIdsRef.current.clear();
+    }
+
+    const client = createClient(token);
+    let disposed = false;
+    let polling = false;
+    let pollTimer: number | undefined;
+
+    const clearScheduledPoll = () => {
+      if (pollTimer !== undefined) {
+        window.clearTimeout(pollTimer);
+        pollTimer = undefined;
+      }
+    };
+
+    const schedulePoll = (delay: number) => {
+      clearScheduledPoll();
+      pollTimer = window.setTimeout(() => {
+        void poll();
+      }, delay);
+    };
+
+    const poll = async () => {
+      if (disposed || polling) {
+        return;
+      }
+
+      polling = true;
+      clearScheduledPoll();
+      let taskPollDelay: number | null = null;
+      let shouldRetry = false;
+      let nextMessage: string | null = null;
+      const notifications: TerminalMessageBatch[] = [];
+
+      try {
+        const [currentResult, eventsResult] = await Promise.allSettled([
+          client.currentExplore(),
+          client.exploreEvents("pending"),
+        ]);
+        if (disposed) {
+          return;
+        }
+
+        if (currentResult.status === "fulfilled") {
+          try {
+            const current = readResponse(currentResult.value).current;
+            taskPollDelay = getExplorePollDelay(current);
+            const notice = current ? createExploreCompletionNotice(current) : null;
+            if (current && notice && !notifiedExploreRecordIdsRef.current.has(current.record_id)) {
+              notifiedExploreRecordIdsRef.current.add(current.record_id);
+              notifications.push(notice);
+              nextMessage = "探索已结束，待领取";
+            }
+          } catch {
+            shouldRetry = true;
+          }
+        } else {
+          shouldRetry = true;
+        }
+
+        if (eventsResult.status === "fulfilled") {
+          try {
+            const { events } = readResponse(eventsResult.value);
+            for (const event of events) {
+              const notice = createExploreEventNotice(event);
+              if (!notice || notifiedExploreEventIdsRef.current.has(event.event_id)) {
+                continue;
+              }
+              notifiedExploreEventIdsRef.current.add(event.event_id);
+              notifications.push(notice);
+              nextMessage = "探索奇遇待选择";
+            }
+          } catch {
+            shouldRetry = true;
+          }
+        } else {
+          shouldRetry = true;
+        }
+
+        const notificationBatch = mergeCommandEntries(
+          notifications.map((notification) => ({
+            lines: notification.lines,
+            tone: notification.tone,
+          })),
+        );
+        if (notificationBatch) {
+          appendTerminalEntries([
+            terminalEntry(notificationBatch.tone, "九州传音", notificationBatch.lines),
+          ]);
+        }
+        if (nextMessage) {
+          setMessage(nextMessage);
+        }
+      } catch {
+        shouldRetry = true;
+      } finally {
+        polling = false;
+        if (!disposed) {
+          schedulePoll(shouldRetry ? 10_000 : (taskPollDelay ?? 60_000));
+        }
+      }
+    };
+
+    const handleFocus = () => {
+      void poll();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void poll();
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    void poll();
+
+    return () => {
+      disposed = true;
+      clearScheduledPoll();
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [appendTerminalEntries, busy, hydrating, player?.player_id, token]);
+
+  useEffect(() => {
     if (terminalEntries.length > 0) {
       terminalEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
     }
@@ -400,10 +550,8 @@ export default function HomePage() {
         entries.length > 0 ? entries : [terminalEntry("success", "九州传音", ["指令已执行。"])],
       );
       applyCommandState(data.state, { setOverview, setProfile, setScrolls });
-
-      const suggestions = normalizeSuggestions(suggestionsFromState(data.state));
-      if (suggestions.length > 0) {
-        appendTerminalEntries([terminalEntry("system", "下一步", [suggestions.join(" · ")])]);
+      if (data.command_id === "explore_claim" || data.command_id === "explore_events") {
+        markDeliveredExploreEvents(data.state, notifiedExploreEventIdsRef.current);
       }
 
       await refreshDashboard(token, true).catch(() => undefined);
@@ -831,23 +979,20 @@ function normalizeCommandEntries(entries: unknown[]): TerminalEntry[] {
   return batch ? [terminalEntry(batch.tone, "九州传音", batch.lines)] : [];
 }
 
-function normalizeSuggestions(value: unknown[] | undefined): string[] {
-  return uniqueText(
-    (value ?? []).flatMap((item) => {
-      if (typeof item === "string") {
-        return [item];
-      }
-      const record = asRecord(item);
-      return record
-        ? [pickText(record.command, record.label, record.text, record.description)]
-        : [];
-    }),
-  );
-}
+function markDeliveredExploreEvents(state: unknown, deliveredEventIds: Set<string>) {
+  const stateRecord = asRecord(state);
+  const result = asRecord(stateRecord?.result);
+  if (!result) {
+    return;
+  }
 
-function suggestionsFromState(state: unknown): unknown[] {
-  const record = asRecord(state);
-  return record ? asArray(record.suggestions) : [];
+  for (const value of [result.event, ...asArray(result.events)]) {
+    const event = asRecord(value);
+    const eventId = pickText(event?.event_id);
+    if (eventId) {
+      deliveredEventIds.add(eventId);
+    }
+  }
 }
 
 function terminalEntry(tone: TerminalTone, title: string, lines: string[]): TerminalEntry {
@@ -889,10 +1034,6 @@ function textList(value: unknown): string[] {
     return [];
   }
   return value.flatMap((item) => (typeof item === "string" && item.trim() ? [item.trim()] : []));
-}
-
-function uniqueText(values: string[]): string[] {
-  return [...new Set(values.filter(Boolean))];
 }
 
 function routeLabel(route: string): string {

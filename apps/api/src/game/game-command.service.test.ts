@@ -43,6 +43,56 @@ describe("文字命令服务", () => {
     });
   });
 
+  it("领取探索后主动传出奇遇选项及对应指令", async () => {
+    const gameService = {
+      claimExplore: vi.fn().mockResolvedValue({
+        battles: [{ result: "win" }],
+        count: 1,
+        event: {
+          choices: [
+            {
+              choice_id: "collect",
+              label: "顺势采药",
+              reward_preview: "凝露草 ×1",
+            },
+            {
+              choice_id: "leave",
+              label: "谨慎离开",
+              reward_preview: "无额外奖励",
+            },
+          ],
+          description: "山道旁有一簇异草。",
+          event_id: "event_test",
+          title: "路遇灵草",
+        },
+        province_name: "冀州",
+        rewards: { cultivation: "0", items: [], spirit_stone: "0" },
+      }),
+    };
+    const service = createService({ gameService });
+
+    const response = await service.execute({
+      accountId: "account_test",
+      body: { command: "领取探索 explore_test" },
+      idempotencyKey: "idem_explore_claim",
+    });
+
+    expect(response.command_id).toBe("explore_claim");
+    expect(gameService.claimExplore).toHaveBeenCalledWith({
+      accountId: "account_test",
+      body: { record_id: "explore_test" },
+      idempotencyKey: "idem_explore_claim",
+    });
+    expect(response.entries.map((entry) => entry.text)).toEqual(
+      expect.arrayContaining([
+        "探索奇遇“路遇灵草”：山道旁有一簇异草。",
+        "请从以下选项中选择，并输入对应指令：",
+        "选项 collect：顺势采药（凝露草 ×1）。输入：奇遇 event_test collect",
+        "选项 leave：谨慎离开（无额外奖励）。输入：奇遇 event_test leave",
+      ]),
+    );
+  });
+
   it("对含糊探索输入返回中文用法", async () => {
     const service = createService();
 

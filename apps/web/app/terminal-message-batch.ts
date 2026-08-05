@@ -42,10 +42,18 @@ function normalizeCommandEntry(value: unknown): TerminalMessageBatch[] {
     return [];
   }
 
-  const lines = uniqueText([
-    ...textList(record.lines ?? record.messages ?? record.details),
-    pickText(record.message, record.summary, record.content, record.text, record.description),
-  ]);
+  const listedLines = textList(record.lines ?? record.messages ?? record.details);
+  const fallbackText = pickText(
+    record.message,
+    record.summary,
+    record.content,
+    record.text,
+    record.description,
+  );
+  const lines =
+    fallbackText && !listedLines.includes(fallbackText)
+      ? [...listedLines, fallbackText]
+      : listedLines;
   if (lines.length === 0) {
     return [];
   }
@@ -105,8 +113,4 @@ function textList(value: unknown): string[] {
     return [];
   }
   return value.flatMap((item) => (typeof item === "string" && item.trim() ? [item.trim()] : []));
-}
-
-function uniqueText(values: string[]): string[] {
-  return [...new Set(values.filter(Boolean))];
 }

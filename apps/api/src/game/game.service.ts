@@ -96,6 +96,9 @@ type PlayerWithCore = Player & { progress: PlayerProgress; wallet: PlayerWallet 
 const exploreEventTriggerChancePercent = 35;
 const exploreEventAutoResolveMilliseconds = 5 * 60 * 1000;
 const exploreEventLifecycleIntervalMilliseconds = 5 * 1000;
+const chapterTaskChapterTargets: Record<string, number> = {
+  chapter_first_30_minutes: 2,
+};
 
 interface ExploreEventPlan {
   triggerAt: Date;
@@ -607,7 +610,12 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
         const secondsPerExplore = provinceExploreSeconds[province.province_id] ?? 30;
         const totalSeconds = secondsPerExplore * body.count;
         const recordId = `explore_${randomUUID()}`;
-        const eventPlan = planExploreEvent(recordId, startedAt, totalSeconds);
+        const guaranteeNoviceEvent = await this.shouldGuaranteeNoviceExploreEvent(
+          tx,
+          loaded.playerId,
+          province.province_id,
+        );
+        const eventPlan = planExploreEvent(recordId, startedAt, totalSeconds, guaranteeNoviceEvent);
         const eventContext = eventPlan
           ? buildPlannedExploreEventLinkContext(province.province_id, recordId, body.count)
           : null;
@@ -900,6 +908,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
           where: { taskStateId: task.taskStateId },
           data: { status: "claimed" },
         });
+        await this.advanceChapterForClaimedTask(tx, player.playerId, claimedTask.taskId);
         const profile = await this.getProfileByPlayerId(player.playerId, tx);
         if (!profile.wallet) {
           throw new BadRequestException("玩家钱包数据不完整");
@@ -934,6 +943,9 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
           where: { playerId: player.playerId },
         });
         const caveState = toCaveState(cave);
+        if (caveState.claimable_minutes <= 0) {
+          throw new BadRequestException("洞府暂无可领取收益");
+        }
         const rewards = caveState.preview_rewards;
 
         await this.applyReward(tx, player.playerId, rewards, {
@@ -1028,6 +1040,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
     });
 
     await ensureInitialPlayerTasks(tx, playerId);
+    await this.syncClaimedChapterProgress(tx, playerId);
   }
 
   private async ensureProvinceStates(tx: DbClient = this.prisma) {
@@ -1107,6 +1120,83 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
     });
 
     return toActionState(updated);
+  }
+
+  private async shouldGuaranteeNoviceExploreEvent(
+    tx: Tx,
+    playerId: string,
+    provinceId: string,
+  ): Promise<boolean> {
+    if (provinceId !== "ji") {
+      return false;
+    }
+
+    const eventTask = await tx.playerTaskState.findFirst({
+      where: { playerId, taskId: "novice_resolve_event" },
+      select: { status: true },
+    });
+
+    // 新手主线尚未处理奇遇时，每次冀州探索都预定一次途中奇遇。
+    // 若此前探索因服务离线错过触发窗口，不会回补旧记录；下一次探索仍可获得保底。
+    return eventTask?.status === "in_progress";
+  }
+
+  private async advanceChapterForClaimedTask(tx: Tx, playerId: string, taskId: string) {
+    const targetChapter = chapterTaskChapterTargets[taskId];
+    if (!targetChapter) {
+      return;
+    }
+
+    await this.applyChapterProgress(tx, playerId, targetChapter);
+  }
+
+  private async syncClaimedChapterProgress(tx: DbClient, playerId: string) {
+    const claimedChapterTasks = await tx.playerTaskState.findMany({
+      where: {
+        playerId,
+        status: "claimed",
+        taskId: { in: Object.keys(chapterTaskChapterTargets) },
+      },
+      select: { taskId: true },
+    });
+    const targetChapter = claimedChapterTasks.reduce(
+      (highestChapter, task) =>
+        Math.max(highestChapter, chapterTaskChapterTargets[task.taskId] ?? 0),
+      0,
+    );
+
+    if (targetChapter > 0) {
+      await this.applyChapterProgress(tx, playerId, targetChapter);
+    }
+  }
+
+  private async applyChapterProgress(tx: DbClient, playerId: string, targetChapter: number) {
+    const progress = await tx.playerProgress.findUniqueOrThrow({ where: { playerId } });
+    const currentChapter = Math.max(progress.chapterId, targetChapter);
+    const unlockedProvinceIds = provinceConfigs
+      .filter((province) => province.chapterRequired <= currentChapter)
+      .map((province) => province.provinceId);
+
+    if (progress.chapterId < currentChapter) {
+      await tx.playerProgress.update({
+        where: { playerId },
+        data: { chapterId: currentChapter },
+      });
+    }
+    await Promise.all([
+      tx.playerProvinceProgress.updateMany({
+        where: { playerId, provinceId: { in: unlockedProvinceIds }, unlocked: false },
+        data: { unlocked: true },
+      }),
+      tx.provinceState.updateMany({
+        where: {
+          eraId: defaultEraId,
+          provinceId: { in: unlockedProvinceIds },
+          unlocked: false,
+        },
+        data: { unlocked: true },
+      }),
+    ]);
   }
 
   private async refreshDueExploreEventLifecycles() {
@@ -2216,9 +2306,10 @@ export function planExploreEvent(
   recordId: string,
   startedAt: Date,
   totalSeconds: number,
+  forceTrigger = false,
 ): ExploreEventPlan | null {
   const chance = stableExploreEventNumber(`${recordId}:chance`) % 100;
-  if (chance >= exploreEventTriggerChancePercent) {
+  if (!forceTrigger && chance >= exploreEventTriggerChancePercent) {
     return null;
   }
 

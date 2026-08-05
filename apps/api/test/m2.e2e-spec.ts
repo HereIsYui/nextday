@@ -258,6 +258,32 @@ describe("M2 核心循环", () => {
     expect(caveRecord?.collectedMinutes).toBeGreaterThan(0);
   });
 
+  it("洞府没有可领取收益时不写领取记录，也不推进每日任务", async () => {
+    const { token, playerId } = await createM2Player(app, "洞府空置");
+    await prisma.playerCaveState.update({
+      where: { playerId },
+      data: { lastCollectedAt: new Date() },
+    });
+    const recordCountBefore = await prisma.caveCollectRecord.count({ where: { playerId } });
+    const taskBefore = await prisma.playerTaskState.findFirstOrThrow({
+      where: { playerId, taskId: "daily_cave_collect" },
+    });
+
+    const response = await request(app.getHttpServer())
+      .post("/api/game/cave/collect")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_m2_empty_cave_${Date.now()}`)
+      .expect(400);
+
+    expect(response.body.message).toContain("洞府暂无可领取收益");
+    expect(await prisma.caveCollectRecord.count({ where: { playerId } })).toBe(recordCountBefore);
+    const taskAfter = await prisma.playerTaskState.findFirstOrThrow({
+      where: { playerId, taskId: "daily_cave_collect" },
+    });
+    expect(taskAfter.progressValue).toBe(taskBefore.progressValue);
+    expect(taskAfter.status).toBe(taskBefore.status);
+  });
+
   it("M2 新增配置类型都返回合法 envelope", async () => {
     for (const configType of ["world", "task", "battle", "cave"]) {
       const response = await request(app.getHttpServer())

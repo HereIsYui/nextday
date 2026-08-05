@@ -5,7 +5,6 @@ import type {
   ApiResponse,
   BagItemState,
   BagSummaryResponse,
-  DailyRouteResponse,
   ExploreResponse,
   GameOverviewResponse,
   HealthStatus,
@@ -24,14 +23,7 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  type RouteAction,
-  exploreActionCard,
-  routeActionForStep,
-  routeStepStateLabel,
-  routeStepVisualState,
-  selectCompactActionRoute,
-} from "./action-route-model";
+import { exploreActionCard } from "./explore-action-card";
 import {
   type PendingExploreEvent,
   buildExploreEventCommand,
@@ -175,8 +167,6 @@ export default function HomePage() {
   const [login, setLogin] = useState<LoginResponse | null>(null);
   const [profile, setProfile] = useState<PlayerProfileResponse | null>(null);
   const [overview, setOverview] = useState<GameOverviewResponse | null>(null);
-  const [dailyRoute, setDailyRoute] = useState<DailyRouteResponse | null>(null);
-  const [dailyRouteError, setDailyRouteError] = useState<string | null>(null);
   const [scrolls, setScrolls] = useState<StoryScrollListResponse | null>(null);
   const [bag, setBag] = useState<BagSummaryResponse | null>(null);
   const [bagError, setBagError] = useState<string | null>(null);
@@ -227,19 +217,6 @@ export default function HomePage() {
   const wallet = activeProfile?.wallet ?? null;
   const recentBattles = overview?.recent_battles ?? [];
   const storyScrolls = scrolls?.scrolls ?? [];
-  const unlockedProvinceName =
-    overview?.provinces.find((province) => province.unlocked)?.name ?? null;
-  const compactActionRoute = useMemo(
-    () =>
-      selectCompactActionRoute({
-        dailyRoute,
-        newPlayerRoute: overview?.new_player_route ?? null,
-      }),
-    [dailyRoute, overview?.new_player_route],
-  );
-  const primaryRouteAction = compactActionRoute
-    ? routeActionForStep(compactActionRoute.primaryStep, unlockedProvinceName)
-    : null;
   const currentExploreActionCard = useMemo(
     () =>
       exploreActionCard({
@@ -339,18 +316,6 @@ export default function HomePage() {
     }
   }, []);
 
-  const refreshDailyRoute = useCallback(async (activeToken: string) => {
-    try {
-      const response = await createClient(activeToken).dailyRoute();
-      setDailyRoute(readResponse(response));
-      setDailyRouteError(null);
-    } catch (error) {
-      const detail = messageFromError(error);
-      setDailyRouteError(detail);
-      throw error;
-    }
-  }, []);
-
   const refreshHelp = useCallback(async (activeToken: string) => {
     const client = createCommandClient(activeToken);
     const response = await client.commandHelp();
@@ -403,29 +368,25 @@ export default function HomePage() {
           }
           setProfile(nextProfile);
           setOverview(null);
-          setDailyRoute(null);
-          setDailyRouteError(null);
           setScrolls(null);
           setMessage("已取得行旅凭证，请登记角色");
           return;
         }
 
-        await Promise.allSettled([
-          refreshDashboard(activeToken),
-          refreshHelp(activeToken),
-          refreshDailyRoute(activeToken),
-        ]).then((results) => {
-          if (loadVersion !== loadVersionRef.current) {
-            return;
-          }
+        await Promise.allSettled([refreshDashboard(activeToken), refreshHelp(activeToken)]).then(
+          (results) => {
+            if (loadVersion !== loadVersionRef.current) {
+              return;
+            }
 
-          if (results[0].status === "rejected") {
-            setSessionError(messageFromError(results[0].reason));
-          }
-          if (results[1].status === "rejected") {
-            setHelpError(messageFromError(results[1].reason));
-          }
-        });
+            if (results[0].status === "rejected") {
+              setSessionError(messageFromError(results[0].reason));
+            }
+            if (results[1].status === "rejected") {
+              setHelpError(messageFromError(results[1].reason));
+            }
+          },
+        );
 
         if (loadVersion === loadVersionRef.current) {
           setMessage("神识已接入九州传音");
@@ -441,7 +402,7 @@ export default function HomePage() {
         }
       }
     },
-    [refreshDailyRoute, refreshDashboard, refreshHelp],
+    [refreshDashboard, refreshHelp],
   );
 
   useEffect(() => {
@@ -624,7 +585,6 @@ export default function HomePage() {
           appendTerminalEntries([
             terminalEntry(notificationBatch.tone, "九州传音", notificationBatch.lines),
           ]);
-          void refreshDailyRoute(token).catch(() => undefined);
         }
         if (nextMessage) {
           setMessage(nextMessage);
@@ -658,7 +618,7 @@ export default function HomePage() {
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [appendTerminalEntries, busy, hydrating, player?.player_id, refreshDailyRoute, token]);
+  }, [appendTerminalEntries, busy, hydrating, player?.player_id, token]);
 
   useEffect(() => {
     if (currentExplore?.status !== "pending") {
@@ -862,7 +822,6 @@ export default function HomePage() {
 
       await Promise.all([
         refreshDashboard(token, true).catch(() => undefined),
-        refreshDailyRoute(token).catch(() => undefined),
         data.command_id === "bag" || data.command_id === "pill_use"
           ? refreshBag(token)
           : Promise.resolve(),
@@ -908,20 +867,6 @@ export default function HomePage() {
     void executeCommand(command);
   }
 
-  function handlePrimaryRouteAction() {
-    if (!primaryRouteAction) {
-      return;
-    }
-    handleRouteAction(primaryRouteAction);
-  }
-
-  function handleRouteAction(action: RouteAction) {
-    void executeCommand(action.command, {
-      displayCommand: action.displayCommand,
-      saveToHistory: false,
-    });
-  }
-
   function focusExploreEventActions() {
     const eventActions = exploreEventActionsRef.current;
     if (!eventActions) {
@@ -960,8 +905,6 @@ export default function HomePage() {
     setLogin(null);
     setProfile(null);
     setOverview(null);
-    setDailyRoute(null);
-    setDailyRouteError(null);
     setScrolls(null);
     setBag(null);
     setBagError(null);
@@ -1087,8 +1030,8 @@ export default function HomePage() {
                     disabled={hydrating || busy}
                     onClick={() => {
                       if (token) {
-                        void Promise.all([refreshDashboard(token), refreshDailyRoute(token)]).catch(
-                          (error) => setSessionError(messageFromError(error)),
+                        void refreshDashboard(token).catch((error) =>
+                          setSessionError(messageFromError(error)),
                         );
                       }
                     }}
@@ -1138,125 +1081,45 @@ export default function HomePage() {
                   </div>
                 </div>
               </div>
-              {compactActionRoute || currentExploreActionCard || dailyRouteError ? (
-                <section className="action-stage" aria-label="当前修行行动">
-                  {currentExploreActionCard ? (
-                    <article
-                      className={`explore-action-card explore-action-card-${currentExploreActionCard.action}`}
-                    >
-                      <div className="action-card-heading">
-                        <p className="console-eyebrow">当前行旅</p>
-                        <span>
-                          {currentExploreActionCard.action === "waiting" ? "途中" : "待处理"}
-                        </span>
-                      </div>
-                      <strong>{currentExploreActionCard.title}</strong>
-                      <p>{currentExploreActionCard.detail}</p>
-                      {currentExploreActionCard.action === "claim" ? (
-                        <button
-                          className="action-card-button"
-                          disabled={busy || hydrating}
-                          onClick={() => {
-                            void executeCommand("领取探索", {
-                              displayCommand: "领取探索",
-                              saveToHistory: false,
-                            });
-                          }}
-                          type="button"
-                        >
-                          领取探索
-                        </button>
-                      ) : null}
-                      {currentExploreActionCard.action === "event" ? (
-                        <button
-                          className="action-card-button"
-                          disabled={busy || hydrating}
-                          onClick={focusExploreEventActions}
-                          type="button"
-                        >
-                          前往选择
-                        </button>
-                      ) : null}
-                    </article>
-                  ) : null}
-                  {compactActionRoute ? (
-                    <article className="action-route-card">
-                      <div className="action-card-heading">
-                        <p className="console-eyebrow">
-                          {compactActionRoute.source === "new_player" ? "新手引导" : "今日路线"}
-                        </p>
-                        <span>{compactActionRoute.progressText}</span>
-                      </div>
-                      <div className="action-route-progress" aria-hidden="true">
-                        <span style={{ width: `${compactActionRoute.progressPercent}%` }} />
-                      </div>
-                      <div className="action-route-primary">
-                        <div>
-                          <div className="action-route-title-line">
-                            <strong>{compactActionRoute.primaryStep.title}</strong>
-                            <span
-                              className={`route-step-state route-step-state-${routeStepVisualState(
-                                compactActionRoute.primaryStep,
-                              )}`}
-                            >
-                              {routeStepStateLabel(compactActionRoute.primaryStep)}
-                            </span>
-                          </div>
-                          <p>{compactActionRoute.primaryStep.detail}</p>
-                        </div>
-                        {primaryRouteAction ? (
-                          <button
-                            className="action-card-button action-card-button-primary"
-                            disabled={busy || hydrating}
-                            onClick={handlePrimaryRouteAction}
-                            type="button"
-                          >
-                            {compactActionRoute.primaryStep.action_label}
-                          </button>
-                        ) : null}
-                      </div>
-                      {compactActionRoute.followingSteps.length > 0 ? (
-                        <ol className="action-route-following">
-                          {compactActionRoute.followingSteps.map((step) => (
-                            <li key={step.step_id}>
-                              <span
-                                className={`route-step-state route-step-state-${routeStepVisualState(step)}`}
-                              >
-                                {routeStepStateLabel(step)}
-                              </span>
-                              {routeActionForStep(step, unlockedProvinceName) ? (
-                                <button
-                                  className="action-route-following-button"
-                                  disabled={busy || hydrating}
-                                  onClick={() => {
-                                    const action = routeActionForStep(step, unlockedProvinceName);
-                                    if (action) {
-                                      handleRouteAction(action);
-                                    }
-                                  }}
-                                  type="button"
-                                >
-                                  {step.title}
-                                </button>
-                              ) : (
-                                <span>{step.title}</span>
-                              )}
-                            </li>
-                          ))}
-                        </ol>
-                      ) : null}
-                      {compactActionRoute.companion ? (
-                        <p className="action-route-companion">
-                          {compactActionRoute.companion.title}{" "}
-                          {compactActionRoute.companion.progressText}
-                          ：下一步 {compactActionRoute.companion.upcomingTitle}
-                        </p>
-                      ) : null}
-                    </article>
-                  ) : null}
-                  {!compactActionRoute && dailyRouteError ? (
-                    <p className="action-route-error">今日路线暂不可用：{dailyRouteError}</p>
-                  ) : null}
+              {currentExploreActionCard ? (
+                <section className="action-stage" aria-label="当前行旅">
+                  <article
+                    className={`explore-action-card explore-action-card-${currentExploreActionCard.action}`}
+                  >
+                    <div className="action-card-heading">
+                      <p className="console-eyebrow">当前行旅</p>
+                      <span>
+                        {currentExploreActionCard.action === "waiting" ? "途中" : "待处理"}
+                      </span>
+                    </div>
+                    <strong>{currentExploreActionCard.title}</strong>
+                    <p>{currentExploreActionCard.detail}</p>
+                    {currentExploreActionCard.action === "claim" ? (
+                      <button
+                        className="action-card-button"
+                        disabled={busy || hydrating}
+                        onClick={() => {
+                          void executeCommand("领取探索", {
+                            displayCommand: "领取探索",
+                            saveToHistory: false,
+                          });
+                        }}
+                        type="button"
+                      >
+                        领取探索
+                      </button>
+                    ) : null}
+                    {currentExploreActionCard.action === "event" ? (
+                      <button
+                        className="action-card-button"
+                        disabled={busy || hydrating}
+                        onClick={focusExploreEventActions}
+                        type="button"
+                      >
+                        前往选择
+                      </button>
+                    ) : null}
+                  </article>
                 </section>
               ) : null}
               <div className="terminal-log" role="log" aria-live="polite">

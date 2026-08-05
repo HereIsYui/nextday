@@ -377,23 +377,14 @@ h2 {
 
 .action-stage {
   border-bottom: 1px solid #394338;
-  display: grid;
-  gap: 8px;
-  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr);
   padding: 9px 16px;
 }
 
-.action-route-card,
 .explore-action-card {
   background: linear-gradient(135deg, rgba(46, 63, 45, 0.43), rgba(20, 27, 21, 0.72));
   border: 1px solid #53624f;
   min-width: 0;
   padding: 8px 10px;
-}
-
-.action-route-card:only-child,
-.explore-action-card:only-child {
-  grid-column: 1 / -1;
 }
 
 .explore-action-card {
@@ -422,50 +413,13 @@ h2 {
   font-size: 11px;
 }
 
-.action-route-progress {
-  background: #273128;
-  height: 3px;
-  margin: 0 0 8px;
-  overflow: hidden;
-}
-
-.action-route-progress span {
-  background: #d0a65d;
-  display: block;
-  height: 100%;
-  max-width: 100%;
-  min-width: 3px;
-}
-
-.action-route-primary {
-  align-items: center;
-  display: flex;
-  gap: 10px;
-  justify-content: space-between;
-}
-
-.action-route-primary > div {
-  min-width: 0;
-}
-
-.action-route-title-line {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.action-route-primary strong,
 .explore-action-card strong {
   color: #f0e4c9;
   font-size: 13px;
   line-height: 1.4;
 }
 
-.action-route-primary p,
-.explore-action-card > p,
-.action-route-companion,
-.action-route-error {
+.explore-action-card > p {
   color: #aeb8a8;
   font-size: 12px;
   line-height: 1.45;
@@ -484,92 +438,6 @@ h2 {
 .action-card-button:hover:not(:disabled) {
   background: #314532;
   border-color: #d1af6a;
-}
-
-.action-card-button-primary {
-  background: #d0a65d;
-  border-color: #e2c37e;
-  color: #171811;
-  font-weight: 700;
-}
-
-.action-card-button-primary:hover:not(:disabled) {
-  background: #e0bc73;
-}
-
-.action-route-following {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 10px;
-  list-style: none;
-  margin: 8px 0 0;
-  padding: 0;
-}
-
-.action-route-following li {
-  align-items: center;
-  color: #b9c2b3;
-  display: flex;
-  font-size: 11px;
-  gap: 5px;
-  line-height: 1.35;
-}
-
-.action-route-following-button {
-  background: transparent;
-  border: 0;
-  color: #d5ddce;
-  font-size: inherit;
-  padding: 0;
-  text-align: left;
-}
-
-.action-route-following-button:hover:not(:disabled) {
-  color: #efcf8d;
-  text-decoration: underline;
-}
-
-.route-step-state {
-  border: 1px solid #68735f;
-  color: #bfc8b7;
-  font-size: 10px;
-  line-height: 1.25;
-  padding: 1px 4px;
-  white-space: nowrap;
-}
-
-.route-step-state-ready,
-.route-step-state-active {
-  border-color: #7dad70;
-  color: #cbe1bd;
-}
-
-.route-step-state-waiting,
-.route-step-state-pending,
-.route-step-state-jump {
-  border-color: #9d8650;
-  color: #dfc784;
-}
-
-.route-step-state-blocked {
-  border-color: #9a655b;
-  color: #e2aaa0;
-}
-
-.route-step-state-done {
-  border-color: #60705d;
-  color: #9caa95;
-}
-
-.action-route-companion {
-  border-top: 1px solid rgba(105, 119, 95, 0.44);
-  margin-top: 8px;
-  padding-top: 6px;
-}
-
-.action-route-error {
-  color: #e1aaa0;
-  margin: 0;
 }
 
 .terminal-heading-actions,
@@ -1164,18 +1032,8 @@ h2 {
     padding-block: 7px;
   }
 
-  .action-route-card,
   .explore-action-card {
     padding-block: 7px;
-  }
-
-  .action-route-following,
-  .action-route-companion {
-    margin-top: 6px;
-  }
-
-  .action-route-companion {
-    padding-top: 5px;
   }
 }
 
@@ -1236,14 +1094,6 @@ h2 {
   }
 
   .terminal-task-row {
-    align-items: flex-start;
-  }
-
-  .action-stage {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .action-route-primary {
     align-items: flex-start;
   }
 

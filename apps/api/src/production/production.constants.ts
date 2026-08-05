@@ -44,7 +44,7 @@ export const itemCatalog: ItemMeta[] = [
     name: "凝露草",
     category: "material",
     tradeable: false,
-    usageHint: "基础丹材；输入“材料 炼丹”可查看可用组合。",
+    usageHint: "冀州首炉丹材；可与洞府灵髓露尝试炼制修为丹。",
   },
   {
     itemId: "raw_iron",
@@ -603,10 +603,17 @@ export const pillQualityConfigs: PillQualityConfig[] = [
 export type ProductionCraftMaterial = ProductionCraftMaterialState;
 
 /**
- * 仅这些专用材料允许投入丹炉或器炉。普通背包材料不会被生产接口消耗。
+ * 仅下列获准材料允许投入丹炉或器炉；凝露草是冀州新手阶段的例外丹材。
+ * 其余普通背包材料不会被生产接口消耗。
  * 组合规则不从此列表导出，避免客户端通过配置枚举默认药方。
  */
 export const productionCraftMaterials: ProductionCraftMaterial[] = [
+  {
+    item_id: "low_herb",
+    name: "凝露草",
+    kind: "alchemy",
+    source_hint: "冀州探索、首章任务",
+  },
   {
     item_id: "alch_moon_dew_herb",
     name: "月露草",
@@ -679,6 +686,23 @@ type CombinationRule = {
  * 不会通过配置接口取得本表。
  */
 const alchemyCombinationRules: CombinationRule[] = [
+  {
+    signature: "alch_spirit_resin:1|low_herb:2",
+    template: {
+      kind: "alchemy",
+      name: "蕴灵丹",
+      success_rate: 10000,
+      spirit_stone_cost: "40",
+      alchemy: {
+        pill_item_id: "pill_nourishing_essence",
+        pill_rank: 1,
+        pill_type: "cultivation",
+        effect_kind: "cultivation",
+        effect_min: 90,
+        effect_max: 120,
+      },
+    },
+  },
   {
     signature: "alch_moon_dew_herb:2|alch_spirit_resin:1",
     template: {

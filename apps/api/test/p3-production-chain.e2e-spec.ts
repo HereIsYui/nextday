@@ -66,11 +66,15 @@ describe("P3-2 自研丹器与材料链", () => {
         (material: { kind: string }) => material.kind === "alchemy",
       ),
     ).toBe(true);
-    expect(
-      alchemy.body.data.materials.some(
-        (material: { item_id: string }) => material.item_id === "low_herb",
-      ),
-    ).toBe(false);
+    expect(alchemy.body.data.materials).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          item_id: "low_herb",
+          kind: "alchemy",
+          source_hint: "冀州探索、首章任务",
+        }),
+      ]),
+    );
 
     const forge = await request(app.getHttpServer())
       .get("/api/production/materials?kind=forge")
@@ -173,6 +177,60 @@ describe("P3-2 自研丹器与材料链", () => {
       .send({ kind: "alchemy", source_record_id: failed.body.data.record_id, name: "炉灰残卷" })
       .expect(400);
     expect(failedSave.body.message).toContain("成功的炼丹记录");
+  });
+
+  it("冀州首炉丹组合可成功炼制，失败炼丹不推进第一炉丹任务", async () => {
+    const { token, playerId } = await createP3ProductionPlayer(app, prisma);
+    const starterMaterials: CraftMaterial[] = [
+      { item_id: "low_herb", count: 2 },
+      { item_id: "alch_spirit_resin", count: 1 },
+    ];
+    await grantProductionMaterials(prisma, playerId, {
+      alch_spirit_resin: 2,
+      low_herb: 2,
+    });
+
+    const failed = await request(app.getHttpServer())
+      .post("/api/production/alchemy/craft")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_p3_first_furnace_failed_${Date.now()}_${randomSuffix()}`)
+      .send({ materials: [{ item_id: "alch_spirit_resin", count: 1 }] })
+      .expect(201);
+    expect(failed.body.data.record.success).toBe(false);
+    expect(failed.body.data.completed_task_ids).not.toContain("novice_craft_alchemy");
+
+    const afterFailure = await request(app.getHttpServer())
+      .get("/api/game/tasks")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(
+      afterFailure.body.data.tasks.find(
+        (task: { task_id: string }) => task.task_id === "novice_craft_alchemy",
+      ),
+    ).toMatchObject({ status: "in_progress" });
+
+    const completed = await request(app.getHttpServer())
+      .post("/api/production/alchemy/craft")
+      .set("Authorization", `Bearer ${token}`)
+      .set(
+        "Idempotency-Key",
+        findCraftSuccessKey("p3_first_furnace", "alchemy", starterMaterials, 10000),
+      )
+      .send({ materials: starterMaterials })
+      .expect(201);
+    expect(completed.body.data.record.success).toBe(true);
+    expect(completed.body.data.record.pill_item_id).toBe("pill_nourishing_essence");
+    expect(completed.body.data.completed_task_ids).toContain("novice_craft_alchemy");
+
+    const afterSuccess = await request(app.getHttpServer())
+      .get("/api/game/tasks")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(
+      afterSuccess.body.data.tasks.find(
+        (task: { task_id: string }) => task.task_id === "novice_craft_alchemy",
+      ),
+    ).toMatchObject({ status: "completed" });
   });
 
   it("炼器组合稳定决定法宝模板，词条随炼制记录变化且成功记录可保存器方", async () => {

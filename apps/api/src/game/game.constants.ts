@@ -317,7 +317,12 @@ export function selectExploreEnemy(
 
 export const exploreLootPools: Record<string, ExploreLootConfig[]> = {
   ji: [
-    createExploreLoot("low_herb", "凝露草", "冀州山道的灵草踪迹", "炼制聚灵丹、沸血丹"),
+    createExploreLoot(
+      "low_herb",
+      "凝露草",
+      "冀州山道的灵草踪迹",
+      "与洞府灵髓露搭配，可尝试炼制首炉修为丹",
+    ),
     createExploreLoot("raw_iron", "玄铁砂", "玄铁塔影下的矿坡", "炼制低阶法宝"),
     createExploreLoot("pill_dust", "丹尘", "废炉残火旁的粉尘", "补足炼丹失败返还"),
     createExploreLoot("tower_sigil", "镇塔符", "玄铁塔裂隙边缘", "提交九塔镇封"),

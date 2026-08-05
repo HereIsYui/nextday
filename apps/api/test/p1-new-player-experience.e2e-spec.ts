@@ -5,7 +5,7 @@ import { PrismaClient } from "@prisma/client";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AppModule } from "../src/app.module";
-import { exploreEventConfigs } from "../src/game/game.constants";
+import { defaultEraId, exploreEventConfigs } from "../src/game/game.constants";
 import { configureApp } from "../src/platform/configure-app";
 import { getMaterialCompositionHash } from "../src/production/production.constants";
 
@@ -59,6 +59,137 @@ describe("P1-9 新手 30 分钟体验与玩法厚度", () => {
         (task: { task_id: string }) => task.task_id === "chapter_first_30_minutes",
       ),
     ).toBe(true);
+  });
+
+  it("新手未处理奇遇时每次冀州探索均预定途中奇遇，旧探索不会补发", async () => {
+    const { token } = await createP19Player(app, prisma);
+    const firstExplore = await request(app.getHttpServer())
+      .post("/api/game/explore")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_p19_first_event_${Date.now()}_${randomSuffix()}`)
+      .send({ count: 1, province_id: "ji" })
+      .expect(201);
+
+    expect(firstExplore.body.data.event_trigger_at).toBeTruthy();
+
+    const firstRecordId = firstExplore.body.data.record_id as string;
+    await prisma.exploreActionRecord.update({
+      where: { recordId: firstRecordId },
+      data: {
+        completesAt: new Date(Date.now() - 1_000),
+        eventTriggerAt: new Date(Date.now() - 2_000),
+      },
+    });
+
+    const pendingBeforeClaim = await request(app.getHttpServer())
+      .get("/api/game/explore/events?status=pending")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(pendingBeforeClaim.body.data.events).toHaveLength(0);
+
+    await request(app.getHttpServer())
+      .post("/api/game/explore/claim")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_p19_first_claim_${Date.now()}_${randomSuffix()}`)
+      .send({ record_id: firstRecordId })
+      .expect(201);
+
+    const pendingAfterClaim = await request(app.getHttpServer())
+      .get("/api/game/explore/events?status=pending")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(pendingAfterClaim.body.data.events).toHaveLength(0);
+
+    const secondExplore = await request(app.getHttpServer())
+      .post("/api/game/explore")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_p19_second_event_${Date.now()}_${randomSuffix()}`)
+      .send({ count: 1, province_id: "ji" })
+      .expect(201);
+    expect(secondExplore.body.data.event_trigger_at).toBeTruthy();
+  });
+
+  it("只有领取冀州初定章节奖励才推进章节并开放兖州", async () => {
+    const { token, playerId } = await createP19Player(app, prisma);
+
+    await request(app.getHttpServer())
+      .post("/api/game/tasks/claim")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_p19_initial_chapter_${Date.now()}_${randomSuffix()}`)
+      .send({ task_id: "chapter_unlock_ji" })
+      .expect(201);
+
+    const beforeChapterClaim = await prisma.playerProgress.findUniqueOrThrow({
+      where: { playerId },
+    });
+    const yanBeforeChapterClaim = await prisma.playerProvinceProgress.findUniqueOrThrow({
+      where: { playerId_provinceId: { playerId, provinceId: "yan" } },
+    });
+    expect(beforeChapterClaim.chapterId).toBe(1);
+    expect(yanBeforeChapterClaim.unlocked).toBe(false);
+
+    await prisma.playerTaskState.updateMany({
+      where: { playerId, taskId: "chapter_first_30_minutes" },
+      data: { progressValue: 1, status: "completed" },
+    });
+    await request(app.getHttpServer())
+      .post("/api/game/tasks/claim")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_p19_first_chapter_${Date.now()}_${randomSuffix()}`)
+      .send({ task_id: "chapter_first_30_minutes" })
+      .expect(201);
+
+    const overview = await request(app.getHttpServer())
+      .get("/api/game/overview")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    const provinces = new Map(
+      overview.body.data.provinces.map((province: { province_id: string; unlocked: boolean }) => [
+        province.province_id,
+        province.unlocked,
+      ]),
+    );
+    expect(overview.body.data.profile.progress.chapter_id).toBe(2);
+    expect(provinces.get("ji")).toBe(true);
+    expect(provinces.get("yan")).toBe(true);
+    expect(provinces.get("qing")).toBe(false);
+  });
+
+  it("存量已领取冀州初定奖励的玩家会在读取总览时同步章节", async () => {
+    const { token, playerId } = await createP19Player(app, prisma);
+    await request(app.getHttpServer())
+      .get("/api/game/overview")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    await prisma.$transaction([
+      prisma.playerProgress.update({
+        where: { playerId },
+        data: { chapterId: 1 },
+      }),
+      prisma.playerTaskState.updateMany({
+        where: { playerId, taskId: "chapter_first_30_minutes" },
+        data: { progressValue: 1, status: "claimed" },
+      }),
+      prisma.playerProvinceProgress.update({
+        where: { playerId_provinceId: { playerId, provinceId: "yan" } },
+        data: { unlocked: false },
+      }),
+      prisma.provinceState.update({
+        where: { eraId_provinceId: { eraId: defaultEraId, provinceId: "yan" } },
+        data: { unlocked: false },
+      }),
+    ]);
+
+    const overview = await request(app.getHttpServer())
+      .get("/api/game/overview")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    const yan = overview.body.data.provinces.find(
+      (province: { province_id: string }) => province.province_id === "yan",
+    );
+    expect(overview.body.data.profile.progress.chapter_id).toBe(2);
+    expect(yan).toMatchObject({ unlocked: true });
   });
 
   it("探索事件池包含稀有度、前置条件和选择差异，且不产出付费或唯一战力道具", async () => {
@@ -141,13 +272,13 @@ describe("P1-9 新手 30 分钟体验与玩法厚度", () => {
       expect.arrayContaining([
         expect.objectContaining({ item_id: "alch_moon_dew_herb", kind: "alchemy" }),
         expect.objectContaining({ item_id: "alch_spirit_resin", kind: "alchemy" }),
+        expect.objectContaining({
+          item_id: "low_herb",
+          kind: "alchemy",
+          source_hint: "冀州探索、首章任务",
+        }),
       ]),
     );
-    expect(
-      alchemy.body.data.materials.some(
-        (material: { item_id: string }) => material.item_id === "low_herb",
-      ),
-    ).toBe(false);
 
     const forge = await request(app.getHttpServer())
       .get("/api/production/materials?kind=forge")
@@ -183,13 +314,16 @@ describe("P1-9 新手 30 分钟体验与玩法厚度", () => {
       .expect(201);
 
     const alchemyMaterials = [
-      { item_id: "alch_moon_dew_herb", count: 2 },
+      { item_id: "low_herb", count: 2 },
       { item_id: "alch_spirit_resin", count: 1 },
     ];
     const alchemy = await request(app.getHttpServer())
       .post("/api/production/alchemy/craft")
       .set("Authorization", `Bearer ${token}`)
-      .set("Idempotency-Key", findCraftSuccessKey("p19_alchemy", "alchemy", alchemyMaterials, 8800))
+      .set(
+        "Idempotency-Key",
+        findCraftSuccessKey("p19_alchemy", "alchemy", alchemyMaterials, 10000),
+      )
       .send({ materials: alchemyMaterials })
       .expect(201);
     expect(alchemy.body.data.completed_task_ids).toContain("novice_craft_alchemy");
@@ -312,9 +446,9 @@ async function grantStarterMaterials(prisma: PrismaClient, playerId: string) {
   await prisma.playerItem.createMany({
     data: [
       {
-        itemInstanceId: `item_p19_moon_herb_${Date.now()}_${randomSuffix()}`,
+        itemInstanceId: `item_p19_low_herb_${Date.now()}_${randomSuffix()}`,
         playerId,
-        itemId: "alch_moon_dew_herb",
+        itemId: "low_herb",
         count: 4n,
         bindType: "bound",
         sourceType: "p1_9_test",

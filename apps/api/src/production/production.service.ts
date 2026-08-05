@@ -332,9 +332,11 @@ export class ProductionService {
           idempotencyKey: input.idempotencyKey,
         });
 
-        const completedTaskIds = await incrementPlayerTasks(tx, player.playerId, {
-          novice_craft_alchemy: 1,
-        });
+        const completedTaskIds = success
+          ? await incrementPlayerTasks(tx, player.playerId, {
+              novice_craft_alchemy: 1,
+            })
+          : [];
 
         return {
           record_id: record.recordId,

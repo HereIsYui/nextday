@@ -1,5 +1,5 @@
-export const storyConfigVersion = "story_p2_1_v1";
-export const storyRulesetVersion = "ruleset_p2_1_v1";
+export const storyConfigVersion = "story_p2_3_v1";
+export const storyRulesetVersion = "ruleset_p2_3_v1";
 export const storyCollectionConfigVersion = "collection_p2_1_v1";
 
 export interface StoryFragmentConfig {
@@ -8,6 +8,10 @@ export interface StoryFragmentConfig {
   body: string;
   fragmentType: "opening" | "choice" | "battle_ref" | "ending";
   unlockHint: string;
+  alwaysUnlocked?: boolean;
+  requiresTowerAction?: {
+    towerId: string;
+  };
 }
 
 export interface StoryScrollConfig {
@@ -20,6 +24,8 @@ export interface StoryScrollConfig {
   battleTypes: string[];
   fragments: StoryFragmentConfig[];
   fallbackText: string;
+  requiresTowerFinale?: boolean;
+  provinceIds?: string[];
 }
 
 export const storyScrollConfigs: StoryScrollConfig[] = [
@@ -31,6 +37,7 @@ export const storyScrollConfigs: StoryScrollConfig[] = [
     unlockCondition: "创建角色并进入冀州",
     sourceTypes: ["explore", "tower", "journal"],
     battleTypes: ["explore"],
+    provinceIds: ["ji"],
     fallbackText: "卷轴残页尚未归档，暂以修行摘要代替。",
     fragments: [
       {
@@ -57,9 +64,10 @@ export const storyScrollConfigs: StoryScrollConfig[] = [
       {
         fragmentId: "ch01_ending",
         title: "塔前",
-        body: "当玄铁塔的赤芒被镇下一线，冀州的夜色终于有了可以喘息的缝隙。",
+        body: "当你向玄铁塔递上第一次支援，冀州的夜色终于有了可以喘息的缝隙。",
         fragmentType: "ending",
-        unlockHint: "完成玄铁塔行动后解锁",
+        unlockHint: "完成一次玄铁塔行动后解锁",
+        requiresTowerAction: { towerId: "tower_xuantie" },
       },
     ],
   },
@@ -126,6 +134,43 @@ export const storyScrollConfigs: StoryScrollConfig[] = [
         body: "九州大事记只保存可公开的荣誉与节点，敏感审计仍留在后台，不进入玩家卷轴。",
         fragmentType: "ending",
         unlockHint: "解锁九州大事记后开放",
+      },
+    ],
+  },
+  {
+    scrollId: "story_scroll_finale_jiuyuan_open",
+    title: "九渊开门",
+    subtitle: "九塔尽破，终局故事终于揭开第一页。",
+    chapterId: 1,
+    unlockCondition: "九塔全部进入破阵终局",
+    sourceTypes: ["tower", "era_chronicle"],
+    battleTypes: [],
+    fallbackText: "九塔仍在相持，终局卷轴尚未展开。",
+    requiresTowerFinale: true,
+    fragments: [
+      {
+        fragmentId: "finale_crack",
+        title: "裂隙同鸣",
+        body: "九座塔在同一夜发出低沉回响。镇封留下的余温没有消失，却终究只为众人争得了一段准备与告别的时日。",
+        fragmentType: "opening",
+        unlockHint: "九塔尽破后解锁",
+        alwaysUnlocked: true,
+      },
+      {
+        fragmentId: "finale_open",
+        title: "九渊开门",
+        body: "裂隙贯穿九州地脉，门后的魔潮尚未彻底涌出。仙与魔曾在九塔前留下各自的选择，而所有人都将走入同一场终局。",
+        fragmentType: "opening",
+        unlockHint: "九塔尽破后解锁",
+        alwaysUnlocked: true,
+      },
+      {
+        fragmentId: "finale_call",
+        title: "终局前夜",
+        body: "史册记下九渊开门的时刻，也为下一段最终剧情留出空白。无论曾经镇封、破阵或旁观，九州都在等待你的下一步。",
+        fragmentType: "ending",
+        unlockHint: "九塔尽破后解锁",
+        alwaysUnlocked: true,
       },
     ],
   },

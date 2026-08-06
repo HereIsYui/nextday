@@ -274,6 +274,8 @@ export function buildTowerExperience(input: {
   settlementStatus: SettlementStatus;
 }): ExperiencePayload {
   const riskTag = riskReasonTag(input.riskStatus, input.settlementStatus);
+  const actionProgressBefore = towerActionProgress(input.towerBefore, input.actionType);
+  const actionProgressAfter = towerActionProgress(input.towerAfter, input.actionType);
   return {
     title: `${input.towerAfter.tower_name}提交回放`,
     summary: `${towerActionLabel(input.actionType)} ${input.count} 次，个人贡献 +${input.contribution}。`,
@@ -299,10 +301,10 @@ export function buildTowerExperience(input: {
     ],
     delta_summary: [
       {
-        label: "镇封",
-        before: input.towerBefore.seal_progress,
-        after: input.towerAfter.seal_progress,
-        delta: input.towerAfter.seal_progress - input.towerBefore.seal_progress,
+        label: towerActionLabel(input.actionType),
+        before: actionProgressBefore,
+        after: actionProgressAfter,
+        delta: actionProgressAfter - actionProgressBefore,
         tone: "success",
       },
       { label: "贡献", delta: `+${input.contribution}`, tone: "success" },
@@ -326,6 +328,19 @@ export function buildTowerExperience(input: {
       },
     ],
   };
+}
+
+function towerActionProgress(tower: TowerStateSummary, actionType: TowerActionType): number {
+  if (actionType === "break") {
+    return tower.break_progress;
+  }
+  if (actionType === "supply") {
+    return tower.supply_progress;
+  }
+  if (actionType === "guard") {
+    return tower.integrity;
+  }
+  return tower.seal_progress;
 }
 
 export function buildBossExperience(input: {

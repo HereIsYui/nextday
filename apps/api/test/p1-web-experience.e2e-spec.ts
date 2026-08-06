@@ -131,7 +131,7 @@ describe("P1 Web 玩法过程反馈", () => {
       .post("/api/multiplayer/towers/action")
       .set("Authorization", `Bearer ${attacker.token}`)
       .set("Idempotency-Key", `idem_p1_tower_${Date.now()}_${randomSuffix()}`)
-      .send({ tower_id: tower.tower_id, action_type: "seal", count: 1 })
+      .send({ tower_id: tower.tower_id, action_type: "supply", count: 1 })
       .expect(201);
     expect(towerAction.body.data.contribution).toBeGreaterThan(0);
     expectExperience(towerAction.body.data.experience);

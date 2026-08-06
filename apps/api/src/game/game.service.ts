@@ -1747,14 +1747,14 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       },
       {
         action_hint: "multiplayer",
-        action_label: hasTower ? "查看九塔" : "镇封玄铁塔",
+        action_label: hasTower ? "查看九塔" : "支援玄铁塔",
         detail: hasTower
-          ? "玄铁塔已有你的镇封记录。"
-          : "提交一次玄铁塔镇封或补给，理解九州对应九塔的全服目标。",
+          ? "玄铁塔已有你的支援记录。"
+          : "提交一次玄铁塔补给或守卫，理解九州对应九塔的全服目标。",
         status: hasTower ? "done" : hasAlchemy || forgeCount > 0 ? "active" : "pending",
         step_id: "seal_xuantie",
-        title: "镇封玄铁塔",
-        unlock_hint: "需要行动令，奖励只给普通材料和贡献。",
+        title: "支援玄铁塔",
+        unlock_hint: "需要行动令；仙魔抉择后可分别镇封或破阵。",
       },
       {
         action_hint: "task",
@@ -2687,7 +2687,7 @@ function buildDailyRouteState(input: {
       state_detail: hasTowerToday
         ? "今日已有九塔贡献，可回看本州塔状态。"
         : hasRecentBattle || hasProducedToday
-          ? "探索或生产后可以提交一次九塔镇封，留下公共目标贡献。"
+          ? "探索或生产后可以提交一次九塔补给或守卫，留下公共目标贡献。"
           : "先完成探索或成长后再提交九塔，更容易理解贡献来源。",
       state_label: hasTowerToday
         ? "已贡献"

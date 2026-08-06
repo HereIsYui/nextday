@@ -8,6 +8,13 @@ import type {
 
 export const multiplayerConfigVersion = "m4_multiplayer_v1";
 export const multiplayerRewardConfigVersion = "reward_m4_v1";
+export const towerLifecycleConfigVersion = "tower_lifecycle_v1";
+export const towerLifecycleActiveWindowDays = 7;
+export const towerLifecycleMinEligiblePlayers = 3;
+export const towerLifecycleActivationRatio = 0.6;
+export const towerLifecycleAutoBreakProgressPerDay = 12;
+export const towerLifecycleBreakProgressTarget = 1000;
+export const towerLifecycleMaxSealDelayProgress = 300;
 export const rankConfigVersion = "rank_p1_v1";
 export const rankRewardConfigVersion = "reward_rank_p1_v1";
 export const rankRulesetVersion = "ruleset_p1_rank_v1";

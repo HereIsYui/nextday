@@ -99,62 +99,134 @@ export class StoryService {
   private async ensureStoryScrollRecords(player: PlayerWithProgress): Promise<StoryScrollRecord[]> {
     const eraId = player.progress?.eraId ?? "era_mvp_001";
     const chapterId = player.progress?.chapterId ?? 1;
-    const unlockedConfigs = storyScrollConfigs.filter((config) => config.chapterId <= chapterId);
-    const [battles, events, journals] = await Promise.all([
-      this.prisma.battleLog.findMany({
-        where: { playerId: player.playerId },
-        orderBy: { createdAt: "desc" },
-        take: 6,
-      }),
-      this.prisma.exploreEventRecord.findMany({
-        where: { playerId: player.playerId, status: "resolved" },
-        orderBy: { resolvedAt: "desc" },
-        take: 6,
-      }),
-      this.prisma.playerJournalEntry.findMany({
-        where: { playerId: player.playerId },
-        orderBy: { createdAt: "desc" },
-        take: 8,
-      }),
-    ]);
+    const snapshotAt = new Date();
+    const requiredTowerIds = [
+      ...new Set(
+        storyScrollConfigs.flatMap((config) =>
+          config.fragments.flatMap((fragment) =>
+            fragment.requiresTowerAction ? [fragment.requiresTowerAction.towerId] : [],
+          ),
+        ),
+      ),
+    ];
+    const [battles, events, journals, towerActions, existingRecords, towerFinale] =
+      await Promise.all([
+        this.prisma.battleLog.findMany({
+          where: { playerId: player.playerId, eraId, createdAt: { lte: snapshotAt } },
+          orderBy: { createdAt: "desc" },
+          take: 6,
+        }),
+        this.prisma.exploreEventRecord.findMany({
+          where: {
+            playerId: player.playerId,
+            eraId,
+            status: "resolved",
+            createdAt: { lte: snapshotAt },
+          },
+          orderBy: { resolvedAt: "desc" },
+          take: 6,
+        }),
+        this.prisma.playerJournalEntry.findMany({
+          where: { playerId: player.playerId, eraId, createdAt: { lte: snapshotAt } },
+          orderBy: { createdAt: "desc" },
+          take: 8,
+        }),
+        requiredTowerIds.length > 0
+          ? this.prisma.towerActionRecord.findMany({
+              where: {
+                playerId: player.playerId,
+                eraId,
+                settlementStatus: "settled",
+                towerId: { in: requiredTowerIds },
+                createdAt: { lte: snapshotAt },
+              },
+              select: { towerId: true, createdAt: true },
+            })
+          : Promise.resolve([]),
+        this.prisma.storyScrollRecord.findMany({
+          where: { eraId, playerId: player.playerId },
+        }),
+        this.prisma.eraChronicleRecord.findUnique({
+          where: {
+            eraId_serverId_chronicleType: {
+              eraId,
+              serverId: "default",
+              chronicleType: "tower_finale",
+            },
+          },
+        }),
+      ]);
+    const recordByScrollId = new Map(existingRecords.map((record) => [record.scrollId, record]));
+    const unlockedConfigs = storyScrollConfigs.filter(
+      (config) =>
+        config.chapterId <= chapterId && (!config.requiresTowerFinale || Boolean(towerFinale)),
+    );
 
     await Promise.all(
-      unlockedConfigs.map((config) => {
+      unlockedConfigs.map(async (config) => {
+        const existingRecord = recordByScrollId.get(config.scrollId);
+        if (
+          existingRecord?.unlockState === "archived" &&
+          existingRecord.storyConfigVersion === storyConfigVersion
+        ) {
+          return existingRecord;
+        }
+        const sourceWindowStart = player.createdAt;
+        const hasMatchingProvince = (provinceId: string | null) =>
+          !config.provinceIds?.length ||
+          Boolean(provinceId && config.provinceIds.includes(provinceId));
         const relatedBattles = battles.filter(
           (battle) =>
-            config.battleTypes.length === 0 || config.battleTypes.includes(battle.battleType),
+            battle.createdAt >= sourceWindowStart &&
+            hasMatchingProvince(battle.provinceId) &&
+            (config.battleTypes.length === 0 || config.battleTypes.includes(battle.battleType)),
+        );
+        const relatedEvents = events.filter(
+          (event) => event.createdAt >= sourceWindowStart && hasMatchingProvince(event.provinceId),
+        );
+        const relatedJournals = journals.filter(
+          (journal) => journal.createdAt >= sourceWindowStart,
+        );
+        const relatedTowerActionIds = new Set(
+          towerActions
+            .filter((action) => action.createdAt >= sourceWindowStart)
+            .map((action) => action.towerId),
         );
         const fragments = buildFragments(config, {
           battleCount: relatedBattles.length,
-          eventCount: events.length,
-          journalCount: journals.length,
+          eventCount: relatedEvents.length,
+          journalCount: relatedJournals.length,
+          towerActionIds: relatedTowerActionIds,
         });
         const battleRefs = relatedBattles
           .slice(0, 3)
           .map((battle) => toStoryBattleReference(battle, toBattleSummary(battle)));
-        const choiceSummary = events
+        const choiceSummary = relatedEvents
           .slice(0, 3)
           .map((event) =>
             sanitizeStoryText(
               `${event.title}：选择 ${event.selectedChoiceId ?? "未记录"}，获得普通修行回响。`,
             ),
           );
+        const completed = fragments.every((fragment) => fragment.unlocked);
+        const unlockState = completed ? "archived" : "unlocked";
 
-        return this.prisma.storyScrollRecord.upsert({
-          where: {
-            playerId_eraId_scrollId: {
-              playerId: player.playerId,
-              eraId,
-              scrollId: config.scrollId,
-            },
+        const scrollRecordWhere = {
+          playerId_eraId_scrollId: {
+            playerId: player.playerId,
+            eraId,
+            scrollId: config.scrollId,
           },
+        };
+        const currentRecord = await this.prisma.storyScrollRecord.upsert({
+          where: scrollRecordWhere,
           create: {
             scrollRecordId: `story_scroll_record_${randomUUID()}`,
             playerId: player.playerId,
             eraId,
             scrollId: config.scrollId,
             chapterId: config.chapterId,
-            unlockState: "unlocked",
+            unlockState,
             fragmentState: fragments as unknown as Prisma.InputJsonValue,
             battleRefs: battleRefs as unknown as Prisma.InputJsonValue,
             choiceSummary: choiceSummary as unknown as Prisma.InputJsonValue,
@@ -163,8 +235,27 @@ export class StoryService {
             storyConfigVersion,
             storyRulesetVersion,
           },
-          update: {
-            unlockState: "unlocked",
+          update: {},
+        });
+        if (
+          currentRecord.unlockState === "archived" &&
+          currentRecord.storyConfigVersion === storyConfigVersion
+        ) {
+          return currentRecord;
+        }
+
+        await this.prisma.storyScrollRecord.updateMany({
+          where: {
+            playerId: player.playerId,
+            eraId,
+            scrollId: config.scrollId,
+            OR: [
+              { unlockState: { not: "archived" } },
+              { storyConfigVersion: { not: storyConfigVersion } },
+            ],
+          },
+          data: {
+            unlockState,
             fragmentState: fragments as unknown as Prisma.InputJsonValue,
             battleRefs: battleRefs as unknown as Prisma.InputJsonValue,
             choiceSummary: choiceSummary as unknown as Prisma.InputJsonValue,
@@ -172,6 +263,8 @@ export class StoryService {
             storyRulesetVersion,
           },
         });
+
+        return currentRecord;
       }),
     );
 
@@ -284,14 +377,22 @@ export class StoryService {
 
 function buildFragments(
   config: (typeof storyScrollConfigs)[number],
-  context: { battleCount: number; eventCount: number; journalCount: number },
+  context: {
+    battleCount: number;
+    eventCount: number;
+    journalCount: number;
+    towerActionIds: Set<string>;
+  },
 ): StoryScrollFragmentState[] {
   return config.fragments.map((fragment, index) => {
     const unlocked =
-      index === 0 ||
-      (fragment.fragmentType === "battle_ref" && context.battleCount > 0) ||
-      (fragment.fragmentType === "choice" && context.eventCount > 0) ||
-      (fragment.fragmentType === "ending" && context.journalCount >= 2);
+      index === 0 || fragment.alwaysUnlocked === true
+        ? true
+        : fragment.requiresTowerAction
+          ? context.towerActionIds.has(fragment.requiresTowerAction.towerId)
+          : (fragment.fragmentType === "battle_ref" && context.battleCount > 0) ||
+            (fragment.fragmentType === "choice" && context.eventCount > 0) ||
+            (fragment.fragmentType === "ending" && context.journalCount >= 2);
 
     return {
       fragment_id: fragment.fragmentId,

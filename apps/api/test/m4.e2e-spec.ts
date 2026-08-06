@@ -1,10 +1,18 @@
 import "reflect-metadata";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
-import { PrismaClient } from "@prisma/client";
+import { type EraChronicleRecord, Prisma, PrismaClient, type TowerState } from "@prisma/client";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AppModule } from "../src/app.module";
+import { defaultEraId } from "../src/game/game.constants";
+import {
+  towerLifecycleAutoBreakProgressPerDay,
+  towerLifecycleBreakProgressTarget,
+  towerLifecycleConfigVersion,
+  towerLifecycleMaxSealDelayProgress,
+} from "../src/multiplayer/multiplayer.constants";
+import { MultiplayerService } from "../src/multiplayer/multiplayer.service";
 import { configureApp } from "../src/platform/configure-app";
 
 describe("M4 多人异步玩法", () => {
@@ -32,8 +40,9 @@ describe("M4 多人异步玩法", () => {
     await app.close();
   });
 
-  it("九塔可任意时间提交行动，消耗行动令、推进塔状态，并支持幂等", async () => {
+  it("成仙后可镇封九塔，消耗行动令、推进塔状态，并支持幂等", async () => {
     const { token, playerId } = await createM4Player(app, prisma, "九塔", "qi");
+    await setFactionRoute(prisma, playerId, "immortal");
 
     const towers = await request(app.getHttpServer())
       .get("/api/multiplayer/towers")
@@ -182,6 +191,7 @@ describe("M4 多人异步玩法", () => {
 
   it("九塔行动可结算专用炼制材料，并保留个人行动记录", async () => {
     const { token, playerId } = await createM4Player(app, prisma, "材料", "qi");
+    await setFactionRoute(prisma, playerId, "immortal");
 
     const response = await request(app.getHttpServer())
       .post("/api/multiplayer/towers/action")
@@ -200,6 +210,226 @@ describe("M4 多人异步玩法", () => {
     });
     expect(record.playerId).toBe(playerId);
     expect(record.towerId).toBe("tower_chaosheng");
+  });
+
+  it("九塔镇封与破阵受仙魔路线限制，失败时不消耗行动令", async () => {
+    const undecided = await createM4Player(app, prisma, "未定", "qi");
+    const towers = await request(app.getHttpServer())
+      .get("/api/multiplayer/towers")
+      .set("Authorization", `Bearer ${undecided.token}`)
+      .expect(200);
+    const tower = towers.body.data.towers[0] as { tower_id: string };
+    const before = await prisma.playerActionState.findUniqueOrThrow({
+      where: { playerId: undecided.playerId },
+    });
+
+    await request(app.getHttpServer())
+      .post("/api/multiplayer/towers/action")
+      .set("Authorization", `Bearer ${undecided.token}`)
+      .set("Idempotency-Key", `idem_m4_undecided_seal_${Date.now()}_${randomSuffix()}`)
+      .send({ tower_id: tower.tower_id, action_type: "seal", count: 1 })
+      .expect(400);
+    await request(app.getHttpServer())
+      .post("/api/multiplayer/towers/action")
+      .set("Authorization", `Bearer ${undecided.token}`)
+      .set("Idempotency-Key", `idem_m4_undecided_break_${Date.now()}_${randomSuffix()}`)
+      .send({ tower_id: tower.tower_id, action_type: "break", count: 1 })
+      .expect(400);
+
+    const after = await prisma.playerActionState.findUniqueOrThrow({
+      where: { playerId: undecided.playerId },
+    });
+    expect(after.actionPoints).toBe(before.actionPoints);
+    expect(await prisma.towerActionRecord.count({ where: { playerId: undecided.playerId } })).toBe(
+      0,
+    );
+    const guardBefore = await prisma.towerState.findUniqueOrThrow({
+      where: { eraId_towerId: { eraId: "era_mvp_001", towerId: tower.tower_id } },
+    });
+    const guarded = await request(app.getHttpServer())
+      .post("/api/multiplayer/towers/action")
+      .set("Authorization", `Bearer ${undecided.token}`)
+      .set("Idempotency-Key", `idem_m4_undecided_guard_${Date.now()}_${randomSuffix()}`)
+      .send({ tower_id: tower.tower_id, action_type: "guard", count: 1 })
+      .expect(201);
+    expect(guarded.body.data.tower.seal_progress).toBe(guardBefore.sealProgress);
+    expect(guarded.body.data.tower.integrity).toBeGreaterThan(guardBefore.integrity);
+
+    const immortal = await createM4Player(app, prisma, "仙路", "qi");
+    await setFactionRoute(prisma, immortal.playerId, "immortal");
+    await request(app.getHttpServer())
+      .post("/api/multiplayer/towers/action")
+      .set("Authorization", `Bearer ${immortal.token}`)
+      .set("Idempotency-Key", `idem_m4_immortal_break_${Date.now()}_${randomSuffix()}`)
+      .send({ tower_id: tower.tower_id, action_type: "break", count: 1 })
+      .expect(400);
+    await request(app.getHttpServer())
+      .post("/api/multiplayer/towers/action")
+      .set("Authorization", `Bearer ${immortal.token}`)
+      .set("Idempotency-Key", `idem_m4_immortal_seal_${Date.now()}_${randomSuffix()}`)
+      .send({ tower_id: tower.tower_id, action_type: "seal", count: 1 })
+      .expect(201);
+
+    const demon = await createM4Player(app, prisma, "魔路", "body");
+    await setFactionRoute(prisma, demon.playerId, "demon");
+    await request(app.getHttpServer())
+      .post("/api/multiplayer/towers/action")
+      .set("Authorization", `Bearer ${demon.token}`)
+      .set("Idempotency-Key", `idem_m4_demon_seal_${Date.now()}_${randomSuffix()}`)
+      .send({ tower_id: tower.tower_id, action_type: "seal", count: 1 })
+      .expect(400);
+    await request(app.getHttpServer())
+      .post("/api/multiplayer/towers/action")
+      .set("Authorization", `Bearer ${demon.token}`)
+      .set("Idempotency-Key", `idem_m4_demon_break_${Date.now()}_${randomSuffix()}`)
+      .send({ tower_id: tower.tower_id, action_type: "break", count: 1 })
+      .expect(201);
+  });
+
+  it("九塔自然破阵受镇封延缓上限约束，并幂等写入终局史册", async () => {
+    const multiplayerService = app.get(MultiplayerService);
+
+    const originalTowers = await prisma.towerState.findMany({
+      where: { eraId: defaultEraId },
+      orderBy: { towerId: "asc" },
+    });
+    const originalChronicles = await prisma.eraChronicleRecord.findMany({
+      where: {
+        eraId: defaultEraId,
+        serverId: "default",
+        chronicleType: { in: ["tower_lifecycle", "tower_finale"] },
+      },
+      orderBy: { chronicleType: "asc" },
+    });
+    const activationAt = new Date("2040-01-01T00:00:00.000Z");
+    const dayMilliseconds = 24 * 60 * 60 * 1000;
+    const naturalProgressBeforeFinale =
+      Math.ceil(towerLifecycleBreakProgressTarget / towerLifecycleAutoBreakProgressPerDay) *
+      towerLifecycleAutoBreakProgressPerDay;
+    const naturalProgressAtFinale =
+      Math.ceil(
+        (towerLifecycleBreakProgressTarget + towerLifecycleMaxSealDelayProgress) /
+          towerLifecycleAutoBreakProgressPerDay,
+      ) * towerLifecycleAutoBreakProgressPerDay;
+    const reachesUnsealedTargetAt = new Date(
+      activationAt.getTime() +
+        (naturalProgressBeforeFinale / towerLifecycleAutoBreakProgressPerDay) * dayMilliseconds,
+    );
+    const reachesDelayedTargetAt = new Date(
+      activationAt.getTime() +
+        (naturalProgressAtFinale / towerLifecycleAutoBreakProgressPerDay) * dayMilliseconds,
+    );
+    const massiveSealProgress = towerLifecycleMaxSealDelayProgress * 10;
+
+    try {
+      expect(originalTowers).toHaveLength(9);
+      const towerIds = originalTowers.map((tower) => tower.towerId);
+      const towerStateIds = originalTowers.map((tower) => tower.towerStateId);
+      await prisma.$transaction(async (tx) => {
+        await tx.eraChronicleRecord.deleteMany({
+          where: {
+            eraId: defaultEraId,
+            serverId: "default",
+            chronicleType: { in: ["tower_lifecycle", "tower_finale"] },
+          },
+        });
+        await tx.towerState.updateMany({
+          where: { towerStateId: { in: towerStateIds } },
+          data: {
+            integrity: 1000,
+            sealProgress: massiveSealProgress,
+            breakProgress: 0,
+            supplyProgress: 0,
+            riftPressure: 0,
+            corruption: 0,
+            phase: 1,
+          },
+        });
+        await tx.eraChronicleRecord.create({
+          data: {
+            chronicleId: `tower_lifecycle_${defaultEraId}`,
+            eraId: defaultEraId,
+            serverId: "default",
+            chronicleType: "tower_lifecycle",
+            publicSummary: {
+              title: "九塔生命周期测试",
+              summary: "验证自然破阵不会被大量镇封永久阻断。",
+              highlights: [],
+            },
+            privateSummary: {
+              activation_at: activationAt.toISOString(),
+              break_baselines: Object.fromEntries(towerIds.map((towerId) => [towerId, 0])),
+              eligible_player_count: 1,
+              selected_player_count: 1,
+              seal_baselines: Object.fromEntries(towerIds.map((towerId) => [towerId, 0])),
+            },
+            relatedSourceIds: towerStateIds,
+            visibilityRule: "admin",
+            storyConfigVersion: towerLifecycleConfigVersion,
+            collectionConfigVersion: towerLifecycleConfigVersion,
+          },
+        });
+      });
+
+      await multiplayerService.reconcileTowerLifecycle(undefined, reachesUnsealedTargetAt);
+
+      const delayedTowers = await prisma.towerState.findMany({
+        where: { towerStateId: { in: towerStateIds } },
+      });
+      expect(delayedTowers).toHaveLength(9);
+      for (const tower of delayedTowers) {
+        expect(tower.sealProgress).toBe(massiveSealProgress);
+        expect(tower.breakProgress).toBe(
+          naturalProgressBeforeFinale - towerLifecycleMaxSealDelayProgress,
+        );
+        expect(tower.breakProgress).toBeLessThan(towerLifecycleBreakProgressTarget);
+        expect(tower.phase).toBe(2);
+      }
+      expect(
+        await prisma.eraChronicleRecord.count({
+          where: {
+            eraId: defaultEraId,
+            serverId: "default",
+            chronicleType: "tower_finale",
+          },
+        }),
+      ).toBe(0);
+
+      await multiplayerService.reconcileTowerLifecycle(undefined, reachesDelayedTargetAt);
+
+      const finale = await prisma.eraChronicleRecord.findUniqueOrThrow({
+        where: {
+          eraId_serverId_chronicleType: {
+            eraId: defaultEraId,
+            serverId: "default",
+            chronicleType: "tower_finale",
+          },
+        },
+      });
+      const brokenTowers = await prisma.towerState.findMany({
+        where: { towerStateId: { in: towerStateIds } },
+      });
+      expect(brokenTowers).toHaveLength(9);
+      for (const tower of brokenTowers) {
+        expect(tower.breakProgress).toBeGreaterThanOrEqual(towerLifecycleBreakProgressTarget);
+        expect(tower.phase).toBe(3);
+      }
+
+      await multiplayerService.reconcileTowerLifecycle(undefined, reachesDelayedTargetAt);
+
+      const finales = await prisma.eraChronicleRecord.findMany({
+        where: {
+          eraId: defaultEraId,
+          serverId: "default",
+          chronicleType: "tower_finale",
+        },
+      });
+      expect(finales).toHaveLength(1);
+      expect(finales[0]?.chronicleId).toBe(finale.chronicleId);
+      expect(finales[0]?.createdAt).toEqual(finale.createdAt);
+    } finally {
+      await restoreDefaultEraTowerLifecycle(prisma, originalTowers, originalChronicles);
+    }
   });
 
   it("个人、宗门与九塔排行榜可读取，奖励预览不发唯一战力道具", async () => {
@@ -271,6 +501,84 @@ async function createM4Player(
   });
 
   return { token, playerId };
+}
+
+async function setFactionRoute(
+  prisma: PrismaClient,
+  playerId: string,
+  route: "immortal" | "demon",
+) {
+  await prisma.$transaction([
+    prisma.player.update({ where: { playerId }, data: { alignment: route } }),
+    prisma.playerFactionState.upsert({
+      where: { playerId },
+      create: {
+        playerId,
+        eraId: "era_mvp_001",
+        route,
+        routeChosenAt: new Date(),
+        configVersion: "faction_route_p1_v1",
+        rewardConfigVersion: "reward_faction_p1_v1",
+      },
+      update: { route, routeChosenAt: new Date() },
+    }),
+  ]);
+}
+
+async function restoreDefaultEraTowerLifecycle(
+  prisma: PrismaClient,
+  towers: TowerState[],
+  chronicles: EraChronicleRecord[],
+) {
+  await prisma.$transaction(async (tx) => {
+    await tx.eraChronicleRecord.deleteMany({
+      where: {
+        eraId: defaultEraId,
+        serverId: "default",
+        chronicleType: { in: ["tower_lifecycle", "tower_finale"] },
+      },
+    });
+    await Promise.all(
+      towers.map((tower) =>
+        tx.towerState.update({
+          where: { towerStateId: tower.towerStateId },
+          data: {
+            integrity: tower.integrity,
+            sealProgress: tower.sealProgress,
+            breakProgress: tower.breakProgress,
+            supplyProgress: tower.supplyProgress,
+            riftPressure: tower.riftPressure,
+            corruption: tower.corruption,
+            phase: tower.phase,
+            updatedAt: tower.updatedAt,
+          },
+        }),
+      ),
+    );
+    await Promise.all(
+      chronicles.map((chronicle) =>
+        tx.eraChronicleRecord.create({
+          data: {
+            chronicleId: chronicle.chronicleId,
+            eraId: chronicle.eraId,
+            serverId: chronicle.serverId,
+            chronicleType: chronicle.chronicleType,
+            publicSummary: chronicle.publicSummary as Prisma.InputJsonValue,
+            privateSummary:
+              chronicle.privateSummary === null
+                ? Prisma.DbNull
+                : (chronicle.privateSummary as Prisma.InputJsonValue),
+            relatedSnapshotId: chronicle.relatedSnapshotId,
+            relatedSourceIds: chronicle.relatedSourceIds as Prisma.InputJsonValue,
+            visibilityRule: chronicle.visibilityRule,
+            storyConfigVersion: chronicle.storyConfigVersion,
+            collectionConfigVersion: chronicle.collectionConfigVersion,
+            createdAt: chronicle.createdAt,
+          },
+        }),
+      ),
+    );
+  });
 }
 
 async function grantSpiritStone(prisma: PrismaClient, playerId: string, amount: number) {

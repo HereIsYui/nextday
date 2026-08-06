@@ -336,7 +336,7 @@ describe("P1-9 新手 30 分钟体验与玩法厚度", () => {
       .post("/api/multiplayer/towers/action")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_p19_tower_${Date.now()}_${randomSuffix()}`)
-      .send({ action_type: "seal", count: 1, tower_id: "tower_xuantie" })
+      .send({ action_type: "supply", count: 1, tower_id: "tower_xuantie" })
       .expect(201);
     expect(tower.body.data.completed_task_ids).toContain("novice_tower_xuantie");
     expect(tower.body.data.completed_task_ids).toContain("chapter_first_30_minutes");

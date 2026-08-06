@@ -181,7 +181,7 @@ describe("P3-3 技能学习与战报建议", () => {
       .post("/api/multiplayer/towers/action")
       .set("Authorization", `Bearer ${attacker.token}`)
       .set("Idempotency-Key", `idem_p3_tower_reason_${Date.now()}_${randomSuffix()}`)
-      .send({ tower_id: tower.tower_id, action_type: "seal", count: 1 })
+      .send({ tower_id: tower.tower_id, action_type: "supply", count: 1 })
       .expect(201);
 
     expect(towerAction.body.data.reason_summary.join("、")).toContain("贡献");

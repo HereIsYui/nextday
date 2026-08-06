@@ -116,7 +116,7 @@ const commandHelpGroups: TextCommandHelpGroup[] = [
         command_id: "explore",
         syntax: "探索 <州域> [次数]",
         aliases: ["游历 <州域> [次数]"],
-        description: "州域可使用州名、简称或英文标识；次数为 1-5。",
+        description: "州域可使用州名、简称或英文标识；省略次数时默认 1 次，最多 5 次。",
       },
       {
         command_id: "explore_claim",
@@ -242,7 +242,7 @@ const commandHelpGroups: TextCommandHelpGroup[] = [
         command_id: "tower_action",
         syntax: "九塔 <塔名> <镇封|破阵|补给|守卫> [次数]",
         aliases: ["九塔 <塔名> <seal|break|supply|guard> [次数]"],
-        description: "向指定封印塔提交行动，次数为 1-5。",
+        description: "向指定封印塔提交行动；成仙仅可镇封，成魔仅可破阵，补给和守卫不限路线。",
       },
       {
         command_id: "scroll_list",
@@ -276,7 +276,7 @@ const defaultSuggestions: TextCommandSuggestion[] = [
   { label: "查看状态", command: "状态" },
   { label: "查看背包", command: "背包" },
   { label: "收束修为", command: "修炼" },
-  { label: "探索冀州", command: "探索 冀州 1" },
+  { label: "探索冀州", command: "探索 冀州" },
   { label: "查看任务", command: "任务" },
 ];
 
@@ -1038,7 +1038,7 @@ export class GameCommandService {
       result,
       ["towers"],
       result.towers[0]
-        ? [{ label: "镇封玄铁塔", command: `九塔 ${result.towers[0].tower_name} 镇封 1` }]
+        ? [{ label: "补给玄铁塔", command: `九塔 ${result.towers[0].tower_name} 补给` }]
         : defaultSuggestions,
     );
   }
@@ -1107,20 +1107,35 @@ export class GameCommandService {
       );
     }
     const result = await this.storyService.getScrollDetail(accountId, scroll.scroll_id);
+    const entries: LogInput[] = [
+      {
+        tone: result.scroll.unlock_state === "archived" ? "success" : "info",
+        text: `${result.scroll.title}：${result.scroll.subtitle}${result.scroll.unlock_state === "archived" ? "（已完成并归档，可随时回看）" : ""}`,
+      },
+      ...result.scroll.fragments.map(
+        (fragment): LogInput => ({
+          tone: fragment.unlocked ? "info" : "warning",
+          text: `${fragment.title}：${fragment.body}`,
+        }),
+      ),
+      ...result.scroll.choice_summary.map(
+        (summary): LogInput => ({ tone: "success", text: `本卷抉择：${summary}` }),
+      ),
+      ...result.scroll.battle_refs.map(
+        (battle): LogInput => ({
+          tone: battle.result === "win" ? "success" : "warning",
+          text: `关联战报：${battle.title}。${battle.summary}（输入“战报 ${battle.battle_id}”可回看）`,
+        }),
+      ),
+    ];
     return this.success(
       "scroll_detail",
-      [
-        { tone: "info", text: `${result.scroll.title}：${result.scroll.subtitle}` },
-        ...result.scroll.fragments.map(
-          (fragment): LogInput => ({
-            tone: fragment.unlocked ? "info" : "warning",
-            text: `${fragment.title}：${fragment.body}`,
-          }),
-        ),
-      ],
+      entries,
       result,
       ["scrolls"],
-      [{ label: "查看战报", command: "战报" }],
+      result.scroll.battle_refs[0]
+        ? [{ label: "回看关联战报", command: `战报 ${result.scroll.battle_refs[0].battle_id}` }]
+        : [{ label: "查看卷轴", command: "卷轴" }],
     );
   }
 

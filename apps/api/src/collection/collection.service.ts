@@ -313,7 +313,7 @@ export class CollectionService {
             },
             relatedSourceIds: record.sources,
             visibilityRule: "server",
-            storyConfigVersion: "story_p2_1_v1",
+            storyConfigVersion: "story_p2_3_v1",
             collectionConfigVersion,
           },
           update: {

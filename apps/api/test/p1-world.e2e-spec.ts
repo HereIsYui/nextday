@@ -125,7 +125,7 @@ describe("P1 九州全域与九塔机制", () => {
         .post("/api/multiplayer/towers/action")
         .set("Authorization", `Bearer ${token}`)
         .set("Idempotency-Key", `idem_p1_world_${tower.tower_id}_${Date.now()}_${randomSuffix()}`)
-        .send({ tower_id: tower.tower_id, action_type: "seal", count: 1 })
+        .send({ tower_id: tower.tower_id, action_type: "supply", count: 1 })
         .expect(201);
 
       expect(response.body.data.tower.tower_id).toBe(tower.tower_id);

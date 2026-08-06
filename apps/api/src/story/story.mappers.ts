@@ -9,7 +9,7 @@ import type {
   StoryScrollSummaryState,
 } from "@nextday/shared";
 import type { BattleLog, EraChronicleRecord, StoryScrollRecord } from "@prisma/client";
-import type { StoryScrollConfig } from "./story.constants";
+import { type StoryScrollConfig, storyConfigVersion } from "./story.constants";
 
 export function toStoryScrollSummary(
   config: StoryScrollConfig,
@@ -30,7 +30,7 @@ export function toStoryScrollSummary(
     progress_percent: record ? progressPercent : 0,
     latest_fragment: latestUnlockedFragmentTitle(fragments),
     updated_at: record?.updatedAt.toISOString() ?? null,
-    story_config_version: record?.storyConfigVersion ?? "story_p2_1_v1",
+    story_config_version: record?.storyConfigVersion ?? storyConfigVersion,
   };
 }
 
@@ -86,7 +86,7 @@ export function toBattleNarrative(
     key_rounds: roundLines,
     result_reason: summary.reason_summary ?? [],
     source_battle_id: battle.battleId,
-    story_config_version: "story_p2_1_v1",
+    story_config_version: storyConfigVersion,
   };
 }
 

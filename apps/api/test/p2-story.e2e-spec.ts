@@ -6,7 +6,7 @@ import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AppModule } from "../src/app.module";
 import { configureApp } from "../src/platform/configure-app";
-import { storyScrollConfigs } from "../src/story/story.constants";
+import { storyConfigVersion, storyScrollConfigs } from "../src/story/story.constants";
 
 describe("P2-1 高阶剧情演出与章节卷轴", () => {
   let app: INestApplication;
@@ -101,6 +101,118 @@ describe("P2-1 高阶剧情演出与章节卷轴", () => {
       ),
     ).toBe(true);
     expect(await prisma.storyScrollRecord.count({ where: { playerId } })).toBeGreaterThanOrEqual(2);
+  });
+
+  it("首卷须完成玄铁塔行动才归档，归档后不会混入后续经历", async () => {
+    const { token, playerId } = await createP2StoryPlayer(app, prisma);
+    await startAndClaimExplore(app, prisma, token);
+    const exploreRecord = await prisma.exploreActionRecord.findFirstOrThrow({
+      where: { playerId },
+      orderBy: { createdAt: "desc" },
+    });
+    const existingEvent = await prisma.exploreEventRecord.findUnique({
+      where: { exploreRecordId: exploreRecord.recordId },
+    });
+    if (existingEvent) {
+      await prisma.exploreEventRecord.update({
+        where: { eventId: existingEvent.eventId },
+        data: {
+          resolvedAt: new Date(),
+          selectedChoiceId: "archive_choice",
+          status: "resolved",
+        },
+      });
+    } else {
+      await prisma.exploreEventRecord.create({
+        data: {
+          eventId: `story_archive_event_${Date.now()}_${randomSuffix()}`,
+          playerId,
+          eraId: "era_mvp_001",
+          exploreRecordId: exploreRecord.recordId,
+          provinceId: "ji",
+          provinceName: "冀州",
+          eventType: "story_archive",
+          title: "归档前的抉择",
+          description: "用于验证卷轴快照。",
+          choices: [],
+          status: "resolved",
+          selectedChoiceId: "archive_choice",
+          rewardSnapshot: {},
+          triggeredAt: new Date(),
+          resolvedAt: new Date(),
+        },
+      });
+    }
+    await prisma.playerJournalEntry.createMany({
+      data: [0, 1].map((index) => ({
+        journalEntryId: `story_archive_journal_${Date.now()}_${index}_${randomSuffix()}`,
+        playerId,
+        eraId: "era_mvp_001",
+        sourceType: "story_archive",
+        sourceId: `archive_${index}`,
+        title: "卷轴归档准备",
+        summary: "本条记录用于完成卷轴片段。",
+        deltaSummary: [],
+        tags: [],
+        recommendations: [],
+      })),
+    });
+
+    const beforeTowerAction = await request(app.getHttpServer())
+      .get("/api/story/scrolls/story_scroll_ch01_xuantie_first_seal")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(beforeTowerAction.body.data.scroll.unlock_state).toBe("unlocked");
+    expect(
+      beforeTowerAction.body.data.scroll.fragments.find(
+        (fragment: { fragment_id: string }) => fragment.fragment_id === "ch01_ending",
+      )?.unlocked,
+    ).toBe(false);
+
+    await prisma.storyScrollRecord.update({
+      where: {
+        playerId_eraId_scrollId: {
+          playerId,
+          eraId: "era_mvp_001",
+          scrollId: "story_scroll_ch01_xuantie_first_seal",
+        },
+      },
+      data: { storyConfigVersion: "story_p2_1_v1", unlockState: "archived" },
+    });
+    const rebuiltLegacyArchive = await request(app.getHttpServer())
+      .get("/api/story/scrolls/story_scroll_ch01_xuantie_first_seal")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(rebuiltLegacyArchive.body.data.scroll.unlock_state).toBe("unlocked");
+    expect(rebuiltLegacyArchive.body.data.scroll.story_config_version).toBe(storyConfigVersion);
+
+    await request(app.getHttpServer())
+      .post("/api/multiplayer/towers/action")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_p2_story_tower_${Date.now()}_${randomSuffix()}`)
+      .send({ tower_id: "tower_xuantie", action_type: "supply", count: 1 })
+      .expect(201);
+
+    const before = await request(app.getHttpServer())
+      .get("/api/story/scrolls/story_scroll_ch01_xuantie_first_seal")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    const archived = before.body.data.scroll;
+    expect(archived.unlock_state).toBe("archived");
+    expect(archived.progress_percent).toBe(100);
+    expect(archived.choice_summary.length).toBeGreaterThan(0);
+    expect(archived.battle_refs.length).toBeGreaterThan(0);
+
+    await startAndClaimExplore(app, prisma, token);
+    const after = await request(app.getHttpServer())
+      .get("/api/story/scrolls/story_scroll_ch01_xuantie_first_seal")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(after.body.data.scroll.unlock_state).toBe("archived");
+    expect(after.body.data.scroll.fragments).toEqual(archived.fragments);
+    expect(after.body.data.scroll.choice_summary).toEqual(archived.choice_summary);
+    expect(after.body.data.scroll.battle_refs).toEqual(archived.battle_refs);
   });
 
   it("纪元史册生成公开快照，不写入敏感后台语境", async () => {

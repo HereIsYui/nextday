@@ -69,7 +69,7 @@ const legacyBuiltinConfigVersions: Record<string, string[]> = {
   skill: ["skill_m3_v1"],
   tower: ["tower_m4_v1"],
   world: ["world_m2_v1"],
-  story_presentation: ["story_p2_1_v1"],
+  story_presentation: ["story_p2_1_v1", "story_p2_2_v1"],
 };
 
 function isLegacyBuiltinConfig(configType: string, configVersion: string): boolean {

@@ -49,6 +49,30 @@ describe("文字命令服务", () => {
     });
   });
 
+  it("探索省略次数时默认进行一次", async () => {
+    const gameService = {
+      explore: vi.fn().mockResolvedValue({
+        province_name: "冀州",
+        count: 1,
+        total_seconds: 20,
+      }),
+    };
+    const service = createService({ gameService });
+
+    const response = await service.execute({
+      accountId: "account_test",
+      body: { command: "探索 冀州" },
+      idempotencyKey: "idem_explore_default_count",
+    });
+
+    expect(response.command_id).toBe("explore");
+    expect(gameService.explore).toHaveBeenCalledWith({
+      accountId: "account_test",
+      body: { province_id: "ji", count: 1 },
+      idempotencyKey: "idem_explore_default_count",
+    });
+  });
+
   it("领取探索只传出结算结果，不在领取时主动传出奇遇", async () => {
     const gameService = {
       claimExplore: vi.fn().mockResolvedValue({

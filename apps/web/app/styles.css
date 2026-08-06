@@ -906,6 +906,24 @@ h2 {
   padding: 3px 0 3px 10px;
 }
 
+.scroll-list-action {
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.scroll-list-action > div,
+.story-replay-heading {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.scroll-list-action .quiet-button {
+  align-self: start;
+  font-size: 12px;
+  padding: 5px 8px;
+}
+
 .bag-list li {
   align-items: flex-start;
   border-left: 2px solid #66765f;
@@ -962,6 +980,52 @@ h2 {
 .battle-list small {
   color: #7f8b7b;
   font-size: 11px;
+}
+
+.story-replay,
+.faction-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.story-replay-heading {
+  border-left: 2px solid #b59a61;
+  padding-left: 10px;
+}
+
+.story-replay-heading strong,
+.faction-route-status {
+  color: #ebdfc6;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.story-replay-heading span {
+  color: #a6afa0;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.story-replay-heading small {
+  color: #7f8b7b;
+  font-size: 11px;
+}
+
+.story-replay-section {
+  display: grid;
+  gap: 8px;
+}
+
+.story-replay-section h3 {
+  color: #c9b574;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  margin: 0;
+}
+
+.faction-route-status {
+  margin: 0;
 }
 
 .empty-copy {

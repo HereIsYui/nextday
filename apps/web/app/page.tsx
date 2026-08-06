@@ -6,11 +6,13 @@ import type {
   BagItemState,
   BagSummaryResponse,
   ExploreResponse,
+  FactionRoutesResponse,
   GameOverviewResponse,
   HealthStatus,
   LoginResponse,
   PlayerProfileResponse,
   ProvinceSummary,
+  StoryScrollDetailState,
   StoryScrollListResponse,
 } from "@nextday/shared";
 import {
@@ -53,7 +55,7 @@ import {
 
 type HealthText = "检测中" | "正常" | "不可用";
 type RouteValue = "qi" | "body";
-type OverlayView = "help" | "bag" | "scrolls" | "battles";
+type OverlayView = "help" | "bag" | "scrolls" | "battles" | "faction";
 
 interface CommandAction {
   command: string;
@@ -130,7 +132,7 @@ const fallbackHelpGroups: CommandHelpGroup[] = [
       { syntax: "突破", description: "在条件满足时尝试突破境界。", aliases: [] },
       {
         syntax: "探索 <州域> [次数]",
-        description: "输入“探索”即可查看当前可前往的州域。",
+        description: "输入“探索”即可查看当前可前往的州域；省略次数时默认探索 1 次。",
         aliases: ["游历 <州域> [次数]"],
       },
       {
@@ -168,6 +170,10 @@ export default function HomePage() {
   const [profile, setProfile] = useState<PlayerProfileResponse | null>(null);
   const [overview, setOverview] = useState<GameOverviewResponse | null>(null);
   const [scrolls, setScrolls] = useState<StoryScrollListResponse | null>(null);
+  const [selectedScroll, setSelectedScroll] = useState<StoryScrollDetailState | null>(null);
+  const [scrollDetailError, setScrollDetailError] = useState<string | null>(null);
+  const [scrollDetailLoading, setScrollDetailLoading] = useState(false);
+  const [faction, setFaction] = useState<FactionRoutesResponse | null>(null);
   const [bag, setBag] = useState<BagSummaryResponse | null>(null);
   const [bagError, setBagError] = useState<string | null>(null);
   const [bagLoading, setBagLoading] = useState(false);
@@ -217,6 +223,10 @@ export default function HomePage() {
   const wallet = activeProfile?.wallet ?? null;
   const recentBattles = overview?.recent_battles ?? [];
   const storyScrolls = scrolls?.scrolls ?? [];
+  const readableStoryScrolls = useMemo(
+    () => storyScrolls.filter((scroll) => scroll.unlock_state !== "locked"),
+    [storyScrolls],
+  );
   const currentExploreActionCard = useMemo(
     () =>
       exploreActionCard({
@@ -283,9 +293,10 @@ export default function HomePage() {
 
   const refreshDashboard = useCallback(async (activeToken: string, quietly = false) => {
     const client = createClient(activeToken);
-    const [overviewResult, scrollResult] = await Promise.allSettled([
+    const [overviewResult, scrollResult, factionResult] = await Promise.allSettled([
       client.gameOverview(),
       client.storyScrolls(),
+      client.factionRoutes(),
     ]);
 
     let loaded = false;
@@ -305,6 +316,12 @@ export default function HomePage() {
       loaded = true;
     } else {
       errors.push("章节卷轴");
+    }
+
+    if (factionResult.status === "fulfilled") {
+      setFaction(readResponse(factionResult.value));
+    } else {
+      errors.push("仙魔路线");
     }
 
     if (!loaded) {
@@ -341,6 +358,55 @@ export default function HomePage() {
     }
   }, []);
 
+  const loadScrollDetail = useCallback(
+    async (scrollId: string) => {
+      if (!token || scrollDetailLoading) {
+        return;
+      }
+
+      setScrollDetailLoading(true);
+      setScrollDetailError(null);
+      try {
+        const response = await createClient(token).storyScroll(scrollId);
+        setSelectedScroll(readResponse(response).scroll);
+      } catch (error) {
+        setScrollDetailError(messageFromError(error));
+      } finally {
+        setScrollDetailLoading(false);
+      }
+    },
+    [scrollDetailLoading, token],
+  );
+
+  const chooseFactionRoute = useCallback(
+    async (routeId: string) => {
+      if (!token || busy || hydrating) {
+        return;
+      }
+
+      setBusy(true);
+      try {
+        const response = await createClient(token).chooseFactionRoute(
+          { route_id: routeId },
+          createIdempotencyKey("web_choose_faction"),
+        );
+        const result = readResponse(response);
+        setFaction((current) => (current ? { ...current, state: result.state } : current));
+        appendTerminalEntries([
+          terminalEntry("success", "道途已定", [`你已选择${result.selected_route.name}。`]),
+        ]);
+        await refreshDashboard(token, true);
+      } catch (error) {
+        const detail = messageFromError(error);
+        setSessionError(detail);
+        appendTerminalEntries([terminalEntry("error", "仙魔抉择未完成", [detail])]);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [appendTerminalEntries, busy, hydrating, refreshDashboard, token],
+  );
+
   const loadSession = useCallback(
     async (activeToken: string) => {
       const loadVersion = ++loadVersionRef.current;
@@ -369,6 +435,8 @@ export default function HomePage() {
           setProfile(nextProfile);
           setOverview(null);
           setScrolls(null);
+          setSelectedScroll(null);
+          setFaction(null);
           setMessage("已取得行旅凭证，请登记角色");
           return;
         }
@@ -661,10 +729,12 @@ export default function HomePage() {
       {
         label: "章节",
         value: `第 ${progress?.chapter_id ?? 1} 章`,
-        detail: storyScrolls.length ? `已见 ${storyScrolls.length} 卷` : "输入“卷轴”查看剧情",
+        detail: readableStoryScrolls.length
+          ? `已见 ${readableStoryScrolls.length} 卷`
+          : "输入“卷轴”查看剧情",
       },
     ],
-    [cultivation, overview?.action_state, player, progress, storyScrolls.length, wallet],
+    [cultivation, overview?.action_state, player, progress, readableStoryScrolls.length, wallet],
   );
 
   async function handleGuestLogin() {
@@ -906,6 +976,9 @@ export default function HomePage() {
     setProfile(null);
     setOverview(null);
     setScrolls(null);
+    setSelectedScroll(null);
+    setScrollDetailError(null);
+    setFaction(null);
     setBag(null);
     setBagError(null);
     setBagLoading(false);
@@ -1069,6 +1142,14 @@ export default function HomePage() {
                       type="button"
                     >
                       卷轴
+                    </button>
+                    <button
+                      aria-haspopup="dialog"
+                      className="utility-button"
+                      onClick={() => setActiveOverlay("faction")}
+                      type="button"
+                    >
+                      仙魔
                     </button>
                     <button
                       aria-haspopup="dialog"
@@ -1280,15 +1361,23 @@ export default function HomePage() {
 
           {activeOverlay ? (
             <UtilityOverlay
-              onClose={() => setActiveOverlay(null)}
+              onClose={() => {
+                setActiveOverlay(null);
+                setSelectedScroll(null);
+                setScrollDetailError(null);
+              }}
               title={
                 activeOverlay === "help"
                   ? "可用语法"
                   : activeOverlay === "bag"
                     ? "纳物囊"
                     : activeOverlay === "scrolls"
-                      ? "已见故事"
-                      : "斗法余音"
+                      ? selectedScroll
+                        ? "故事回放"
+                        : "已见故事"
+                      : activeOverlay === "faction"
+                        ? "仙魔抉择"
+                        : "斗法余音"
               }
               eyebrow={
                 activeOverlay === "help"
@@ -1297,7 +1386,9 @@ export default function HomePage() {
                     ? "随身背包"
                     : activeOverlay === "scrolls"
                       ? "章节卷轴"
-                      : "最近战报"
+                      : activeOverlay === "faction"
+                        ? "道途分流"
+                        : "最近战报"
               }
             >
               {activeOverlay === "help" ? (
@@ -1420,20 +1511,165 @@ export default function HomePage() {
               ) : null}
 
               {activeOverlay === "scrolls" ? (
-                storyScrolls.length > 0 ? (
-                  <ul className="scroll-list">
-                    {storyScrolls.map((scroll) => (
-                      <li key={scroll.scroll_id}>
-                        <strong>{scroll.title}</strong>
-                        <span>{scroll.latest_fragment || scroll.subtitle}</span>
-                        <small>
-                          第 {scroll.chapter_id} 章 · {scroll.progress_percent}%
-                        </small>
-                      </li>
-                    ))}
-                  </ul>
+                selectedScroll ? (
+                  <section className="story-replay" aria-label="卷轴回放">
+                    <div className="utility-dialog-actions">
+                      <button
+                        className="quiet-button"
+                        onClick={() => {
+                          setSelectedScroll(null);
+                          setScrollDetailError(null);
+                        }}
+                        type="button"
+                      >
+                        返回卷轴
+                      </button>
+                    </div>
+                    <div className="story-replay-heading">
+                      <strong>{selectedScroll.title}</strong>
+                      <span>{selectedScroll.subtitle}</span>
+                      <small>
+                        {selectedScroll.unlock_state === "archived"
+                          ? "已完成并归档"
+                          : "书写中，可随时回看已解锁片段"}
+                      </small>
+                    </div>
+                    <ul className="scroll-list">
+                      {selectedScroll.fragments.map((fragment) => (
+                        <li key={fragment.fragment_id}>
+                          <strong>{fragment.title}</strong>
+                          <span>{fragment.body}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    {selectedScroll.choice_summary.length > 0 ? (
+                      <section className="story-replay-section">
+                        <h3>本卷抉择</h3>
+                        <ul className="scroll-list">
+                          {selectedScroll.choice_summary.map((summary) => (
+                            <li key={summary}>
+                              <span>{summary}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    ) : null}
+                    {selectedScroll.battle_refs.length > 0 ? (
+                      <section className="story-replay-section">
+                        <h3>关联战报</h3>
+                        <ul className="scroll-list">
+                          {selectedScroll.battle_refs.map((battle) => (
+                            <li className="scroll-list-action" key={battle.battle_id}>
+                              <div>
+                                <strong>{battle.title}</strong>
+                                <span>{battle.summary}</span>
+                                <small>{formatDateTime(battle.created_at)}</small>
+                              </div>
+                              <button
+                                className="quiet-button"
+                                disabled={busy || hydrating}
+                                onClick={() => {
+                                  setActiveOverlay(null);
+                                  setSelectedScroll(null);
+                                  void executeCommand(`战报 ${battle.battle_id}`, {
+                                    displayCommand: `回看战报：${battle.title}`,
+                                    saveToHistory: false,
+                                  });
+                                }}
+                                type="button"
+                              >
+                                查看战报
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    ) : null}
+                  </section>
+                ) : readableStoryScrolls.length > 0 ? (
+                  <>
+                    {scrollDetailError ? (
+                      <p className="panel-warning">卷轴暂时无法回看：{scrollDetailError}</p>
+                    ) : null}
+                    <ul className="scroll-list">
+                      {readableStoryScrolls.map((scroll) => (
+                        <li className="scroll-list-action" key={scroll.scroll_id}>
+                          <div>
+                            <strong>{scroll.title}</strong>
+                            <span>{scroll.latest_fragment || scroll.subtitle}</span>
+                            <small>
+                              第 {scroll.chapter_id} 章 · {scroll.progress_percent}% ·{" "}
+                              {scroll.unlock_state === "archived" ? "已归档" : "书写中"}
+                            </small>
+                          </div>
+                          <button
+                            className="quiet-button"
+                            disabled={scrollDetailLoading || !token}
+                            onClick={() => void loadScrollDetail(scroll.scroll_id)}
+                            type="button"
+                          >
+                            {scrollDetailLoading ? "读取中…" : "回看"}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
                 ) : (
-                  <p className="empty-copy">卷轴会随着探索和九塔推进逐步显现。</p>
+                  <p className="empty-copy">卷轴会随着探索、抉择和九塔进程逐步显现。</p>
+                )
+              ) : null}
+
+              {activeOverlay === "faction" ? (
+                faction ? (
+                  <section className="faction-panel" aria-label="仙魔路线">
+                    <p className="faction-route-status">
+                      当前道途：{faction.state.route_name}。{faction.state.unlock_hint}
+                    </p>
+                    {faction.state.route === "undecided" ? (
+                      faction.state.unlocked ? (
+                        <ul className="scroll-list">
+                          {faction.routes.map((routeOption) => (
+                            <li className="scroll-list-action" key={routeOption.route_id}>
+                              <div>
+                                <strong>{routeOption.name}</strong>
+                                <span>{routeOption.core_goal}</span>
+                                <small>
+                                  {routeOption.route_id === "immortal"
+                                    ? "可镇封九塔"
+                                    : routeOption.route_id === "demon"
+                                      ? "可破阵九塔"
+                                      : "可补给、守卫九塔"}
+                                </small>
+                              </div>
+                              <button
+                                className="quiet-button"
+                                disabled={busy || hydrating}
+                                onClick={() => void chooseFactionRoute(routeOption.route_id)}
+                                type="button"
+                              >
+                                选择
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="empty-copy">{faction.state.unlock_hint}</p>
+                      )
+                    ) : (
+                      <div className="story-replay-heading">
+                        <strong>{faction.state.route_name}</strong>
+                        <span>
+                          {faction.state.route === "immortal"
+                            ? "你只能镇封九塔；补给与守卫仍可参与。"
+                            : faction.state.route === "demon"
+                              ? "你只能破阵九塔；补给与守卫仍可参与。"
+                              : "散修不能镇封或破阵，但可继续补给与守卫。"}
+                        </span>
+                      </div>
+                    )}
+                  </section>
+                ) : (
+                  <p className="empty-copy">正在读取仙魔路线…</p>
                 )
               ) : null}
 
@@ -1648,7 +1884,7 @@ function buildCommandHint(
         command: `探索 ${province.name}`,
         label: province.name,
       })),
-      text: `可选州域：${unlockedProvinces.map((province) => province.name).join("、")}；次数可填 1–5。`,
+      text: `可选州域：${unlockedProvinces.map((province) => province.name).join("、")}；省略次数默认 1 次，最多 5 次。`,
     };
   }
 

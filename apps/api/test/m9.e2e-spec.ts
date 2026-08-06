@@ -260,7 +260,7 @@ describe("M9 MVP 总体验收与小纪元演练", () => {
         .post("/api/multiplayer/towers/action")
         .set("Authorization", `Bearer ${leader.token}`)
         .set("Idempotency-Key", `idem_m9_tower_${towerId}_${randomSuffix()}`)
-        .send({ tower_id: towerId, action_type: "seal", count: 5 })
+        .send({ tower_id: towerId, action_type: "supply", count: 5 })
         .expect(201);
     }
     let delayedTowerRiskId: string | null = null;

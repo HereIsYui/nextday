@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { BadRequestException, Inject, Injectable } from "@nestjs/common";
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  type OnModuleDestroy,
+  type OnModuleInit,
+} from "@nestjs/common";
 import type {
   ActionState,
   BattleRoundLog,
@@ -32,9 +38,10 @@ import type {
   WorldBossResponse,
   WorldBossStateSummary,
 } from "@nextday/shared";
-import type { Player, PlayerActionState, Prisma, SectMember } from "@prisma/client";
+import type { Player, PlayerActionState, Prisma, SectMember, TowerState } from "@prisma/client";
 import { toAppearanceState } from "../commerce/commerce.mappers";
 import { PrismaService } from "../database/prisma.service";
+import { factionUnlockChapter, factionUnlockRealm } from "../factions/factions.constants";
 import { defaultEraId, maxOfflineCultivationHours } from "../game/game.constants";
 import { toActionState } from "../game/game.mappers";
 import { incrementPlayerTasks } from "../game/task-progress.utils";
@@ -70,6 +77,13 @@ import {
   supportedRankTypes,
   towerActionConfigs,
   towerConfigs,
+  towerLifecycleActivationRatio,
+  towerLifecycleActiveWindowDays,
+  towerLifecycleAutoBreakProgressPerDay,
+  towerLifecycleBreakProgressTarget,
+  towerLifecycleConfigVersion,
+  towerLifecycleMaxSealDelayProgress,
+  towerLifecycleMinEligiblePlayers,
   validSectAlignments,
 } from "./multiplayer.constants";
 import {
@@ -94,15 +108,41 @@ interface RankBuildResult {
   excludedDelayedCount: number;
 }
 
+interface TowerLifecycleSnapshot {
+  activation_at: string;
+  break_baselines: Record<string, number>;
+  eligible_player_count: number;
+  selected_player_count: number;
+  seal_baselines: Record<string, number>;
+}
+
 @Injectable()
-export class MultiplayerService {
+export class MultiplayerService implements OnModuleInit, OnModuleDestroy {
+  private towerLifecycleTimer: ReturnType<typeof setInterval> | null = null;
+  private isReconcilingTowerLifecycle = false;
+
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(RiskService) private readonly riskService: RiskService,
   ) {}
 
+  onModuleInit() {
+    void this.refreshTowerLifecycle();
+    this.towerLifecycleTimer = setInterval(() => {
+      void this.refreshTowerLifecycle();
+    }, 60 * 1000);
+  }
+
+  onModuleDestroy() {
+    if (this.towerLifecycleTimer) {
+      clearInterval(this.towerLifecycleTimer);
+      this.towerLifecycleTimer = null;
+    }
+  }
+
   async getTowers(): Promise<TowerListResponse> {
     await this.ensureTowerStates();
+    await this.reconcileTowerLifecycle();
     const towers = await this.prisma.towerState.findMany({
       where: { eraId: defaultEraId },
     });
@@ -126,12 +166,21 @@ export class MultiplayerService {
       requestBody: body,
       handler: async (tx) => {
         await this.ensureTowerStates(tx);
+        await this.reconcileTowerLifecycle(tx);
         const tower = await tx.towerState.findUnique({
           where: { eraId_towerId: { eraId: defaultEraId, towerId: body.tower_id } },
         });
         if (!tower) {
           throw new BadRequestException("未知封印塔");
         }
+        const factionState = await tx.playerFactionState.findUnique({
+          where: { playerId: player.playerId },
+        });
+        assertTowerActionPermission(
+          factionState?.route ?? player.alignment,
+          body.action_type,
+          tower.phase,
+        );
 
         const repeatedTowerCount = await tx.towerActionRecord.count({
           where: {
@@ -255,9 +304,13 @@ export class MultiplayerService {
           };
         }
 
-        const updatedTower = await tx.towerState.update({
+        await tx.towerState.update({
           where: { eraId_towerId: { eraId: defaultEraId, towerId: body.tower_id } },
           data: getTowerUpdate(body.action_type, contribution),
+        });
+        await this.reconcileTowerLifecycle(tx);
+        const updatedTower = await tx.towerState.findUniqueOrThrow({
+          where: { eraId_towerId: { eraId: defaultEraId, towerId: body.tower_id } },
         });
         const sectMember = await this.getSectMemberByPlayer(tx, player.playerId);
         if (sectMember) {
@@ -1269,6 +1322,196 @@ export class MultiplayerService {
     return entry;
   }
 
+  private async refreshTowerLifecycle() {
+    if (this.isReconcilingTowerLifecycle) {
+      return;
+    }
+
+    this.isReconcilingTowerLifecycle = true;
+    try {
+      await this.reconcileTowerLifecycle();
+    } catch {
+      // 生命周期刷新失败不应影响九塔已有的读写接口，下一轮会按持久化时间重新计算。
+    } finally {
+      this.isReconcilingTowerLifecycle = false;
+    }
+  }
+
+  async reconcileTowerLifecycle(tx: DbClient = this.prisma, now = new Date()): Promise<void> {
+    await this.ensureTowerStates(tx);
+    let lifecycle = await tx.eraChronicleRecord.findUnique({
+      where: {
+        eraId_serverId_chronicleType: {
+          eraId: defaultEraId,
+          serverId: "default",
+          chronicleType: "tower_lifecycle",
+        },
+      },
+    });
+
+    if (!lifecycle) {
+      const activation = await this.getTowerLifecycleActivation(tx);
+      if (!activation) {
+        return;
+      }
+
+      const towers = await tx.towerState.findMany({ where: { eraId: defaultEraId } });
+      const snapshot: TowerLifecycleSnapshot = {
+        activation_at: now.toISOString(),
+        break_baselines: Object.fromEntries(
+          towers.map((tower) => [tower.towerId, tower.breakProgress]),
+        ),
+        eligible_player_count: activation.eligiblePlayerCount,
+        selected_player_count: activation.selectedPlayerCount,
+        seal_baselines: Object.fromEntries(
+          towers.map((tower) => [tower.towerId, tower.sealProgress]),
+        ),
+      };
+      lifecycle = await tx.eraChronicleRecord.upsert({
+        where: {
+          eraId_serverId_chronicleType: {
+            eraId: defaultEraId,
+            serverId: "default",
+            chronicleType: "tower_lifecycle",
+          },
+        },
+        create: {
+          chronicleId: `tower_lifecycle_${defaultEraId}`,
+          eraId: defaultEraId,
+          serverId: "default",
+          chronicleType: "tower_lifecycle",
+          publicSummary: {
+            title: "九塔裂隙苏醒",
+            summary: "多数高阶修士已完成仙魔抉择，九塔开始进入不可逆的自然破阵期。",
+            highlights: [
+              `参与统计：${activation.selectedPlayerCount}/${activation.eligiblePlayerCount}`,
+              "镇封只能延缓破阵，无法永久终止终局。",
+            ],
+          } as Prisma.InputJsonValue,
+          privateSummary: snapshot as unknown as Prisma.InputJsonValue,
+          relatedSourceIds: towers.map((tower) => tower.towerStateId),
+          visibilityRule: "admin",
+          storyConfigVersion: towerLifecycleConfigVersion,
+          collectionConfigVersion: towerLifecycleConfigVersion,
+        },
+        update: {},
+      });
+    }
+
+    const snapshot = readTowerLifecycleSnapshot(lifecycle.privateSummary);
+    if (!snapshot) {
+      return;
+    }
+    const activationAt = new Date(snapshot.activation_at);
+    if (Number.isNaN(activationAt.getTime())) {
+      return;
+    }
+
+    const elapsedDays = Math.max(0, now.getTime() - activationAt.getTime()) / (24 * 60 * 60 * 1000);
+    const naturalBreakProgress = Math.floor(elapsedDays * towerLifecycleAutoBreakProgressPerDay);
+    const towers = await tx.towerState.findMany({ where: { eraId: defaultEraId } });
+    const reconciliations = towers.map((tower) =>
+      reconcileTowerState(tower, snapshot, naturalBreakProgress),
+    );
+
+    await Promise.all(
+      reconciliations
+        .filter((item) => item.changed)
+        .map((item) =>
+          tx.towerState.updateMany({
+            where: {
+              eraId: defaultEraId,
+              towerId: item.tower.towerId,
+              updatedAt: item.tower.updatedAt,
+            },
+            data: {
+              breakProgress: item.breakProgress,
+              integrity: item.integrity,
+              phase: item.phase,
+              riftPressure: item.riftPressure,
+            },
+          }),
+        ),
+    );
+
+    const currentTowers = await tx.towerState.findMany({ where: { eraId: defaultEraId } });
+    const allBroken = currentTowers.every((tower) => {
+      const breakBaseline = snapshot.break_baselines[tower.towerId] ?? tower.breakProgress;
+      return (
+        tower.phase >= 3 || tower.breakProgress - breakBaseline >= towerLifecycleBreakProgressTarget
+      );
+    });
+    if (!allBroken) {
+      return;
+    }
+
+    await tx.eraChronicleRecord.upsert({
+      where: {
+        eraId_serverId_chronicleType: {
+          eraId: defaultEraId,
+          serverId: "default",
+          chronicleType: "tower_finale",
+        },
+      },
+      create: {
+        chronicleId: `tower_finale_${defaultEraId}`,
+        eraId: defaultEraId,
+        serverId: "default",
+        chronicleType: "tower_finale",
+        publicSummary: {
+          title: "九渊开门",
+          summary: "九塔先后破阵，裂隙终于贯通九州。终局剧情已写入卷轴。",
+          highlights: [
+            "镇封为九州争得了准备的时间，但终局终会到来。",
+            "仙魔与散修的选择，都将在九渊之前留下回响。",
+          ],
+        } as Prisma.InputJsonValue,
+        privateSummary: {
+          activation_at: snapshot.activation_at,
+          completed_at: now.toISOString(),
+          lifecycle_config_version: towerLifecycleConfigVersion,
+        } as Prisma.InputJsonValue,
+        relatedSourceIds: currentTowers.map((tower) => tower.towerStateId),
+        visibilityRule: "server",
+        storyConfigVersion: towerLifecycleConfigVersion,
+        collectionConfigVersion: towerLifecycleConfigVersion,
+      },
+      update: {},
+    });
+  }
+
+  private async getTowerLifecycleActivation(
+    tx: DbClient,
+  ): Promise<{ eligiblePlayerCount: number; selectedPlayerCount: number } | null> {
+    const activeSince = new Date(Date.now() - towerLifecycleActiveWindowDays * 24 * 60 * 60 * 1000);
+    const eligiblePlayers = await tx.player.findMany({
+      where: {
+        account: { lastLoginAt: { gte: activeSince } },
+        status: "normal",
+        OR: [
+          { currentRealm: { gte: factionUnlockRealm } },
+          { progress: { is: { chapterId: { gte: factionUnlockChapter } } } },
+        ],
+      },
+      select: { playerId: true },
+    });
+    if (eligiblePlayers.length < towerLifecycleMinEligiblePlayers) {
+      return null;
+    }
+
+    const selectedPlayerCount = await tx.playerFactionState.count({
+      where: {
+        playerId: { in: eligiblePlayers.map((player) => player.playerId) },
+        route: { in: ["immortal", "demon"] },
+      },
+    });
+    if (selectedPlayerCount / eligiblePlayers.length < towerLifecycleActivationRatio) {
+      return null;
+    }
+
+    return { eligiblePlayerCount: eligiblePlayers.length, selectedPlayerCount };
+  }
+
   private async ensureTowerStates(tx: DbClient = this.prisma) {
     for (const config of towerConfigs) {
       await tx.towerState.upsert({
@@ -1630,6 +1873,100 @@ export class MultiplayerService {
   }
 }
 
+function assertTowerActionPermission(
+  route: string | null | undefined,
+  actionType: TowerActionType,
+  towerPhase: number,
+) {
+  if (actionType !== "seal" && actionType !== "break") {
+    return;
+  }
+  if (towerPhase >= 3) {
+    throw new BadRequestException("此塔已完成破阵，无法再镇封或破阵。");
+  }
+  if (route !== "immortal" && route !== "demon") {
+    throw new BadRequestException("镇封与破阵须在完成仙魔抉择后进行；散修可参与补给或守卫。");
+  }
+  if (actionType === "seal" && route !== "immortal") {
+    throw new BadRequestException("只有成仙路线可以镇封九塔。");
+  }
+  if (actionType === "break" && route !== "demon") {
+    throw new BadRequestException("只有成魔路线可以破阵九塔。");
+  }
+}
+
+function readTowerLifecycleSnapshot(value: unknown): TowerLifecycleSnapshot | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const activationAt = record.activation_at;
+  if (typeof activationAt !== "string" || activationAt.length === 0) {
+    return null;
+  }
+
+  return {
+    activation_at: activationAt,
+    break_baselines: readTowerProgressRecord(record.break_baselines),
+    eligible_player_count: numberFromUnknown(record.eligible_player_count),
+    selected_player_count: numberFromUnknown(record.selected_player_count),
+    seal_baselines: readTowerProgressRecord(record.seal_baselines),
+  };
+}
+
+function readTowerProgressRecord(value: unknown): Record<string, number> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).flatMap(([key, item]) => {
+      const count = numberFromUnknown(item);
+      return Number.isFinite(count) ? [[key, count]] : [];
+    }),
+  );
+}
+
+function numberFromUnknown(value: unknown): number {
+  const numberValue = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numberValue) ? Math.max(0, Math.floor(numberValue)) : 0;
+}
+
+function reconcileTowerState(
+  tower: TowerState,
+  snapshot: TowerLifecycleSnapshot,
+  naturalBreakProgress: number,
+) {
+  const breakBaseline = snapshot.break_baselines[tower.towerId] ?? tower.breakProgress;
+  const sealBaseline = snapshot.seal_baselines[tower.towerId] ?? tower.sealProgress;
+  const sealDelay = Math.min(
+    towerLifecycleMaxSealDelayProgress,
+    Math.max(0, tower.sealProgress - sealBaseline),
+  );
+  const automaticProgress = Math.max(0, naturalBreakProgress - sealDelay);
+  const breakProgress = Math.max(tower.breakProgress, breakBaseline + automaticProgress);
+  const breakIncrease = Math.max(0, breakProgress - tower.breakProgress);
+  const broken =
+    tower.phase >= 3 || breakProgress - breakBaseline >= towerLifecycleBreakProgressTarget;
+  const phase = broken ? 3 : Math.max(2, tower.phase);
+  const riftPressure = Math.min(1000, tower.riftPressure + Math.ceil(breakIncrease / 12));
+  const integrity = Math.max(0, tower.integrity - Math.floor(breakIncrease / 2));
+
+  return {
+    tower,
+    breakProgress,
+    broken,
+    changed:
+      breakProgress !== tower.breakProgress ||
+      integrity !== tower.integrity ||
+      phase !== tower.phase ||
+      riftPressure !== tower.riftPressure,
+    integrity,
+    phase,
+    riftPressure,
+  };
+}
+
 function normalizeTowerActionRequest(body: TowerActionRequest): Required<TowerActionRequest> {
   const towerId = body?.tower_id?.trim();
   const actionType = body?.action_type;
@@ -1717,7 +2054,7 @@ function getTowerUpdate(
     };
   }
   return {
-    sealProgress: { increment: Math.floor(contribution / 2) },
+    integrity: { increment: Math.floor(contribution / 2) },
     riftPressure: { decrement: Math.min(8, Math.floor(contribution / 6)) },
   };
 }
@@ -1788,7 +2125,9 @@ function buildTowerBattleInsight(input: {
       ? `破封进度推进 ${input.contribution}`
       : input.actionType === "supply"
         ? `补给进度推进 ${input.contribution}`
-        : `镇封进度推进 ${input.contribution}`;
+        : input.actionType === "guard"
+          ? `驻守稳固塔体，完整度提升 ${Math.max(0, integrityDelta)}`
+          : `镇封进度推进 ${input.contribution}`;
   const stateText =
     input.settlementStatus === "delayed"
       ? "本次贡献进入延迟结算，塔状态暂不立即改变。"
@@ -1801,7 +2140,8 @@ function buildTowerBattleInsight(input: {
       stateText,
     ],
     counter_suggestions: [
-      "裂隙压力偏高时优先镇封或守护，塔体受损时优先补给。",
+      "成仙路线可镇封、成魔路线可破阵；补给与守卫不受路线限制。",
+      "自然破阵启动后，镇封只能延缓终局，无法永久阻止裂隙开启。",
       "继续探索本州可补充镇塔材料，再回到九塔推进公共目标。",
     ],
     battle_hint: `${input.towerAfter.tower_name}本次受${actionLabel}影响，重点看贡献、完整度和裂隙压力变化。`,

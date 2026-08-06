@@ -217,14 +217,23 @@ export class PluginService {
     }
 
     if (presetId === "tower_seal_once") {
-      const towers = await this.multiplayerService.getTowers();
+      const [towers, faction] = await Promise.all([
+        this.multiplayerService.getTowers(),
+        this.factionsService.getReputation(input.accountId),
+      ]);
       const tower = towers.towers[0];
       if (!tower) {
         throw new BadRequestException("暂无可提交封印塔");
       }
+      const actionType =
+        faction.state.route === "immortal"
+          ? "seal"
+          : faction.state.route === "demon"
+            ? "break"
+            : "supply";
       result = await this.multiplayerService.submitTowerAction({
         accountId: input.accountId,
-        body: { tower_id: tower.tower_id, action_type: "seal", count: 1 },
+        body: { tower_id: tower.tower_id, action_type: actionType, count: 1 },
         idempotencyKey: `${input.idempotencyKey}:tower`,
       });
     }
@@ -441,7 +450,7 @@ export class PluginService {
 
 const pluginPresetLabels: Record<PluginPresetId, string> = {
   explore_ji_once: "冀州探索",
-  tower_seal_once: "九塔镇封",
+  tower_seal_once: "九塔支援",
   sect_patrol: "宗门巡山",
 };
 

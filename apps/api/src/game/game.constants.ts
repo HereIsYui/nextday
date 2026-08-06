@@ -848,7 +848,7 @@ export function getTaskDefinitions(date = new Date()): TaskDefinition[] {
     {
       taskId: "novice_tower_xuantie",
       taskType: "novice",
-      title: "镇封玄铁塔",
+      title: "支援玄铁塔",
       targetValue: 1,
       rewardSnapshot: { spirit_stone: "120", items: [{ item_id: "tower_sigil", count: 1 }] },
       resetKey: "permanent",

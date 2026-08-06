@@ -1,4 +1,8 @@
-import type { RealmUnlockFeatureState } from "@nextday/shared";
+import type {
+  CultivationRoute,
+  RealmProgressionResponse,
+  RealmUnlockFeatureState,
+} from "@nextday/shared";
 
 export const realmProgressionConfigVersion = "realm_text_v1";
 export const maximumRealm = 9;
@@ -73,6 +77,28 @@ export function hasRealmFeature(currentRealm: number, featureId: string): boolea
   return getRealmUnlockStates(currentRealm).some(
     (feature) => feature.feature_id === featureId && feature.unlocked,
   );
+}
+
+export function getRealmProgression(route: CultivationRoute): RealmProgressionResponse {
+  const levels = Array.from({ length: levelsPerRealm }, (_, index) => index + 1);
+
+  return {
+    route,
+    maximum_realm: maximumRealm,
+    levels_per_realm: levelsPerRealm,
+    realms: realmProgressionConfigs.map((config) => ({
+      realm_id: config.realmId,
+      qi_name: config.qiName,
+      body_name: config.bodyName,
+      min_level: levels[0] ?? 1,
+      max_level: levels.at(-1) ?? levelsPerRealm,
+      levels: [...levels],
+      breakthrough_cultivation: String(config.breakthroughCultivation),
+      power_bonus_percent: config.powerBonusPercent,
+      unlocks: config.unlocks.map((feature) => ({ ...feature })),
+    })),
+    config_version: realmProgressionConfigVersion,
+  };
 }
 
 function realm(

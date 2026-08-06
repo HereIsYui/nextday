@@ -262,15 +262,20 @@ h2 {
 }
 
 .cultivation-panel {
-  background: #151a16;
+  background: linear-gradient(160deg, #19221b, #151a16 42%);
   display: flex;
   flex-direction: column;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  scrollbar-color: #69775f #151a16;
 }
 
 .cultivation-panel-heading {
+  align-items: flex-start;
   border-bottom: 1px solid #394338;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
   padding: 12px 14px 10px;
 }
 
@@ -283,22 +288,38 @@ h2 {
   margin-bottom: 0;
 }
 
+.realm-overview-button {
+  background: transparent;
+  border: 1px solid #66735e;
+  color: #d6dfcd;
+  flex: 0 0 auto;
+  font-size: 11px;
+  padding: 5px 7px;
+}
+
+.realm-overview-button:hover {
+  border-color: #d1af6a;
+  color: #f0e4c9;
+}
+
 .status-strip {
   display: grid;
-  flex: 1;
-  grid-template-columns: minmax(0, 1fr);
+  flex: 0 0 auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   min-height: 0;
-  overflow-y: auto;
-  scrollbar-color: #69775f #151a16;
 }
 
 .status-metric {
-  background: #161c17;
+  background: rgba(18, 25, 19, 0.68);
   border-bottom: 1px solid #394338;
   display: grid;
   gap: 4px;
   min-height: 0;
-  padding: 12px 14px;
+  padding: 9px 11px;
+}
+
+.status-metric:nth-child(odd) {
+  border-right: 1px solid #394338;
 }
 
 .status-metric span,
@@ -310,9 +331,70 @@ h2 {
 
 .status-metric strong {
   color: #eee4cb;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   overflow-wrap: anywhere;
+}
+
+.breakthrough-status {
+  align-items: center;
+  background: rgba(30, 43, 31, 0.46);
+  border-bottom: 1px solid #425044;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 9px 11px;
+}
+
+.breakthrough-status > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.breakthrough-status span,
+.breakthrough-status small {
+  color: #9ca995;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.breakthrough-status strong {
+  color: #d7dfcf;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.breakthrough-status-available {
+  background: rgba(49, 76, 43, 0.52);
+  border-bottom-color: #66895a;
+}
+
+.breakthrough-status-available strong {
+  color: #d1e5c6;
+}
+
+.breakthrough-status-maximum {
+  background: rgba(83, 67, 36, 0.35);
+}
+
+.breakthrough-action {
+  background: #d0a65d;
+  border: 1px solid #e2c37e;
+  color: #171811;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 9px;
+}
+
+.breakthrough-action:hover:not(:disabled) {
+  background: #e0bc73;
+}
+
+.cultivation-journey {
+  flex: 0 0 auto;
+  padding: 10px;
 }
 
 .logout-button {
@@ -375,21 +457,11 @@ h2 {
   padding: 12px 16px 10px;
 }
 
-.action-stage {
-  border-bottom: 1px solid #394338;
-  padding: 9px 16px;
-}
-
-.explore-action-card {
-  background: linear-gradient(135deg, rgba(46, 63, 45, 0.43), rgba(20, 27, 21, 0.72));
-  border: 1px solid #53624f;
-  min-width: 0;
-  padding: 8px 10px;
-}
-
 .explore-action-card {
   background: linear-gradient(135deg, rgba(101, 76, 35, 0.34), rgba(28, 37, 28, 0.72));
-  border-color: #74623d;
+  border: 1px solid #74623d;
+  min-width: 0;
+  padding: 8px 10px;
 }
 
 .explore-action-card-claim {
@@ -1035,6 +1107,115 @@ h2 {
   margin-bottom: 0;
 }
 
+.realm-progression-list,
+.realm-unlock-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.realm-progression-list {
+  display: grid;
+  gap: 10px;
+}
+
+.realm-progression-item {
+  background: #171d17;
+  border: 1px solid #3f4c3e;
+  display: grid;
+  gap: 9px;
+  padding: 11px;
+}
+
+.realm-progression-item-passed {
+  border-color: #567250;
+}
+
+.realm-progression-item-current {
+  background: rgba(79, 66, 35, 0.3);
+  border-color: #c29e58;
+}
+
+.realm-progression-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.realm-progression-heading > div {
+  display: grid;
+  gap: 2px;
+}
+
+.realm-progression-heading span,
+.realm-progression-heading small,
+.realm-progression-requirement {
+  color: #9ca79a;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.realm-progression-heading strong {
+  color: #efe3c7;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.realm-progression-heading small {
+  text-align: right;
+}
+
+.realm-level-list {
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+}
+
+.realm-level {
+  border: 1px solid #455342;
+  color: #99a58f;
+  font-size: 10px;
+  padding: 4px 1px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.realm-level-current {
+  background: #d0a65d;
+  border-color: #e2c37e;
+  color: #171811;
+  font-weight: 700;
+}
+
+.realm-progression-requirement {
+  margin: 0;
+}
+
+.realm-unlock-list {
+  border-top: 1px solid #364335;
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+}
+
+.realm-unlock-list li {
+  display: grid;
+  gap: 2px;
+}
+
+.realm-unlock-list strong {
+  color: #d9d2bd;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.realm-unlock-list span {
+  color: #899486;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 @media (max-width: 900px) {
   .console-layout {
     grid-template-columns: minmax(0, 1fr);
@@ -1062,9 +1243,28 @@ h2 {
     padding: 10px 12px;
   }
 
+  .status-metric:nth-child(odd) {
+    border-right: 1px solid #394338;
+  }
+
+  .breakthrough-status,
+  .cultivation-journey {
+    grid-column: 1 / -1;
+  }
+
+  .breakthrough-status {
+    border-top: 1px solid #425044;
+  }
+
+  .cultivation-journey {
+    padding: 8px 10px;
+  }
+
   .logout-button {
     border-left: 1px solid #425044;
     border-top: 0;
+    grid-column: 3;
+    grid-row: 1;
     min-height: 0;
   }
 }
@@ -1090,10 +1290,6 @@ h2 {
   .text-console-shell-active .terminal-log {
     max-height: none;
     min-height: 0;
-  }
-
-  .action-stage {
-    padding-block: 7px;
   }
 
   .explore-action-card {
@@ -1134,7 +1330,11 @@ h2 {
   }
 
   .status-strip {
-    overflow-y: auto;
+    overflow: visible;
+  }
+
+  .status-metric:nth-child(odd) {
+    border-right: 0;
   }
 
   .logout-button {
@@ -1181,5 +1381,25 @@ h2 {
   .utility-dialog-heading,
   .utility-dialog-content {
     padding-inline: 14px;
+  }
+
+  .realm-progression-heading {
+    gap: 8px;
+  }
+
+  .realm-progression-heading strong {
+    font-size: 15px;
+  }
+
+  .realm-progression-heading small {
+    font-size: 11px;
+  }
+
+  .realm-level-list {
+    gap: 3px;
+  }
+
+  .realm-level {
+    font-size: 9px;
   }
 }

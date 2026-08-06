@@ -12,6 +12,7 @@ import type {
   ExploreResponse,
   GameOverviewResponse,
   JournalListResponse,
+  RealmProgressionResponse,
   ResolveExploreEventRequest,
   ResolveExploreEventResponse,
   TaskClaimRequest,
@@ -59,6 +60,11 @@ export class GameController {
   @Get("daily-route")
   dailyRoute(@Req() request: Request): Promise<DailyRouteResponse> {
     return this.gameService.getDailyRoute(requireAccountId(request));
+  }
+
+  @Get("realm-progression")
+  realmProgression(@Req() request: Request): Promise<RealmProgressionResponse> {
+    return this.gameService.getRealmProgression(requireAccountId(request));
   }
 
   @Get("provinces")

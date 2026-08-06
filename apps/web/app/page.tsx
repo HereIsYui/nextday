@@ -5,6 +5,7 @@ import type {
   ApiResponse,
   BagItemState,
   BagSummaryResponse,
+  CultivationStatus,
   ExploreResponse,
   FactionRoutesResponse,
   GameOverviewResponse,
@@ -12,6 +13,7 @@ import type {
   LoginResponse,
   PlayerProfileResponse,
   ProvinceSummary,
+  RealmProgressionResponse,
   StoryScrollDetailState,
   StoryScrollListResponse,
 } from "@nextday/shared";
@@ -55,7 +57,14 @@ import {
 
 type HealthText = "检测中" | "正常" | "不可用";
 type RouteValue = "qi" | "body";
-type OverlayView = "help" | "bag" | "scrolls" | "battles" | "faction";
+type OverlayView = "help" | "bag" | "scrolls" | "battles" | "faction" | "realms";
+
+interface BreakthroughSummary {
+  actionable: boolean;
+  detail: string;
+  state: "available" | "locked" | "maximum" | "unavailable";
+  title: string;
+}
 
 interface CommandAction {
   command: string;
@@ -174,6 +183,9 @@ export default function HomePage() {
   const [scrollDetailError, setScrollDetailError] = useState<string | null>(null);
   const [scrollDetailLoading, setScrollDetailLoading] = useState(false);
   const [faction, setFaction] = useState<FactionRoutesResponse | null>(null);
+  const [realmProgression, setRealmProgression] = useState<RealmProgressionResponse | null>(null);
+  const [realmProgressionError, setRealmProgressionError] = useState<string | null>(null);
+  const [realmProgressionLoading, setRealmProgressionLoading] = useState(false);
   const [bag, setBag] = useState<BagSummaryResponse | null>(null);
   const [bagError, setBagError] = useState<string | null>(null);
   const [bagLoading, setBagLoading] = useState(false);
@@ -241,6 +253,7 @@ export default function HomePage() {
       }),
     [clockNow, currentExplore, pendingExploreEvents],
   );
+  const breakthroughSummary = useMemo(() => summarizeBreakthrough(cultivation), [cultivation]);
   const visibleHelpGroups = useMemo(() => {
     if (pendingExploreEvents.length === 0) {
       return helpGroups;
@@ -358,6 +371,23 @@ export default function HomePage() {
     }
   }, []);
 
+  const refreshRealmProgression = useCallback(async () => {
+    if (!token || realmProgressionLoading) {
+      return;
+    }
+
+    setRealmProgressionLoading(true);
+    setRealmProgressionError(null);
+    try {
+      const response = await createClient(token).realmProgression();
+      setRealmProgression(readResponse(response));
+    } catch (error) {
+      setRealmProgressionError(messageFromError(error));
+    } finally {
+      setRealmProgressionLoading(false);
+    }
+  }, [realmProgressionLoading, token]);
+
   const loadScrollDetail = useCallback(
     async (scrollId: string) => {
       if (!token || scrollDetailLoading) {
@@ -437,6 +467,8 @@ export default function HomePage() {
           setScrolls(null);
           setSelectedScroll(null);
           setFaction(null);
+          setRealmProgression(null);
+          setRealmProgressionError(null);
           setMessage("已取得行旅凭证，请登记角色");
           return;
         }
@@ -710,14 +742,16 @@ export default function HomePage() {
         label: "境界",
         value:
           cultivation?.current_realm_name ?? (player ? `第 ${player.current_realm} 境` : "未入道"),
-        detail: cultivation ? `第 ${cultivation.current_level} 层` : "登记角色后开启修行",
+        detail: cultivation
+          ? `第 ${cultivation.current_realm} 境 · ${cultivation.current_level} 层`
+          : "登记角色后开启修行",
       },
       {
         label: "修为",
         value: cultivation?.cultivation_value ?? progress?.cultivation_value ?? "—",
-        detail: cultivation?.claimable_cultivation
-          ? `可收取 ${cultivation.claimable_cultivation}`
-          : "输入“修炼”收取修为",
+        detail: cultivation
+          ? `可收取 ${cultivation.claimable_cultivation} · 本层门槛 ${cultivation.current_level_required}`
+          : "等待修行状态",
       },
       {
         label: "灵石",
@@ -979,6 +1013,9 @@ export default function HomePage() {
     setSelectedScroll(null);
     setScrollDetailError(null);
     setFaction(null);
+    setRealmProgression(null);
+    setRealmProgressionError(null);
+    setRealmProgressionLoading(false);
     setBag(null);
     setBagError(null);
     setBagLoading(false);
@@ -1075,8 +1112,21 @@ export default function HomePage() {
           <section className="console-layout" aria-label="文字修行指令台">
             <aside className="cultivation-panel" aria-label="修行状态">
               <div className="cultivation-panel-heading">
-                <p className="console-eyebrow">修行状态</p>
-                <h2>道途简报</h2>
+                <div>
+                  <p className="console-eyebrow">修行状态</p>
+                  <h2>道途简报</h2>
+                </div>
+                <button
+                  aria-haspopup="dialog"
+                  className="realm-overview-button"
+                  onClick={() => {
+                    setActiveOverlay("realms");
+                    void refreshRealmProgression();
+                  }}
+                  type="button"
+                >
+                  境界一览
+                </button>
               </div>
               <div className="status-strip">
                 {metrics.map((metric) => (
@@ -1087,6 +1137,72 @@ export default function HomePage() {
                   </article>
                 ))}
               </div>
+              <section
+                className={`breakthrough-status breakthrough-status-${breakthroughSummary.state}`}
+                aria-label="突破状态"
+              >
+                <div>
+                  <span>破境</span>
+                  <strong>{breakthroughSummary.title}</strong>
+                  <small>{breakthroughSummary.detail}</small>
+                </div>
+                {breakthroughSummary.actionable ? (
+                  <button
+                    className="breakthrough-action"
+                    disabled={busy || hydrating}
+                    onClick={() => {
+                      void executeCommand("突破", {
+                        displayCommand: "突破",
+                        saveToHistory: false,
+                      });
+                    }}
+                    type="button"
+                  >
+                    突破
+                  </button>
+                ) : null}
+              </section>
+              {currentExploreActionCard ? (
+                <section className="cultivation-journey" aria-label="当前行旅">
+                  <article
+                    className={`explore-action-card explore-action-card-${currentExploreActionCard.action}`}
+                  >
+                    <div className="action-card-heading">
+                      <p className="console-eyebrow">当前行旅</p>
+                      <span>
+                        {currentExploreActionCard.action === "waiting" ? "途中" : "待处理"}
+                      </span>
+                    </div>
+                    <strong>{currentExploreActionCard.title}</strong>
+                    <p>{currentExploreActionCard.detail}</p>
+                    {currentExploreActionCard.action === "claim" ? (
+                      <button
+                        className="action-card-button"
+                        disabled={busy || hydrating}
+                        onClick={() => {
+                          void executeCommand("领取探索", {
+                            displayCommand: "领取探索",
+                            saveToHistory: false,
+                          });
+                        }}
+                        type="button"
+                      >
+                        领取探索
+                      </button>
+                    ) : null}
+                    {currentExploreActionCard.action === "event" ? (
+                      <button
+                        className="action-card-button"
+                        disabled={busy || hydrating}
+                        onClick={focusExploreEventActions}
+                        type="button"
+                      >
+                        前往选择
+                      </button>
+                    ) : null}
+                  </article>
+                </section>
+              ) : null}
               <button className="logout-button" onClick={handleLogout} type="button">
                 离开
               </button>
@@ -1162,47 +1278,6 @@ export default function HomePage() {
                   </div>
                 </div>
               </div>
-              {currentExploreActionCard ? (
-                <section className="action-stage" aria-label="当前行旅">
-                  <article
-                    className={`explore-action-card explore-action-card-${currentExploreActionCard.action}`}
-                  >
-                    <div className="action-card-heading">
-                      <p className="console-eyebrow">当前行旅</p>
-                      <span>
-                        {currentExploreActionCard.action === "waiting" ? "途中" : "待处理"}
-                      </span>
-                    </div>
-                    <strong>{currentExploreActionCard.title}</strong>
-                    <p>{currentExploreActionCard.detail}</p>
-                    {currentExploreActionCard.action === "claim" ? (
-                      <button
-                        className="action-card-button"
-                        disabled={busy || hydrating}
-                        onClick={() => {
-                          void executeCommand("领取探索", {
-                            displayCommand: "领取探索",
-                            saveToHistory: false,
-                          });
-                        }}
-                        type="button"
-                      >
-                        领取探索
-                      </button>
-                    ) : null}
-                    {currentExploreActionCard.action === "event" ? (
-                      <button
-                        className="action-card-button"
-                        disabled={busy || hydrating}
-                        onClick={focusExploreEventActions}
-                        type="button"
-                      >
-                        前往选择
-                      </button>
-                    ) : null}
-                  </article>
-                </section>
-              ) : null}
               <div className="terminal-log" role="log" aria-live="polite">
                 {terminalEntries.map((entry) => (
                   <article className={`terminal-entry terminal-${entry.tone}`} key={entry.id}>
@@ -1375,9 +1450,11 @@ export default function HomePage() {
                       ? selectedScroll
                         ? "故事回放"
                         : "已见故事"
-                      : activeOverlay === "faction"
-                        ? "仙魔抉择"
-                        : "斗法余音"
+                      : activeOverlay === "realms"
+                        ? "境界一览"
+                        : activeOverlay === "faction"
+                          ? "仙魔抉择"
+                          : "斗法余音"
               }
               eyebrow={
                 activeOverlay === "help"
@@ -1386,9 +1463,11 @@ export default function HomePage() {
                     ? "随身背包"
                     : activeOverlay === "scrolls"
                       ? "章节卷轴"
-                      : activeOverlay === "faction"
-                        ? "道途分流"
-                        : "最近战报"
+                      : activeOverlay === "realms"
+                        ? "修行境界"
+                        : activeOverlay === "faction"
+                          ? "道途分流"
+                          : "最近战报"
               }
             >
               {activeOverlay === "help" ? (
@@ -1444,6 +1523,86 @@ export default function HomePage() {
                     ))}
                   </div>
                 </>
+              ) : null}
+
+              {activeOverlay === "realms" ? (
+                <section className="realm-progression" aria-label="全部境界与等级">
+                  <div className="utility-dialog-actions">
+                    <button
+                      className="quiet-button"
+                      disabled={realmProgressionLoading || !token}
+                      onClick={() => void refreshRealmProgression()}
+                      type="button"
+                    >
+                      {realmProgressionLoading ? "读取中…" : "刷新境界"}
+                    </button>
+                  </div>
+                  {realmProgressionError ? (
+                    <p className="panel-warning">境界总览暂时无法读取：{realmProgressionError}</p>
+                  ) : null}
+                  {realmProgressionLoading && !realmProgression ? (
+                    <p className="empty-copy">正在整理九境脉络…</p>
+                  ) : null}
+                  {realmProgression ? (
+                    <ol className="realm-progression-list">
+                      {realmProgression.realms.map((realm) => {
+                        const isCurrentRealm = cultivation?.current_realm === realm.realm_id;
+                        const isPassedRealm = (cultivation?.current_realm ?? 0) > realm.realm_id;
+                        const realmName =
+                          realmProgression.route === "body" ? realm.body_name : realm.qi_name;
+                        return (
+                          <li
+                            className={`realm-progression-item${
+                              isCurrentRealm
+                                ? " realm-progression-item-current"
+                                : isPassedRealm
+                                  ? " realm-progression-item-passed"
+                                  : ""
+                            }`}
+                            key={realm.realm_id}
+                          >
+                            <div className="realm-progression-heading">
+                              <div>
+                                <span>第 {realm.realm_id} 境</span>
+                                <strong>{realmName}</strong>
+                              </div>
+                              <small>战力 +{realm.power_bonus_percent}%</small>
+                            </div>
+                            <div className="realm-level-list" aria-label={`${realmName}等级`}>
+                              {realm.levels.map((level) => (
+                                <span
+                                  className={
+                                    isCurrentRealm && cultivation?.current_level === level
+                                      ? "realm-level realm-level-current"
+                                      : "realm-level"
+                                  }
+                                  key={level}
+                                >
+                                  {level} 层
+                                </span>
+                              ))}
+                            </div>
+                            <p className="realm-progression-requirement">
+                              {realm.breakthrough_cultivation === "0"
+                                ? "此境已是当前纪元极境"
+                                : `圆满后需 ${realm.breakthrough_cultivation} 修为突破`}
+                            </p>
+                            {realm.unlocks.length > 0 ? (
+                              <ul className="realm-unlock-list">
+                                {realm.unlocks.map((unlock) => (
+                                  <li key={unlock.feature_id}>
+                                    <strong>{unlock.label}</strong>
+                                    <span>{unlock.description}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  ) : null}
+                </section>
               ) : null}
 
               {activeOverlay === "bag" ? (
@@ -2045,6 +2204,67 @@ function textList(value: unknown): string[] {
 
 function routeLabel(route: string): string {
   return route === "body" ? "炼体" : "练气";
+}
+
+function summarizeBreakthrough(cultivation: CultivationStatus | null): BreakthroughSummary {
+  if (!cultivation) {
+    return {
+      actionable: false,
+      detail: "修行状态尚未载入",
+      state: "unavailable",
+      title: "等待感应",
+    };
+  }
+
+  if (cultivation.current_realm >= cultivation.maximum_realm) {
+    return {
+      actionable: false,
+      detail: "已至当前纪元最高境界",
+      state: "maximum",
+      title: "已至极境",
+    };
+  }
+
+  const supportDetail =
+    BigInt(cultivation.breakthrough_support) > 0n
+      ? ` · 破障助力 -${cultivation.breakthrough_support}`
+      : "";
+  if (cultivation.can_breakthrough) {
+    return {
+      actionable: true,
+      detail: `可破入${cultivation.next_realm_name ?? "下一境界"}${supportDetail}`,
+      state: "available",
+      title: "可突破",
+    };
+  }
+
+  if (cultivation.current_level < 9) {
+    return {
+      actionable: false,
+      detail: `当前 ${cultivation.current_level}/9 层，圆满后可尝试突破${supportDetail}`,
+      state: "locked",
+      title: "尚未圆满",
+    };
+  }
+
+  return {
+    actionable: false,
+    detail: `尚需 ${positiveDifference(
+      cultivation.cultivation_value,
+      cultivation.effective_breakthrough_required,
+    )} 修为${supportDetail}`,
+    state: "locked",
+    title: "尚不可突破",
+  };
+}
+
+function positiveDifference(value: string, required: string): string {
+  try {
+    const difference = BigInt(required) - BigInt(value);
+    return difference > 0n ? difference.toString() : "0";
+  } catch {
+    return required;
+  }
 }
 
 function formatDateTime(value: string): string {

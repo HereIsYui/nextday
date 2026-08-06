@@ -137,6 +137,7 @@ import type {
   PurchaseMonthlyCardResponse,
   RankListResponse,
   RankType,
+  RealmProgressionResponse,
   ResolveExploreEventRequest,
   ResolveExploreEventResponse,
   ResolveRiskRecordRequest,
@@ -434,6 +435,10 @@ export class GameClient {
 
   dailyRoute(): Promise<ApiResponse<DailyRouteResponse>> {
     return this.get<DailyRouteResponse>("/api/game/daily-route");
+  }
+
+  realmProgression(): Promise<ApiResponse<RealmProgressionResponse>> {
+    return this.get<RealmProgressionResponse>("/api/game/realm-progression");
   }
 
   battles(

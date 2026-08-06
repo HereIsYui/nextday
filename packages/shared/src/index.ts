@@ -490,6 +490,26 @@ export interface RealmUnlockFeatureState {
   unlocked: boolean;
 }
 
+export interface RealmProgressionRealmState {
+  realm_id: number;
+  qi_name: string;
+  body_name: string;
+  min_level: number;
+  max_level: number;
+  levels: number[];
+  breakthrough_cultivation: string;
+  power_bonus_percent: number;
+  unlocks: Array<Omit<RealmUnlockFeatureState, "unlocked">>;
+}
+
+export interface RealmProgressionResponse {
+  route: CultivationRoute;
+  maximum_realm: number;
+  levels_per_realm: number;
+  realms: RealmProgressionRealmState[];
+  config_version: string;
+}
+
 export interface CultivationClaimResponse {
   record_id: string;
   gained_cultivation: string;

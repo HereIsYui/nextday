@@ -83,6 +83,29 @@ describe("game-client HTTP 客户端", () => {
     ]);
   });
 
+  it("读取境界总览", async () => {
+    let url = "";
+    const client = new GameClient({
+      baseUrl: "https://example.test",
+      fetchImpl: async (input) => {
+        url = String(input);
+        return new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            server_time: 1,
+            data: {},
+            trace_id: "req_test",
+          }),
+        );
+      },
+    });
+
+    await client.realmProgression();
+
+    expect(url).toBe("https://example.test/api/game/realm-progression");
+  });
+
   it("调用材料、单方与复用接口时保留规范参数和幂等键", async () => {
     const calls: Array<{ idempotencyKey: string; url: string }> = [];
     const client = new GameClient({

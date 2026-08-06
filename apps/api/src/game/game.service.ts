@@ -31,6 +31,7 @@ import type {
   NewPlayerRouteStepState,
   PlayerProfileResponse,
   ProvinceSummary,
+  RealmProgressionResponse,
   ResolveExploreEventRequest,
   ResolveExploreEventResponse,
   RewardBundle,
@@ -83,6 +84,7 @@ import {
 import {
   getRealmConfig,
   getRealmName,
+  getRealmProgression,
   getRealmUnlockStates,
   levelsPerRealm,
   maximumRealm,
@@ -211,6 +213,11 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       tasks,
       towerActionCountToday,
     });
+  }
+
+  async getRealmProgression(accountId: string): Promise<RealmProgressionResponse> {
+    const player = await this.requirePlayer(accountId);
+    return getRealmProgression(player.route === "body" ? "body" : "qi");
   }
 
   async getProvinces(accountId: string): Promise<{ provinces: ProvinceSummary[] }> {

@@ -74,7 +74,7 @@ describe("文字修行炼制效果", () => {
 
     await prisma.player.update({
       where: { playerId },
-      data: { currentRealm: 1, currentLevel: 9 },
+      data: { currentRealm: 1, currentStage: 3, currentLevel: 3 },
     });
     await prisma.playerProgress.update({
       where: { playerId },
@@ -153,7 +153,7 @@ describe("文字修行炼制效果", () => {
 
     await prisma.player.update({
       where: { playerId },
-      data: { currentRealm: 9, currentLevel: 9 },
+      data: { currentRealm: 9, currentStage: 3, currentLevel: 12 },
     });
     await prisma.playerProgress.update({
       where: { playerId },

@@ -570,7 +570,7 @@ export const exploreEventConfigs: ExploreEventConfig[] = [
         label: "闭目参悟",
         description: "坐在碑前参悟片刻，心神略有所得。",
         rewardPreview: "修为 45",
-        outcomeHint: "适合先冲层级再回头补材料。",
+        outcomeHint: "适合先推进小等级，再回头补材料。",
         rewards: { cultivation: "45", spirit_stone: "0", items: [] },
       },
     ],
@@ -619,7 +619,7 @@ export const exploreEventConfigs: ExploreEventConfig[] = [
         label: "稳住裂隙",
         description: "以自身灵力稳住余波，虽无大战却有所磨炼。",
         rewardPreview: "修为 40",
-        outcomeHint: "适合先提升自身层级。",
+        outcomeHint: "适合先推进自身小等级。",
         rewards: { cultivation: "40", spirit_stone: "0", items: [] },
       },
       {

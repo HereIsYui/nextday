@@ -469,8 +469,12 @@ export interface CultivationStatus {
   maximum_realm: number;
   realm_power_bonus_percent: number;
   current_stage: number;
+  current_stage_name: string;
+  current_stage_level_count: number;
   current_level: number;
   current_level_required: string;
+  cultivation_to_next_level: string;
+  current_stage_progress: string;
   claimable_cultivation: string;
   catchup_bonus_rate: number;
   last_cultivation_at: string;
@@ -494,18 +498,34 @@ export interface RealmProgressionRealmState {
   realm_id: number;
   qi_name: string;
   body_name: string;
+  target_days: number;
+  standard_daily_cultivation: number;
+  realm_budget: string;
   min_level: number;
   max_level: number;
-  levels: number[];
+  stages: RealmProgressionStageState[];
   breakthrough_cultivation: string;
   power_bonus_percent: number;
   unlocks: Array<Omit<RealmUnlockFeatureState, "unlocked">>;
 }
 
+export interface RealmProgressionStageLevelState {
+  level: number;
+  cultivation_required: string;
+}
+
+export interface RealmProgressionStageState {
+  stage_id: number;
+  qi_name: string;
+  body_name: string;
+  level_count: number;
+  levels: RealmProgressionStageLevelState[];
+}
+
 export interface RealmProgressionResponse {
   route: CultivationRoute;
   maximum_realm: number;
-  levels_per_realm: number;
+  stages_per_realm: number;
   realms: RealmProgressionRealmState[];
   config_version: string;
 }
@@ -515,6 +535,8 @@ export interface CultivationClaimResponse {
   gained_cultivation: string;
   before_level: number;
   after_level: number;
+  before_stage: number;
+  after_stage: number;
   status: CultivationStatus;
   completed_task_ids: string[];
   experience?: ExperiencePayload;

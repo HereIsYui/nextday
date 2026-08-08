@@ -63,7 +63,7 @@ export class PluginService {
 
     return {
       player,
-      realm_text: `${player.current_realm} 境 ${player.current_level} 层`,
+      realm_text: `${player.current_realm} 境 ${overview.cultivation?.current_stage_name ?? ""} ${player.current_level} 级`,
       cultivation: {
         current_value: overview.cultivation?.cultivation_value ?? "0",
         claimable_value: overview.cultivation?.claimable_cultivation ?? "0",

@@ -472,7 +472,10 @@ describe("P3-2 自研丹器与材料链", () => {
     expect(breakthroughEffect).toMatchObject({ remainingUses: 1, consumedAt: null });
 
     const supportValue = Number(breakthroughUse.body.data.effect_value);
-    await prisma.player.update({ where: { playerId }, data: { currentLevel: 9, currentRealm: 1 } });
+    await prisma.player.update({
+      where: { playerId },
+      data: { currentRealm: 1, currentStage: 3, currentLevel: 3 },
+    });
     await prisma.playerProgress.update({
       where: { playerId },
       data: { cultivationValue: BigInt(600 - supportValue) },

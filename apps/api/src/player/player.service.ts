@@ -8,6 +8,7 @@ import type {
 } from "@nextday/shared";
 import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
+import { getCultivationRatePerHour } from "../game/cultivation-progress";
 import { createInitialTaskRows, defaultEraId } from "../game/game.constants";
 import { hashRequestBody } from "../platform/utils/hash";
 import { toPlayerProfileResponse } from "./player.mapper";
@@ -92,6 +93,7 @@ export class PlayerService {
           data: {
             playerId,
             eraId: defaultEraId,
+            cultivationRatePerHour: getCultivationRatePerHour(1),
             lastCultivationAt: new Date(Date.now() - 30 * 60 * 1000),
             newbieProtectionUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
           },

@@ -111,7 +111,7 @@ describe("P1-10 数值与掉落节奏校准", () => {
         ),
         thresholds: {
           ...dropTuning.thresholds,
-          max_day7_realm_target_ratio: 0.45,
+          max_day7_realm_target_ratio: 0.35,
           max_whale_day7_cultivation_gap: 0.1,
         },
       },

@@ -205,7 +205,7 @@ async function createUnlockedFactionPlayer(
   const player = await createFactionPlayer(app, prisma, namePrefix, route);
   await prisma.player.update({
     where: { playerId: player.playerId },
-    data: { currentRealm: 5, currentLevel: 45 },
+    data: { currentRealm: 5, currentStage: 3, currentLevel: 7 },
   });
   await prisma.playerProgress.update({
     where: { playerId: player.playerId },

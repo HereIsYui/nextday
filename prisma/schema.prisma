@@ -167,7 +167,7 @@ model PlayerProgress {
   newbieProtectionUntil  DateTime? @map("newbie_protection_until")
   dailyActiveScore       Int       @default(0) @map("daily_active_score")
   weeklyActiveScore      Int       @default(0) @map("weekly_active_score")
-  cultivationRatePerHour Int       @default(240) @map("cultivation_rate_per_hour")
+  cultivationRatePerHour Int       @default(3) @map("cultivation_rate_per_hour")
   lastCultivationAt      DateTime  @default(now()) @map("last_cultivation_at")
   updatedAt              DateTime  @updatedAt @map("updated_at")
 

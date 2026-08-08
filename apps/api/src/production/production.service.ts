@@ -34,6 +34,7 @@ import type {
   Prisma,
 } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
+import { allocateCultivation, getPillCultivationLimit } from "../game/cultivation-progress";
 import { defaultEraId } from "../game/game.constants";
 import { normalizeRewardBundle, toBattleSummary } from "../game/game.mappers";
 import { incrementPlayerTasks } from "../game/task-progress.utils";
@@ -411,8 +412,36 @@ export class ProductionService {
         const progress = await tx.playerProgress.findUniqueOrThrow({
           where: { playerId: player.playerId },
         });
-        const cultivationGain = pillEffect.pill_effect === "cultivation" ? effectValue : 0;
-        const afterCultivation = progress.cultivationValue + BigInt(cultivationGain);
+        const cultivationGain =
+          pillEffect.pill_effect === "cultivation"
+            ? Math.min(effectValue, getPillCultivationLimit(player.currentRealm))
+            : 0;
+        const appliedEffectValue =
+          pillEffect.pill_effect === "cultivation" ? cultivationGain : effectValue;
+        const allocation = allocateCultivation(
+          {
+            currentRealm: player.currentRealm,
+            currentStage: player.currentStage,
+            currentLevel: player.currentLevel,
+            cultivationValue: progress.cultivationValue,
+          },
+          BigInt(cultivationGain),
+        );
+        if (
+          allocation.currentRealm !== player.currentRealm ||
+          allocation.currentStage !== player.currentStage ||
+          allocation.currentLevel !== player.currentLevel
+        ) {
+          await tx.player.update({
+            where: { playerId: player.playerId },
+            data: {
+              currentRealm: allocation.currentRealm,
+              currentStage: allocation.currentStage,
+              currentLevel: allocation.currentLevel,
+            },
+          });
+        }
+        const afterCultivation = allocation.cultivationValue;
         await tx.playerProgress.update({
           where: { playerId: player.playerId },
           data: {
@@ -433,7 +462,7 @@ export class ProductionService {
             quality,
             sameTierUseCount,
             effectiveRate,
-            effectValue,
+            effectValue: appliedEffectValue,
             beforeCultivation: progress.cultivationValue,
             afterCultivation,
             configVersion: productionConfigVersion,
@@ -453,7 +482,7 @@ export class ProductionService {
             sourcePillUseRecordId: record.recordId,
           });
         }
-        const effectNote = pillEffectNote(pillEffect.pill_effect, effectValue);
+        const effectNote = pillEffectNote(pillEffect.pill_effect, appliedEffectValue);
         await this.writeAudit(tx, {
           accountId: input.accountId,
           playerId: player.playerId,
@@ -464,7 +493,7 @@ export class ProductionService {
             record_id: record.recordId,
             pill_item_id: item.itemId,
             effective_rate: effectiveRate,
-            effect_value: effectValue,
+            effect_value: appliedEffectValue,
             pill_effect: pillEffect.pill_effect,
             next_explore_bonus_percent:
               pillEffect.pill_effect === "explore_boost" ? effectValue : null,
@@ -478,7 +507,7 @@ export class ProductionService {
           quality,
           same_tier_use_count: sameTierUseCount,
           effective_rate: effectiveRate,
-          effect_value: effectValue,
+          effect_value: appliedEffectValue,
           before_cultivation: progress.cultivationValue.toString(),
           after_cultivation: afterCultivation.toString(),
           profile: await this.getProfileByPlayerId(tx, player.playerId),

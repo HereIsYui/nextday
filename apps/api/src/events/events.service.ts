@@ -13,6 +13,7 @@ import type {
 } from "@nextday/shared";
 import type { EventInstance, EventRecord, Player, Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
+import { allocateCultivation } from "../game/cultivation-progress";
 import { defaultEraId, provinceConfigs } from "../game/game.constants";
 import { toActionState } from "../game/game.mappers";
 import { writeJournalFromResponse } from "../journal/journal.utils";
@@ -347,6 +348,37 @@ export class EventsService {
   }
 
   private async applyReward(tx: Tx, playerId: string, rewards: RewardBundle, sourceId: string) {
+    const cultivation = BigInt(rewards.cultivation ?? "0");
+    if (cultivation > 0n) {
+      const player = await tx.player.findUniqueOrThrow({
+        where: { playerId },
+        include: { progress: true },
+      });
+      if (!player.progress) {
+        throw new BadRequestException("角色修行进度不存在");
+      }
+      const allocation = allocateCultivation(
+        {
+          currentRealm: player.currentRealm,
+          currentStage: player.currentStage,
+          currentLevel: player.currentLevel,
+          cultivationValue: player.progress.cultivationValue,
+        },
+        cultivation,
+      );
+      await tx.player.update({
+        where: { playerId },
+        data: {
+          currentRealm: allocation.currentRealm,
+          currentStage: allocation.currentStage,
+          currentLevel: allocation.currentLevel,
+        },
+      });
+      await tx.playerProgress.update({
+        where: { playerId },
+        data: { cultivationValue: allocation.cultivationValue },
+      });
+    }
     const wallet = await tx.playerWallet.findUniqueOrThrow({ where: { playerId } });
     const spiritStone = BigInt(rewards.spirit_stone ?? "0");
     if (spiritStone > 0n) {

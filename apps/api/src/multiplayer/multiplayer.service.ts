@@ -42,6 +42,7 @@ import type { Player, PlayerActionState, Prisma, SectMember, TowerState } from "
 import { toAppearanceState } from "../commerce/commerce.mappers";
 import { PrismaService } from "../database/prisma.service";
 import { factionUnlockChapter, factionUnlockRealm } from "../factions/factions.constants";
+import { allocateCultivation } from "../game/cultivation-progress";
 import { defaultEraId, maxOfflineCultivationHours } from "../game/game.constants";
 import { toActionState } from "../game/game.mappers";
 import { incrementPlayerTasks } from "../game/task-progress.utils";
@@ -1706,6 +1707,37 @@ export class MultiplayerService implements OnModuleInit, OnModuleDestroy {
     rewards: RewardBundle,
     source: { sourceType: string; sourceId?: string; idempotencyKey?: string },
   ) {
+    const cultivation = BigInt(rewards.cultivation ?? "0");
+    if (cultivation > 0n) {
+      const player = await tx.player.findUniqueOrThrow({
+        where: { playerId },
+        include: { progress: true },
+      });
+      if (!player.progress) {
+        throw new BadRequestException("角色修行进度不存在");
+      }
+      const allocation = allocateCultivation(
+        {
+          currentRealm: player.currentRealm,
+          currentStage: player.currentStage,
+          currentLevel: player.currentLevel,
+          cultivationValue: player.progress.cultivationValue,
+        },
+        cultivation,
+      );
+      await tx.player.update({
+        where: { playerId },
+        data: {
+          currentRealm: allocation.currentRealm,
+          currentStage: allocation.currentStage,
+          currentLevel: allocation.currentLevel,
+        },
+      });
+      await tx.playerProgress.update({
+        where: { playerId },
+        data: { cultivationValue: allocation.cultivationValue },
+      });
+    }
     const spiritStone = BigInt(rewards.spirit_stone ?? "0");
     if (spiritStone > 0n) {
       const wallet = await tx.playerWallet.findUniqueOrThrow({ where: { playerId } });

@@ -1,35 +1,38 @@
 import { describe, expect, it } from "vitest";
 import {
+  getLevelRequirement,
   getRealmProgression,
-  levelsPerRealm,
+  getStageLevelCount,
   maximumRealm,
   realmProgressionConfigVersion,
   realmProgressionConfigs,
+  stagesPerRealm,
 } from "./realm-progression.constants";
 
 describe("境界总览配置", () => {
-  it("从境界配置完整映射九境和每境九层", () => {
+  it("按文章结构返回九境三小境界和递增等级数量", () => {
     const progression = getRealmProgression("qi");
 
     expect(progression).toMatchObject({
       route: "qi",
       maximum_realm: maximumRealm,
-      levels_per_realm: levelsPerRealm,
+      stages_per_realm: stagesPerRealm,
       config_version: realmProgressionConfigVersion,
     });
     expect(progression.realms).toHaveLength(realmProgressionConfigs.length);
-    expect(progression.realms).toEqual(
-      realmProgressionConfigs.map((config) => ({
-        realm_id: config.realmId,
-        qi_name: config.qiName,
-        body_name: config.bodyName,
-        min_level: 1,
-        max_level: levelsPerRealm,
-        levels: Array.from({ length: levelsPerRealm }, (_, index) => index + 1),
-        breakthrough_cultivation: String(config.breakthroughCultivation),
-        power_bonus_percent: config.powerBonusPercent,
-        unlocks: config.unlocks,
-      })),
+    expect(progression.realms.every((realm) => realm.stages.length === 3)).toBe(true);
+    expect(progression.realms.map((realm) => realm.max_level)).toEqual(
+      Array.from({ length: maximumRealm }, (_, index) => index + 3),
     );
+  });
+
+  it("每个大境界等级需求精确覆盖等级预算", () => {
+    for (const config of realmProgressionConfigs) {
+      const transitionCount = config.levelRequirements.length;
+      expect(transitionCount).toBe(getStageLevelCount(config.realmId) * 3 - 1);
+      const levelBudget = config.levelRequirements.reduce((sum, value) => sum + value, 0);
+      expect(levelBudget + config.breakthroughCultivation).toBe(config.realmBudget);
+      expect(getLevelRequirement(config.realmId, 3, getStageLevelCount(config.realmId))).toBe(0n);
+    }
   });
 });

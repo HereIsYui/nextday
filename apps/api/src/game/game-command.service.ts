@@ -398,7 +398,7 @@ export class GameCommandService {
       {
         tone: "info",
         text: player
-          ? `${player.name}，${cultivation?.current_realm_name ?? "未定境界"}第 ${player.current_level} 层。`
+          ? `${player.name}，${cultivation?.current_realm_name ?? "未定境界"}${cultivation?.current_stage_name ? `·${cultivation.current_stage_name}` : ""}第 ${player.current_level} 级。`
           : "当前尚未创建角色。",
       },
     ];
@@ -510,8 +510,8 @@ export class GameCommandService {
   }): Promise<TextCommandResponse> {
     const result = await this.gameService.claimCultivation(input);
     const levelText =
-      result.after_level > result.before_level
-        ? `，层级由第 ${result.before_level} 层提升至第 ${result.after_level} 层`
+      result.after_level !== result.before_level || result.after_stage !== result.before_stage
+        ? `，修行进度由第 ${result.before_stage} 小境界第 ${result.before_level} 级提升至第 ${result.after_stage} 小境界第 ${result.after_level} 级`
         : "";
     return this.success(
       "cultivation_claim",

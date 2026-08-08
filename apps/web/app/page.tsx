@@ -743,14 +743,14 @@ export default function HomePage() {
         value:
           cultivation?.current_realm_name ?? (player ? `第 ${player.current_realm} 境` : "未入道"),
         detail: cultivation
-          ? `第 ${cultivation.current_realm} 境 · ${cultivation.current_level} 层`
+          ? `${cultivation.current_stage_name} · 第 ${cultivation.current_level}/${cultivation.current_stage_level_count} 级`
           : "登记角色后开启修行",
       },
       {
         label: "修为",
         value: cultivation?.cultivation_value ?? progress?.cultivation_value ?? "—",
         detail: cultivation
-          ? `可收取 ${cultivation.claimable_cultivation} · 本层门槛 ${cultivation.current_level_required}`
+          ? `距下一等级 ${cultivation.cultivation_to_next_level} · 可收取 ${cultivation.claimable_cultivation}`
           : "等待修行状态",
       },
       {
@@ -1568,19 +1568,37 @@ export default function HomePage() {
                               </div>
                               <small>战力 +{realm.power_bonus_percent}%</small>
                             </div>
-                            <div className="realm-level-list" aria-label={`${realmName}等级`}>
-                              {realm.levels.map((level) => (
-                                <span
-                                  className={
-                                    isCurrentRealm && cultivation?.current_level === level
-                                      ? "realm-level realm-level-current"
-                                      : "realm-level"
-                                  }
-                                  key={level}
-                                >
-                                  {level} 层
-                                </span>
-                              ))}
+                            <div className="realm-stage-list" aria-label={`${realmName}小境界`}>
+                              {realm.stages.map((stage) => {
+                                const stageName =
+                                  realmProgression.route === "body"
+                                    ? stage.body_name
+                                    : stage.qi_name;
+                                return (
+                                  <section className="realm-stage" key={stage.stage_id}>
+                                    <strong>{stageName}</strong>
+                                    <div
+                                      className="realm-level-list"
+                                      aria-label={`${stageName}等级`}
+                                    >
+                                      {stage.levels.map((level) => (
+                                        <span
+                                          className={
+                                            isCurrentRealm &&
+                                            cultivation?.current_stage === stage.stage_id &&
+                                            cultivation?.current_level === level.level
+                                              ? "realm-level realm-level-current"
+                                              : "realm-level"
+                                          }
+                                          key={level.level}
+                                        >
+                                          {level.level} 级
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </section>
+                                );
+                              })}
                             </div>
                             <p className="realm-progression-requirement">
                               {realm.breakthrough_cultivation === "0"
@@ -2238,10 +2256,13 @@ function summarizeBreakthrough(cultivation: CultivationStatus | null): Breakthro
     };
   }
 
-  if (cultivation.current_level < 9) {
+  if (
+    cultivation.current_stage < 3 ||
+    cultivation.current_level < cultivation.current_stage_level_count
+  ) {
     return {
       actionable: false,
-      detail: `当前 ${cultivation.current_level}/9 层，圆满后可尝试突破${supportDetail}`,
+      detail: `当前${cultivation.current_stage_name} ${cultivation.current_level}/${cultivation.current_stage_level_count} 级，圆满后可尝试突破${supportDetail}`,
       state: "locked",
       title: "尚未圆满",
     };

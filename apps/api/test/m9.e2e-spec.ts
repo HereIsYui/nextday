@@ -83,7 +83,7 @@ describe("M9 MVP 总体验收与小纪元演练", () => {
     }
     await prisma.player.update({
       where: { playerId: attacker.playerId },
-      data: { currentLevel: 18, currentRealm: 2 },
+      data: { currentRealm: 2, currentStage: 3, currentLevel: 4 },
     });
 
     const overview = await request(app.getHttpServer())

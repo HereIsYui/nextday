@@ -1,20 +1,31 @@
 {
   "config_type": "simulation",
-  "config_version": "simulation_p1_2026_001",
-  "ruleset_version": "simulation_ruleset_p1_001",
+  "config_version": "simulation_p1_2026_002_realm_v2",
+  "ruleset_version": "simulation_ruleset_p1_002_realm_v2",
   "era_days": 360,
-  "report_days": [7, 30, 70, 120, 220, 315, 360],
+  "report_days": [7, 20, 30, 55, 70, 120, 220, 315, 360],
   "active_player_counts": [30, 100, 300],
   "realm_targets": [
     { "realm_name": "练气 / 锻体", "cultivation_required": 0 },
-    { "realm_name": "筑基 / 筑身", "cultivation_required": 42000 },
-    { "realm_name": "金丹 / 血丹", "cultivation_required": 125000 },
-    { "realm_name": "元婴 / 武胎", "cultivation_required": 230000 },
-    { "realm_name": "化神 / 神躯", "cultivation_required": 395000 },
-    { "realm_name": "炼虚 / 破虚", "cultivation_required": 540000 },
-    { "realm_name": "合体 / 天躯", "cultivation_required": 690000 },
-    { "realm_name": "大乘 / 极境", "cultivation_required": 820000 },
-    { "realm_name": "真仙 / 真魔", "cultivation_required": 900000 }
+    { "realm_name": "筑基 / 筑身", "cultivation_required": 2000 },
+    { "realm_name": "金丹 / 血丹", "cultivation_required": 11100 },
+    { "realm_name": "元婴 / 武胎", "cultivation_required": 47100 },
+    { "realm_name": "化神 / 神躯", "cultivation_required": 148850 },
+    { "realm_name": "炼虚 / 破虚", "cultivation_required": 401850 },
+    { "realm_name": "合体 / 天躯", "cultivation_required": 979350 },
+    { "realm_name": "大乘 / 极境", "cultivation_required": 2014350 },
+    { "realm_name": "真仙 / 真魔", "cultivation_required": 3694350 }
+  ],
+  "cultivation_pace": [
+    { "realm_name": "练气 / 锻体", "target_days": 20, "standard_daily_cultivation": 100 },
+    { "realm_name": "筑基 / 筑身", "target_days": 35, "standard_daily_cultivation": 260 },
+    { "realm_name": "金丹 / 血丹", "target_days": 50, "standard_daily_cultivation": 720 },
+    { "realm_name": "元婴 / 武胎", "target_days": 55, "standard_daily_cultivation": 1850 },
+    { "realm_name": "化神 / 神躯", "target_days": 55, "standard_daily_cultivation": 4600 },
+    { "realm_name": "炼虚 / 破虚", "target_days": 55, "standard_daily_cultivation": 10500 },
+    { "realm_name": "合体 / 天躯", "target_days": 45, "standard_daily_cultivation": 23000 },
+    { "realm_name": "大乘 / 极境", "target_days": 35, "standard_daily_cultivation": 48000 },
+    { "realm_name": "真仙 / 真魔", "target_days": 10, "standard_daily_cultivation": 92000 }
   ],
   "profiles": [
     {

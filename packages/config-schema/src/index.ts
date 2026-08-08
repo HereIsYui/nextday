@@ -30,6 +30,12 @@ export interface P1RealmTarget {
   cultivation_required: number;
 }
 
+export interface P1CultivationPace {
+  realm_name: string;
+  target_days: number;
+  standard_daily_cultivation: number;
+}
+
 export interface P1SimulationProfile {
   profile_id: P1SimulationProfileId;
   label: string;
@@ -115,6 +121,7 @@ export interface P1SimulationConfig {
   report_days: number[];
   active_player_counts: number[];
   realm_targets: P1RealmTarget[];
+  cultivation_pace: P1CultivationPace[];
   profiles: P1SimulationProfile[];
   server_progress: P1SimulationServerProgress;
   risk_thresholds: P1SimulationRiskThresholds;
@@ -127,6 +134,10 @@ export interface P1ProfileSimulationReport {
   active_minutes_per_day: number;
   final_cultivation: number;
   final_realm: string;
+  final_stage: number;
+  final_stage_name: string;
+  final_level: number;
+  final_level_max: number;
   spirit_stone_balance: number;
   material_balance: number;
   ancient_treasure_draws: number;
@@ -136,6 +147,10 @@ export interface P1ProfileSimulationReport {
     day: number;
     cultivation: number;
     realm: string;
+    stage: number;
+    stage_name: string;
+    level: number;
+    level_max: number;
     spirit_stone_balance: number;
     material_balance: number;
   }>;
@@ -177,6 +192,10 @@ export interface P1FirstSevenDayProfileReport {
   active_minutes_per_day: number;
   day7_cultivation: number;
   day7_realm: string;
+  day7_stage: number;
+  day7_stage_name: string;
+  day7_level: number;
+  day7_level_max: number;
   day7_spirit_stone_balance: number;
   day7_material_balance: number;
   action_token_pressure: number;
@@ -186,6 +205,10 @@ export interface P1FirstSevenDayProfileReport {
     day: number;
     cultivation: number;
     realm: string;
+    stage: number;
+    stage_name: string;
+    level: number;
+    level_max: number;
     spirit_stone_balance: number;
     material_balance: number;
   }>;
@@ -276,6 +299,10 @@ export function validateP1SimulationConfig(
 
   if (!Array.isArray(config.realm_targets) || config.realm_targets.length === 0) {
     errors.push("realm_targets 至少包含一个境界目标");
+  }
+
+  if (!Array.isArray(config.cultivation_pace) || config.cultivation_pace.length === 0) {
+    errors.push("cultivation_pace 至少包含一个境界节奏");
   }
 
   if (!Array.isArray(config.profiles) || config.profiles.length === 0) {
@@ -379,7 +406,13 @@ export function runP1Simulation(config: P1SimulationConfig): P1SimulationReport 
   }
 
   const profiles = config.profiles.map((profile) =>
-    simulateProfile(profile, config.era_days, config.report_days, config.realm_targets),
+    simulateProfile(
+      profile,
+      config.era_days,
+      config.report_days,
+      config.realm_targets,
+      config.cultivation_pace,
+    ),
   );
   const servers = config.active_player_counts.map((activePlayers) =>
     simulateServer(activePlayers, config),
@@ -413,11 +446,11 @@ export function formatP1SimulationReport(report: P1SimulationReport): string {
     "",
     "## 玩家画像",
     "",
-    "| 画像 | 360 天境界 | 核心耗时 | 灵石结余 | 材料结余 | 古宝抽数 | 限定池预算抽 |",
-    "| --- | --- | ---: | ---: | ---: | ---: | ---: |",
+    "| 画像 | 360 天境界 | 小境界进度 | 核心耗时 | 灵石结余 | 材料结余 | 古宝抽数 | 限定池预算抽 |",
+    "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |",
     ...report.profiles.map(
       (profile) =>
-        `| ${profile.label} | ${profile.final_realm} | ${profile.active_minutes_per_day} 分钟 | ${Math.round(
+        `| ${profile.label} | ${profile.final_realm} | ${profile.final_stage_name} · ${profile.final_level}/${profile.final_level_max} 级 | ${profile.active_minutes_per_day} 分钟 | ${Math.round(
           profile.spirit_stone_balance,
         )} | ${Math.round(profile.material_balance)} | ${Math.round(
           profile.ancient_treasure_draws,
@@ -474,7 +507,12 @@ export function runP1BalanceTuning(config: P1SimulationConfig): P1BalanceTuningR
 
   const standardProfile = config.profiles.find((profile) => profile.profile_id === "standard_free");
   const standardDay7Cultivation = standardProfile
-    ? dailyCultivationGain(standardProfile) * config.drop_tuning.day_range
+    ? (simulateCultivationByDay(
+        config.drop_tuning.day_range,
+        config.realm_targets,
+        config.cultivation_pace,
+        dailyCultivationMultiplier(standardProfile),
+      ).at(-1)?.cultivation ?? 1)
     : 1;
   const profiles = config.drop_tuning.required_profile_ids.map((profileId) => {
     const profile = config.profiles.find((item) => item.profile_id === profileId);
@@ -558,8 +596,10 @@ function simulateProfile(
   eraDays: number,
   reportDays: number[],
   realmTargets: P1RealmTarget[],
+  cultivationPace: P1CultivationPace[],
 ): P1ProfileSimulationReport {
-  const cultivationPerDay = profile.daily_cultivation_gain * profile.daily_completion_rate;
+  const cultivationMultiplier =
+    (profile.daily_cultivation_gain * profile.daily_completion_rate) / 2500;
   const spiritIncomePerDay =
     profile.daily_spirit_stone_income *
     profile.daily_completion_rate *
@@ -575,29 +615,96 @@ function simulateProfile(
   const limitedGachaDrawBudget =
     Math.max(0, profile.era_point_budget - profile.monthly_point_cost) / 100;
 
+  const dailyCultivation = simulateCultivationByDay(
+    eraDays,
+    realmTargets,
+    cultivationPace,
+    cultivationMultiplier,
+  );
+  const finalCultivation = dailyCultivation.at(-1)?.cultivation ?? 0;
+  const finalProgress =
+    dailyCultivation.at(-1) ?? resolveCultivationProgress(0, realmTargets, cultivationPace);
+
   return {
     profile_id: profile.profile_id,
     label: profile.label,
     active_minutes_per_day: profile.active_minutes_per_day,
-    final_cultivation: cultivationPerDay * eraDays,
-    final_realm: resolveRealm(cultivationPerDay * eraDays, realmTargets),
+    final_cultivation: finalCultivation,
+    final_realm: finalProgress.realm,
+    final_stage: finalProgress.stage,
+    final_stage_name: finalProgress.stage_name,
+    final_level: finalProgress.level,
+    final_level_max: finalProgress.level_max,
     spirit_stone_balance: (spiritIncomePerDay - spiritSinkPerDay) * eraDays,
     material_balance: (materialIncomePerDay - materialSinkPerDay) * eraDays,
     ancient_treasure_draws: ancientTreasureDraws,
     ancient_treasure_pity_cycles: ancientTreasureDraws / 60,
     limited_gacha_draw_budget: limitedGachaDrawBudget,
     day_reports: reportDays.map((day) => {
-      const cultivation = cultivationPerDay * day;
+      const report = dailyCultivation[Math.max(0, Math.min(dailyCultivation.length - 1, day - 1))];
+      const cultivation = report?.cultivation ?? 0;
+      const progress =
+        report ?? resolveCultivationProgress(cultivation, realmTargets, cultivationPace);
 
       return {
         day,
         cultivation,
-        realm: resolveRealm(cultivation, realmTargets),
+        realm: progress.realm,
+        stage: progress.stage,
+        stage_name: progress.stage_name,
+        level: progress.level,
+        level_max: progress.level_max,
         spirit_stone_balance: (spiritIncomePerDay - spiritSinkPerDay) * day,
         material_balance: (materialIncomePerDay - materialSinkPerDay) * day,
       };
     }),
   };
+}
+
+function simulateCultivationByDay(
+  eraDays: number,
+  realmTargets: P1RealmTarget[],
+  cultivationPace: P1CultivationPace[],
+  multiplier: number,
+): Array<{
+  day: number;
+  cultivation: number;
+  realm: string;
+  stage: number;
+  stage_name: string;
+  level: number;
+  level_max: number;
+}> {
+  let cultivation = 0;
+  const reports: Array<{
+    day: number;
+    cultivation: number;
+    realm: string;
+    stage: number;
+    stage_name: string;
+    level: number;
+    level_max: number;
+  }> = [];
+  for (let day = 1; day <= eraDays; day += 1) {
+    const realmIndex = Math.max(
+      0,
+      realmTargets.findIndex((target, index) => {
+        const next = realmTargets[index + 1];
+        return (
+          cultivation >= target.cultivation_required &&
+          (!next || cultivation < next.cultivation_required)
+        );
+      }),
+    );
+    const pace = cultivationPace[realmIndex] ?? cultivationPace.at(-1);
+    cultivation += (pace?.standard_daily_cultivation ?? 0) * multiplier;
+    reports.push({
+      day,
+      cultivation,
+      ...resolveCultivationProgress(cultivation, realmTargets, cultivationPace),
+    });
+  }
+  return reports;
 }
 
 function simulateFirstSevenDayProfile(
@@ -607,13 +714,22 @@ function simulateFirstSevenDayProfile(
 ): P1FirstSevenDayProfileReport {
   const tuning = requireDropTuning(config);
   const dayRange = tuning.day_range;
-  const cultivationPerDay = dailyCultivationGain(profile);
+  const cultivationMultiplier = dailyCultivationMultiplier(profile);
+  const dailyCultivation = simulateCultivationByDay(
+    dayRange,
+    config.realm_targets,
+    config.cultivation_pace,
+    cultivationMultiplier,
+  );
   const spiritIncomePerDay = profile.daily_spirit_stone_income * profile.daily_completion_rate;
   const spiritSinkPerDay = profile.daily_spirit_stone_sink * profile.daily_completion_rate;
   const materialReports = tuning.material_flows.map((material) =>
     simulateFirstSevenDayMaterial(profile, material, dayRange),
   );
-  const day7Cultivation = cultivationPerDay * dayRange;
+  const day7Cultivation = dailyCultivation.at(-1)?.cultivation ?? 0;
+  const day7Progress =
+    dailyCultivation.at(-1) ??
+    resolveCultivationProgress(day7Cultivation, config.realm_targets, config.cultivation_pace);
   const actionTokenPressure =
     tuning.action_token.day7_core_required / (tuning.action_token.daily_recovery * dayRange);
   const coreMinutesRequired =
@@ -624,7 +740,11 @@ function simulateFirstSevenDayProfile(
     label: profile.label,
     active_minutes_per_day: profile.active_minutes_per_day,
     day7_cultivation: day7Cultivation,
-    day7_realm: resolveRealm(day7Cultivation, config.realm_targets),
+    day7_realm: day7Progress.realm,
+    day7_stage: day7Progress.stage,
+    day7_stage_name: day7Progress.stage_name,
+    day7_level: day7Progress.level,
+    day7_level_max: day7Progress.level_max,
     day7_spirit_stone_balance: (spiritIncomePerDay - spiritSinkPerDay) * dayRange,
     day7_material_balance: materialReports.reduce(
       (sum, material) => sum + material.day7_balance,
@@ -636,12 +756,20 @@ function simulateFirstSevenDayProfile(
       (day7Cultivation - standardDay7Cultivation) / Math.max(1, standardDay7Cultivation),
     daily_reports: Array.from({ length: dayRange }, (_, index) => {
       const day = index + 1;
-      const cultivation = cultivationPerDay * day;
+      const report = dailyCultivation[index];
+      const cultivation = report?.cultivation ?? 0;
+      const progress =
+        report ??
+        resolveCultivationProgress(cultivation, config.realm_targets, config.cultivation_pace);
 
       return {
         day,
         cultivation,
-        realm: resolveRealm(cultivation, config.realm_targets),
+        realm: progress.realm,
+        stage: progress.stage,
+        stage_name: progress.stage_name,
+        level: progress.level,
+        level_max: progress.level_max,
         spirit_stone_balance: (spiritIncomePerDay - spiritSinkPerDay) * day,
         material_balance: materialReports.reduce(
           (sum, material) => sum + (material.day7_balance / dayRange) * day,
@@ -946,6 +1074,66 @@ function collectP1BalanceWarnings(
   return warnings;
 }
 
+interface P1CultivationProgressSnapshot {
+  realm: string;
+  stage: number;
+  stage_name: string;
+  level: number;
+  level_max: number;
+}
+
+function resolveCultivationProgress(
+  cultivation: number,
+  realmTargets: P1RealmTarget[],
+  cultivationPace: P1CultivationPace[],
+): P1CultivationProgressSnapshot {
+  const sortedTargets = [...realmTargets].sort(
+    (left, right) => left.cultivation_required - right.cultivation_required,
+  );
+  let realmIndex = 0;
+  for (let index = 0; index < sortedTargets.length; index += 1) {
+    if (cultivation >= (sortedTargets[index]?.cultivation_required ?? 0)) {
+      realmIndex = index;
+    }
+  }
+
+  const realmTarget = sortedTargets[realmIndex];
+  const pace = cultivationPace[realmIndex] ?? cultivationPace.at(-1);
+  const levelMax = realmIndex + 1 + 2;
+  const totalLevels = levelMax * 3;
+  const realmBudget = (pace?.target_days ?? 1) * (pace?.standard_daily_cultivation ?? 1);
+  const breakthrough = realmIndex === sortedTargets.length - 1 ? 0 : Math.round(realmBudget * 0.15);
+  const levelBudget = Math.max(1, realmBudget - breakthrough);
+  const requirements = weightedLevelRequirements(levelBudget, totalLevels - 1);
+  let remaining = Math.max(0, cultivation - (realmTarget?.cultivation_required ?? 0));
+  let levelIndex = 0;
+  while (levelIndex < requirements.length && remaining >= requirements[levelIndex]) {
+    remaining -= requirements[levelIndex];
+    levelIndex += 1;
+  }
+  const completed = Math.min(levelIndex, totalLevels - 1);
+  const stage = Math.floor(completed / levelMax) + 1;
+  const level = (completed % levelMax) + 1;
+
+  return {
+    realm: realmTarget?.realm_name ?? "未入道",
+    stage,
+    stage_name: ["初期", "中期", "后期"][stage - 1] ?? "初期",
+    level,
+    level_max: levelMax,
+  };
+}
+
+function weightedLevelRequirements(total: number, count: number): number[] {
+  if (count <= 0) return [];
+  const weights = Array.from(
+    { length: count },
+    (_, index) => 1 + (0.8 * index) / Math.max(1, count - 1),
+  );
+  const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
+  return weights.map((weight) => (total * weight) / weightTotal);
+}
+
 function resolveRealm(cultivation: number, realmTargets: P1RealmTarget[]): string {
   const sortedTargets = [...realmTargets].sort(
     (left, right) => left.cultivation_required - right.cultivation_required,
@@ -971,6 +1159,10 @@ function requireDropTuning(config: P1SimulationConfig): P1DropTuningConfig {
 
 function dailyCultivationGain(profile: P1SimulationProfile): number {
   return profile.daily_cultivation_gain * profile.daily_completion_rate;
+}
+
+function dailyCultivationMultiplier(profile: P1SimulationProfile): number {
+  return dailyCultivationGain(profile) / 2500;
 }
 
 function firstSevenDayActionMultiplier(profile: P1SimulationProfile): number {

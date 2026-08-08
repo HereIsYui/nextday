@@ -59,6 +59,12 @@ import { hashRequestBody } from "../platform/utils/hash";
 import { toPlayerProfileResponse } from "../player/player.mapper";
 import { getDefaultSkillLoadout, getSkillName } from "../production/production.constants";
 import {
+  allocateCultivation,
+  getCultivationRatePerHour,
+  getEventCultivationReward,
+  getExploreCultivationReward,
+} from "./cultivation-progress";
+import {
   type ExploreEventChoiceConfig,
   type ExploreEventConfig,
   buildExploreBattleHint,
@@ -82,12 +88,15 @@ import {
   toTaskState,
 } from "./game.mappers";
 import {
+  getLevelRequirement,
   getRealmConfig,
   getRealmName,
   getRealmProgression,
+  getRealmStageConfig,
   getRealmUnlockStates,
-  levelsPerRealm,
+  getStageLevelCount,
   maximumRealm,
+  stagesPerRealm,
 } from "./realm-progression.constants";
 import { ensureInitialPlayerTasks, incrementPlayerTasks } from "./task-progress.utils";
 
@@ -345,27 +354,16 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       handler: async (tx) => {
         await this.ensureM2State(player.playerId, tx);
         const loaded = await this.requirePlayerInTx(tx, player.playerId);
+        const beforeStage = loaded.currentStage;
         const beforeLevel = loaded.currentLevel;
         const gainedCultivation = calculateClaimableCultivation(loaded.progress);
-        const totalCultivation = loaded.progress.cultivationValue + gainedCultivation;
-        const leveled = applyAutoLevel(loaded, totalCultivation);
-        const updatedPlayer =
-          leveled.afterLevel === loaded.currentLevel
-            ? loaded
-            : await tx.player.update({
-                where: { playerId: loaded.playerId },
-                data: { currentLevel: leveled.afterLevel },
-                include: { progress: true, wallet: true },
-              });
-        const updatedProgress = await tx.playerProgress.update({
-          where: { playerId: loaded.playerId },
-          data: {
-            cultivationValue: leveled.remainingCultivation,
-            lastCultivationAt: new Date(),
-            dailyActiveScore: { increment: 5 },
-            weeklyActiveScore: { increment: 5 },
-          },
+        const granted = await this.grantCultivation(tx, loaded, gainedCultivation, {
+          lastCultivationAt: new Date(),
+          dailyActiveScore: { increment: 5 },
+          weeklyActiveScore: { increment: 5 },
         });
+        const updatedPlayer = granted.player;
+        const updatedProgress = granted.progress;
         const completedTaskIds = await incrementPlayerTasks(tx, loaded.playerId, {
           novice_claim_cultivation: 1,
         });
@@ -383,14 +381,17 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
           record_id: `cultivation_claim_${randomUUID()}`,
           gained_cultivation: gainedCultivation.toString(),
           before_level: beforeLevel,
-          after_level: leveled.afterLevel,
+          after_level: granted.allocation.currentLevel,
+          before_stage: beforeStage,
+          after_stage: granted.allocation.currentStage,
           status,
           completed_task_ids: completedTaskIds,
           experience: buildJournalExperience({
             title: "收束修为",
             summary:
-              leveled.afterLevel > beforeLevel
-                ? `静坐收益入体，修为 +${gainedCultivation.toString()}，层级提升至第 ${leveled.afterLevel} 层。`
+              granted.allocation.currentLevel !== beforeLevel ||
+              granted.allocation.currentStage !== beforeStage
+                ? `静坐收益入体，修为 +${gainedCultivation.toString()}，修行进度有所提升。`
                 : `静坐收益入体，修为 +${gainedCultivation.toString()}。`,
             deltas: [
               {
@@ -399,10 +400,14 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
                 tone: "success",
               },
               {
-                label: "层级",
-                before: beforeLevel,
-                after: leveled.afterLevel,
-                tone: leveled.afterLevel > beforeLevel ? "success" : "neutral",
+                label: "修行等级",
+                before: `${beforeStage}-${beforeLevel}`,
+                after: `${granted.allocation.currentStage}-${granted.allocation.currentLevel}`,
+                tone:
+                  granted.allocation.currentLevel !== beforeLevel ||
+                  granted.allocation.currentStage !== beforeStage
+                    ? "success"
+                    : "neutral",
               },
             ],
             recommendations: [
@@ -459,7 +464,8 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
         const potentialRequirement = requirement > supportValue ? requirement - supportValue : 0n;
         const canBreakthrough =
           loaded.currentRealm < maximumRealm &&
-          loaded.currentLevel >= levelsPerRealm &&
+          loaded.currentStage >= stagesPerRealm &&
+          loaded.currentLevel >= getStageLevelCount(loaded.currentRealm) &&
           loaded.progress.cultivationValue >= potentialRequirement;
 
         if (!canBreakthrough) {
@@ -501,6 +507,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
           where: { playerId: loaded.playerId },
           data: {
             currentRealm: { increment: 1 },
+            currentStage: 1,
             currentLevel: 1,
           },
         });
@@ -509,6 +516,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
           data: {
             cultivationValue: loaded.progress.cultivationValue - effectiveRequirement,
             breakthroughFailCount: 0,
+            cultivationRatePerHour: getCultivationRatePerHour(loaded.currentRealm + 1),
           },
         });
         const profile = await this.getProfileByPlayerId(loaded.playerId, tx);
@@ -1348,21 +1356,36 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException("探索奇遇已处理");
     }
 
-    await this.applyReward(tx, input.playerId, input.choice.rewards, {
-      sourceType: "explore_event",
-      sourceId: input.event.eventId,
-      idempotencyKey: input.idempotencyKey,
-    });
+    const eventPlayer = await this.requirePlayerInTx(tx, input.playerId);
+    const eventRewards = {
+      ...input.choice.rewards,
+      cultivation:
+        BigInt(input.choice.rewards.cultivation ?? "0") > 0n
+          ? String(getEventCultivationReward(eventPlayer.currentRealm))
+          : input.choice.rewards.cultivation,
+    };
+    const eventChoice = { ...input.choice, rewards: eventRewards };
+    await this.grantCultivation(tx, eventPlayer, BigInt(eventRewards.cultivation ?? "0"));
+    await this.applyReward(
+      tx,
+      input.playerId,
+      { ...eventRewards, cultivation: undefined },
+      {
+        sourceType: "explore_event",
+        sourceId: input.event.eventId,
+        idempotencyKey: input.idempotencyKey,
+      },
+    );
     const completedTaskIds = await incrementPlayerTasks(tx, input.playerId, {
       novice_resolve_event: 1,
     });
-    const experience = buildExploreEventExperience(input.event, input.choice, input.automatic);
+    const experience = buildExploreEventExperience(input.event, eventChoice, input.automatic);
     const updatedEvent = await tx.exploreEventRecord.update({
       where: { eventId: input.event.eventId },
       data: {
         status: "resolved",
         selectedChoiceId: input.choice.choiceId,
-        rewardSnapshot: input.choice.rewards as unknown as Prisma.InputJsonValue,
+        rewardSnapshot: eventRewards as unknown as Prisma.InputJsonValue,
         experienceSnapshot: experience as unknown as Prisma.InputJsonValue,
         resolvedIdempotency: input.idempotencyKey,
         resolutionMode: input.automatic ? "auto" : "manual",
@@ -1371,7 +1394,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
     });
     const response: ResolveExploreEventResponse = {
       event: toExploreEventState(updatedEvent),
-      rewards: input.choice.rewards,
+      rewards: eventRewards,
       experience,
     };
     response.experience.delta_summary.push(
@@ -1584,30 +1607,27 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
     const baseRewards: RewardBundle =
       result === "win"
         ? {
-            cultivation: "40",
+            cultivation: String(getExploreCultivationReward(player.currentRealm, result)),
             spirit_stone: "35",
             items: loot
               ? [{ item_id: loot.itemId, name: loot.name, count: 1, bind_type: "bound" }]
               : undefined,
           }
-        : { cultivation: "10", spirit_stone: "8" };
+        : {
+            cultivation: String(getExploreCultivationReward(player.currentRealm, result)),
+            spirit_stone: "8",
+          };
     const rewards = applyExploreRewardBoost(baseRewards, exploreBoostPercent);
-    const totalCultivation = progress.cultivationValue + BigInt(rewards.cultivation ?? "0");
-    const leveled = applyAutoLevel(player, totalCultivation);
-    if (leveled.afterLevel !== player.currentLevel) {
-      await tx.player.update({
-        where: { playerId: player.playerId },
-        data: { currentLevel: leveled.afterLevel },
-      });
-    }
-    const updatedProgress = await tx.playerProgress.update({
-      where: { playerId: player.playerId },
-      data: {
-        cultivationValue: leveled.remainingCultivation,
+    const granted = await this.grantCultivation(
+      tx,
+      { ...player, progress },
+      BigInt(rewards.cultivation ?? "0"),
+      {
         dailyActiveScore: { increment: 3 },
         weeklyActiveScore: { increment: 3 },
       },
-    });
+    );
+    const updatedProgress = granted.progress;
 
     await this.applyReward(
       tx,
@@ -1666,7 +1686,9 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       },
       player: {
         ...player,
-        currentLevel: leveled.afterLevel,
+        currentRealm: granted.allocation.currentRealm,
+        currentStage: granted.allocation.currentStage,
+        currentLevel: granted.allocation.currentLevel,
         progress: updatedProgress,
       },
       progress: updatedProgress,
@@ -1801,12 +1823,67 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  private async grantCultivation(
+    tx: Tx,
+    player: PlayerWithCore,
+    gain: bigint,
+    progressData: Prisma.PlayerProgressUpdateInput = {},
+  ) {
+    const allocation = allocateCultivation(
+      {
+        currentRealm: player.currentRealm,
+        currentStage: player.currentStage,
+        currentLevel: player.currentLevel,
+        cultivationValue: player.progress.cultivationValue,
+      },
+      gain,
+    );
+    const playerChanged =
+      allocation.currentRealm !== player.currentRealm ||
+      allocation.currentStage !== player.currentStage ||
+      allocation.currentLevel !== player.currentLevel;
+    const updatedPlayer = playerChanged
+      ? await tx.player.update({
+          where: { playerId: player.playerId },
+          data: {
+            currentRealm: allocation.currentRealm,
+            currentStage: allocation.currentStage,
+            currentLevel: allocation.currentLevel,
+          },
+          include: { progress: true, wallet: true },
+        })
+      : player;
+    const updatedProgress = await tx.playerProgress.update({
+      where: { playerId: player.playerId },
+      data: {
+        ...progressData,
+        cultivationValue: allocation.cultivationValue,
+      },
+    });
+    return {
+      allocation,
+      progress: updatedProgress,
+      player: {
+        ...updatedPlayer,
+        currentRealm: allocation.currentRealm,
+        currentStage: allocation.currentStage,
+        currentLevel: allocation.currentLevel,
+        progress: updatedProgress,
+      } as PlayerWithCore,
+    };
+  }
+
   private async applyReward(
     tx: Tx,
     playerId: string,
     rewards: RewardBundle,
     source: { sourceType: string; sourceId?: string; idempotencyKey?: string },
   ) {
+    const cultivation = BigInt(rewards.cultivation ?? "0");
+    if (cultivation > 0n) {
+      const player = await this.requirePlayerInTx(tx, playerId);
+      await this.grantCultivation(tx, player, cultivation);
+    }
     const spiritStone = BigInt(rewards.spirit_stone ?? "0");
 
     if (spiritStone > 0n) {
@@ -1884,6 +1961,16 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       input.context,
     );
     const linkHint = formatExploreEventLinkHint(input.context);
+    const eventPlayer = await tx.player.findUniqueOrThrow({ where: { playerId: input.playerId } });
+    const choices = config.choices.map((choice) => {
+      if (BigInt(choice.rewards.cultivation ?? "0") <= 0n) return choice;
+      const cultivation = getEventCultivationReward(eventPlayer.currentRealm);
+      return {
+        ...choice,
+        rewardPreview: `修为 ${cultivation}`,
+        rewards: { ...choice.rewards, cultivation: String(cultivation) },
+      };
+    });
     return tx.exploreEventRecord.upsert({
       where: { exploreRecordId: input.record.recordId },
       create: {
@@ -1896,7 +1983,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
         eventType: config.eventType,
         title: config.title,
         description: `${input.province.name}途中，${config.description}${linkHint}`,
-        choices: config.choices as unknown as Prisma.InputJsonValue,
+        choices: choices as unknown as Prisma.InputJsonValue,
         status: "pending",
         triggeredAt: input.triggeredAt,
         autoResolveAt: new Date(input.triggeredAt.getTime() + exploreEventAutoResolveMilliseconds),
@@ -2034,6 +2121,21 @@ function toCultivationStatus(input: {
   const nextRealm =
     input.player.currentRealm < maximumRealm ? getRealmConfig(input.player.currentRealm + 1) : null;
   const unlocks = getRealmUnlockStates(input.player.currentRealm);
+  const stageConfig = getRealmStageConfig(
+    input.player.currentRealm,
+    input.player.currentStage,
+    input.player.route === "body" ? "body" : "qi",
+  );
+  const stageLevelCount = getStageLevelCount(input.player.currentRealm);
+  const currentLevelRequired = getLevelRequirement(
+    input.player.currentRealm,
+    input.player.currentStage,
+    input.player.currentLevel,
+  );
+  const cultivationToNextLevel =
+    currentLevelRequired > input.progress.cultivationValue
+      ? currentLevelRequired - input.progress.cultivationValue
+      : 0n;
   return {
     cultivation_value: input.progress.cultivationValue.toString(),
     current_realm: input.player.currentRealm,
@@ -2046,14 +2148,19 @@ function toCultivationStatus(input: {
     maximum_realm: maximumRealm,
     realm_power_bonus_percent: realmConfig.powerBonusPercent,
     current_stage: input.player.currentStage,
+    current_stage_name: stageConfig.qiName,
+    current_stage_level_count: stageLevelCount,
     current_level: input.player.currentLevel,
-    current_level_required: getLevelRequirement(input.player.currentLevel).toString(),
+    current_level_required: currentLevelRequired.toString(),
+    cultivation_to_next_level: cultivationToNextLevel.toString(),
+    current_stage_progress: `${input.player.currentLevel}/${stageLevelCount}`,
     claimable_cultivation: calculateClaimableCultivation(input.progress).toString(),
     catchup_bonus_rate: input.progress.catchupBonusRate,
     last_cultivation_at: input.progress.lastCultivationAt.toISOString(),
     can_breakthrough:
       input.player.currentRealm < maximumRealm &&
-      input.player.currentLevel >= levelsPerRealm &&
+      input.player.currentStage >= stagesPerRealm &&
+      input.player.currentLevel >= stageLevelCount &&
       input.progress.cultivationValue >= effectiveBreakthroughRequirement,
     breakthrough_required: breakthroughRequirement.toString(),
     breakthrough_support: breakthroughSupport.toString(),
@@ -2073,29 +2180,6 @@ function calculateClaimableCultivation(progress: PlayerProgress): bigint {
   const base = BigInt(Math.floor(elapsedHours * progress.cultivationRatePerHour));
   const bonus = (base * BigInt(progress.catchupBonusRate)) / 100n;
   return base + bonus;
-}
-
-function applyAutoLevel(
-  player: Pick<Player, "currentLevel">,
-  cultivationValue: bigint,
-): { afterLevel: number; remainingCultivation: bigint } {
-  let level = player.currentLevel;
-  let remainingCultivation = cultivationValue;
-
-  while (level < 9) {
-    const requirement = getLevelRequirement(level);
-    if (remainingCultivation < requirement) {
-      break;
-    }
-    remainingCultivation -= requirement;
-    level += 1;
-  }
-
-  return { afterLevel: level, remainingCultivation };
-}
-
-function getLevelRequirement(level: number): bigint {
-  return BigInt(level * 100);
 }
 
 function calculateRecoveredActionPoints(state: PlayerActionState): number {

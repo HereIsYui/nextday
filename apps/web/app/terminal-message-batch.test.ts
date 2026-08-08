@@ -4,13 +4,13 @@ import { mergeCommandEntries } from "./terminal-message-batch";
 describe("九州传音消息批次", () => {
   it("将同一命令响应中的多条消息合并为一条传音", () => {
     const batch = mergeCommandEntries([
-      { entry_id: "entry_1", tone: "info", text: "云游道友，练气第 1 层。" },
+      { entry_id: "entry_1", tone: "info", text: "云游道友，练气·感应第 1 级。" },
       { entry_id: "entry_2", tone: "info", text: "修为 20，可收束 5。" },
       { entry_id: "entry_3", tone: "warning", text: "洞府已有可领取产出。" },
     ]);
 
     expect(batch).toEqual({
-      lines: ["云游道友，练气第 1 层。", "修为 20，可收束 5。", "洞府已有可领取产出。"],
+      lines: ["云游道友，练气·感应第 1 级。", "修为 20，可收束 5。", "洞府已有可领取产出。"],
       tone: "warning",
     });
   });

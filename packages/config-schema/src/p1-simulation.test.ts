@@ -45,6 +45,13 @@ describe("P1 数值模拟配置", () => {
 
     expect(standardFree?.day_reports.map((dayReport) => dayReport.day)).toEqual(config.report_days);
     expect(standardFree?.final_realm).toBe("真仙 / 真魔");
+    expect(standardFree?.day_reports.find((report) => report.day === 20)?.realm).toBe(
+      "筑基 / 筑身",
+    );
+    expect(standardFree?.day_reports.find((report) => report.day === 55)?.realm).toBe(
+      "金丹 / 血丹",
+    );
+    expect(standardFree?.day_reports.find((report) => report.day === 20)?.level_max).toBe(4);
     expect(largeMonthly?.ancient_treasure_draws).toBeGreaterThan(700);
     expect(whaleHardcore?.limited_gacha_draw_budget).toBeGreaterThan(4000);
   });

@@ -1166,10 +1166,31 @@ h2 {
   text-align: right;
 }
 
+.realm-stage-list {
+  display: grid;
+  gap: 7px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.realm-stage {
+  border-left: 2px solid #465844;
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding-left: 7px;
+}
+
+.realm-stage > strong {
+  color: #c9d4c2;
+  font-size: 12px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
 .realm-level-list {
   display: grid;
   gap: 4px;
-  grid-template-columns: repeat(9, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(38px, 1fr));
 }
 
 .realm-level {
@@ -1393,6 +1414,10 @@ h2 {
 
   .realm-progression-heading small {
     font-size: 11px;
+  }
+
+  .realm-stage-list {
+    grid-template-columns: 1fr;
   }
 
   .realm-level-list {

@@ -14,6 +14,7 @@ import type {
 } from "@nextday/shared";
 import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
+import { allocateCultivation } from "../game/cultivation-progress";
 import { defaultEraId } from "../game/game.constants";
 import { riskConfig, riskRulesetVersion } from "./risk.constants";
 import { toBehaviorRiskRecordState, toDelayedSettlementRecordState } from "./risk.mappers";
@@ -412,6 +413,37 @@ export class RiskService {
   ) {
     const snapshot = normalizeSnapshot(record.amountSnapshot);
     const rewards = normalizeRewards(snapshot.rewards);
+    const cultivation = BigInt(rewards.cultivation ?? "0");
+    if (cultivation > 0n) {
+      const player = await tx.player.findUniqueOrThrow({
+        where: { playerId: record.playerId },
+        include: { progress: true },
+      });
+      if (!player.progress) {
+        throw new BadRequestException("角色修行进度不存在");
+      }
+      const allocation = allocateCultivation(
+        {
+          currentRealm: player.currentRealm,
+          currentStage: player.currentStage,
+          currentLevel: player.currentLevel,
+          cultivationValue: player.progress.cultivationValue,
+        },
+        cultivation,
+      );
+      await tx.player.update({
+        where: { playerId: record.playerId },
+        data: {
+          currentRealm: allocation.currentRealm,
+          currentStage: allocation.currentStage,
+          currentLevel: allocation.currentLevel,
+        },
+      });
+      await tx.playerProgress.update({
+        where: { playerId: record.playerId },
+        data: { cultivationValue: allocation.cultivationValue },
+      });
+    }
     const spiritStone = BigInt(rewards.spirit_stone ?? "0");
     if (spiritStone > 0n) {
       const wallet = await tx.playerWallet.findUniqueOrThrow({

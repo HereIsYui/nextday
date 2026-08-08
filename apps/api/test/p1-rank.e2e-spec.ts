@@ -249,7 +249,7 @@ async function createRankPlayer(
     .expect(200);
   await prisma.player.update({
     where: { playerId },
-    data: { currentRealm: 5, currentLevel: 45 },
+    data: { currentRealm: 5, currentStage: 3, currentLevel: 7 },
   });
   await prisma.playerProgress.update({
     where: { playerId },

@@ -45,6 +45,10 @@ import {
 import { toFactionRouteConfigState } from "../factions/factions.mappers";
 import { exploreEnemyPools, exploreLootPools, provinceConfigs } from "../game/game.constants";
 import {
+  getRealmProgression,
+  realmProgressionConfigVersion,
+} from "../game/realm-progression.constants";
+import {
   innerWorldConfigVersion,
   innerWorldCreatureConfigs,
   innerWorldCreatureUpgradeCost,
@@ -118,21 +122,11 @@ import {
 export const defaultConfigEnvelopes: Record<string, ConfigEnvelope> = {
   realm: {
     config_type: "realm",
-    config_version: "realm_m1_v1",
-    ruleset_version: "ruleset_m1_v1",
-    reward_config_version: "reward_m1_v1",
+    config_version: realmProgressionConfigVersion,
+    ruleset_version: "ruleset_realm_article_v2",
+    reward_config_version: "reward_realm_article_v2",
     payload: {
-      realms: [
-        { realm_id: 1, name: "练气", min_level: 1, max_level: 9 },
-        { realm_id: 2, name: "筑基", min_level: 1, max_level: 9 },
-        { realm_id: 3, name: "金丹", min_level: 1, max_level: 9 },
-        { realm_id: 4, name: "元婴", min_level: 1, max_level: 9 },
-        { realm_id: 5, name: "化神", min_level: 1, max_level: 9 },
-        { realm_id: 6, name: "炼虚", min_level: 1, max_level: 9 },
-        { realm_id: 7, name: "合体", min_level: 1, max_level: 9 },
-        { realm_id: 8, name: "大乘", min_level: 1, max_level: 9 },
-        { realm_id: 9, name: "真仙", min_level: 1, max_level: 9 },
-      ],
+      realms: getRealmProgression("qi").realms,
     },
   },
   item: {

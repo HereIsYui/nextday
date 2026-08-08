@@ -4,7 +4,6 @@ import type {
   BreakthroughResponse,
   CaveCollectResponse,
   CultivationClaimResponse,
-  DailyRouteResponse,
   ExploreClaimRequest,
   ExploreCurrentResponse,
   ExploreEventListResponse,
@@ -55,11 +54,6 @@ export class GameController {
       body,
       idempotencyKey: requireIdempotencyKey(request),
     });
-  }
-
-  @Get("daily-route")
-  dailyRoute(@Req() request: Request): Promise<DailyRouteResponse> {
-    return this.gameService.getDailyRoute(requireAccountId(request));
   }
 
   @Get("realm-progression")

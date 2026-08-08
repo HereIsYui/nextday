@@ -1203,6 +1203,32 @@ export default function HomePage() {
                   </article>
                 </section>
               ) : null}
+              <section className="core-play-actions" aria-label="玩法入口">
+                <p className="console-eyebrow">九州玩法</p>
+                <div className="core-play-action-grid">
+                  {[
+                    ["活动", "活动"],
+                    ["内天地", "内天地"],
+                    ["宗门", "宗门"],
+                    ["Boss", "Boss"],
+                    ["排行", "排行"],
+                    ["古宝", "古宝"],
+                    ["炼丹", "炼丹"],
+                    ["炼器", "炼器"],
+                    ["九塔", "九塔"],
+                  ].map(([label, action]) => (
+                    <button
+                      className="core-play-action"
+                      disabled={busy || hydrating}
+                      key={action}
+                      onClick={() => void executeCommand(action, { displayCommand: label, saveToHistory: false })}
+                      type="button"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </section>
               <button className="logout-button" onClick={handleLogout} type="button">
                 离开
               </button>

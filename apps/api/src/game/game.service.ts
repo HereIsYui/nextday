@@ -17,8 +17,6 @@ import type {
   CultivationClaimResponse,
   CultivationRoute,
   CultivationStatus,
-  DailyRouteResponse,
-  DailyRouteStepState,
   ExploreClaimRequest,
   ExploreCurrentResponse,
   ExploreEventListResponse,
@@ -35,7 +33,6 @@ import type {
   ResolveExploreEventRequest,
   ResolveExploreEventResponse,
   RewardBundle,
-  RouteStepViewState,
   TaskClaimResponse,
   TaskState,
   TaskSummaryResponse,
@@ -172,58 +169,6 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       recent_battles: recentBattles.map((battle) => toBattleSummary(battle)),
       new_player_route: newPlayerRoute,
     };
-  }
-
-  async getDailyRoute(accountId: string): Promise<DailyRouteResponse> {
-    const player = await this.requirePlayer(accountId);
-    await this.ensureM2State(player.playerId);
-    await this.refreshExploreEventLifecycle({ accountId, playerId: player.playerId });
-    const todayStart = startOfDay();
-    const [
-      actionState,
-      provinces,
-      tasks,
-      cave,
-      activeRecord,
-      pendingEvent,
-      recentBattleCount,
-      alchemyCountToday,
-      towerActionCountToday,
-    ] = await Promise.all([
-      this.refreshActionState(player.playerId),
-      this.getProvinceSummaries(player.playerId),
-      this.getTasksByPlayerId(player.playerId),
-      this.getCaveByPlayerId(player.playerId),
-      this.findActiveExploreRecord(this.prisma, player.playerId),
-      this.prisma.exploreEventRecord.findFirst({
-        where: { playerId: player.playerId, status: "pending" },
-        orderBy: { createdAt: "desc" },
-      }),
-      this.prisma.battleLog.count({
-        where: { playerId: player.playerId, battleType: "explore", createdAt: { gte: todayStart } },
-      }),
-      this.prisma.alchemyRecord.count({
-        where: { playerId: player.playerId, createdAt: { gte: todayStart } },
-      }),
-      this.prisma.towerActionRecord.count({
-        where: { playerId: player.playerId, createdAt: { gte: todayStart } },
-      }),
-    ]);
-    const exploreRecord = activeRecord
-      ? await this.refreshExploreRecordStatus(this.prisma, activeRecord)
-      : null;
-
-    return buildDailyRouteState({
-      actionState,
-      alchemyCountToday,
-      cave,
-      exploreRecord,
-      pendingEvent,
-      provinces,
-      recentBattleCount,
-      tasks,
-      towerActionCountToday,
-    });
   }
 
   async getRealmProgression(accountId: string): Promise<RealmProgressionResponse> {
@@ -2641,17 +2586,7 @@ function stringArrayFromJson(value: Prisma.JsonValue): string[] {
     : [];
 }
 
-function buildDailyRouteState(input: {
-  actionState: ActionState;
-  alchemyCountToday: number;
-  cave: ReturnType<typeof toCaveState>;
-  exploreRecord: ExploreActionRecord | null;
-  pendingEvent: ExploreEventRecord | null;
-  provinces: ProvinceSummary[];
-  recentBattleCount: number;
-  tasks: TaskState[];
-  towerActionCountToday: number;
-}): DailyRouteResponse {
+/* 今日路线已删除，历史实现不再参与编译或运行。
   const claimableTasks = input.tasks.filter((task) => task.status === "completed");
   const unlockedProvince = input.provinces.find((province) => province.unlocked);
   const exploreStatus = input.exploreRecord
@@ -2865,6 +2800,7 @@ function dailyRouteViewStateWeight(state: RouteStepViewState | undefined): numbe
   };
   return state ? weights[state] : 1;
 }
+*/
 
 function getActiveTaskResetKeys(): string[] {
   return [...new Set(getTaskDefinitions().map((definition) => definition.resetKey))];

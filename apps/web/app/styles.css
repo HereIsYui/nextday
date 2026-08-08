@@ -288,6 +288,35 @@ h2 {
   margin-bottom: 0;
 }
 
+.core-play-actions {
+  border-top: 1px solid #394338;
+  padding: 10px 12px 12px;
+}
+
+.core-play-actions .console-eyebrow {
+  margin-bottom: 7px;
+}
+
+.core-play-action-grid {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.core-play-action {
+  background: rgba(49, 67, 49, 0.68);
+  border: 1px solid #586951;
+  color: #dce5d4;
+  font-size: 11px;
+  min-height: 32px;
+  padding: 5px 6px;
+}
+
+.core-play-action:hover:not(:disabled) {
+  border-color: #d1af6a;
+  color: #f0e4c9;
+}
+
 .realm-overview-button {
   background: transparent;
   border: 1px solid #66735e;
@@ -712,8 +741,8 @@ h2 {
   display: grid;
   gap: 8px;
   grid-template-columns: minmax(0, 1fr) auto;
-  min-height: 44px;
-  padding: 7px 9px;
+  min-height: 36px;
+  padding: 5px 7px;
   text-align: left;
 }
 

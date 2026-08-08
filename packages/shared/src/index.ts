@@ -764,8 +764,6 @@ export interface CaveCollectResponse {
 }
 
 export type NewPlayerRouteStepStatus = "done" | "active" | "pending";
-export type RouteStepViewState = "ready" | "waiting" | "blocked" | "jump" | "done";
-
 export interface NewPlayerRouteStepState {
   step_id: string;
   title: string;
@@ -785,30 +783,6 @@ export interface NewPlayerRouteState {
   primary_step_id: string;
   primary_action_hint: string;
   steps: NewPlayerRouteStepState[];
-  config_version: string;
-}
-
-export interface DailyRouteStepState extends NewPlayerRouteStepState {
-  priority: number;
-  source_detail?: string;
-  reason_tags?: string[];
-  target_tab?: string;
-  view_state?: RouteStepViewState;
-  state_label?: string;
-  state_detail?: string;
-}
-
-export interface DailyRouteResponse {
-  route_id: string;
-  title: string;
-  subtitle: string;
-  progress_percent: number;
-  progress_text: string;
-  primary_step_id: string;
-  primary_action_hint: string;
-  generated_at: string;
-  next_refresh_hint: string;
-  steps: DailyRouteStepState[];
   config_version: string;
 }
 
@@ -2431,7 +2405,6 @@ export interface PluginPanelDigest {
 
 export interface PluginExpandedPanelResponse {
   status: PluginStatusCardResponse;
-  daily_route: DailyRouteResponse | null;
   tasks: PluginPanelTaskState[];
   digests: PluginPanelDigest[];
   cave: CaveState | null;
@@ -2810,7 +2783,18 @@ export type TextCommandId =
   | "scroll_list"
   | "scroll_detail"
   | "battle_list"
-  | "battle_detail";
+  | "battle_detail"
+  | "activities"
+  | "activity_claim"
+  | "inner_world"
+  | "inner_world_dispatch"
+  | "inner_world_claim"
+  | "inner_world_support"
+  | "sect"
+  | "sect_task"
+  | "boss"
+  | "rank"
+  | "ancient_treasure";
 
 export type TextCommandLogTone = "info" | "success" | "warning" | "error";
 
@@ -2871,7 +2855,18 @@ export type TextCommandResult =
   | StoryScrollListResponse
   | StoryScrollDetailResponse
   | BattleListResponse
-  | BattleNarrativeResponse;
+  | BattleNarrativeResponse
+  | ActivityListResponse
+  | ClaimActivityRewardResponse
+  | InnerWorldSummaryResponse
+  | InnerWorldDispatchResponse
+  | InnerWorldClaimResponse
+  | InnerWorldSupportResponse
+  | SectDetailResponse
+  | SectTaskResponse
+  | WorldBossResponse
+  | RankListResponse
+  | AncientTreasureListResponse;
 
 export interface TextCommandState {
   refresh: TextCommandRefreshTarget[];

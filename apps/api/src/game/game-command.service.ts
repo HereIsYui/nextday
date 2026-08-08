@@ -1,5 +1,7 @@
-import { HttpException, Inject, Injectable } from "@nestjs/common";
+import { HttpException, Inject, Injectable, Optional } from "@nestjs/common";
 import type {
+  ActivityListResponse,
+  AncientTreasureListResponse,
   BagItemState,
   BagSummaryResponse,
   ExploreEventState,
@@ -21,6 +23,9 @@ import type {
   TowerActionType,
   TowerListResponse,
 } from "@nextday/shared";
+import { CommerceService } from "../commerce/commerce.service";
+import { EventsService } from "../events/events.service";
+import { InnerWorldService } from "../inner-world/inner-world.service";
 import { MultiplayerService } from "../multiplayer/multiplayer.service";
 import { ProductionService } from "../production/production.service";
 import { StoryService } from "../story/story.service";
@@ -64,7 +69,18 @@ type ParsedCommand =
   | { commandId: "scroll_list" }
   | { commandId: "scroll_detail"; scrollSelector: string }
   | { commandId: "battle_list" }
-  | { commandId: "battle_detail"; battleId: string };
+  | { commandId: "battle_detail"; battleId: string }
+  | { commandId: "activities" }
+  | { commandId: "activity_claim"; eventId: string }
+  | { commandId: "inner_world" }
+  | { commandId: "inner_world_dispatch"; province: string }
+  | { commandId: "inner_world_claim" }
+  | { commandId: "inner_world_support"; province: string; supportType: string }
+  | { commandId: "sect" }
+  | { commandId: "sect_task"; taskId?: string }
+  | { commandId: "boss" }
+  | { commandId: "rank"; rankType?: string }
+  | { commandId: "ancient_treasure" };
 
 interface InvalidCommand {
   commandId: "invalid";
@@ -270,6 +286,23 @@ const commandHelpGroups: TextCommandHelpGroup[] = [
       },
     ],
   },
+  {
+    group_id: "world",
+    title: "活动与九州",
+    items: [
+      { command_id: "activities", syntax: "活动", aliases: [], description: "查看当前活动周期与进度。" },
+      { command_id: "activity_claim", syntax: "领取活动 <活动>", aliases: [], description: "领取已完成活动奖励。" },
+      { command_id: "inner_world", syntax: "内天地", aliases: [], description: "查看内天地派驻与法则状态。" },
+      { command_id: "inner_world_dispatch", syntax: "派驻 <州域>", aliases: [], description: "派遣空闲生灵支援州域。" },
+      { command_id: "inner_world_claim", syntax: "收取派驻", aliases: [], description: "收取已完成的内天地派驻。" },
+      { command_id: "inner_world_support", syntax: "支援 <州域>", aliases: [], description: "消耗法则经验支援州域。" },
+      { command_id: "sect", syntax: "宗门", aliases: [], description: "查看宗门、职位与仓库状态。" },
+      { command_id: "sect_task", syntax: "宗门任务 [任务ID]", aliases: [], description: "完成宗门任务。" },
+      { command_id: "boss", syntax: "Boss", aliases: ["世界Boss"], description: "查看世界 Boss 状态。" },
+      { command_id: "rank", syntax: "排行 [类型]", aliases: ["排行榜"], description: "查看指定排行榜。" },
+      { command_id: "ancient_treasure", syntax: "古宝", aliases: [], description: "查看已获得古宝与赠抽次数。" },
+    ],
+  },
 ];
 
 const defaultSuggestions: TextCommandSuggestion[] = [
@@ -299,6 +332,9 @@ export class GameCommandService {
     @Inject(MultiplayerService) private readonly multiplayerService: MultiplayerService,
     @Inject(ProductionService) private readonly productionService: ProductionService,
     @Inject(StoryService) private readonly storyService: StoryService,
+    @Optional() @Inject(EventsService) private readonly eventsService?: EventsService,
+    @Optional() @Inject(InnerWorldService) private readonly innerWorldService?: InnerWorldService,
+    @Optional() @Inject(CommerceService) private readonly commerceService?: CommerceService,
   ) {}
 
   getHelp(): TextCommandHelpResponse {
@@ -376,6 +412,28 @@ export class GameCommandService {
           return this.battleList(input.accountId);
         case "battle_detail":
           return this.battleDetail(input.accountId, parsed.battleId);
+        case "activities":
+          return this.activities(input.accountId);
+        case "activity_claim":
+          return this.activityClaim(input, parsed.eventId);
+        case "inner_world":
+          return this.innerWorld(input.accountId);
+        case "inner_world_dispatch":
+          return this.innerWorldDispatch(input, parsed.province);
+        case "inner_world_claim":
+          return this.innerWorldClaim(input);
+        case "inner_world_support":
+          return this.innerWorldSupport(input, parsed.province, parsed.supportType);
+        case "sect":
+          return this.sect(input.accountId);
+        case "sect_task":
+          return this.sectTask(input, parsed.taskId);
+        case "boss":
+          return this.boss();
+        case "rank":
+          return this.rank(parsed.rankType);
+        case "ancient_treasure":
+          return this.ancientTreasure(input.accountId);
       }
     } catch (error) {
       if (error instanceof HttpException) {
@@ -1174,6 +1232,164 @@ export class GameCommandService {
     );
   }
 
+  private async activities(accountId: string): Promise<TextCommandResponse> {
+    const result = await this.eventsService!.list(accountId);
+    return this.success(
+      "activities",
+      result.events.map((event) => ({
+        tone: event.claimable ? ("success" as const) : ("info" as const),
+        text: `${event.name}：${event.progress}/${event.target_progress}${event.claimable ? "（可领取）" : ""}`,
+      })),
+      result,
+      ["events"],
+      result.events.filter((event) => event.claimable).map((event) => ({
+        label: `领取${event.name}`,
+        command: `领取活动 ${event.event_id}`,
+      })),
+    );
+  }
+
+  private async activityClaim(
+    input: { accountId: string; idempotencyKey: string },
+    eventId: string,
+  ): Promise<TextCommandResponse> {
+    const result = await this.eventsService!.claimReward({
+      accountId: input.accountId,
+      body: { event_id: eventId },
+      idempotencyKey: input.idempotencyKey,
+    });
+    return this.success(
+      "activity_claim",
+      [{ tone: "success", text: `已领取${result.event.name}：${formatRewards(result.rewards)}` }],
+      result,
+      ["events", "overview"],
+      [{ label: "查看活动", command: "活动" }],
+    );
+  }
+
+  private async innerWorld(accountId: string): Promise<TextCommandResponse> {
+    const result = await this.innerWorldService!.getSummary(accountId);
+    return this.success(
+      "inner_world",
+      [{
+        tone: result.state.unlocked ? "info" : "warning",
+        text: result.state.unlocked
+          ? `内天地法则 ${result.state.law_level} 级，${result.state.claimable_assignment_count} 个派驻可收取。`
+          : result.state.unlock_hint,
+      }],
+      result,
+      ["overview"],
+      result.state.claimable_assignment_count > 0
+        ? [{ label: "收取派驻", command: "收取派驻" }]
+        : [{ label: "查看状态", command: "状态" }],
+    );
+  }
+
+  private async innerWorldDispatch(
+    input: { accountId: string; idempotencyKey: string },
+    province: string,
+  ): Promise<TextCommandResponse> {
+    const result = await this.innerWorldService!.dispatch({
+      accountId: input.accountId,
+      body: { province_id: resolveProvince(province) ?? province },
+      idempotencyKey: input.idempotencyKey,
+    });
+    return this.success(
+      "inner_world_dispatch",
+      [{ tone: "success", text: `已派驻${result.assignment.province_name}，完成后可输入“收取派驻”。` }],
+      result,
+      ["overview"],
+      [{ label: "查看内天地", command: "内天地" }],
+    );
+  }
+
+  private async innerWorldClaim(input: {
+    accountId: string;
+    idempotencyKey: string;
+  }): Promise<TextCommandResponse> {
+    const result = await this.innerWorldService!.claim({
+      accountId: input.accountId,
+      body: {},
+      idempotencyKey: input.idempotencyKey,
+    });
+    return this.success(
+      "inner_world_claim",
+      [{ tone: "success", text: `派驻收取完成：${formatRewards(result.rewards)}` }],
+      result,
+      ["overview", "bag"],
+      [{ label: "查看内天地", command: "内天地" }],
+    );
+  }
+
+  private async innerWorldSupport(
+    input: { accountId: string; idempotencyKey: string },
+    province: string,
+    supportType: string,
+  ): Promise<TextCommandResponse> {
+    const result = await this.innerWorldService!.support({
+      accountId: input.accountId,
+      body: { province_id: resolveProvince(province) ?? province, support_type: supportType },
+      idempotencyKey: input.idempotencyKey,
+    });
+    return this.success(
+      "inner_world_support",
+      [{ tone: "success", text: `已完成${result.support.province_name}支援：${formatRewards(result.support.reward_summary)}` }],
+      result,
+      ["overview", "events"],
+      [{ label: "查看内天地", command: "内天地" }],
+    );
+  }
+
+  private async sect(accountId: string): Promise<TextCommandResponse> {
+    const result = await this.multiplayerService.getMySect(accountId);
+    return this.success(
+      "sect",
+      [result.sect ? { tone: "info", text: `宗门${result.sect.name}，成员 ${result.members.length} 人。` } : { tone: "info", text: "尚未加入宗门。" }],
+      result,
+      ["overview"],
+      result.sect ? [{ label: "完成宗门任务", command: "宗门任务" }] : [],
+    );
+  }
+
+  private async sectTask(
+    input: { accountId: string; idempotencyKey: string },
+    taskId?: string,
+  ): Promise<TextCommandResponse> {
+    if (!taskId) {
+      return this.failure("sect_task", "请提供宗门任务 ID。", [{ label: "查看宗门", command: "宗门" }]);
+    }
+    const result = await this.multiplayerService.completeSectTask({
+      accountId: input.accountId,
+      body: { task_id: taskId },
+      idempotencyKey: input.idempotencyKey,
+    });
+    return this.success("sect_task", [{ tone: "success", text: "宗门任务已完成。" }], result, ["overview"], [{ label: "查看宗门", command: "宗门" }]);
+  }
+
+  private async boss(): Promise<TextCommandResponse> {
+    const result = await this.multiplayerService.getWorldBoss();
+    return this.success("boss", [{ tone: "info", text: `世界 Boss：${result.boss.name}，阶段 ${result.boss.phase}，剩余生命 ${result.boss.remaining_hp}。` }], result, ["overview"], defaultSuggestions);
+  }
+
+  private async rank(rankType?: string): Promise<TextCommandResponse> {
+    const allowed = ["personal", "sect", "tower_week", "production", "era", "inner_world", "faction"] as const;
+    const type = (allowed.find((item) => item === rankType) ?? "personal");
+    const result = await this.multiplayerService.getRankList(type);
+    return this.success("rank", result.entries.slice(0, 10).map((entry) => ({ tone: "info" as const, text: `第${entry.rank_no}名 ${entry.display_name}：${entry.score}` })), result, ["overview"], defaultSuggestions);
+  }
+
+  private async ancientTreasure(accountId: string): Promise<TextCommandResponse> {
+    const [result, overview] = await Promise.all([
+      this.commerceService!.listAncientTreasures(accountId),
+      this.commerceService!.getOverview(accountId),
+    ]);
+    const availableDraws = overview.available_monthly_grants.reduce(
+      (sum, grant) => sum + grant.draw_count - grant.used_count,
+      0,
+    );
+    return this.success("ancient_treasure", [{ tone: "info", text: `古宝 ${result.treasures.filter((item) => item.owned).length}/${result.treasures.length}，可用赠抽 ${availableDraws} 次。` }], result, ["overview"], defaultSuggestions);
+  }
+
   private success(
     commandId: Exclude<TextCommandId, "invalid">,
     entries: LogInput[],
@@ -1223,13 +1439,9 @@ function toExploreEventEntries(event: ExploreEventState, canOmitEventId: boolean
       tone: "warning",
       text: `探索奇遇“${event.title}”：${event.description}`,
     },
-    {
-      tone: "info",
-      text: "请从以下选项中选择，并输入对应指令：",
-    },
     ...event.choices.map((choice) => ({
       tone: "info" as const,
-      text: `选项 ${choice.choice_id}：${choice.label}（${choice.reward_preview}）。输入：奇遇 ${canOmitEventId ? choice.choice_id : `${event.event_id} ${choice.choice_id}`}`,
+      text: `${choice.choice_id} · ${choice.label}（${choice.reward_preview}）${canOmitEventId ? `，输入“奇遇 ${choice.choice_id}”` : `，输入“奇遇 ${event.event_id} ${choice.choice_id}”`}`,
     })),
   ];
 }
@@ -1383,6 +1595,59 @@ function parseCommand(input: TextCommandRequest): ParsedCommand | InvalidCommand
       return invalid("请提供单方ID。用法：使用单方 <单方ID>。");
     }
     return { commandId: "formula_craft", formulaId: args[0] };
+  }
+  if (["活动", "活动中心", "events"].includes(command)) {
+    return noArguments("activities", args, "活动");
+  }
+  if (["领取活动", "活动领取"].includes(command)) {
+    if (args.length !== 1) {
+      return invalid("请提供活动名称或活动标识。用法：领取活动 <活动>。");
+    }
+    return { commandId: "activity_claim", eventId: args[0] };
+  }
+  if (["内天地", "innerworld"].includes(command)) {
+    return noArguments("inner_world", args, "内天地");
+  }
+  if (["派驻", "内天地派驻"].includes(command)) {
+    if (args.length !== 1) {
+      return invalid("请提供派驻州域。用法：派驻 <州域>。");
+    }
+    return { commandId: "inner_world_dispatch", province: args[0] };
+  }
+  if (["收取派驻", "派驻领取"].includes(command)) {
+    return noArguments("inner_world_claim", args, "收取派驻");
+  }
+  if (["支援", "九州支援"].includes(command)) {
+    if (args.length < 1 || args.length > 2) {
+      return invalid("请提供支援州域。用法：支援 <州域> [灵脉|塔供给|秘境]。");
+    }
+    return {
+      commandId: "inner_world_support",
+      province: args[0],
+      supportType:
+        args[1] === "塔供给" ? "tower_supply" : args[1] === "秘境" ? "secret_realm" : "spirit_vein",
+    };
+  }
+  if (["宗门", "sect"].includes(command)) {
+    return noArguments("sect", args, "宗门");
+  }
+  if (["宗门任务", "secttask"].includes(command)) {
+    if (args.length > 1) {
+      return invalid("宗门任务最多接受一个任务ID。用法：宗门任务 [任务ID]。");
+    }
+    return { commandId: "sect_task", ...(args[0] ? { taskId: args[0] } : {}) };
+  }
+  if (["boss", "世界boss", "世界 Boss"].includes(command)) {
+    return noArguments("boss", args, "Boss");
+  }
+  if (["排行", "排行榜", "rank"].includes(command)) {
+    if (args.length > 1) {
+      return invalid("排行最多接受一个类型。用法：排行 [personal|sect|tower_week|production|era|inner_world|faction]。");
+    }
+    return { commandId: "rank", ...(args[0] ? { rankType: args[0] } : {}) };
+  }
+  if (["古宝", "ancient"].includes(command)) {
+    return noArguments("ancient_treasure", args, "古宝");
   }
   if (["九塔", "封印塔", "tower"].includes(command)) {
     if (args.length === 0) {

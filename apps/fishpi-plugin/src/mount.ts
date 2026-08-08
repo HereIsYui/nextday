@@ -275,9 +275,6 @@ function renderPanel(
       ? panel.status.reminders.join("，")
       : "暂无紧急提醒";
   }
-  const primaryRouteStep = panel.daily_route?.steps.find(
-    (step) => step.step_id === panel.daily_route?.primary_step_id,
-  );
   const latestBattle = panel.recent_battles[0];
   const lootText =
     latestBattle?.loot_highlights?.[0] ??
@@ -302,14 +299,6 @@ function renderPanel(
       <div><dt>称号</dt><dd>${panel.titles?.era_blessing.owned_inherited_count ?? 0} 个</dd></div>
       <div><dt>活动</dt><dd>${panel.activities.filter((activity) => activity.claimable).length} 个可领</dd></div>
     </dl>
-    <section>
-      <strong>今日路线</strong>
-      <p>${
-        primaryRouteStep
-          ? `${escapeHtml(primaryRouteStep.action_label)} · ${escapeHtml(primaryRouteStep.detail)}`
-          : "今日路线尚未生成"
-      }</p>
-    </section>
     <section>
       <strong>日课</strong>
       ${panel.tasks

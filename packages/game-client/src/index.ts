@@ -61,7 +61,6 @@ import type {
   CreateTransferRequestRequest,
   CreateTransferRequestResponse,
   CultivationClaimResponse,
-  DailyRouteResponse,
   DiscoveredAlchemyCraftResponse,
   DiscoveredForgeCraftResponse,
   DiscoveredPillUseResponse,
@@ -431,10 +430,6 @@ export class GameClient {
     return this.post<TextCommandResponse, TextCommandRequest>("/api/game/commands", body, {
       idempotencyKey,
     });
-  }
-
-  dailyRoute(): Promise<ApiResponse<DailyRouteResponse>> {
-    return this.get<DailyRouteResponse>("/api/game/daily-route");
   }
 
   realmProgression(): Promise<ApiResponse<RealmProgressionResponse>> {

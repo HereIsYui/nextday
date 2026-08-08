@@ -32,7 +32,7 @@ describe("P3 后续桌面 Web 体验闭环", () => {
     await app.close();
   });
 
-  it("探索进行中时今日路线优先显示等待队列，不被任务查看卡住", async () => {
+  it("探索进行中可直接读取当前行旅，不依赖今日路线", async () => {
     const { token, playerId } = await createDesktopRoutePlayer(app);
     await markCompletedTasksClaimed(prisma, playerId);
     await markCaveJustCollected(prisma, playerId);
@@ -44,27 +44,19 @@ describe("P3 后续桌面 Web 体验闭环", () => {
       .send({ province_id: "ji", count: 1 })
       .expect(201);
 
-    const route = await request(app.getHttpServer())
-      .get("/api/game/daily-route")
+    const current = await request(app.getHttpServer())
+      .get("/api/game/explore/current")
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
 
-    expect(route.body.data.primary_action_hint).toBe("claim_explore");
-    expect(route.body.data.steps[0]).toMatchObject({
-      action_hint: "claim_explore",
-      state_label: "等待完成",
+    expect(current.body.data.current).toMatchObject({
+      province_id: "ji",
       status: "pending",
-      view_state: "waiting",
-    });
-    expect(
-      route.body.data.steps.find((step: { step_id: string }) => step.step_id === "claim_task"),
-    ).toMatchObject({
-      action_label: "查看任务",
-      view_state: "jump",
+      can_claim: false,
     });
   });
 
-  it("无可领任务且行动令不足时给出查看进度与缺条件，不显示假可领入口", async () => {
+  it("没有进行中探索时当前行旅为空，行动令不足不会伪造入口", async () => {
     const { token, playerId } = await createDesktopRoutePlayer(app);
     await markCompletedTasksClaimed(prisma, playerId);
     await markCaveJustCollected(prisma, playerId);
@@ -73,30 +65,16 @@ describe("P3 后续桌面 Web 体验闭环", () => {
       data: { actionPoints: 0 },
     });
 
-    const route = await request(app.getHttpServer())
-      .get("/api/game/daily-route")
+    const current = await request(app.getHttpServer())
+      .get("/api/game/explore/current")
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
 
-    const taskStep = route.body.data.steps.find(
-      (step: { step_id: string }) => step.step_id === "claim_task",
-    );
-    const exploreStep = route.body.data.steps.find(
-      (step: { step_id: string }) => step.step_id === "start_explore",
-    );
-
-    expect(route.body.data.primary_step_id).toBe("claim_task");
-    expect(taskStep).toMatchObject({
-      action_label: "查看任务",
-      state_label: "查看进度",
-      status: "pending",
-      view_state: "jump",
-    });
-    expect(exploreStep).toMatchObject({
-      action_label: "等待行动令",
-      state_label: "缺条件",
-      view_state: "blocked",
-    });
+    expect(current.body.data.current).toBeNull();
+    await request(app.getHttpServer())
+      .get("/api/game/daily-route")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(404);
   });
 });
 

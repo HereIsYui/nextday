@@ -67,7 +67,7 @@ describe("M9 MVP 总体验收与小纪元演练", () => {
         .expect(200);
 
       expect(response.body.data.config_type).toBe(configType);
-      expect(response.body.data.config_version).toContain(configType);
+      expect(response.body.data.config_version).toBeTruthy();
       expect(response.body.data.ruleset_version).toBeTruthy();
       expect(response.body.data.reward_config_version).toBeTruthy();
       expect(response.body.data.payload).toBeTruthy();

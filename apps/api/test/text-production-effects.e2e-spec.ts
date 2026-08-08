@@ -5,6 +5,7 @@ import { PrismaClient } from "@prisma/client";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AppModule } from "../src/app.module";
+import { getExploreCultivationReward } from "../src/game/cultivation-progress";
 import { configureApp } from "../src/platform/configure-app";
 
 describe("文字修行炼制效果", () => {
@@ -203,7 +204,8 @@ describe("文字修行炼制效果", () => {
       .send({ record_id: started.body.data.record_id })
       .expect(201);
 
-    const expectedCultivation = (40n * (100n + BigInt(actualBoost))) / 100n;
+    const expectedCultivation =
+      (BigInt(getExploreCultivationReward(9, "win")) * (100n + BigInt(actualBoost))) / 100n;
     const expectedSpiritStone = (35n * (100n + BigInt(actualBoost))) / 100n;
     expect(claimed.body.data.rewards).toMatchObject({
       cultivation: expectedCultivation.toString(),

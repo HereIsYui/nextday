@@ -5,6 +5,7 @@ import { PrismaClient } from "@prisma/client";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AppModule } from "../src/app.module";
+import { getExploreCultivationReward } from "../src/game/cultivation-progress";
 import { configureApp } from "../src/platform/configure-app";
 import {
   buildProductionBalanceWarnings,
@@ -539,9 +540,10 @@ describe("P3-2 自研丹器与材料链", () => {
       .set("Idempotency-Key", `idem_p3_explore_boost_claim_${Date.now()}_${randomSuffix()}`)
       .send({ record_id: started.body.data.record_id })
       .expect(201);
-    expect(claimed.body.data.rewards.cultivation).toBe(
-      String(Math.floor(40 * (1 + exploreBonus / 100))),
+    const expectedCultivation = Math.floor(
+      getExploreCultivationReward(2, "win") * (1 + exploreBonus / 100),
     );
+    expect(claimed.body.data.rewards.cultivation).toBe(String(expectedCultivation));
     expect(claimed.body.data.rewards.spirit_stone).toBe(
       String(Math.floor(35 * (1 + exploreBonus / 100))),
     );

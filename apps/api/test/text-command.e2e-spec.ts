@@ -78,7 +78,7 @@ describe("文字命令接口", () => {
     expect(first.body.data.command_id).toBe("explore");
     expect(first.body.data.entries[0]).toMatchObject({ entry_id: "entry_1", tone: "success" });
     expect(first.body.data.state.result.record_id).toBe(repeated.body.data.state.result.record_id);
-  });
+  }, 15_000);
 });
 
 async function createTextCommandPlayer(

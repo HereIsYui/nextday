@@ -41,6 +41,7 @@ import type {
 import type { Player, PlayerActionState, Prisma, SectMember, TowerState } from "@prisma/client";
 import { toAppearanceState } from "../commerce/commerce.mappers";
 import { PrismaService } from "../database/prisma.service";
+import { lockAccountForTransaction } from "../database/player-transaction";
 import { factionUnlockChapter, factionUnlockRealm } from "../factions/factions.constants";
 import { allocateCultivation } from "../game/cultivation-progress";
 import { defaultEraId, maxOfflineCultivationHours } from "../game/game.constants";
@@ -1867,6 +1868,7 @@ export class MultiplayerService implements OnModuleInit, OnModuleDestroy {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
+        await lockAccountForTransaction(tx, input.accountId);
         const response = await input.handler(tx);
         await tx.idempotencyRecord.create({
           data: {

@@ -31,6 +31,7 @@ import type {
 } from "@nextday/shared";
 import type { GachaPityState, MonthlyCardDrawGrant, Player, Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
+import { lockAccountForTransaction } from "../database/player-transaction";
 import { defaultEraId } from "../game/game.constants";
 import { writeJournalFromResponse } from "../journal/journal.utils";
 import { buildGachaExperience } from "../platform/experience";
@@ -1227,6 +1228,7 @@ export class CommerceService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      await lockAccountForTransaction(tx, input.accountId);
       const response = await input.handler(tx);
       await tx.idempotencyRecord.create({
         data: {

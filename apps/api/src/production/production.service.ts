@@ -34,6 +34,7 @@ import type {
   Prisma,
 } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
+import { lockAccountForTransaction } from "../database/player-transaction";
 import { allocateCultivation, getPillCultivationLimit } from "../game/cultivation-progress";
 import { defaultEraId } from "../game/game.constants";
 import { normalizeRewardBundle, toBattleSummary } from "../game/game.mappers";
@@ -1835,6 +1836,7 @@ export class ProductionService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
+        await lockAccountForTransaction(tx, input.accountId);
         const response = await input.handler(tx);
         await tx.idempotencyRecord.create({
           data: {

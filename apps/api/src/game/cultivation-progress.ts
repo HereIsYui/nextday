@@ -41,9 +41,6 @@ export function allocateCultivation(
   while (currentRealm <= maximumRealm) {
     const stageLevelCount = getStageLevelCount(currentRealm);
     currentLevel = Math.min(Math.max(1, currentLevel), stageLevelCount);
-    if (currentStage === stagesPerRealm && currentLevel === stageLevelCount) {
-      break;
-    }
     const requirement = getLevelRequirement(currentRealm, currentStage, currentLevel);
     if (cultivationValue < requirement) break;
 
@@ -100,6 +97,22 @@ export function getEventCultivationReward(realmId: number, ratio = 0.1): number 
 export function getPillCultivationLimit(realmId: number): number {
   const config = getRealmConfig(realmId);
   return Math.max(1, Math.round(config.standardDailyCultivation * 0.25));
+}
+
+/** 统一境界基础战力，覆盖大境界、小境界阶段和当前等级。 */
+export function calculateCultivationPower(
+  realmId: number,
+  stageId: number,
+  level: number,
+  equipmentPower = 0,
+): number {
+  const config = getRealmConfig(realmId);
+  const stage = config.stages[Math.min(stagesPerRealm, Math.max(1, stageId)) - 1];
+  const safeLevel = Math.min(stage?.levelCount ?? 1, Math.max(1, level));
+  const stageOffset = Math.max(0, (stage?.stageId ?? 1) - 1) * (stage?.levelCount ?? 1);
+  const base = realmId * 120 + (stageOffset + safeLevel) * 45;
+  const realmBonus = Math.floor((base * config.powerBonusPercent) / 100);
+  return base + realmBonus + Math.max(0, Math.floor(equipmentPower));
 }
 
 function normalizeStage(stage: number): number {

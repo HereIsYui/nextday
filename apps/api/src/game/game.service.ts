@@ -53,6 +53,7 @@ import type {
   Prisma,
 } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
+import { lockAccountForTransaction } from "../database/player-transaction";
 import { buildJournalExperience, writeJournalFromResponse } from "../journal/journal.utils";
 import { buildCaveCollectExperience, buildExploreExperience } from "../platform/experience";
 import { hashRequestBody } from "../platform/utils/hash";
@@ -60,6 +61,7 @@ import { toPlayerProfileResponse } from "../player/player.mapper";
 import { getDefaultSkillLoadout, getSkillName } from "../production/production.constants";
 import {
   allocateCultivation,
+  calculateCultivationPower,
   getCultivationRatePerHour,
   getEventCultivationReward,
   getExploreCultivationReward,
@@ -913,15 +915,22 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
           throw new BadRequestException("任务未完成或已领取");
         }
 
+        const claimed = await tx.playerTaskState.updateMany({
+          where: { taskStateId: task.taskStateId, status: "completed" },
+          data: { status: "claimed" },
+        });
+        if (claimed.count !== 1) {
+          throw new BadRequestException("任务未完成或已领取");
+        }
+
         const rewards = normalizeRewardBundle(task.rewardSnapshot);
         await this.applyReward(tx, player.playerId, rewards, {
           sourceType: "task_claim",
           sourceId: task.taskId,
           idempotencyKey: input.idempotencyKey,
         });
-        const claimedTask = await tx.playerTaskState.update({
+        const claimedTask = await tx.playerTaskState.findUniqueOrThrow({
           where: { taskStateId: task.taskStateId },
-          data: { status: "claimed" },
         });
         await this.advanceChapterForClaimedTask(tx, player.playerId, claimedTask.taskId);
         const profile = await this.getProfileByPlayerId(player.playerId, tx);
@@ -963,14 +972,21 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
         }
         const rewards = caveState.preview_rewards;
 
+        const claimed = await tx.playerCaveState.updateMany({
+          where: { playerId: player.playerId, lastCollectedAt: cave.lastCollectedAt },
+          data: { lastCollectedAt: new Date() },
+        });
+        if (claimed.count !== 1) {
+          throw new BadRequestException("洞府收益已领取");
+        }
+
         await this.applyReward(tx, player.playerId, rewards, {
           sourceType: "cave_collect",
           sourceId: player.playerId,
           idempotencyKey: input.idempotencyKey,
         });
-        const updatedCave = await tx.playerCaveState.update({
+        const updatedCave = await tx.playerCaveState.findUniqueOrThrow({
           where: { playerId: player.playerId },
-          data: { lastCollectedAt: new Date() },
         });
         await tx.caveCollectRecord.create({
           data: {
@@ -1595,7 +1611,11 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       traits: ["均衡"],
     };
 
-    const playerPower = player.currentRealm * 120 + player.currentLevel * 45;
+    const playerPower = calculateCultivationPower(
+      player.currentRealm,
+      player.currentStage,
+      player.currentLevel,
+    );
     const result: BattleSummary["result"] = playerPower >= enemy.enemyPower ? "win" : "lose";
     const damageDone = result === "win" ? enemy.enemyPower + player.currentLevel * 12 : playerPower;
     const damageTaken =
@@ -2048,6 +2068,20 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
+        await lockAccountForTransaction(tx, input.accountId);
+        const concurrentRecord = await tx.idempotencyRecord.findUnique({
+          where: { idempotencyKey: input.idempotencyKey },
+        });
+        if (concurrentRecord) {
+          if (
+            concurrentRecord.accountId !== input.accountId ||
+            concurrentRecord.endpoint !== input.endpoint ||
+            concurrentRecord.requestHash !== requestHash
+          ) {
+            throw new BadRequestException("幂等键已被其他请求使用");
+          }
+          return concurrentRecord.responseData as unknown as TResponse;
+        }
         const response = await input.handler(tx);
         await tx.idempotencyRecord.create({
           data: {

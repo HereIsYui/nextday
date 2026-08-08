@@ -223,7 +223,7 @@ function realm(
     stages,
     levelRequirements: distributeLevelRequirements(
       realmBudget - breakthroughCultivation,
-      stages.reduce((total, stage) => total + stage.levelCount, 0) - 1,
+      stages.reduce((total, stage) => total + stage.levelCount, 0),
     ),
     unlocks: unlocks.map((feature) => ({ ...feature, required_realm: realmId })),
   };

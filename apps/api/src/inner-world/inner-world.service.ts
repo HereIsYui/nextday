@@ -26,6 +26,7 @@ import type {
   Prisma,
 } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
+import { lockAccountForTransaction } from "../database/player-transaction";
 import { defaultEraId, provinceConfigs } from "../game/game.constants";
 import { writeJournalFromResponse } from "../journal/journal.utils";
 import { towerConfigs } from "../multiplayer/multiplayer.constants";
@@ -693,6 +694,7 @@ export class InnerWorldService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      await lockAccountForTransaction(tx, input.accountId);
       const response = await input.handler(tx);
       await tx.idempotencyRecord.create({
         data: {

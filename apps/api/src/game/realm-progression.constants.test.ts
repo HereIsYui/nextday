@@ -29,10 +29,10 @@ describe("境界总览配置", () => {
   it("每个大境界等级需求精确覆盖等级预算", () => {
     for (const config of realmProgressionConfigs) {
       const transitionCount = config.levelRequirements.length;
-      expect(transitionCount).toBe(getStageLevelCount(config.realmId) * 3 - 1);
+      expect(transitionCount).toBe(getStageLevelCount(config.realmId) * 3);
       const levelBudget = config.levelRequirements.reduce((sum, value) => sum + value, 0);
       expect(levelBudget + config.breakthroughCultivation).toBe(config.realmBudget);
-      expect(getLevelRequirement(config.realmId, 3, getStageLevelCount(config.realmId))).toBe(0n);
+      expect(getLevelRequirement(config.realmId, 3, getStageLevelCount(config.realmId))).toBeGreaterThan(0n);
     }
   });
 });

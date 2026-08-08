@@ -13,6 +13,7 @@ import type {
 } from "@nextday/shared";
 import type { EventInstance, EventRecord, Player, Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
+import { lockAccountForTransaction } from "../database/player-transaction";
 import { allocateCultivation } from "../game/cultivation-progress";
 import { defaultEraId, provinceConfigs } from "../game/game.constants";
 import { toActionState } from "../game/game.mappers";
@@ -460,6 +461,7 @@ export class EventsService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      await lockAccountForTransaction(tx, input.accountId);
       const response = await input.handler(tx);
       await tx.idempotencyRecord.create({
         data: {

@@ -1641,10 +1641,13 @@ export class ProductionService {
         throw new BadRequestException("灵石不足");
       }
 
-      await tx.playerWallet.update({
-        where: { playerId },
+      const updatedWallet = await tx.playerWallet.updateMany({
+        where: { playerId, spiritStone: { gte: spiritStone } },
         data: { spiritStone: { decrement: spiritStone } },
       });
+      if (updatedWallet.count !== 1) {
+        throw new BadRequestException("灵石不足");
+      }
       await tx.walletLog.create({
         data: {
           logId: `wallet_${randomUUID()}`,

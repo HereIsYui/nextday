@@ -82,6 +82,7 @@ model Player {
   bossChallengeRecords        WorldBossChallengeRecord[]
   sectTaskRecords             SectTaskRecord[]
   purchaseOrders              PurchaseOrder[]
+  eventEligibilities          EventEligibility[]
   monthlyCards                MonthlyCardState[]
   monthlyDrawGrants           MonthlyCardDrawGrant[]
   vipState                    PlayerVipState?
@@ -424,6 +425,7 @@ model EventInstance {
   eventInstanceId     String   @id @map("event_instance_id")
   eventId             String   @map("event_id")
   eraId               String   @default("era_mvp_001") @map("era_id")
+  cycleKey            String   @map("cycle_key")
   serverId            String   @default("default") @map("server_id")
   eventType           String   @map("event_type")
   status              String   @default("active")
@@ -439,7 +441,7 @@ model EventInstance {
   records EventRecord[]
   rewards EventRewardRecord[]
 
-  @@unique([eraId, eventId])
+  @@unique([eraId, eventId, cycleKey])
   @@index([eventId])
   @@index([eraId])
   @@index([eventType])
@@ -1145,6 +1147,11 @@ model PurchaseOrder {
   productId           String   @map("product_id")
   productType         String   @map("product_type")
   fishpiPointCost     BigInt   @map("fishpi_point_cost")
+  externalOrderId     String?  @map("external_order_id")
+  providerTransactionId String? @unique @map("provider_transaction_id")
+  entitlementSource   String   @default("fishpi") @map("entitlement_source")
+  verificationStatus  String   @default("pending") @map("verification_status")
+  verifiedAt          DateTime? @map("verified_at")
   paidJadeAmount      BigInt   @default(0) @map("paid_jade_amount")
   boundJadeAmount     BigInt   @default(0) @map("bound_jade_amount")
   status              String   @default("paid")
@@ -1162,6 +1169,24 @@ model PurchaseOrder {
   @@index([status])
   @@index([createdAt])
   @@map("purchase_order")
+}
+
+model EventEligibility {
+  eligibilityId String    @id @map("eligibility_id")
+  playerId      String    @map("player_id")
+  eventId       String    @map("event_id")
+  cycleKey      String    @map("cycle_key")
+  status        String    @default("eligible")
+  grantedBy     String?   @map("granted_by")
+  expiresAt     DateTime? @map("expires_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  player Player @relation(fields: [playerId], references: [playerId])
+
+  @@unique([playerId, eventId, cycleKey])
+  @@index([eventId, cycleKey, status])
+  @@map("event_eligibility")
 }
 
 model MonthlyCardState {
@@ -1214,6 +1239,7 @@ model PlayerVipState {
   playerId      String    @id @map("player_id")
   vipLevel      Int       @default(0) @map("vip_level")
   activeUntil   DateTime? @map("active_until")
+  lastProviderTransactionId String? @unique @map("last_provider_transaction_id")
   sourceType    String    @default("mock_fishpi") @map("source_type")
   configVersion String    @map("config_version")
   createdAt     DateTime  @default(now()) @map("created_at")

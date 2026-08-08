@@ -1138,7 +1138,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
     const state = await tx.playerActionState.findUniqueOrThrow({ where: { playerId } });
     const recoveredPoints = calculateRecoveredActionPoints(state);
 
-    if (recoveredPoints === state.actionPoints) {
+    if (recoveredPoints === state.actionPoints && recoveredPoints < state.actionPointCap) {
       return toActionState(state);
     }
 

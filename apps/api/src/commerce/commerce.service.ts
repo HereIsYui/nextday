@@ -120,6 +120,12 @@ export class CommerceService {
     const player = await this.requirePlayer(input.accountId);
     const body = normalizePurchaseMonthlyCardRequest(input.body);
     const product = monthlyCardProducts[body.card_type];
+    const verification = await this.verifyCommerceTransaction({
+      accountId: input.accountId,
+      providerTransactionId: body.provider_transaction_id,
+      developmentToken: body.development_token,
+      productId: product.product_id,
+    });
 
     return this.withIdempotency({
       accountId: input.accountId,
@@ -144,6 +150,11 @@ export class CommerceService {
             productId: product.product_id,
             productType: "monthly_card",
             fishpiPointCost: BigInt(product.fishpi_point_cost),
+            externalOrderId: verification.providerTransactionId,
+            providerTransactionId: verification.providerTransactionId,
+            entitlementSource: verification.source,
+            verificationStatus: verification.status,
+            verifiedAt: verification.verifiedAt,
             paidJadeAmount: 0n,
             boundJadeAmount: 0n,
             status: "paid",
@@ -310,6 +321,14 @@ export class CommerceService {
   }): Promise<SyncVipResponse> {
     const player = await this.requirePlayer(input.accountId);
     const body = normalizeSyncVipRequest(input.body);
+    const verification = await this.verifyCommerceTransaction({
+      accountId: input.accountId,
+      providerTransactionId: body.provider_transaction_id,
+      developmentToken: body.development_token,
+      productId: "vip_sync",
+      requestedVipLevel: body.vip_level,
+      requestedActiveDays: body.active_days,
+    });
 
     return this.withIdempotency({
       accountId: input.accountId,
@@ -317,32 +336,50 @@ export class CommerceService {
       idempotencyKey: input.idempotencyKey,
       requestBody: body,
       handler: async (tx) => {
+        const vipLevel = verification.vipLevel ?? body.vip_level;
+        const activeDays = verification.activeDays ?? body.active_days ?? 30;
+        const previousVip = await tx.playerVipState.findUnique({
+          where: { playerId: player.playerId },
+        });
+        if (
+          verification.providerTransactionId &&
+          previousVip?.lastProviderTransactionId === verification.providerTransactionId
+        ) {
+          return {
+            record_id: `vip_sync_${verification.providerTransactionId}`,
+            vip: toVipState(previousVip),
+            rewards: {},
+            wallet: await this.getWalletState(tx, player.playerId),
+          };
+        }
         const activeUntil =
-          body.vip_level > 0
-            ? new Date(Date.now() + (body.active_days ?? 30) * 24 * 60 * 60 * 1000)
+          vipLevel > 0
+            ? new Date(Date.now() + activeDays * 24 * 60 * 60 * 1000)
             : null;
         const vip = await tx.playerVipState.upsert({
           where: { playerId: player.playerId },
           create: {
             playerId: player.playerId,
-            vipLevel: body.vip_level,
+            vipLevel,
             activeUntil,
-            sourceType: "mock_fishpi",
+            lastProviderTransactionId: verification.providerTransactionId,
+            sourceType: verification.source,
             configVersion: commerceConfigVersion,
           },
           update: {
-            vipLevel: body.vip_level,
+            vipLevel,
             activeUntil,
-            sourceType: "mock_fishpi",
+            lastProviderTransactionId: verification.providerTransactionId,
+            sourceType: verification.source,
             configVersion: commerceConfigVersion,
           },
         });
-        const boundJade = BigInt(vipBoundJadeRewards[body.vip_level] ?? 0);
+        const boundJade = BigInt(vipBoundJadeRewards[vipLevel] ?? 0);
         const rewards: RewardBundle = boundJade > 0n ? { jade_bound: boundJade.toString() } : {};
         if (boundJade > 0n) {
           await this.changeWallet(tx, player.playerId, "jade_bound", boundJade, {
             sourceType: "vip_sync",
-            sourceId: `vip${body.vip_level}`,
+            sourceId: `vip${vipLevel}`,
             idempotencyKey: `${input.idempotencyKey}:bound_jade`,
           });
         }
@@ -1013,10 +1050,18 @@ export class CommerceService {
       throw new BadRequestException("没有可用的月卡古宝赠抽");
     }
 
-    return tx.monthlyCardDrawGrant.update({
-      where: { grantId: grant.grantId },
+    const consumed = await tx.monthlyCardDrawGrant.updateMany({
+      where: {
+        grantId: grant.grantId,
+        playerId,
+        usedCount: { lt: grant.drawCount },
+      },
       data: { usedCount: { increment: 1 } },
     });
+    if (consumed.count !== 1) {
+      throw new BadRequestException("月卡古宝赠抽已使用");
+    }
+    return tx.monthlyCardDrawGrant.findUniqueOrThrow({ where: { grantId: grant.grantId } });
   }
 
   private async pickAncientTreasure(tx: Tx, playerId: string, seed: string, guaranteed: boolean) {
@@ -1077,6 +1122,81 @@ export class CommerceService {
     return player;
   }
 
+  private async verifyCommerceTransaction(input: {
+    accountId: string;
+    providerTransactionId?: string;
+    developmentToken?: string;
+    productId: string;
+    requestedVipLevel?: number;
+    requestedActiveDays?: number;
+  }): Promise<{
+    providerTransactionId?: string;
+    source: string;
+    status: string;
+    verifiedAt: Date | null;
+    vipLevel?: number;
+    activeDays?: number;
+  }> {
+    if (process.env.NODE_ENV !== "production") {
+      if (process.env.COMMERCE_MOCK_ENABLED === "true") {
+        const expectedToken = process.env.COMMERCE_MOCK_TOKEN;
+        if (!expectedToken || input.developmentToken !== expectedToken) {
+          throw new ForbiddenException("商业化模拟接口需要开发令牌");
+        }
+      }
+      return {
+        providerTransactionId: input.providerTransactionId,
+        source: "mock_fishpi",
+        status: "mock_verified",
+        verifiedAt: new Date(),
+        vipLevel: input.requestedVipLevel,
+        activeDays: input.requestedActiveDays,
+      };
+    }
+
+    if (!input.providerTransactionId) {
+      throw new ForbiddenException("生产环境必须提供 FishPi 已验证订单号");
+    }
+    const verifierUrl = process.env.FISHPI_ORDER_VERIFIER_URL;
+    if (!verifierUrl) {
+      throw new ForbiddenException("生产环境尚未配置 FishPi 订单验证服务");
+    }
+    const response = await fetch(verifierUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        account_id: input.accountId,
+        provider_transaction_id: input.providerTransactionId,
+        product_id: input.productId,
+      }),
+    });
+    if (!response.ok) {
+      throw new ForbiddenException("FishPi 订单验证失败");
+    }
+    const payload = (await response.json()) as {
+      verified?: boolean;
+      provider_transaction_id?: string;
+      vip_level?: number;
+      active_days?: number;
+      product_id?: string;
+    };
+    if (
+      payload.verified !== true ||
+      payload.provider_transaction_id !== input.providerTransactionId ||
+      (payload.product_id && payload.product_id !== input.productId)
+    ) {
+      throw new ForbiddenException("FishPi 订单未验证或商品不匹配");
+    }
+    return {
+      providerTransactionId: payload.provider_transaction_id,
+      source: "fishpi_verified",
+      status: "verified",
+      verifiedAt: new Date(),
+      vipLevel: payload.vip_level,
+      activeDays: payload.active_days,
+    };
+  }
+
   private async getWalletState(tx: DbClient, playerId: string) {
     const wallet = await tx.playerWallet.findUniqueOrThrow({ where: { playerId } });
     return {
@@ -1102,13 +1222,19 @@ export class CommerceService {
     if (afterAmount < 0n) {
       throw new BadRequestException(currencyType === "jade_paid" ? "仙玉不足" : "绑定仙玉不足");
     }
-    await tx.playerWallet.update({
-      where: { playerId },
-      data:
-        currencyType === "jade_paid"
-          ? { jadePaid: { increment: amount } }
-          : { jadeBound: { increment: amount } },
-    });
+    const updated =
+      currencyType === "jade_paid"
+        ? await tx.playerWallet.updateMany({
+            where: { playerId, jadePaid: amount < 0n ? { gte: -amount } : undefined },
+            data: { jadePaid: { increment: amount } },
+          })
+        : await tx.playerWallet.updateMany({
+            where: { playerId, jadeBound: amount < 0n ? { gte: -amount } : undefined },
+            data: { jadeBound: { increment: amount } },
+          });
+    if (updated.count !== 1) {
+      throw new BadRequestException(currencyType === "jade_paid" ? "仙玉不足" : "绑定仙玉不足");
+    }
     await tx.walletLog.create({
       data: {
         logId: `wallet_${randomUUID()}`,
@@ -1260,7 +1386,11 @@ function normalizePurchaseMonthlyCardRequest(
     throw new BadRequestException("请选择有效月卡");
   }
 
-  return { card_type: body.card_type };
+  return {
+    card_type: body.card_type,
+    provider_transaction_id: body.provider_transaction_id?.trim() || undefined,
+    development_token: body.development_token?.trim() || undefined,
+  };
 }
 
 function normalizeClaimMonthlyDailyRequest(
@@ -1273,7 +1403,9 @@ function normalizeClaimMonthlyDailyRequest(
   return { card_type: body.card_type };
 }
 
-function normalizeSyncVipRequest(body: SyncVipRequest): Required<SyncVipRequest> {
+function normalizeSyncVipRequest(
+  body: SyncVipRequest,
+): SyncVipRequest & { active_days: number } {
   const vipLevel = Math.floor(Number(body?.vip_level ?? 0));
   const activeDays = Math.floor(Number(body?.active_days ?? 30));
   if (!Number.isFinite(vipLevel) || vipLevel < 0 || vipLevel > 4) {
@@ -1283,7 +1415,12 @@ function normalizeSyncVipRequest(body: SyncVipRequest): Required<SyncVipRequest>
     throw new BadRequestException("VIP 有效天数需为 1-366");
   }
 
-  return { vip_level: vipLevel as 0 | 1 | 2 | 3 | 4, active_days: activeDays };
+  return {
+    vip_level: vipLevel as 0 | 1 | 2 | 3 | 4,
+    active_days: activeDays,
+    provider_transaction_id: body?.provider_transaction_id?.trim() || undefined,
+    development_token: body?.development_token?.trim() || undefined,
+  };
 }
 
 function normalizeGachaDrawRequest(body: GachaDrawRequest): GachaDrawRequest {

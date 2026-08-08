@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { BadRequestException, Inject, Injectable } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Inject, Injectable } from "@nestjs/common";
 import type {
   ActionState,
   ActivityDetailResponse,
@@ -116,6 +116,7 @@ export class EventsService {
       requestBody: body,
       handler: async (tx) => {
         const { config, instance } = await this.getEventContext(body.event_id, tx);
+        await this.assertEventEligibility(tx, player.playerId, config.eventType, instance.cycleKey);
         assertActiveEvent(instance);
         const count = Math.min(body.count ?? 1, config.countLimit);
         const existing = await tx.eventRecord.findUnique({
@@ -218,6 +219,7 @@ export class EventsService {
       requestBody: body,
       handler: async (tx) => {
         const { config, instance } = await this.getEventContext(body.event_id, tx);
+        await this.assertEventEligibility(tx, player.playerId, config.eventType, instance.cycleKey);
         const record = await tx.eventRecord.findUnique({
           where: {
             eventInstanceId_playerId_periodKey: {
@@ -229,6 +231,14 @@ export class EventsService {
         });
         if (!record || record.rewardState !== "claimable") {
           throw new BadRequestException("活动奖励暂不可领取");
+        }
+
+        const claimed = await tx.eventRecord.updateMany({
+          where: { eventRecordId: record.eventRecordId, rewardState: "claimable" },
+          data: { rewardState: "claimed" },
+        });
+        if (claimed.count !== 1) {
+          throw new BadRequestException("活动奖励已领取");
         }
 
         rejectForbiddenEventRewards(config.reward);
@@ -249,9 +259,8 @@ export class EventsService {
             claimedAt: new Date(),
           },
         });
-        const updatedRecord = await tx.eventRecord.update({
+        const updatedRecord = await tx.eventRecord.findUniqueOrThrow({
           where: { eventRecordId: record.eventRecordId },
-          data: { rewardState: "claimed" },
         });
 
         return {
@@ -280,7 +289,13 @@ export class EventsService {
     }
     await this.ensureEventInstances(tx);
     const instance = await tx.eventInstance.findUnique({
-      where: { eraId_eventId: { eraId: defaultEraId, eventId: config.eventId } },
+      where: {
+        eraId_eventId_cycleKey: {
+          eraId: defaultEraId,
+          eventId: config.eventId,
+          cycleKey: getCurrentCycleKey(),
+        },
+      },
     });
     if (!instance) {
       throw new BadRequestException("活动实例尚未开启");
@@ -291,18 +306,35 @@ export class EventsService {
 
   private async ensureEventInstances(tx: DbClient = this.prisma): Promise<EventInstance[]> {
     const now = new Date();
-    const startsAt = new Date(now.getTime() - 60 * 60 * 1000);
-    const endsAt = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+    const cycleKey = getCurrentCycleKey(now);
+    const startsAt = getCycleStart(cycleKey);
+    const endsAt = new Date(startsAt.getTime() + eventCycleMilliseconds);
     const settlementAt = new Date(endsAt.getTime() + 24 * 60 * 60 * 1000);
     const instances: EventInstance[] = [];
 
     for (const config of eventTemplateConfigs) {
+      await tx.eventInstance.updateMany({
+        where: {
+          eraId: defaultEraId,
+          eventId: config.eventId,
+          cycleKey: { not: cycleKey },
+          status: "active",
+        },
+        data: { status: "settled" },
+      });
       const instance = await tx.eventInstance.upsert({
-        where: { eraId_eventId: { eraId: defaultEraId, eventId: config.eventId } },
+        where: {
+          eraId_eventId_cycleKey: {
+            eraId: defaultEraId,
+            eventId: config.eventId,
+            cycleKey,
+          },
+        },
         create: {
           eventInstanceId: `event_instance_${randomUUID()}`,
           eventId: config.eventId,
           eraId: defaultEraId,
+          cycleKey,
           serverId: "default",
           eventType: config.eventType,
           status: "active",
@@ -317,9 +349,6 @@ export class EventsService {
           eventType: config.eventType,
           status: "active",
           asyncEnabled: true,
-          startsAt,
-          endsAt,
-          settlementAt,
           eventConfigVersion: eventConfigVersion,
           rewardConfigVersion: eventRewardConfigVersion,
         },
@@ -328,6 +357,32 @@ export class EventsService {
     }
 
     return instances;
+  }
+
+  private async assertEventEligibility(
+    tx: DbClient,
+    playerId: string,
+    eventType: string,
+    cycleKey: string,
+  ): Promise<void> {
+    if (eventType !== "return_support" && eventType !== "compensation") {
+      return;
+    }
+
+    const eventId = eventTemplateConfigs.find((config) => config.eventType === eventType)?.eventId;
+    if (!eventId) {
+      throw new ForbiddenException("活动资格不存在");
+    }
+    const eligibility = await tx.eventEligibility.findUnique({
+      where: { playerId_eventId_cycleKey: { playerId, eventId, cycleKey } },
+    });
+    if (
+      !eligibility ||
+      eligibility.status !== "eligible" ||
+      (eligibility.expiresAt && eligibility.expiresAt.getTime() <= Date.now())
+    ) {
+      throw new ForbiddenException("当前账号暂无该活动资格");
+    }
   }
 
   private async consumeActionPoints(
@@ -555,7 +610,23 @@ function rejectForbiddenEventRewards(rewards: RewardBundle) {
 }
 
 function getEventPeriodKey(instance: EventInstance): string {
-  return `${instance.eraId}:${instance.eventId}`;
+  return instance.cycleKey;
+}
+
+const eventCycleMilliseconds = 14 * 24 * 60 * 60 * 1000;
+const eventCycleEpochMilliseconds = Date.parse("2026-01-01T00:00:00.000Z");
+
+function getCurrentCycleKey(now = new Date()): string {
+  const cycle = Math.max(
+    0,
+    Math.floor((now.getTime() - eventCycleEpochMilliseconds) / eventCycleMilliseconds),
+  );
+  return `cycle_${String(cycle).padStart(6, "0")}`;
+}
+
+function getCycleStart(cycleKey: string): Date {
+  const cycle = Number(cycleKey.replace("cycle_", ""));
+  return new Date(eventCycleEpochMilliseconds + cycle * eventCycleMilliseconds);
 }
 
 function calculateRecoveredActionPoints(state: {

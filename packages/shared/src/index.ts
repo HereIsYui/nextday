@@ -1832,6 +1832,8 @@ export interface MonthlyCardDrawGrantState {
 
 export interface PurchaseMonthlyCardRequest {
   card_type: MonthlyCardType;
+  provider_transaction_id?: string;
+  development_token?: string;
 }
 
 export interface PurchaseMonthlyCardResponse {
@@ -1863,6 +1865,8 @@ export interface VipStateSummary {
 export interface SyncVipRequest {
   vip_level: 0 | 1 | 2 | 3 | 4;
   active_days?: number;
+  provider_transaction_id?: string;
+  development_token?: string;
 }
 
 export interface SyncVipResponse {

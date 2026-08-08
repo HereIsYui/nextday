@@ -43,7 +43,7 @@ import { toAppearanceState } from "../commerce/commerce.mappers";
 import { PrismaService } from "../database/prisma.service";
 import { lockAccountForTransaction } from "../database/player-transaction";
 import { factionUnlockChapter, factionUnlockRealm } from "../factions/factions.constants";
-import { allocateCultivation } from "../game/cultivation-progress";
+import { allocateCultivation, calculateCultivationPower } from "../game/cultivation-progress";
 import { defaultEraId, maxOfflineCultivationHours } from "../game/game.constants";
 import { toActionState } from "../game/game.mappers";
 import { incrementPlayerTasks } from "../game/task-progress.utils";
@@ -1670,7 +1670,12 @@ export class MultiplayerService implements OnModuleInit, OnModuleDestroy {
       0,
     );
 
-    return player.currentRealm * 120 + player.currentLevel * 45 + Math.floor(affixPower / 4);
+    return calculateCultivationPower(
+      player.currentRealm,
+      player.currentStage,
+      player.currentLevel,
+      Math.floor(affixPower / 4),
+    );
   }
 
   private async consumeSpiritStone(
@@ -1683,10 +1688,13 @@ export class MultiplayerService implements OnModuleInit, OnModuleDestroy {
     if (wallet.spiritStone < amount) {
       throw new BadRequestException("灵石不足");
     }
-    await tx.playerWallet.update({
-      where: { playerId },
+    const updatedWallet = await tx.playerWallet.updateMany({
+      where: { playerId, spiritStone: { gte: amount } },
       data: { spiritStone: { decrement: amount } },
     });
+    if (updatedWallet.count !== 1) {
+      throw new BadRequestException("灵石不足");
+    }
     await tx.walletLog.create({
       data: {
         logId: `wallet_${randomUUID()}`,

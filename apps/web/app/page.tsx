@@ -2,6 +2,8 @@
 
 import { GameClient } from "@nextday/game-client";
 import type {
+  ActivityListResponse,
+  AncientTreasureListResponse,
   ApiResponse,
   BagItemState,
   BagSummaryResponse,
@@ -10,14 +12,21 @@ import type {
   FactionRoutesResponse,
   GameOverviewResponse,
   HealthStatus,
+  InnerWorldSummaryResponse,
   LoginResponse,
   PlayerProfileResponse,
   ProductionCraftMaterialState,
   ProductionFormulaKind,
   ProvinceSummary,
+  RankListResponse,
+  RankType,
   RealmProgressionResponse,
+  SectDetailResponse,
+  SectListResponse,
   StoryScrollDetailState,
   StoryScrollListResponse,
+  TowerListResponse,
+  WorldBossResponse,
   WorldChatMessageState,
 } from "@nextday/shared";
 import {
@@ -72,6 +81,16 @@ type OverlayView =
   | "feature"
   | "production";
 type LeftPanelView = "brief" | "bag";
+type FeatureKind = "activity" | "inner_world" | "sect" | "boss" | "rank" | "ancient" | "tower";
+
+type FeatureData =
+  | { kind: "activity"; data: ActivityListResponse }
+  | { kind: "inner_world"; data: InnerWorldSummaryResponse }
+  | { kind: "sect"; data: { detail: SectDetailResponse; list: SectListResponse | null } }
+  | { kind: "boss"; data: WorldBossResponse }
+  | { kind: "rank"; data: RankListResponse }
+  | { kind: "ancient"; data: AncientTreasureListResponse }
+  | { kind: "tower"; data: TowerListResponse };
 
 interface ItemDetail {
   name: string;
@@ -150,6 +169,20 @@ const corePlayCommands: CommandAction[] = [
   { label: "炼器", command: "炼器" },
   { label: "九塔", command: "九塔" },
 ];
+
+function featureKindFromCommand(command: string): FeatureKind | null {
+  return (
+    ({
+      活动: "activity",
+      内天地: "inner_world",
+      宗门: "sect",
+      Boss: "boss",
+      排行: "rank",
+      古宝: "ancient",
+      九塔: "tower",
+    }[command] as FeatureKind | undefined) ?? null
+  );
+}
 
 const fallbackHelpGroups: CommandHelpGroup[] = [
   {
@@ -252,8 +285,12 @@ export default function HomePage() {
   const [currentExplore, setCurrentExplore] = useState<ExploreResponse | null>(null);
   const [activeOverlay, setActiveOverlay] = useState<OverlayView | null>(null);
   const [featureCommand, setFeatureCommand] = useState<CommandAction | null>(null);
-  const [featureEntries, setFeatureEntries] = useState<TerminalEntry[]>([]);
-  const [featureSuggestions, setFeatureSuggestions] = useState<CommandAction[]>([]);
+  const [featureKind, setFeatureKind] = useState<FeatureKind | null>(null);
+  const [featureData, setFeatureData] = useState<FeatureData | null>(null);
+  const [featureMessage, setFeatureMessage] = useState<string | null>(null);
+  const [featureRankType, setFeatureRankType] = useState<RankType>("personal");
+  const [innerDispatchCreature, setInnerDispatchCreature] = useState("");
+  const [innerDispatchProvince, setInnerDispatchProvince] = useState("");
   const [featureLoading, setFeatureLoading] = useState(false);
   const [productionKind, setProductionKind] = useState<ProductionFormulaKind | null>(null);
   const [productionMaterials, setProductionMaterials] = useState<ProductionCraftMaterialState[]>(
@@ -963,46 +1000,191 @@ export default function HomePage() {
     [cultivation, overview?.action_state, player, progress, readableStoryScrolls.length, wallet],
   );
 
-  async function runFeatureCommand(action: CommandAction, replace = true) {
+  async function loadFeature(
+    kind: FeatureKind,
+    notice?: string,
+    rankType: RankType = featureRankType,
+  ) {
     if (!token || busy || hydrating) {
       return;
     }
 
-    setFeatureLoading(true);
+    setFeatureKind(kind);
     setActiveOverlay("feature");
-    setFeatureCommand((current) => current ?? action);
+    setFeatureData(null);
+    setFeatureMessage(notice ?? null);
+    setFeatureLoading(true);
     try {
-      const response = await createCommandClient(token).executeCommand(
-        { command: action.command },
-        createIdempotencyKey("web_feature"),
-      );
-      const data = readResponse(response);
-      const entries =
-        data.command_id === "task_list"
-          ? [taskTerminalEntry(taskItemsFromResult(data.state?.result))]
-          : normalizeCommandEntries(data.entries);
-      setFeatureEntries(
-        replace
-          ? entries.length > 0
-            ? entries
-            : [terminalEntry("system", "九州传音", ["当前没有可显示的内容。"])]
-          : (current) => [...current, ...entries],
-      );
-      setFeatureSuggestions(commandSuggestionsFromState(data.state, []));
-      applyCommandState(data.state, { setOverview, setProfile, setScrolls });
-      await Promise.all([
-        refreshDashboard(token, true).catch(() => undefined),
-        data.command_id === "bag" || data.command_id === "pill_use"
-          ? refreshBag(token)
-          : Promise.resolve(),
-      ]);
+      const client = createClient(token);
+      switch (kind) {
+        case "activity":
+          setFeatureData({ kind, data: readResponse(await client.activityList()) });
+          break;
+        case "inner_world": {
+          const data = readResponse(await client.innerWorldSummary());
+          setInnerDispatchCreature((current) => current || data.creatures[0]?.creature_id || "");
+          setInnerDispatchProvince(
+            (current) =>
+              current ||
+              overview?.provinces.find((province) => province.unlocked)?.province_id ||
+              "",
+          );
+          setFeatureData({ kind, data });
+          break;
+        }
+        case "sect": {
+          const detail = readResponse(await client.mySect());
+          const list = detail.sect ? null : readResponse(await client.sects());
+          setFeatureData({ kind, data: { detail, list } });
+          break;
+        }
+        case "boss":
+          setFeatureData({ kind, data: readResponse(await client.worldBoss()) });
+          break;
+        case "rank":
+          setFeatureRankType(rankType);
+          setFeatureData({ kind, data: readResponse(await client.ranks(rankType)) });
+          break;
+        case "ancient":
+          setFeatureData({ kind, data: readResponse(await client.ancientTreasures()) });
+          break;
+        case "tower":
+          setFeatureData({ kind, data: readResponse(await client.towers()) });
+          break;
+      }
     } catch (error) {
-      const detail = messageFromError(error);
-      setFeatureEntries([terminalEntry("error", "功能暂不可用", [detail])]);
-      setSessionError(detail);
+      setFeatureMessage(`读取失败：${messageFromError(error)}`);
+      setSessionError(messageFromError(error));
     } finally {
       setFeatureLoading(false);
     }
+  }
+
+  async function runFeatureMutation(
+    operation: () => Promise<unknown>,
+    notice: string,
+    kind = featureKind,
+  ) {
+    if (!token || !kind || busy || hydrating || featureLoading) {
+      return;
+    }
+    setFeatureLoading(true);
+    try {
+      await operation();
+      await loadFeature(kind, notice, kind === "rank" ? featureRankType : undefined);
+      await refreshDashboard(token, true);
+    } catch (error) {
+      setFeatureMessage(`操作未完成：${messageFromError(error)}`);
+    } finally {
+      setFeatureLoading(false);
+    }
+  }
+
+  function openFeatureDialog(action: CommandAction) {
+    const kind = featureKindFromCommand(action.command);
+    if (!kind) {
+      return;
+    }
+    setFeatureCommand(action);
+    void loadFeature(kind);
+  }
+
+  function participateActivity(eventId: string) {
+    if (!token) return;
+    void runFeatureMutation(
+      () =>
+        createClient(token).submitActivityProgress(
+          {
+            event_id: eventId,
+            count: 1,
+            province_id: activeLongAction?.province_id ?? undefined,
+          },
+          createIdempotencyKey("web_activity_progress"),
+        ),
+      "活动进度已更新",
+      "activity",
+    );
+  }
+
+  function claimActivity(eventId: string) {
+    if (!token) return;
+    void runFeatureMutation(
+      () =>
+        createClient(token).claimActivityReward(
+          { event_id: eventId },
+          createIdempotencyKey("web_activity_claim"),
+        ),
+      "活动奖励已领取",
+      "activity",
+    );
+  }
+
+  function claimInnerWorld(assignmentId: string) {
+    if (!token) return;
+    void runFeatureMutation(
+      () =>
+        createClient(token).innerWorldClaim(
+          { assignment_id: assignmentId },
+          createIdempotencyKey("web_inner_world_claim"),
+        ),
+      "内天地收益已领取",
+      "inner_world",
+    );
+  }
+
+  function dispatchInnerWorld() {
+    if (!token || !innerDispatchProvince) {
+      setFeatureMessage("请先选择派驻州域。");
+      return;
+    }
+    void runFeatureMutation(
+      () =>
+        createClient(token).innerWorldDispatch(
+          {
+            province_id: innerDispatchProvince,
+            ...(innerDispatchCreature ? { creature_id: innerDispatchCreature } : {}),
+          },
+          createIdempotencyKey("web_inner_world_dispatch"),
+        ),
+      "已派驻内天地生灵",
+      "inner_world",
+    );
+  }
+
+  function joinSect(sectId: string) {
+    if (!token) return;
+    void runFeatureMutation(
+      () =>
+        createClient(token).joinSect({ sect_id: sectId }, createIdempotencyKey("web_sect_join")),
+      "已加入宗门",
+      "sect",
+    );
+  }
+
+  function challengeWorldBoss(bossId: string) {
+    if (!token) return;
+    void runFeatureMutation(
+      () =>
+        createClient(token).challengeBoss(
+          { boss_id: bossId },
+          createIdempotencyKey("web_boss_challenge"),
+        ),
+      "世界 Boss 挑战已结算",
+      "boss",
+    );
+  }
+
+  function actOnTower(towerId: string, actionType: "seal" | "break" | "supply" | "guard") {
+    if (!token) return;
+    void runFeatureMutation(
+      () =>
+        createClient(token).towerAction(
+          { tower_id: towerId, action_type: actionType, count: 1 },
+          createIdempotencyKey("web_tower_action"),
+        ),
+      "九塔行动已结算",
+      "tower",
+    );
   }
 
   async function openProductionDialog(kind: ProductionFormulaKind) {
@@ -1393,8 +1575,9 @@ export default function HomePage() {
     setCurrentExplore(null);
     setActiveOverlay(null);
     setFeatureCommand(null);
-    setFeatureEntries([]);
-    setFeatureSuggestions([]);
+    setFeatureKind(null);
+    setFeatureData(null);
+    setFeatureMessage(null);
     setProductionKind(null);
     setProductionMaterials([]);
     setSelectedProductionMaterials({});
@@ -2108,7 +2291,19 @@ export default function HomePage() {
                       : activeOverlay === "tools"
                         ? "常用功能"
                         : activeOverlay === "feature"
-                          ? "玩法状态"
+                          ? featureKind === "activity"
+                            ? "活动中心"
+                            : featureKind === "inner_world"
+                              ? "内天地"
+                              : featureKind === "sect"
+                                ? "宗门事务"
+                                : featureKind === "boss"
+                                  ? "世界 Boss"
+                                  : featureKind === "rank"
+                                    ? "九州榜单"
+                                    : featureKind === "ancient"
+                                      ? "古宝收藏"
+                                      : "九塔行动"
                           : activeOverlay === "production"
                             ? "材料选择"
                             : activeOverlay === "faction"
@@ -2119,7 +2314,7 @@ export default function HomePage() {
               {activeOverlay === "tools" ? (
                 <section className="utility-hub" aria-label="常用功能">
                   <p className="empty-copy">
-                    低频功能与核心玩法集中在这里，常用修行操作仍可在输入框下方直接执行。
+                    点击玩法后会打开独立操作面板；文字指令仍保留在下方输入框中。
                   </p>
                   <div className="utility-hub-grid">
                     {[
@@ -2161,10 +2356,7 @@ export default function HomePage() {
                             } else if (item.command === "炼器") {
                               void openProductionDialog("forge");
                             } else {
-                              setFeatureCommand(item);
-                              setFeatureEntries([]);
-                              setFeatureSuggestions([]);
-                              void runFeatureCommand(item);
+                              openFeatureDialog(item);
                             }
                           }}
                           type="button"
@@ -2179,59 +2371,383 @@ export default function HomePage() {
 
               {activeOverlay === "feature" ? (
                 <section
-                  className="feature-dialog"
+                  className={`feature-dialog feature-dialog-${featureKind ?? "unknown"}`}
                   aria-label={`${featureCommand?.label ?? "玩法"}内容`}
                 >
-                  {featureLoading && featureEntries.length === 0 ? (
+                  {featureLoading && !featureData ? (
                     <p className="empty-copy">正在读取玩法状态…</p>
                   ) : null}
-                  <div className="feature-result-list">
-                    {featureEntries.map((entry) => (
-                      <article className={`terminal-entry terminal-${entry.tone}`} key={entry.id}>
-                        {entry.title ? <strong>{entry.title}</strong> : null}
-                        {entry.tasks ? (
-                          <div className="terminal-task-list">
-                            {entry.tasks.map((task) => (
-                              <div className="terminal-task-row" key={`${entry.id}_${task.taskId}`}>
-                                <p>{formatTaskItem(task)}</p>
-                                {task.status === "completed" ? (
-                                  <button
-                                    className="terminal-task-claim"
-                                    disabled={featureLoading || busy || hydrating}
-                                    onClick={() =>
-                                      void runFeatureCommand({
-                                        command: `领取任务 ${task.taskId}`,
-                                        label: `领取任务“${task.title}”`,
-                                      })
-                                    }
-                                    type="button"
-                                  >
-                                    领取
-                                  </button>
-                                ) : null}
-                              </div>
-                            ))}
+                  {featureMessage ? (
+                    <output className="feature-message">{featureMessage}</output>
+                  ) : null}
+
+                  {featureKind === "activity" && featureData?.kind === "activity" ? (
+                    <div className="feature-card-grid">
+                      {featureData.data.events.map((event) => (
+                        <article className="feature-card" key={event.event_id}>
+                          <div className="feature-card-heading">
+                            <div>
+                              <span className="feature-card-kicker">{event.status}</span>
+                              <h3>{event.name}</h3>
+                            </div>
+                            <strong>{event.claimable ? "可领取" : "进行中"}</strong>
                           </div>
-                        ) : (
-                          entry.lines.map((line, index) => (
-                            <p key={`${entry.id}_${index}`}>{line}</p>
-                          ))
-                        )}
-                      </article>
-                    ))}
-                  </div>
-                  {featureSuggestions.length > 0 ? (
-                    <div className="feature-suggestion-list" aria-label="相关操作">
-                      <span>相关操作</span>
-                      {featureSuggestions.map((suggestion) => (
+                          <p>{event.description}</p>
+                          <div className="feature-progress">
+                            <div>
+                              <span>活动进度</span>
+                              <strong>
+                                {event.progress} / {event.target_progress}
+                              </strong>
+                            </div>
+                            <div className="feature-progress-track">
+                              <span
+                                style={{
+                                  width: `${Math.min(100, (event.progress / Math.max(1, event.target_progress)) * 100)}%`,
+                                }}
+                              />
+                            </div>
+                          </div>
+                          <div className="feature-card-actions">
+                            <button
+                              disabled={
+                                featureLoading || busy || hydrating || event.status !== "active"
+                              }
+                              onClick={() => participateActivity(event.event_id)}
+                              type="button"
+                            >
+                              {event.action_label || "参与一次"}
+                            </button>
+                            {event.claimable ? (
+                              <button
+                                disabled={featureLoading || busy || hydrating}
+                                onClick={() => claimActivity(event.event_id)}
+                                type="button"
+                              >
+                                领取奖励
+                              </button>
+                            ) : null}
+                          </div>
+                        </article>
+                      ))}
+                      {featureData.data.events.length === 0 ? (
+                        <p className="empty-copy">当前周期暂无活动。</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {featureKind === "inner_world" && featureData?.kind === "inner_world" ? (
+                    <div className="feature-stack">
+                      <div className="feature-stat-grid">
+                        <FeatureStat
+                          label="天地等级"
+                          value={`Lv.${featureData.data.state.world_level}`}
+                        />
+                        <FeatureStat
+                          label="法则经验"
+                          value={`${featureData.data.state.law_exp} / ${featureData.data.state.next_law_exp_required}`}
+                        />
+                        <FeatureStat
+                          label="派驻中"
+                          value={`${featureData.data.state.active_assignment_count} / ${featureData.data.state.assignment_limit}`}
+                        />
+                        <FeatureStat
+                          label="今日支援"
+                          value={`${featureData.data.state.support_count_today} / ${featureData.data.state.support_limit_daily}`}
+                        />
+                      </div>
+                      <div className="feature-subsection">
+                        <div className="feature-subsection-heading">
+                          <h3>派驻生灵</h3>
+                          <span>选择州域后即可出发</span>
+                        </div>
+                        <div className="feature-inline-form">
+                          <select
+                            aria-label="派驻生灵"
+                            value={innerDispatchCreature}
+                            onChange={(event) => setInnerDispatchCreature(event.target.value)}
+                          >
+                            <option value="">自动选择</option>
+                            {featureData.data.creatures
+                              .filter((creature) => creature.status === "idle")
+                              .map((creature) => (
+                                <option key={creature.creature_id} value={creature.creature_id}>
+                                  {creature.name} · Lv.{creature.level}
+                                </option>
+                              ))}
+                          </select>
+                          <select
+                            aria-label="派驻州域"
+                            value={innerDispatchProvince}
+                            onChange={(event) => setInnerDispatchProvince(event.target.value)}
+                          >
+                            <option value="">选择州域</option>
+                            {(overview?.provinces ?? [])
+                              .filter((province) => province.unlocked)
+                              .map((province) => (
+                                <option key={province.province_id} value={province.province_id}>
+                                  {province.name}
+                                </option>
+                              ))}
+                          </select>
+                          <button
+                            disabled={featureLoading || busy || hydrating || !innerDispatchProvince}
+                            onClick={dispatchInnerWorld}
+                            type="button"
+                          >
+                            派驻
+                          </button>
+                        </div>
+                      </div>
+                      <div className="feature-subsection">
+                        <div className="feature-subsection-heading">
+                          <h3>当前派驻</h3>
+                          <span>{featureData.data.assignments.length} 条记录</span>
+                        </div>
+                        <div className="feature-card-grid">
+                          {featureData.data.assignments.map((assignment) => (
+                            <article
+                              className="feature-card feature-card-compact"
+                              key={assignment.assignment_id}
+                            >
+                              <div className="feature-card-heading">
+                                <h3>{assignment.creature_name}</h3>
+                                <strong>
+                                  {assignment.status === "claimable" ? "可领取" : assignment.status}
+                                </strong>
+                              </div>
+                              <p>
+                                {assignment.province_name} ·{" "}
+                                {formatDuration(assignment.remaining_seconds)}
+                              </p>
+                              {assignment.status === "claimable" ? (
+                                <button
+                                  disabled={featureLoading || busy || hydrating}
+                                  onClick={() => claimInnerWorld(assignment.assignment_id)}
+                                  type="button"
+                                >
+                                  收取收益
+                                </button>
+                              ) : null}
+                            </article>
+                          ))}
+                          {featureData.data.assignments.length === 0 ? (
+                            <p className="empty-copy">尚无派驻记录。</p>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {featureKind === "sect" && featureData?.kind === "sect" ? (
+                    <div className="feature-stack">
+                      {featureData.data.detail.sect ? (
+                        <>
+                          <div className="feature-hero-card">
+                            <div>
+                              <span className="feature-card-kicker">
+                                {featureData.data.detail.sect.alignment}
+                              </span>
+                              <h3>{featureData.data.detail.sect.name}</h3>
+                            </div>
+                            <strong>Lv.{featureData.data.detail.sect.level}</strong>
+                            <p>
+                              成员 {featureData.data.detail.sect.member_count} /{" "}
+                              {featureData.data.detail.sect.member_limit} · 贡献{" "}
+                              {featureData.data.detail.sect.my_contribution_total}
+                            </p>
+                          </div>
+                          <div className="feature-subsection">
+                            <div className="feature-subsection-heading">
+                              <h3>宗门成员</h3>
+                              <span>{featureData.data.detail.members.length} 人</span>
+                            </div>
+                            <div className="feature-list">
+                              {featureData.data.detail.members.map((member) => (
+                                <div className="feature-list-row" key={member.player_id}>
+                                  <strong>{member.name}</strong>
+                                  <span>{member.role}</span>
+                                  <small>贡献 {member.contribution_total}</small>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="feature-card-grid">
+                          {(featureData.data.list?.sects ?? []).map((sect) => (
+                            <article className="feature-card" key={sect.sect_id}>
+                              <div className="feature-card-heading">
+                                <h3>{sect.name}</h3>
+                                <strong>Lv.{sect.level}</strong>
+                              </div>
+                              <p>
+                                {sect.alignment} · 成员 {sect.member_count}/{sect.member_limit}
+                              </p>
+                              <button
+                                disabled={featureLoading || busy || hydrating}
+                                onClick={() => joinSect(sect.sect_id)}
+                                type="button"
+                              >
+                                加入宗门
+                              </button>
+                            </article>
+                          ))}
+                          {(featureData.data.list?.sects ?? []).length === 0 ? (
+                            <p className="empty-copy">当前没有可加入的宗门。</p>
+                          ) : null}
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+
+                  {featureKind === "boss" && featureData?.kind === "boss" ? (
+                    <div className="feature-stack">
+                      <div className="feature-hero-card feature-boss-card">
+                        <div>
+                          <span className="feature-card-kicker">
+                            第 {featureData.data.boss.phase} 阶段
+                          </span>
+                          <h3>{featureData.data.boss.name}</h3>
+                        </div>
+                        <strong>{featureData.data.boss.remaining_hp.toLocaleString()} HP</strong>
+                        <div className="feature-progress-track">
+                          <span
+                            style={{
+                              width: `${Math.max(0, Math.min(100, (featureData.data.boss.remaining_hp / Math.max(1, featureData.data.boss.total_hp)) * 100))}%`,
+                            }}
+                          />
+                        </div>
+                        <p>全服击破次数：{featureData.data.boss.defeated_count}</p>
                         <button
-                          disabled={featureLoading || busy || hydrating}
-                          key={suggestion.command}
-                          onClick={() => void runFeatureCommand(suggestion)}
+                          disabled={
+                            featureLoading ||
+                            busy ||
+                            hydrating ||
+                            featureData.data.boss.remaining_hp <= 0
+                          }
+                          onClick={() => challengeWorldBoss(featureData.data.boss.boss_id)}
                           type="button"
                         >
-                          {suggestion.label}
+                          挑战 Boss
                         </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {featureKind === "rank" && featureData?.kind === "rank" ? (
+                    <div className="feature-stack">
+                      <div className="feature-inline-form feature-rank-toolbar">
+                        <select
+                          aria-label="排行榜类型"
+                          value={featureRankType}
+                          onChange={(event) =>
+                            void loadFeature("rank", undefined, event.target.value as RankType)
+                          }
+                        >
+                          <option value="personal">个人排行</option>
+                          <option value="sect">宗门排行</option>
+                          <option value="tower_week">九塔周榜</option>
+                          <option value="production">炼制排行</option>
+                          <option value="inner_world">内天地榜</option>
+                          <option value="era">纪元排行</option>
+                          <option value="faction">阵营排行</option>
+                        </select>
+                        <span>周期：{featureData.data.period_key}</span>
+                      </div>
+                      <div className="feature-list feature-rank-list">
+                        {featureData.data.entries.map((entry) => (
+                          <div
+                            className="feature-list-row"
+                            key={`${entry.target_id}_${entry.rank_no}`}
+                          >
+                            <strong>
+                              #{entry.rank_no} {entry.display_name}
+                            </strong>
+                            <span>{entry.score}</span>
+                            <small>{entry.risk_note ?? "正常记录"}</small>
+                          </div>
+                        ))}
+                        {featureData.data.entries.length === 0 ? (
+                          <p className="empty-copy">当前周期暂无排行数据。</p>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {featureKind === "ancient" && featureData?.kind === "ancient" ? (
+                    <div className="feature-card-grid feature-treasure-grid">
+                      {featureData.data.treasures.map((treasure) => (
+                        <article
+                          className={`feature-card feature-treasure-card${treasure.owned ? " feature-treasure-owned" : ""}`}
+                          key={treasure.treasure_id}
+                        >
+                          <div className="feature-card-heading">
+                            <h3>{treasure.name}</h3>
+                            <strong>{treasure.owned ? "已拥有" : "未解锁"}</strong>
+                          </div>
+                          <p>
+                            星级 {treasure.star_level} · 残页 {treasure.fragment_count} · 灵魄{" "}
+                            {treasure.soul_count}
+                          </p>
+                        </article>
+                      ))}
+                      {featureData.data.treasures.length === 0 ? (
+                        <p className="empty-copy">尚未发现古宝记录。</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {featureKind === "tower" && featureData?.kind === "tower" ? (
+                    <div className="feature-card-grid feature-tower-grid">
+                      {featureData.data.towers.map((tower) => (
+                        <article className="feature-card" key={tower.tower_id}>
+                          <div className="feature-card-heading">
+                            <div>
+                              <span className="feature-card-kicker">第 {tower.phase} 阶段</span>
+                              <h3>{tower.tower_name}</h3>
+                            </div>
+                            <strong>完整度 {tower.integrity}%</strong>
+                          </div>
+                          <p>
+                            {tower.mechanism} · Boss：{tower.boss_name}
+                          </p>
+                          <div className="feature-progress-track">
+                            <span
+                              style={{ width: `${Math.max(0, Math.min(100, tower.integrity))}%` }}
+                            />
+                          </div>
+                          <div className="feature-card-actions feature-tower-actions">
+                            <button
+                              disabled={featureLoading || busy || hydrating}
+                              onClick={() => actOnTower(tower.tower_id, "seal")}
+                              type="button"
+                            >
+                              镇封
+                            </button>
+                            <button
+                              disabled={featureLoading || busy || hydrating}
+                              onClick={() => actOnTower(tower.tower_id, "break")}
+                              type="button"
+                            >
+                              破阵
+                            </button>
+                            <button
+                              disabled={featureLoading || busy || hydrating}
+                              onClick={() => actOnTower(tower.tower_id, "supply")}
+                              type="button"
+                            >
+                              补给
+                            </button>
+                            <button
+                              disabled={featureLoading || busy || hydrating}
+                              onClick={() => actOnTower(tower.tower_id, "guard")}
+                              type="button"
+                            >
+                              守卫
+                            </button>
+                          </div>
+                        </article>
                       ))}
                     </div>
                   ) : null}
@@ -2799,12 +3315,28 @@ function UtilityOverlay({
   );
 }
 
+function FeatureStat({ label, value }: { label: string; value: string }) {
+  return (
+    <article className="feature-stat">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </article>
+  );
+}
+
 function ErrorNotice({ message }: { message: string }) {
   return (
     <p className="error-notice" role="alert">
       {message}
     </p>
   );
+}
+
+function formatDuration(seconds: number): string {
+  if (seconds <= 0) return "已完成";
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  return hours > 0 ? `剩余 ${hours} 小时 ${minutes} 分` : `剩余 ${Math.max(1, minutes)} 分钟`;
 }
 
 function createClient(authToken?: string): GameClient {

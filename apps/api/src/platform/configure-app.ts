@@ -29,7 +29,6 @@ export function configureApp(app: INestApplication) {
   });
   app.useGlobalFilters(new ApiExceptionFilter());
   app.useGlobalInterceptors(new ApiResponseInterceptor());
-  app.enableShutdownHooks();
 }
 
 function getCorsOrigins(): string[] {

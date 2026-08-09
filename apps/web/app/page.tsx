@@ -7,6 +7,7 @@ import type {
   ApiResponse,
   BagItemState,
   BagSummaryResponse,
+  BattleNarrativeResponse,
   CultivationStatus,
   ExploreResponse,
   FactionRoutesResponse,
@@ -17,6 +18,7 @@ import type {
   PlayerProfileResponse,
   ProductionCraftMaterialState,
   ProductionFormulaKind,
+  ProductionFormulaState,
   ProvinceSummary,
   RankListResponse,
   RankType,
@@ -284,6 +286,7 @@ export default function HomePage() {
   const [resolvingExploreEventId, setResolvingExploreEventId] = useState<string | null>(null);
   const [currentExplore, setCurrentExplore] = useState<ExploreResponse | null>(null);
   const [activeOverlay, setActiveOverlay] = useState<OverlayView | null>(null);
+  const [overlayReturnView, setOverlayReturnView] = useState<OverlayView | null>(null);
   const [featureCommand, setFeatureCommand] = useState<CommandAction | null>(null);
   const [featureKind, setFeatureKind] = useState<FeatureKind | null>(null);
   const [featureData, setFeatureData] = useState<FeatureData | null>(null);
@@ -296,6 +299,10 @@ export default function HomePage() {
   const [productionMaterials, setProductionMaterials] = useState<ProductionCraftMaterialState[]>(
     [],
   );
+  const [productionFormulas, setProductionFormulas] = useState<ProductionFormulaState[]>([]);
+  const [selectedProductionFormulaId, setSelectedProductionFormulaId] = useState<string | null>(
+    null,
+  );
   const [selectedProductionMaterials, setSelectedProductionMaterials] = useState<
     Record<string, number>
   >({});
@@ -303,6 +310,8 @@ export default function HomePage() {
   const [productionCrafting, setProductionCrafting] = useState(false);
   const [productionResult, setProductionResult] = useState<string[]>([]);
   const [itemDetail, setItemDetail] = useState<ItemDetail | null>(null);
+  const [battleDetail, setBattleDetail] = useState<BattleNarrativeResponse | null>(null);
+  const [battleDetailLoading, setBattleDetailLoading] = useState(false);
   const [leftPanelView, setLeftPanelView] = useState<LeftPanelView>("brief");
   const [offlineClaimOpen, setOfflineClaimOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<WorldChatMessageState[]>([]);
@@ -627,6 +636,24 @@ export default function HomePage() {
       }
     },
     [scrollDetailLoading, token],
+  );
+
+  const loadBattleDetail = useCallback(
+    async (battleId: string) => {
+      if (!token || battleDetailLoading) {
+        return;
+      }
+      setBattleDetailLoading(true);
+      try {
+        const response = await createClient(token).battleNarrative(battleId);
+        setBattleDetail(readResponse(response));
+      } catch (error) {
+        setSessionError(messageFromError(error));
+      } finally {
+        setBattleDetailLoading(false);
+      }
+    },
+    [battleDetailLoading, token],
   );
 
   const chooseFactionRoute = useCallback(
@@ -1010,6 +1037,7 @@ export default function HomePage() {
     }
 
     setFeatureKind(kind);
+    setOverlayReturnView("tools");
     setActiveOverlay("feature");
     setFeatureData(null);
     setFeatureMessage(notice ?? null);
@@ -1068,6 +1096,7 @@ export default function HomePage() {
     if (!token || !kind || busy || hydrating || featureLoading) {
       return;
     }
+    setFeatureMessage("正在处理，请稍候…");
     setFeatureLoading(true);
     try {
       await operation();
@@ -1137,6 +1166,10 @@ export default function HomePage() {
       setFeatureMessage("请先选择派驻州域。");
       return;
     }
+    if (featureData?.kind === "inner_world" && !featureData.data.state.unlocked) {
+      setFeatureMessage(featureData.data.state.unlock_hint);
+      return;
+    }
     void runFeatureMutation(
       () =>
         createClient(token).innerWorldDispatch(
@@ -1193,13 +1226,21 @@ export default function HomePage() {
     }
     setProductionKind(kind);
     setProductionMaterials([]);
+    setProductionFormulas([]);
+    setSelectedProductionFormulaId(null);
     setSelectedProductionMaterials({});
     setProductionResult([]);
+    setOverlayReturnView("tools");
     setActiveOverlay("production");
     setProductionLoading(true);
     try {
-      const response = await createClient(token).productionMaterials(kind);
-      setProductionMaterials(readResponse(response).materials);
+      const client = createClient(token);
+      const [materialsResponse, formulasResponse] = await Promise.all([
+        client.productionMaterials(kind),
+        client.productionFormulas({ kind, scope: "mine" }),
+      ]);
+      setProductionMaterials(readResponse(materialsResponse).materials);
+      setProductionFormulas(readResponse(formulasResponse).formulas);
       await refreshBag(token);
     } catch (error) {
       setProductionResult([`材料清单读取失败：${messageFromError(error)}`]);
@@ -1215,7 +1256,7 @@ export default function HomePage() {
     const materials = Object.entries(selectedProductionMaterials)
       .filter(([, count]) => count > 0)
       .map(([item_id, count]) => ({ item_id, count }));
-    if (materials.length === 0) {
+    if (materials.length === 0 && !selectedProductionFormulaId) {
       setProductionResult(["请至少选择一种已有材料。"]);
       return;
     }
@@ -1224,10 +1265,21 @@ export default function HomePage() {
       const response =
         productionKind === "alchemy"
           ? await createClient(token).alchemyCraft(
-              { materials },
+              {
+                ...(selectedProductionFormulaId
+                  ? { formula_id: selectedProductionFormulaId }
+                  : { materials }),
+              },
               createIdempotencyKey("web_alchemy"),
             )
-          : await createClient(token).forgeCraft({ materials }, createIdempotencyKey("web_forge"));
+          : await createClient(token).forgeCraft(
+              {
+                ...(selectedProductionFormulaId
+                  ? { formula_id: selectedProductionFormulaId }
+                  : { materials }),
+              },
+              createIdempotencyKey("web_forge"),
+            );
       const result = readResponse(response as ApiResponse<unknown>) as {
         rewards?: { cultivation?: string; spirit_stone?: string; action_points?: number };
         record?: { success?: boolean; quality?: string | null };
@@ -1241,6 +1293,7 @@ export default function HomePage() {
             : "炼器完成";
       setProductionResult([detail, `资源结算：${formatRewards(result.rewards ?? {})}`]);
       setSelectedProductionMaterials({});
+      setSelectedProductionFormulaId(null);
       await Promise.all([refreshBag(token), refreshDashboard(token, true)]);
     } catch (error) {
       setProductionResult([`投炉失败：${messageFromError(error)}`]);
@@ -1574,15 +1627,19 @@ export default function HomePage() {
     setResolvingExploreEventId(null);
     setCurrentExplore(null);
     setActiveOverlay(null);
+    setOverlayReturnView(null);
     setFeatureCommand(null);
     setFeatureKind(null);
     setFeatureData(null);
     setFeatureMessage(null);
     setProductionKind(null);
     setProductionMaterials([]);
+    setProductionFormulas([]);
+    setSelectedProductionFormulaId(null);
     setSelectedProductionMaterials({});
     setProductionResult([]);
     setItemDetail(null);
+    setBattleDetail(null);
     setLeftPanelView("brief");
     setOfflineClaimOpen(false);
     setChatMessages([]);
@@ -1727,6 +1784,7 @@ export default function HomePage() {
                         aria-haspopup="dialog"
                         className="realm-overview-button"
                         onClick={() => {
+                          setOverlayReturnView(null);
                           setActiveOverlay("realms");
                           void refreshRealmProgression();
                         }}
@@ -1969,7 +2027,10 @@ export default function HomePage() {
                   <button
                     aria-haspopup="dialog"
                     className="utility-button"
-                    onClick={() => setActiveOverlay("tools")}
+                    onClick={() => {
+                      setOverlayReturnView(null);
+                      setActiveOverlay("tools");
+                    }}
                     type="button"
                   >
                     功能
@@ -2256,7 +2317,9 @@ export default function HomePage() {
           {activeOverlay ? (
             <UtilityOverlay
               onClose={() => {
-                setActiveOverlay(null);
+                const returnView = overlayReturnView;
+                setOverlayReturnView(null);
+                setActiveOverlay(returnView);
                 setSelectedScroll(null);
                 setScrollDetailError(null);
               }}
@@ -2322,7 +2385,6 @@ export default function HomePage() {
                       ["卷轴", "回看已经解锁的章节故事", "scrolls"],
                       ["仙魔", "查看或选择仙魔道途", "faction"],
                       ["战报", "回看最近探索与战斗记录", "battles"],
-                      ["境界", "查看全部境界、小境界和等级", "realms"],
                     ].map(([label, detail, view]) => (
                       <button
                         className="utility-hub-item"
@@ -2330,6 +2392,10 @@ export default function HomePage() {
                         key={view}
                         onClick={() => {
                           const nextView = view as Exclude<OverlayView, "tools">;
+                          setOverlayReturnView("tools");
+                          if (nextView === "battles") {
+                            setBattleDetail(null);
+                          }
                           setActiveOverlay(nextView);
                           if (nextView === "realms") {
                             void refreshRealmProgression();
@@ -2438,6 +2504,12 @@ export default function HomePage() {
 
                   {featureKind === "inner_world" && featureData?.kind === "inner_world" ? (
                     <div className="feature-stack">
+                      {!featureData.data.state.unlocked ? (
+                        <output className="feature-lock-notice">
+                          <strong>内天地尚未解锁</strong>
+                          <span>{featureData.data.state.unlock_hint}</span>
+                        </output>
+                      ) : null}
                       <div className="feature-stat-grid">
                         <FeatureStat
                           label="天地等级"
@@ -2464,6 +2536,7 @@ export default function HomePage() {
                         <div className="feature-inline-form">
                           <select
                             aria-label="派驻生灵"
+                            disabled={!featureData.data.state.unlocked || featureLoading}
                             value={innerDispatchCreature}
                             onChange={(event) => setInnerDispatchCreature(event.target.value)}
                           >
@@ -2478,6 +2551,7 @@ export default function HomePage() {
                           </select>
                           <select
                             aria-label="派驻州域"
+                            disabled={!featureData.data.state.unlocked || featureLoading}
                             value={innerDispatchProvince}
                             onChange={(event) => setInnerDispatchProvince(event.target.value)}
                           >
@@ -2491,7 +2565,13 @@ export default function HomePage() {
                               ))}
                           </select>
                           <button
-                            disabled={featureLoading || busy || hydrating || !innerDispatchProvince}
+                            disabled={
+                              !featureData.data.state.unlocked ||
+                              featureLoading ||
+                              busy ||
+                              hydrating ||
+                              !innerDispatchProvince
+                            }
                             onClick={dispatchInnerWorld}
                             type="button"
                           >
@@ -2522,7 +2602,12 @@ export default function HomePage() {
                               </p>
                               {assignment.status === "claimable" ? (
                                 <button
-                                  disabled={featureLoading || busy || hydrating}
+                                  disabled={
+                                    !featureData.data.state.unlocked ||
+                                    featureLoading ||
+                                    busy ||
+                                    hydrating
+                                  }
                                   onClick={() => claimInnerWorld(assignment.assignment_id)}
                                   type="button"
                                 >
@@ -2766,6 +2851,60 @@ export default function HomePage() {
                       ))}
                     </output>
                   ) : null}
+                  {productionFormulas.length > 0 ? (
+                    <section className="production-formula-section" aria-label="已保存单方">
+                      <div className="production-section-heading">
+                        <div>
+                          <p className="console-eyebrow">已保存单方</p>
+                          <h3>选择单方直接投炉</h3>
+                        </div>
+                        <span>{selectedProductionFormulaId ? "已选择" : "可选"}</span>
+                      </div>
+                      <div className="production-formula-list">
+                        {productionFormulas.map((formula) => {
+                          const selected = selectedProductionFormulaId === formula.formula_id;
+                          return (
+                            <button
+                              className={`production-formula-card${selected ? " production-formula-card-selected" : ""}`}
+                              disabled={productionCrafting}
+                              key={formula.formula_id}
+                              onClick={() => {
+                                setSelectedProductionFormulaId(
+                                  selected ? null : formula.formula_id,
+                                );
+                                setSelectedProductionMaterials({});
+                              }}
+                              type="button"
+                            >
+                              <span className="production-formula-heading">
+                                <strong>{formula.name}</strong>
+                                <small>
+                                  {selected
+                                    ? "已选择"
+                                    : formula.visibility === "public"
+                                      ? "公开"
+                                      : "私有"}
+                                </small>
+                              </span>
+                              <span className="production-formula-materials">
+                                {formula.materials
+                                  .map(
+                                    (material) =>
+                                      `${productionMaterials.find((item) => item.item_id === material.item_id)?.name ?? material.item_id} ×${material.count}`,
+                                  )
+                                  .join("、")}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  ) : null}
+                  {productionFormulas.length === 0 && !productionLoading ? (
+                    <p className="production-formula-empty">
+                      尚未保存单方；成功炼制后可保存为丹方或器方。
+                    </p>
+                  ) : null}
                   {productionLoading ? <p className="empty-copy">正在整理可投炉材料…</p> : null}
                   {!productionLoading && productionMaterials.length === 0 ? (
                     <p className="empty-copy">
@@ -2789,7 +2928,11 @@ export default function HomePage() {
                           <div className="production-material-counter">
                             <button
                               aria-label={`减少${material.name}`}
-                              disabled={selected <= 0 || productionCrafting}
+                              disabled={
+                                selected <= 0 ||
+                                productionCrafting ||
+                                selectedProductionFormulaId !== null
+                              }
                               onClick={() =>
                                 setSelectedProductionMaterials((current) => ({
                                   ...current,
@@ -2805,7 +2948,11 @@ export default function HomePage() {
                             </button>
                             <input
                               aria-label={`${material.name}数量`}
-                              disabled={productionCrafting || owned <= 0}
+                              disabled={
+                                productionCrafting ||
+                                selectedProductionFormulaId !== null ||
+                                owned <= 0
+                              }
                               max={owned}
                               min={0}
                               onChange={(event) => {
@@ -2823,7 +2970,11 @@ export default function HomePage() {
                             />
                             <button
                               aria-label={`增加${material.name}`}
-                              disabled={selected >= owned || productionCrafting}
+                              disabled={
+                                selected >= owned ||
+                                productionCrafting ||
+                                selectedProductionFormulaId !== null
+                              }
                               onClick={() =>
                                 setSelectedProductionMaterials((current) => ({
                                   ...current,
@@ -2851,9 +3002,13 @@ export default function HomePage() {
                     >
                       {productionCrafting
                         ? "投炉中…"
-                        : productionKind === "alchemy"
-                          ? "开始炼丹"
-                          : "开始炼器"}
+                        : selectedProductionFormulaId
+                          ? productionKind === "alchemy"
+                            ? "按丹方炼制"
+                            : "按器方炼制"
+                          : productionKind === "alchemy"
+                            ? "开始炼丹"
+                            : "开始炼器"}
                     </button>
                   </div>
                 </section>
@@ -3071,12 +3226,10 @@ export default function HomePage() {
                                 className="quiet-button"
                                 disabled={busy || hydrating}
                                 onClick={() => {
-                                  setActiveOverlay(null);
+                                  setOverlayReturnView("scrolls");
+                                  setActiveOverlay("battles");
                                   setSelectedScroll(null);
-                                  void executeCommand(`战报 ${battle.battle_id}`, {
-                                    displayCommand: `回看战报：${battle.title}`,
-                                    saveToHistory: false,
-                                  });
+                                  void loadBattleDetail(battle.battle_id);
                                 }}
                                 type="button"
                               >
@@ -3176,15 +3329,71 @@ export default function HomePage() {
               ) : null}
 
               {activeOverlay === "battles" ? (
-                recentBattles.length > 0 ? (
+                battleDetail ? (
+                  <section className="battle-detail" aria-label="战报详情">
+                    <div className="utility-dialog-actions">
+                      <button
+                        className="quiet-button"
+                        onClick={() => setBattleDetail(null)}
+                        type="button"
+                      >
+                        返回战报
+                      </button>
+                    </div>
+                    <div className="battle-detail-heading">
+                      <span>{battleDetail.battle_type}</span>
+                      <h3>{battleDetail.title}</h3>
+                      <small>{battleDetail.battle_id}</small>
+                    </div>
+                    <p className="battle-detail-summary">{battleDetail.summary}</p>
+                    {battleDetail.result_reason.length > 0 ? (
+                      <div className="battle-detail-section">
+                        <h4>战果</h4>
+                        <ul>
+                          {battleDetail.result_reason.map((line) => (
+                            <li key={line}>{line}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                    {battleDetail.key_rounds.length > 0 ? (
+                      <div className="battle-detail-section">
+                        <h4>关键回合</h4>
+                        <ol>
+                          {battleDetail.key_rounds.map((line, index) => (
+                            <li key={`${index}_${line}`}>{line}</li>
+                          ))}
+                        </ol>
+                      </div>
+                    ) : null}
+                    <div className="battle-detail-section">
+                      <h4>战斗叙事</h4>
+                      <div className="battle-narrative-lines">
+                        {battleDetail.narrative_lines.map((line, index) => (
+                          <p key={`${index}_${line}`}>{line}</p>
+                        ))}
+                      </div>
+                    </div>
+                  </section>
+                ) : recentBattles.length > 0 ? (
                   <ul className="battle-list">
                     {recentBattles.map((battle) => (
                       <li key={battle.battle_id}>
-                        <strong>
-                          {battle.result === "win" ? "胜" : "败"} · {battle.enemy_name}
-                        </strong>
-                        <span>{battle.reason_summary?.[0] ?? `${battle.rounds} 回合交锋`}</span>
-                        <small>{formatDateTime(battle.created_at)}</small>
+                        <div>
+                          <strong>
+                            {battle.result === "win" ? "胜" : "败"} · {battle.enemy_name}
+                          </strong>
+                          <span>{battle.reason_summary?.[0] ?? `${battle.rounds} 回合交锋`}</span>
+                          <small>{formatDateTime(battle.created_at)}</small>
+                        </div>
+                        <button
+                          className="quiet-button"
+                          disabled={battleDetailLoading || !token}
+                          onClick={() => void loadBattleDetail(battle.battle_id)}
+                          type="button"
+                        >
+                          {battleDetailLoading ? "读取中…" : "查看详情"}
+                        </button>
                       </li>
                     ))}
                   </ul>

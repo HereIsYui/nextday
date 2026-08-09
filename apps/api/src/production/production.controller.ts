@@ -3,6 +3,7 @@ import type {
   AlchemyRecordListResponse,
   BagSummaryResponse,
   EquipmentInscribeRequest,
+  EquipmentEquipRequest,
   EquipmentListResponse,
   EquipmentOperationRecordListResponse,
   EquipmentOperationResponse,
@@ -178,6 +179,30 @@ export class ProductionController {
     @Req() request: Request,
   ): Promise<EquipmentOperationResponse> {
     return this.productionService.refineEquipment({
+      accountId: requireAccountId(request),
+      body,
+      idempotencyKey: requireIdempotencyKey(request),
+    });
+  }
+
+  @Post("equipment/equip")
+  equipEquipment(
+    @Body() body: EquipmentEquipRequest,
+    @Req() request: Request,
+  ): Promise<EquipmentOperationResponse> {
+    return this.productionService.equipEquipment({
+      accountId: requireAccountId(request),
+      body,
+      idempotencyKey: requireIdempotencyKey(request),
+    });
+  }
+
+  @Post("equipment/unequip")
+  unequipEquipment(
+    @Body() body: EquipmentTargetRequest,
+    @Req() request: Request,
+  ): Promise<EquipmentOperationResponse> {
+    return this.productionService.unequipEquipment({
       accountId: requireAccountId(request),
       body,
       idempotencyKey: requireIdempotencyKey(request),

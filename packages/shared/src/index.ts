@@ -572,10 +572,31 @@ export interface LongActionState {
   can_end: boolean;
   can_claim: boolean;
   rewards: RewardBundle | null;
+  settled_minutes?: number;
+  settled_battle_count?: number;
+  last_settled_at?: string | null;
+  last_active_at?: string | null;
+  offline_reward?: OfflineActionReward | null;
 }
 
 export interface ActionCurrentResponse {
   action: LongActionState | null;
+}
+
+export interface OfflineActionReward {
+  action_id: string;
+  action_type: LongActionType;
+  province_name: string | null;
+  offline_minutes: number;
+  from_at: string;
+  to_at: string;
+  estimated_battle_count: number;
+  rewards: RewardBundle;
+  claimable: boolean;
+}
+
+export interface ActionOfflineRewardResponse {
+  reward: OfflineActionReward | null;
 }
 
 export interface ActionStartRequest {
@@ -702,10 +723,12 @@ export interface RewardBundle {
 
 export interface ExploreRequest {
   province_id: string;
+  /** 已废弃：服务端将拒绝按次数探索。 */
   count?: number;
 }
 
-export type ExploreActionStatus = "pending" | "completed" | "claimed" | "expired";
+/** 旧探索响应的兼容状态；active 为长期探索的运行中状态。 */
+export type ExploreActionStatus = "active" | "pending" | "completed" | "claimed" | "expired";
 
 export type ExploreEventStatus = "pending" | "resolved" | "expired";
 
@@ -831,29 +854,6 @@ export interface CaveCollectResponse {
   wallet: PlayerWalletState;
   completed_task_ids: string[];
   experience?: ExperiencePayload;
-}
-
-export type NewPlayerRouteStepStatus = "done" | "active" | "pending";
-export interface NewPlayerRouteStepState {
-  step_id: string;
-  title: string;
-  detail: string;
-  status: NewPlayerRouteStepStatus;
-  action_hint: string;
-  action_label: string;
-  unlock_hint?: string;
-}
-
-export interface NewPlayerRouteState {
-  route_id: string;
-  title: string;
-  subtitle: string;
-  progress_percent: number;
-  progress_text: string;
-  primary_step_id: string;
-  primary_action_hint: string;
-  steps: NewPlayerRouteStepState[];
-  config_version: string;
 }
 
 export type InnerWorldCreatureStatus = "idle" | "assigned" | "training";
@@ -1277,7 +1277,7 @@ export interface ProductionRecommendationState {
 
 export interface EquipmentOperationResponse {
   record_id: string;
-  operation_type: "forge" | "refine" | "inscribe" | "decompose" | "lock";
+  operation_type: "forge" | "refine" | "inscribe" | "decompose" | "lock" | "equip" | "unequip";
   equipment: EquipmentState | null;
   rewards?: RewardBundle;
   wallet?: PlayerWalletState;
@@ -1411,6 +1411,10 @@ export interface EquipmentOperationRecordListResponse {
 
 export interface EquipmentTargetRequest {
   equipment_instance_id: string;
+}
+
+export interface EquipmentEquipRequest extends EquipmentTargetRequest {
+  slot: string;
 }
 
 export interface EquipmentInscribeRequest extends EquipmentTargetRequest {
@@ -2439,7 +2443,6 @@ export interface GameOverviewResponse {
   tasks: TaskState[];
   cave: CaveState | null;
   recent_battles: BattleSummary[];
-  new_player_route: NewPlayerRouteState | null;
 }
 
 export interface PluginStatusCardResponse {

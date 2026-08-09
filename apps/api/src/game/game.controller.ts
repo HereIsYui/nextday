@@ -2,6 +2,7 @@ import { Body, Controller, Get, Inject, Post, Query, Req, UseGuards } from "@nes
 import type {
   ActionCurrentResponse,
   ActionMutationResponse,
+  ActionOfflineRewardResponse,
   ActionStartRequest,
   BattleListResponse,
   BreakthroughResponse,
@@ -45,6 +46,19 @@ export class GameController {
   @Get("actions/current")
   currentAction(@Req() request: Request): Promise<ActionCurrentResponse> {
     return this.gameService.getCurrentAction(requireAccountId(request));
+  }
+
+  @Get("actions/offline-reward")
+  offlineActionReward(@Req() request: Request): Promise<ActionOfflineRewardResponse> {
+    return this.gameService.getOfflineActionReward(requireAccountId(request));
+  }
+
+  @Post("actions/offline-reward/claim")
+  claimOfflineAction(@Req() request: Request): Promise<ActionMutationResponse> {
+    return this.gameService.claimOfflineAction({
+      accountId: requireAccountId(request),
+      idempotencyKey: requireIdempotencyKey(request),
+    });
   }
 
   @Post("actions/start")

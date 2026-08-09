@@ -15,6 +15,7 @@ import type {
   HealthStatus,
   InnerWorldSummaryResponse,
   LoginResponse,
+  OfflineActionReward,
   PlayerProfileResponse,
   ProductionCraftMaterialState,
   ProductionFormulaKind,
@@ -54,10 +55,8 @@ import {
   withoutExploreEventInstructions,
 } from "./explore-event-actions";
 import {
-  createExploreCompletionNotice,
   createExploreEventAutoResolveNotice,
   createExploreEventNotice,
-  getExplorePollDelay,
 } from "./explore-notifications";
 import {
   type TerminalTaskItem,
@@ -285,6 +284,7 @@ export default function HomePage() {
   const [pendingExploreEvents, setPendingExploreEvents] = useState<PendingExploreEvent[]>([]);
   const [resolvingExploreEventId, setResolvingExploreEventId] = useState<string | null>(null);
   const [currentExplore, setCurrentExplore] = useState<ExploreResponse | null>(null);
+  const [offlineActionReward, setOfflineActionReward] = useState<OfflineActionReward | null>(null);
   const [activeOverlay, setActiveOverlay] = useState<OverlayView | null>(null);
   const [overlayReturnView, setOverlayReturnView] = useState<OverlayView | null>(null);
   const [featureCommand, setFeatureCommand] = useState<CommandAction | null>(null);
@@ -383,7 +383,7 @@ export default function HomePage() {
       }))
       .filter((group) => group.items.length > 0);
   }, [helpGroups, pendingExploreEvents.length]);
-  const canClaimExplore = currentExplore?.status === "completed" && currentExplore.can_claim;
+  const canClaimExplore = false;
   const bagDisplayItems = useMemo(() => summarizeBagItemsForDisplay(bag?.items ?? []), [bag]);
   const chatShareItem = useMemo(
     () => bagDisplayItems.find((item) => item.item_instance_id === chatItemInstanceId) ?? null,
@@ -593,13 +593,22 @@ export default function HomePage() {
 
   useEffect(() => {
     const claimable = cultivation?.claimable_cultivation ?? "0";
-    if (!token || !cultivation || BigInt(claimable) <= 0n || activeLongAction) return;
+    if (!token || (!cultivation && !offlineActionReward)) return;
+    if (offlineActionReward?.claimable) {
+      const key = `${offlineActionReward.action_id}:${offlineActionReward.from_at}:${offlineActionReward.to_at}`;
+      if (offlineNoticeKeyRef.current !== key) {
+        offlineNoticeKeyRef.current = key;
+        setOfflineClaimOpen(true);
+      }
+      return;
+    }
+    if (!cultivation || BigInt(claimable) <= 0n || activeLongAction) return;
     const key = `${cultivation.last_cultivation_at}:${claimable}`;
     if (offlineNoticeKeyRef.current !== key) {
       offlineNoticeKeyRef.current = key;
       setOfflineClaimOpen(true);
     }
-  }, [activeLongAction, cultivation, token]);
+  }, [activeLongAction, cultivation, offlineActionReward, token]);
 
   const refreshRealmProgression = useCallback(async () => {
     if (!token || realmProgressionLoading) {
@@ -844,8 +853,9 @@ export default function HomePage() {
       const notifications: TerminalMessageBatch[] = [];
 
       try {
-        const [currentResult, eventsResult] = await Promise.allSettled([
-          client.currentExplore(),
+        const [currentResult, offlineResult, eventsResult] = await Promise.allSettled([
+          client.currentAction(),
+          client.offlineActionReward(),
           client.exploreEvents("pending"),
         ]);
         if (disposed) {
@@ -854,17 +864,30 @@ export default function HomePage() {
 
         if (currentResult.status === "fulfilled") {
           try {
-            const current = readResponse(currentResult.value).current;
-            setCurrentExplore(current);
-            taskPollDelay = getExplorePollDelay(
-              current,
-              pendingExploreEventsRef.current.length > 0,
-            );
-            const notice = current ? createExploreCompletionNotice(current) : null;
-            if (current && notice && !notifiedExploreRecordIdsRef.current.has(current.record_id)) {
-              notifiedExploreRecordIdsRef.current.add(current.record_id);
-              notifications.push(notice);
-              nextMessage = "探索已结束，待领取";
+            const currentAction = readResponse(currentResult.value).action;
+            setCurrentExplore(null);
+            taskPollDelay = 60_000;
+            if (currentAction?.offline_reward?.claimable) {
+              setOfflineActionReward(currentAction.offline_reward);
+            }
+          } catch {
+            shouldRetry = true;
+          }
+        } else {
+          shouldRetry = true;
+        }
+
+        if (offlineResult.status === "fulfilled") {
+          try {
+            const reward = readResponse(offlineResult.value).reward;
+            setOfflineActionReward(reward);
+            if (reward && reward.claimable) {
+              const noticeKey = `${reward.action_id}:${reward.from_at}:${reward.to_at}`;
+              if (offlineNoticeKeyRef.current !== noticeKey) {
+                offlineNoticeKeyRef.current = noticeKey;
+                nextMessage = "离线行动收益待领取";
+                setOfflineClaimOpen(true);
+              }
             }
           } catch {
             shouldRetry = true;
@@ -967,16 +990,6 @@ export default function HomePage() {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [appendTerminalEntries, busy, hydrating, player?.player_id, token]);
-
-  useEffect(() => {
-    if (currentExplore?.status !== "pending") {
-      return;
-    }
-
-    setClockNow(Date.now());
-    const timer = window.setInterval(() => setClockNow(Date.now()), 1_000);
-    return () => window.clearInterval(timer);
-  }, [currentExplore?.status]);
 
   useEffect(() => {
     if (terminalEntries.length > 0) {
@@ -1388,10 +1401,10 @@ export default function HomePage() {
         terminalEntry("success", "九州传音", [
           kind === "start_cultivation"
             ? "已开始长期修炼。"
-            : kind === "start_explore"
-              ? `已开始${result.action?.province_name ?? "州域"}长期探索。`
-              : kind === "end"
-                ? `行动已结束，${formatRewards(result.rewards)}可以领取。`
+              : kind === "start_explore"
+                ? `已开始${result.action?.province_name ?? "州域"}长期探索。`
+                : kind === "end"
+                ? `行动已结束，${formatRewards(result.rewards)}已自动结算。`
                 : `行动收益已领取：${formatRewards(result.rewards)}。`,
         ]),
       ]);
@@ -1407,6 +1420,25 @@ export default function HomePage() {
 
   async function handleOfflineClaim() {
     if (!token || busy || hydrating) return;
+    if (offlineActionReward?.claimable) {
+      setBusy(true);
+      try {
+        const result = readResponse(
+          await createClient(token).claimOfflineAction(createIdempotencyKey("web_offline_action_claim")),
+        );
+        appendTerminalEntries([
+          terminalEntry("success", "离线行动", [`已领取：${formatRewards(result.rewards)}。`]),
+        ]);
+        setOfflineActionReward(null);
+        setOfflineClaimOpen(false);
+        await refreshDashboard(token, true);
+      } catch (error) {
+        setSessionError(messageFromError(error));
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     if (activeLongAction?.status === "claimable") {
       setOfflineClaimOpen(false);
       await handleLongAction("claim");
@@ -1858,11 +1890,13 @@ export default function HomePage() {
                             : `${activeLongAction.province_name ?? "州域"}长期探索`}
                         </strong>
                         <p>
-                          {activeLongAction.status === "claimable"
+                          {activeLongAction.action_type === "explore"
+                            ? `已结算 ${activeLongAction.settled_battle_count ?? 0} 场；在线每小时自动入账，结束时补齐完整分钟。`
+                            : activeLongAction.status === "claimable"
                             ? `已固定收益：${formatRewards(activeLongAction.rewards ?? {})}`
                             : "修炼与探索互斥；需要收益时手动结束行动。"}
                         </p>
-                        {activeLongAction.status === "claimable" ? (
+                        {activeLongAction.action_type !== "explore" && activeLongAction.status === "claimable" ? (
                           <button
                             className="action-card-button"
                             disabled={busy || hydrating}
@@ -3410,13 +3444,20 @@ export default function HomePage() {
               onClose={() => setOfflineClaimOpen(false)}
             >
               <section className="offline-reward-dialog" aria-label="离线修为收益">
-                <p>离开九州期间，灵台按当前速率积累了可领取修为。</p>
+                <p>
+                  {offlineActionReward
+                    ? `离开九州 ${offlineActionReward.offline_minutes} 分钟期间，${offlineActionReward.province_name ?? "州域"}探索已产生待领取收益。`
+                    : "离开九州期间，灵台按当前速率积累了可领取修为。"}
+                </p>
                 <div className="offline-reward-value">
-                  修为 +{cultivation?.claimable_cultivation ?? "0"}
+                  {offlineActionReward
+                    ? `探索 ${offlineActionReward.estimated_battle_count} 场待结算 · ${formatRewards(offlineActionReward.rewards)}`
+                    : `修为 +${cultivation?.claimable_cultivation ?? "0"}`}
                 </div>
                 <small>
-                  当前速率：每小时 {progress?.cultivation_rate_per_hour ?? 0} 修为（最多计算 8
-                  小时）
+                  {offlineActionReward
+                    ? "探索收益遵守每日 21 场基准，离线最多计算 8 小时。"
+                    : `当前速率：每小时 ${progress?.cultivation_rate_per_hour ?? 0} 修为（最多计算 8 小时）`}
                 </small>
                 <div className="utility-dialog-actions">
                   <button

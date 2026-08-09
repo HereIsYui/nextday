@@ -40,8 +40,7 @@ type ParsedCommand =
   | { commandId: "action_end" }
   | { commandId: "action_claim" }
   | { commandId: "breakthrough" }
-  | { commandId: "explore"; province: string; count: number }
-  | { commandId: "explore_claim"; recordId?: string }
+  | { commandId: "explore"; province: string }
   | { commandId: "explore_events" }
   | { commandId: "explore_event_resolve"; eventId?: string; choiceId: string }
   | { commandId: "cave_status" }
@@ -129,19 +128,19 @@ const commandHelpGroups: TextCommandHelpGroup[] = [
         command_id: "action_start",
         syntax: "开始修炼 | 探索 <州域>",
         aliases: ["开始行动"],
-        description: "开始一项长期行动；修炼与探索互斥，手动结束后领取收益。",
+        description: "开始一项长期行动；修炼与探索互斥，探索在线持续结算。",
       },
       {
         command_id: "action_end",
         syntax: "结束修炼 | 结束探索",
         aliases: ["结束行动"],
-        description: "手动结束当前长期行动并固定离线收益。",
+        description: "手动结束当前长期行动；探索会补齐完整分钟并自动结算。",
       },
       {
         command_id: "action_claim",
         syntax: "领取行动收益",
         aliases: ["领取行动"],
-        description: "领取已经结束的长期行动收益。",
+        description: "领取已经结束的长期修炼收益。",
       },
       {
         command_id: "breakthrough",
@@ -151,16 +150,9 @@ const commandHelpGroups: TextCommandHelpGroup[] = [
       },
       {
         command_id: "explore",
-        syntax: "探索 <州域> [次数]",
-        aliases: ["游历 <州域> [次数]"],
-        description:
-          "州域可使用州名、简称或英文标识；省略次数时开始长期探索，填写次数仅兼容旧的定时探索。",
-      },
-      {
-        command_id: "explore_claim",
-        syntax: "领取探索",
-        aliases: ["探索领取", "探索结算"],
-        description: "自动结算最近一条可领取探索。",
+        syntax: "探索 <州域>",
+        aliases: ["游历 <州域>"],
+        description: "开始指定州域的长期探索，在线收益自动结算；离线收益回归后统一领取。",
       },
       {
         command_id: "explore_events",
@@ -450,9 +442,7 @@ export class GameCommandService {
         case "breakthrough":
           return this.breakthrough(input);
         case "explore":
-          return this.explore(input, parsed.province, parsed.count);
-        case "explore_claim":
-          return this.claimExplore(input, parsed.recordId);
+          return this.explore(input, parsed.province);
         case "explore_events":
           return this.exploreEvents(input.accountId);
         case "explore_event_resolve":
@@ -699,10 +689,10 @@ export class GameCommandService {
     const result = await this.gameService.endAction(input);
     return this.success(
       "action_end",
-      [{ tone: "success", text: `长期行动已结束，${formatRewards(result.rewards)}现在可以领取。` }],
+      [{ tone: "success", text: `长期行动已结束，${formatRewards(result.rewards)}已自动结算。` }],
       result,
       ["overview", "explore"],
-      [{ label: "领取行动收益", command: "领取行动收益" }],
+      [{ label: "查看状态", command: "状态" }],
     );
   }
 
@@ -739,23 +729,23 @@ export class GameCommandService {
   private async explore(
     input: { accountId: string; idempotencyKey: string },
     province: string,
-    count: number,
   ): Promise<TextCommandResponse> {
-    const result = await this.gameService.explore({
-      ...input,
-      body: { province_id: province, count },
+    const result = await this.gameService.startAction({
+      accountId: input.accountId,
+      body: { action_type: "explore", province_id: province },
+      idempotencyKey: input.idempotencyKey,
     });
     return this.success(
       "explore",
       [
         {
           tone: "success",
-          text: `已踏入${result.province_name}，${result.count} 次探索正在进行，预计 ${result.total_seconds} 秒后可领取。`,
+          text: `已开始${result.action?.province_name ?? "州域"}长期探索，在线收益会持续自动结算。`,
         },
       ],
       result,
       ["overview", "explore"],
-      [],
+      [{ label: "结束探索", command: "结束探索" }],
     );
   }
 
@@ -1691,28 +1681,15 @@ function parseCommand(input: TextCommandRequest): ParsedCommand | InvalidCommand
   if (["突破", "breakthrough"].includes(command)) {
     return noArguments("breakthrough", args, "突破");
   }
-  if (["探索领取", "领取探索", "探索结算", "领取游历"].includes(command)) {
-    if (args.length > 1) {
-      return invalid("探索领取最多接受一个探索记录ID。用法：领取探索 [探索记录ID]。");
-    }
-    return { commandId: "explore_claim", ...(args[0] ? { recordId: args[0] } : {}) };
-  }
   if (["探索", "游历", "explore"].includes(command)) {
-    if (args.length < 1 || args.length > 2) {
-      return invalid("请指定州域与可选次数。用法：探索 <州域> [次数]，例如：探索 冀州 1。");
+    if (args.length !== 1) {
+      return invalid("请指定州域。用法：探索 <州域>，例如：探索 冀州。");
     }
     const province = resolveProvince(args[0]);
     if (!province) {
-      return invalid(`未知州域“${args[0]}”。用法：探索 <州域> [次数]，例如：探索 冀州 1。`);
+      return invalid(`未知州域“${args[0]}”。用法：探索 <州域>，例如：探索 冀州。`);
     }
-    if (!args[1]) {
-      return { commandId: "action_start", actionType: "explore", province };
-    }
-    const count = parseCount(args[1]);
-    if (!count) {
-      return invalid("探索次数须为 1-5 的整数。用法：探索 冀州 1。");
-    }
-    return { commandId: "explore", province, count };
+    return { commandId: "explore", province };
   }
   if (["奇遇", "处理奇遇"].includes(command)) {
     if (args.length === 0) {
@@ -1910,14 +1887,7 @@ function parseCommand(input: TextCommandRequest): ParsedCommand | InvalidCommand
     if (args.length === 2 && ["任务", "task"].includes(normalizeToken(args[0]))) {
       return { commandId: "task_claim", taskId: args[1] };
     }
-    if (
-      args.length >= 1 &&
-      args.length <= 2 &&
-      ["探索", "游历", "explore"].includes(normalizeToken(args[0]))
-    ) {
-      return { commandId: "explore_claim", ...(args[1] ? { recordId: args[1] } : {}) };
-    }
-    return invalid("领取指令用法：领取 洞府、领取 任务 <任务ID>，或 领取 探索 [探索记录ID]。");
+    return invalid("领取指令用法：领取 洞府，或 领取 任务 <任务ID>。");
   }
 
   return invalid(`未识别指令“${tokens[0]}”。可输入“帮助”查看可用指令。`);

@@ -5,6 +5,7 @@ import type {
   BagSummaryResponse,
   BattleSummary,
   CultivationRoute,
+  EquipmentEquipRequest,
   EquipmentInscribeRequest,
   EquipmentListResponse,
   EquipmentOperationRecordListResponse,
@@ -827,6 +828,96 @@ export class ProductionService {
     });
   }
 
+  async equipEquipment(input: {
+    accountId: string;
+    body: EquipmentEquipRequest;
+    idempotencyKey: string;
+  }): Promise<EquipmentOperationResponse> {
+    const player = await this.requirePlayer(input.accountId);
+    const body = normalizeEquipmentEquipRequest(input.body);
+    return this.withIdempotency({
+      accountId: input.accountId,
+      endpoint: "POST /api/production/equipment/equip",
+      idempotencyKey: input.idempotencyKey,
+      requestBody: body,
+      handler: async (tx) => {
+        const equipment = await this.getEquipmentOrThrow(
+          tx,
+          player.playerId,
+          body.equipment_instance_id,
+        );
+        await tx.equipmentInstance.updateMany({
+          where: { playerId: player.playerId, equippedSlot: body.slot, status: "active" },
+          data: { equippedSlot: null },
+        });
+        const updated = await tx.equipmentInstance.update({
+          where: { equipmentInstanceId: equipment.equipmentInstanceId },
+          data: { equippedSlot: body.slot },
+          include: { affixes: true },
+        });
+        const state = toEquipmentState(updated);
+        const operation = await this.writeEquipmentOperation(tx, {
+          playerId: player.playerId,
+          equipmentInstanceId: updated.equipmentInstanceId,
+          operationType: "equip",
+          materials: {},
+          result: { equipment: state, slot: body.slot },
+          idempotencyKey: input.idempotencyKey,
+        });
+        return {
+          record_id: operation.recordId,
+          operation_type: "equip",
+          equipment: state,
+          wallet: await this.getWalletState(tx, player.playerId),
+          bag: await this.getBagByPlayerId(player.playerId, tx),
+        };
+      },
+    });
+  }
+
+  async unequipEquipment(input: {
+    accountId: string;
+    body: EquipmentTargetRequest;
+    idempotencyKey: string;
+  }): Promise<EquipmentOperationResponse> {
+    const player = await this.requirePlayer(input.accountId);
+    const body = normalizeEquipmentTargetRequest(input.body);
+    return this.withIdempotency({
+      accountId: input.accountId,
+      endpoint: "POST /api/production/equipment/unequip",
+      idempotencyKey: input.idempotencyKey,
+      requestBody: body,
+      handler: async (tx) => {
+        const equipment = await this.getEquipmentOrThrow(
+          tx,
+          player.playerId,
+          body.equipment_instance_id,
+        );
+        const updated = await tx.equipmentInstance.update({
+          where: { equipmentInstanceId: equipment.equipmentInstanceId },
+          data: { equippedSlot: null },
+          include: { affixes: true },
+        });
+        const state = toEquipmentState(updated);
+        const operation = await this.writeEquipmentOperation(tx, {
+          playerId: player.playerId,
+          equipmentInstanceId: updated.equipmentInstanceId,
+          operationType: "unequip",
+          materials: {},
+          result: { equipment: state },
+          idempotencyKey: input.idempotencyKey,
+        });
+        return {
+          record_id: operation.recordId,
+          operation_type: "unequip",
+          equipment: state,
+          wallet: await this.getWalletState(tx, player.playerId),
+          bag: await this.getBagByPlayerId(player.playerId, tx),
+        };
+      },
+    });
+  }
+
   async inscribeEquipment(input: {
     accountId: string;
     body: EquipmentInscribeRequest;
@@ -906,6 +997,9 @@ export class ProductionService {
     return this.withEquipmentOperation(input, "decompose", async ({ tx, player, equipment }) => {
       if (equipment.locked) {
         throw new BadRequestException("法宝已锁定，不能分解");
+      }
+      if (equipment.equippedSlot) {
+        throw new BadRequestException("请先卸下已装备法宝，再进行分解");
       }
 
       const rewards = rewardItemsToBundle([
@@ -2330,6 +2424,18 @@ function normalizeEquipmentTargetRequest(body: EquipmentTargetRequest): Equipmen
   }
 
   return { equipment_instance_id: body.equipment_instance_id };
+}
+
+function normalizeEquipmentEquipRequest(body: EquipmentEquipRequest): EquipmentEquipRequest {
+  const target = normalizeEquipmentTargetRequest(body);
+  const slot = body?.slot?.trim();
+  if (!slot) {
+    throw new BadRequestException("缺少装备槽位");
+  }
+  if (slot.length > 32) {
+    throw new BadRequestException("装备槽位无效");
+  }
+  return { ...target, slot };
 }
 
 function normalizeInscribeRequest(body: EquipmentInscribeRequest): EquipmentInscribeRequest {

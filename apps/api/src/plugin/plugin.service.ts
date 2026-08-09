@@ -207,7 +207,7 @@ export class PluginService {
     if (presetId === "explore_ji_once") {
       result = await this.gameService.explore({
         accountId: input.accountId,
-        body: { province_id: "ji", count: 1 },
+        body: { province_id: "ji" },
         idempotencyKey: `${input.idempotencyKey}:explore`,
       });
     }

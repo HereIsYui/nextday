@@ -1,0 +1,137 @@
+import "reflect-metadata";
+import type { INestApplication } from "@nestjs/common";
+import { Test } from "@nestjs/testing";
+import { PrismaClient } from "@prisma/client";
+import request from "supertest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { AppModule } from "../src/app.module";
+import { configureApp } from "../src/platform/configure-app";
+
+describe("长期探索结算", () => {
+  let app: INestApplication;
+  let prisma: PrismaClient;
+
+  beforeAll(async () => {
+    process.env.JWT_SECRET = process.env.JWT_SECRET || "long-exploration-test-secret";
+    process.env.ADMIN_DEV_TOKEN = process.env.ADMIN_DEV_TOKEN || "nextday-admin-dev";
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    app = moduleRef.createNestApplication();
+    configureApp(app);
+    await app.init();
+    prisma = new PrismaClient();
+    await prisma.$connect();
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+    await app.close();
+  });
+
+  it("探索不扣行动令，达到批量周期后自动入账", async () => {
+    const { token, playerId } = await createPlayer(app, "在线");
+    const before = await prisma.playerActionState.findUniqueOrThrow({ where: { playerId } });
+
+    const started = await request(app.getHttpServer())
+      .post("/api/game/actions/start")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `long_start_${Date.now()}_online`)
+      .send({ action_type: "explore", province_id: "ji" })
+      .expect(201);
+
+    expect(started.body.data.action.action_type).toBe("explore");
+    expect(started.body.data.action_state.action_points).toBe(before.actionPoints);
+
+    const recordId = started.body.data.action.action_id as string;
+    const now = new Date();
+    await prisma.exploreActionRecord.update({
+      where: { recordId },
+      data: {
+        lastSettledAt: new Date(now.getTime() - 120 * 60_000),
+        lastActiveAt: now,
+      },
+    });
+
+    const current = await request(app.getHttpServer())
+      .get("/api/game/actions/current")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(current.body.data.action.settled_minutes).toBe(120);
+    expect(current.body.data.action.settled_battle_count).toBe(1);
+    expect(
+      await prisma.battleLog.count({ where: { playerId, battleType: "explore" } }),
+    ).toBe(1);
+  });
+
+  it("离线收益最多计算八小时，快照可重复查看并只能领取一次", async () => {
+    const { token, playerId } = await createPlayer(app, "离线");
+    const started = await request(app.getHttpServer())
+      .post("/api/game/actions/start")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `long_start_${Date.now()}_offline`)
+      .send({ action_type: "explore", province_id: "ji" })
+      .expect(201);
+    const recordId = started.body.data.action.action_id as string;
+    const lastActiveAt = new Date(Date.now() - 12 * 60 * 60_000);
+    await prisma.exploreActionRecord.update({
+      where: { recordId },
+      data: { lastSettledAt: lastActiveAt, lastActiveAt },
+    });
+
+    const current = await request(app.getHttpServer())
+      .get("/api/game/actions/current")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(current.body.data.action.offline_reward.offline_minutes).toBe(480);
+
+    const preview = await request(app.getHttpServer())
+      .get("/api/game/actions/offline-reward")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(preview.body.data.reward.offline_minutes).toBe(480);
+
+    const claimed = await request(app.getHttpServer())
+      .post("/api/game/actions/offline-reward/claim")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `long_claim_${Date.now()}_offline`)
+      .expect(201);
+    expect(claimed.body.data.action.action_type).toBe("explore");
+    expect(claimed.body.data.action.offline_reward).toBeNull();
+
+    const record = await prisma.exploreActionRecord.findUniqueOrThrow({ where: { recordId } });
+    expect(record.offlineSnapshotClaimedAt).not.toBeNull();
+    expect(record.settledMinutes).toBe(480);
+  });
+
+  it("带探索次数的旧请求明确拒绝", async () => {
+    const { token } = await createPlayer(app, "旧接口");
+    const response = await request(app.getHttpServer())
+      .post("/api/game/explore")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `long_legacy_${Date.now()}`)
+      .send({ province_id: "ji", count: 1 })
+      .expect(400);
+    expect(response.body.message).toContain("长期行动");
+  });
+});
+
+async function createPlayer(
+  app: INestApplication,
+  namePrefix: string,
+): Promise<{ token: string; playerId: string }> {
+  const nonce = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const login = await request(app.getHttpServer())
+    .post("/api/auth/guest-login")
+    .send({ device_id: `long_${namePrefix}_${nonce}`, nickname: `${namePrefix}道友` })
+    .expect(201);
+  const token = login.body.data.token as string;
+  const created = await request(app.getHttpServer())
+    .post("/api/player/create")
+    .set("Authorization", `Bearer ${token}`)
+    .set("Idempotency-Key", `long_create_${nonce}`)
+    .send({ name: `${namePrefix}${nonce}`.slice(0, 16), route: "qi" });
+  if (created.status !== 201) {
+    throw new Error(`创建角色失败：${created.status} ${JSON.stringify(created.body)}`);
+  }
+  return { token, playerId: created.body.data.profile.player.player_id as string };
+}

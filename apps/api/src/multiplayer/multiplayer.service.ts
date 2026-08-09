@@ -1661,7 +1661,7 @@ export class MultiplayerService implements OnModuleInit, OnModuleDestroy {
   private async calculatePlayerPower(tx: DbClient, playerId: string): Promise<number> {
     const player = await tx.player.findUniqueOrThrow({ where: { playerId } });
     const equipments = await tx.equipmentInstance.findMany({
-      where: { playerId, status: "active" },
+      where: { playerId, status: "active", equippedSlot: { not: null } },
       include: { affixes: true },
     });
     const affixPower = equipments.reduce(

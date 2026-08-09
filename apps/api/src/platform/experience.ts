@@ -681,6 +681,8 @@ function equipmentOperationLabel(operationType: EquipmentOperationResponse["oper
     inscribe: "铭刻",
     decompose: "分解",
     lock: "锁定",
+    equip: "装备",
+    unequip: "卸下",
   };
   return labels[operationType];
 }

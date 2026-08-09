@@ -2,6 +2,7 @@ import type {
   AcceptSectHireRequest,
   ActionCurrentResponse,
   ActionMutationResponse,
+  ActionOfflineRewardResponse,
   ActionStartRequest,
   ActivityDetailResponse,
   ActivityListResponse,
@@ -74,6 +75,7 @@ import type {
   EquipCollectionDisplayRequest,
   EquipCollectionDisplayResponse,
   EquipmentInscribeRequest,
+  EquipmentEquipRequest,
   EquipmentListResponse,
   EquipmentOperationRecordListResponse,
   EquipmentOperationResponse,
@@ -429,6 +431,18 @@ export class GameClient {
     return this.get<ActionCurrentResponse>("/api/game/actions/current");
   }
 
+  offlineActionReward(): Promise<ApiResponse<ActionOfflineRewardResponse>> {
+    return this.get<ActionOfflineRewardResponse>("/api/game/actions/offline-reward");
+  }
+
+  claimOfflineAction(idempotencyKey: string): Promise<ApiResponse<ActionMutationResponse>> {
+    return this.post<ActionMutationResponse>(
+      "/api/game/actions/offline-reward/claim",
+      {},
+      { idempotencyKey },
+    );
+  }
+
   startAction(
     body: ActionStartRequest,
     idempotencyKey: string,
@@ -733,6 +747,28 @@ export class GameClient {
   ): Promise<ApiResponse<EquipmentOperationResponse>> {
     return this.post<EquipmentOperationResponse, EquipmentTargetRequest>(
       "/api/production/equipment/refine",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  equipmentEquip(
+    body: EquipmentEquipRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<EquipmentOperationResponse>> {
+    return this.post<EquipmentOperationResponse, EquipmentEquipRequest>(
+      "/api/production/equipment/equip",
+      body,
+      { idempotencyKey },
+    );
+  }
+
+  equipmentUnequip(
+    body: EquipmentTargetRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<EquipmentOperationResponse>> {
+    return this.post<EquipmentOperationResponse, EquipmentTargetRequest>(
+      "/api/production/equipment/unequip",
       body,
       { idempotencyKey },
     );

@@ -8,6 +8,7 @@ import type {
 import type { Prisma } from "@prisma/client";
 import { lockPlayerForTransaction } from "../database/player-transaction";
 import { PrismaService } from "../database/prisma.service";
+import { getRealmName, getRealmStageConfig } from "../game/realm-progression.constants";
 import { toBagItemState } from "../production/production.mappers";
 
 @Injectable()
@@ -154,6 +155,7 @@ function toChatMessage(row: {
 }
 
 const chatPlayerSelect = {
+  route: true,
   currentRealm: true,
   currentStage: true,
   currentLevel: true,
@@ -162,6 +164,7 @@ const chatPlayerSelect = {
 } as const;
 
 type ChatPlayerSnapshot = {
+  route: string;
   currentRealm: number;
   currentStage: number;
   currentLevel: number;
@@ -170,9 +173,10 @@ type ChatPlayerSnapshot = {
 };
 
 function formatPlayerLevel(player: ChatPlayerSnapshot): string {
-  const stageName =
-    ["初期", "中期", "后期"][Math.max(0, Math.min(2, player.currentStage - 1))] ?? "初期";
-  return `第${player.currentRealm}境·${stageName}·${player.currentLevel}级`;
+  const route = player.route === "body" ? "body" : "qi";
+  const realmName = getRealmName(player.currentRealm, route);
+  const stageName = getRealmStageConfig(player.currentRealm, player.currentStage, route).qiName;
+  return `${realmName}·${stageName}·${player.currentLevel}级`;
 }
 
 function getMembershipTier(player: ChatPlayerSnapshot): WorldChatMessageState["membership_tier"] {

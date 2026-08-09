@@ -1367,8 +1367,8 @@ h2 {
   color: #d9e1d4;
   display: grid;
   gap: 4px;
-  min-height: 64px;
-  padding: 10px 11px;
+  min-height: 48px;
+  padding: 7px 9px;
   text-align: left;
 }
 
@@ -1379,7 +1379,7 @@ h2 {
 
 .utility-hub-item strong {
   color: #eee3c8;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .utility-hub-item span {
@@ -1410,13 +1410,44 @@ h2 {
   border: 1px solid #4f604c;
   color: #d9e1d4;
   font-size: 12px;
-  padding: 7px 10px;
+  min-height: 30px;
+  padding: 5px 8px;
 }
 
 .utility-core-button:hover:not(:disabled) {
   background: #263529;
   border-color: #d1af6a;
   color: #f0e4c9;
+}
+
+.utility-dialog button:not(.console-button-primary) {
+  background: #263426;
+  border: 1px solid #61715b;
+  color: #d9e1d4;
+  font-size: 11px;
+  min-height: 30px;
+  padding: 5px 8px;
+}
+
+.utility-dialog button:not(.console-button-primary):hover:not(:disabled) {
+  background: #314532;
+  border-color: #d1af6a;
+  color: #f0e4c9;
+}
+
+.utility-dialog .utility-hub-item {
+  align-content: center;
+  text-align: left;
+}
+
+.utility-dialog .quiet-button {
+  background: transparent;
+  border-color: #61715b;
+}
+
+.utility-dialog .console-button-primary {
+  min-height: 32px;
+  padding: 6px 10px;
 }
 
 .panel-warning {

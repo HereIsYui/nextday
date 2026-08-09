@@ -749,30 +749,6 @@ export class GameCommandService {
     );
   }
 
-  private async claimExplore(
-    input: { accountId: string; idempotencyKey: string },
-    recordId: string | undefined,
-  ): Promise<TextCommandResponse> {
-    const result = await this.gameService.claimExplore({
-      ...input,
-      body: recordId ? { record_id: recordId } : {},
-    });
-    const wins = result.battles.filter((battle) => battle.result === "win").length;
-    const entries: LogInput[] = [
-      {
-        tone: "success",
-        text: `探索结算完成：${result.province_name}共 ${result.count} 战，胜 ${wins} 场。${formatRewards(result.rewards)}`,
-      },
-    ];
-    return this.success(
-      "explore_claim",
-      entries,
-      result,
-      ["overview", "explore", "events", "tasks", "battles"],
-      [{ label: "查看战报", command: "战报" }],
-    );
-  }
-
   private async exploreEvents(accountId: string): Promise<TextCommandResponse> {
     const result = await this.gameService.getExploreEvents(accountId, {
       status: "pending",
@@ -1683,6 +1659,9 @@ function parseCommand(input: TextCommandRequest): ParsedCommand | InvalidCommand
   }
   if (["探索", "游历", "explore"].includes(command)) {
     if (args.length !== 1) {
+      if (args.length === 2 && /^\d+$/.test(args[1] ?? "")) {
+        return invalid("探索已改为长期行动，不再接受探索次数。用法：探索 <州域>。 ");
+      }
       return invalid("请指定州域。用法：探索 <州域>，例如：探索 冀州。");
     }
     const province = resolveProvince(args[0]);
@@ -2184,7 +2163,6 @@ function buildHelpEntries(): LogInput[] {
 function suggestionsFor(commandId: Exclude<TextCommandId, "invalid">): TextCommandSuggestion[] {
   const suggestions: Partial<Record<TextCommandId, TextCommandSuggestion[]>> = {
     explore: [{ label: "查看状态", command: "状态" }],
-    explore_claim: [{ label: "查看当前探索", command: "状态" }],
     explore_event_resolve: [{ label: "查看奇遇", command: "奇遇" }],
     task_claim: [{ label: "查看任务", command: "任务" }],
     tower_action: [{ label: "查看九塔", command: "九塔" }],

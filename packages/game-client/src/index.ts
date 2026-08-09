@@ -84,11 +84,8 @@ import type {
   EraMuseumResponse,
   ExecuteMergeReservedRequest,
   ExecuteMergeReservedResponse,
-  ExploreClaimRequest,
-  ExploreCurrentResponse,
   ExploreEventListResponse,
   ExploreRequest,
-  ExploreResponse,
   FactionReputationResponse,
   FactionRoutesResponse,
   FormulaCraftResponse,
@@ -561,14 +558,10 @@ export class GameClient {
     );
   }
 
-  explore(body: ExploreRequest, idempotencyKey: string): Promise<ApiResponse<ExploreResponse>> {
-    return this.post<ExploreResponse, ExploreRequest>("/api/game/explore", body, {
+  explore(body: ExploreRequest, idempotencyKey: string): Promise<ApiResponse<ActionMutationResponse>> {
+    return this.post<ActionMutationResponse, ExploreRequest>("/api/game/explore", body, {
       idempotencyKey,
     });
-  }
-
-  currentExplore(): Promise<ApiResponse<ExploreCurrentResponse>> {
-    return this.get<ExploreCurrentResponse>("/api/game/explore/current");
   }
 
   exploreEvents(
@@ -580,15 +573,6 @@ export class GameClient {
       params.set("status", status);
     }
     return this.get<ExploreEventListResponse>(`/api/game/explore/events?${params.toString()}`);
-  }
-
-  claimExplore(
-    body: ExploreClaimRequest,
-    idempotencyKey: string,
-  ): Promise<ApiResponse<ExploreResponse>> {
-    return this.post<ExploreResponse, ExploreClaimRequest>("/api/game/explore/claim", body, {
-      idempotencyKey,
-    });
   }
 
   resolveExploreEvent(

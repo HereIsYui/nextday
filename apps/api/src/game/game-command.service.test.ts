@@ -17,21 +17,13 @@ describe("文字命令服务", () => {
     });
 
     expect(response.command_id).toBe("help");
-    expect(response.entries.some((entry) => entry.text.includes("探索 <州域> [次数]"))).toBe(true);
-    expect(
-      response.entries.some((entry) =>
-        entry.text.includes("领取探索：自动结算最近一条可领取探索。"),
-      ),
-    ).toBe(true);
+    expect(response.entries.some((entry) => entry.text.includes("探索 <州域>"))).toBe(true);
+    expect(response.entries.some((entry) => entry.text.includes("在线收益自动结算"))).toBe(true);
   });
 
-  it("解析州域别名并透传幂等键", async () => {
+  it("带次数的旧探索指令会明确拒绝", async () => {
     const gameService = {
-      explore: vi.fn().mockResolvedValue({
-        province_name: "冀州",
-        count: 2,
-        total_seconds: 40,
-      }),
+      explore: vi.fn(),
     };
     const service = createService({ gameService });
 
@@ -41,20 +33,15 @@ describe("文字命令服务", () => {
       idempotencyKey: "idem_explore",
     });
 
-    expect(response.command_id).toBe("explore");
-    expect(gameService.explore).toHaveBeenCalledWith({
-      accountId: "account_test",
-      body: { province_id: "ji", count: 2 },
-      idempotencyKey: "idem_explore",
-    });
+    expect(response.command_id).toBe("invalid");
+    expect(response.entries[0]?.text).toContain("长期行动");
+    expect(gameService.explore).not.toHaveBeenCalled();
   });
 
-  it("探索省略次数时默认进行一次", async () => {
+  it("探索只接受州域并启动长期行动", async () => {
     const gameService = {
-      explore: vi.fn().mockResolvedValue({
-        province_name: "冀州",
-        count: 1,
-        total_seconds: 20,
+      startAction: vi.fn().mockResolvedValue({
+        action: { province_name: "冀州" },
       }),
     };
     const service = createService({ gameService });
@@ -62,116 +49,27 @@ describe("文字命令服务", () => {
     const response = await service.execute({
       accountId: "account_test",
       body: { command: "探索 冀州" },
-      idempotencyKey: "idem_explore_default_count",
+      idempotencyKey: "idem_explore",
     });
 
     expect(response.command_id).toBe("explore");
-    expect(gameService.explore).toHaveBeenCalledWith({
+    expect(gameService.startAction).toHaveBeenCalledWith({
       accountId: "account_test",
-      body: { province_id: "ji", count: 1 },
-      idempotencyKey: "idem_explore_default_count",
+      body: { action_type: "explore", province_id: "ji" },
+      idempotencyKey: "idem_explore",
     });
   });
 
-  it("领取探索只传出结算结果，不在领取时主动传出奇遇", async () => {
-    const gameService = {
-      claimExplore: vi.fn().mockResolvedValue({
-        battles: [{ result: "win" }],
-        count: 1,
-        event: {
-          choices: [
-            {
-              choice_id: "collect",
-              label: "顺势采药",
-              reward_preview: "凝露草 ×1",
-            },
-            {
-              choice_id: "leave",
-              label: "谨慎离开",
-              reward_preview: "无额外奖励",
-            },
-          ],
-          description: "山道旁有一簇异草。",
-          event_id: "event_test",
-          title: "路遇灵草",
-        },
-        province_name: "冀州",
-        rewards: { cultivation: "0", items: [], spirit_stone: "0" },
-      }),
-    };
-    const service = createService({ gameService });
-
-    const response = await service.execute({
-      accountId: "account_test",
-      body: { command: "领取探索 explore_test" },
-      idempotencyKey: "idem_explore_claim",
-    });
-
-    expect(response.command_id).toBe("explore_claim");
-    expect(gameService.claimExplore).toHaveBeenCalledWith({
-      accountId: "account_test",
-      body: { record_id: "explore_test" },
-      idempotencyKey: "idem_explore_claim",
-    });
-    expect(response.entries.map((entry) => entry.text)).toEqual([
-      "探索结算完成：冀州共 1 战，胜 1 场。未获得额外奖励。",
-    ]);
-  });
-
-  it("领取探索会自动结算最近一条可领取记录", async () => {
-    const gameService = {
-      claimExplore: vi.fn().mockResolvedValue({
-        battles: [],
-        count: 1,
-        event: null,
-        province_name: "冀州",
-        rewards: { cultivation: "0", items: [], spirit_stone: "0" },
-      }),
-    };
-    const service = createService({ gameService });
-
+  it("领取探索指令已退役", async () => {
+    const service = createService();
     const response = await service.execute({
       accountId: "account_test",
       body: { command: "领取探索" },
-      idempotencyKey: "idem_explore_claim_latest",
+      idempotencyKey: "idem_explore_claim_retired",
     });
 
-    expect(response.command_id).toBe("explore_claim");
-    expect(gameService.claimExplore).toHaveBeenCalledWith({
-      accountId: "account_test",
-      body: {},
-      idempotencyKey: "idem_explore_claim_latest",
-    });
-  });
-
-  it("领取探索会合并显示重复材料", async () => {
-    const gameService = {
-      claimExplore: vi.fn().mockResolvedValue({
-        battles: [{ result: "win" }, { result: "win" }, { result: "lose" }],
-        count: 3,
-        province_name: "冀州",
-        rewards: {
-          cultivation: "200",
-          items: [
-            { item_id: "herb_dew", name: "凝露草", count: 1 },
-            { item_id: "iron_sand", name: "玄铁砂", count: 2 },
-            { item_id: "herb_dew", name: "凝露草", count: 3 },
-          ],
-          spirit_stone: "175",
-        },
-      }),
-    };
-    const service = createService({ gameService });
-
-    const response = await service.execute({
-      accountId: "account_test",
-      body: { command: "领取探索" },
-      idempotencyKey: "idem_explore_claim_merged_items",
-    });
-
-    expect(response.entries.map((entry) => entry.text)).toEqual([
-      "探索结算完成：冀州共 3 战，胜 2 场。获得：修为 +200、灵石 +175、凝露草 ×4、玄铁砂 ×2。",
-    ]);
+    expect(response.command_id).toBe("invalid");
+    expect(response.entries[0]?.text).toContain("未识别指令");
   });
 
   it("单条待选奇遇可省略过长的事件ID", async () => {
@@ -219,7 +117,7 @@ describe("文字命令服务", () => {
     });
 
     expect(response.command_id).toBe("invalid");
-    expect(response.entries[0]?.text).toContain("用法：探索 <州域> [次数]");
+    expect(response.entries[0]?.text).toContain("用法：探索 <州域>");
     expect(response.entries[0]?.text).toContain("当前可选州域：冀州");
   });
 

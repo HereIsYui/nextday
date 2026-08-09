@@ -20,14 +20,10 @@ import type {
   BreakthroughResponse,
   CaveCollectResponse,
   CultivationClaimResponse,
-  CultivationRoute,
   CultivationStatus,
-  ExploreClaimRequest,
-  ExploreCurrentResponse,
   ExploreEventListResponse,
   ExploreEventState,
   ExploreRequest,
-  ExploreResponse,
   GameOverviewResponse,
   JournalListResponse,
   PlayerProfileResponse,
@@ -49,16 +45,14 @@ import {
   type PlayerCaveState,
   type PlayerProductionEffect,
   type PlayerProgress,
-  type PlayerSkillLoadout,
   type PlayerWallet,
 } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
 import { lockAccountForTransaction, lockPlayerForTransaction } from "../database/player-transaction";
 import { buildJournalExperience, writeJournalFromResponse } from "../journal/journal.utils";
-import { buildCaveCollectExperience, buildExploreExperience } from "../platform/experience";
+import { buildCaveCollectExperience } from "../platform/experience";
 import { hashRequestBody } from "../platform/utils/hash";
 import { toPlayerProfileResponse } from "../player/player.mapper";
-import { getDefaultSkillLoadout, getSkillName } from "../production/production.constants";
 import {
   allocateCultivation,
   calculateCultivationPower,
@@ -100,6 +94,7 @@ import {
   stagesPerRealm,
 } from "./realm-progression.constants";
 import { ensureInitialPlayerTasks, incrementPlayerTasks } from "./task-progress.utils";
+import { calculateUnifiedCombatPower, getCombatSkillSnapshot } from "./combat-skills";
 
 type Tx = Prisma.TransactionClient;
 type DbClient = Tx | PrismaService;
@@ -631,54 +626,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       where: { playerId: player.playerId },
     });
     if (currentState.activeActionType === "explore") {
-      const replay = await this.prisma.idempotencyRecord.findUnique({
-        where: { idempotencyKey: input.idempotencyKey },
-      });
-      if (replay) return replay.responseData as unknown as ActionMutationResponse;
-      if (!currentState.activeActionId || !currentState.activeActionEndedAt) {
-        throw new BadRequestException("探索尚未结束");
-      }
-      const result = await this.claimExplore({
-        accountId: input.accountId,
-        body: { record_id: currentState.activeActionId },
-        idempotencyKey: `${input.idempotencyKey}:explore`,
-      });
-      const response: ActionMutationResponse = await this.prisma.$transaction(async (tx) => {
-        await lockAccountForTransaction(tx, input.accountId);
-        const updatedState = await tx.playerActionState.update({
-          where: { playerId: player.playerId },
-          data: {
-            activeActionType: null,
-            activeActionId: null,
-            activeActionProvinceId: null,
-            activeActionStartedAt: null,
-            activeActionEndedAt: null,
-            activeActionRewardSnapshot: Prisma.JsonNull,
-            activeActionLastActiveAt: null,
-            activeActionSettledUntil: null,
-            activeActionOfflineSnapshot: Prisma.JsonNull,
-            activeActionOfflineSnapshotAt: null,
-          },
-        });
-        const value: ActionMutationResponse = {
-          action: null,
-          action_state: toActionState(updatedState),
-          rewards: result.rewards,
-        };
-        await tx.idempotencyRecord.create({
-          data: {
-            idempotencyKey: input.idempotencyKey,
-            accountId: input.accountId,
-            endpoint: "POST /api/game/actions/claim",
-            requestHash: hashRequestBody({}),
-            responseData: value as unknown as Prisma.InputJsonValue,
-            statusCode: 200,
-            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          },
-        });
-        return value;
-      });
-      return response;
+      throw new BadRequestException("探索在线收益会自动结算，结束探索时无需领取行动收益");
     }
     return this.withIdempotency({
       accountId: input.accountId,
@@ -1132,184 +1080,14 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
     accountId: string;
     body: ExploreRequest;
     idempotencyKey: string;
-  }): Promise<ExploreResponse> {
-    if (typeof input.body?.count !== "undefined") {
+  }): Promise<ActionMutationResponse> {
+    if (Object.prototype.hasOwnProperty.call(input.body ?? {}, "count")) {
       throw new BadRequestException("探索已改为长期行动，不再接受探索次数");
     }
-    const action = await this.startAction({
+    return this.startAction({
       accountId: input.accountId,
       body: { action_type: "explore", province_id: input.body?.province_id },
       idempotencyKey: input.idempotencyKey,
-    });
-    if (!action.action) throw new Error("长期探索状态写入失败");
-    const record = await this.prisma.exploreActionRecord.findUniqueOrThrow({
-      where: { recordId: action.action.action_id },
-    });
-    return toExploreResponse(record, action.action_state);
-  }
-
-  async getCurrentExplore(accountId: string): Promise<ExploreCurrentResponse> {
-    const player = await this.requirePlayer(accountId);
-    await this.ensureM2State(player.playerId);
-    await this.refreshExploreEventLifecycle({ accountId, playerId: player.playerId });
-    const actionState = await this.refreshActionState(player.playerId);
-    const activeRecord = await this.findActiveExploreRecord(this.prisma, player.playerId);
-    if (activeRecord) {
-      const refreshedRecord = await this.refreshExploreRecordStatus(this.prisma, activeRecord);
-      return { current: toExploreResponse(refreshedRecord, actionState) };
-    }
-
-    const latestRecord = await this.prisma.exploreActionRecord.findFirst({
-      where: { playerId: player.playerId },
-      orderBy: { createdAt: "desc" },
-    });
-
-    return {
-      current: latestRecord ? toExploreResponse(latestRecord, actionState) : null,
-    };
-  }
-
-  async claimExplore(input: {
-    accountId: string;
-    body: ExploreClaimRequest;
-    idempotencyKey: string;
-  }): Promise<ExploreResponse> {
-    const player = await this.requirePlayer(input.accountId);
-    const body = normalizeExploreClaimRequest(input.body);
-    await this.refreshExploreEventLifecycle({
-      accountId: input.accountId,
-      playerId: player.playerId,
-    });
-
-    return this.withIdempotency({
-      accountId: input.accountId,
-      endpoint: "POST /api/game/explore/claim",
-      idempotencyKey: input.idempotencyKey,
-      requestBody: body,
-      handler: async (tx) => {
-        await this.ensureM2State(player.playerId, tx);
-        const loaded = await this.requirePlayerInTx(tx, player.playerId);
-        const selectedRecord = body.record_id
-          ? await tx.exploreActionRecord.findUnique({
-              where: { recordId: body.record_id },
-            })
-          : await this.findActiveExploreRecord(tx, loaded.playerId);
-
-        if (!selectedRecord || selectedRecord.playerId !== loaded.playerId) {
-          throw new BadRequestException("暂无可领取探索");
-        }
-
-        const record = await this.refreshExploreRecordStatus(tx, selectedRecord);
-        if (record.status === "claimed" || record.claimedAt) {
-          throw new BadRequestException("探索奖励已领取");
-        }
-
-        if (record.status !== "completed" || record.completesAt.getTime() > Date.now()) {
-          throw new BadRequestException("探索尚未完成");
-        }
-
-        const claimedAt = new Date();
-        const reservation = await tx.exploreActionRecord.updateMany({
-          where: {
-            claimedAt: null,
-            playerId: loaded.playerId,
-            recordId: record.recordId,
-            status: "completed",
-          },
-          data: { claimedAt, status: "claimed" },
-        });
-        if (reservation.count === 0) {
-          throw new BadRequestException("探索奖励已领取");
-        }
-
-        const province = await this.getProvinceForPlayer(tx, loaded.playerId, record.provinceId);
-        const actionState = await this.refreshActionState(loaded.playerId, tx);
-        const battles: BattleSummary[] = [];
-        const rewardTotal: RewardBundle = { cultivation: "0", spirit_stone: "0", items: [] };
-        let currentPlayer = loaded;
-        let currentProgress = loaded.progress;
-
-        for (let index = 0; index < record.count; index += 1) {
-          const battle = await this.resolveExploreBattle(
-            tx,
-            currentPlayer,
-            currentProgress,
-            province,
-            record.recordId,
-            index,
-            record.exploreBoostPercent,
-          );
-          battles.push(battle.summary);
-          currentPlayer = battle.player;
-          currentProgress = battle.progress;
-          mergeRewards(rewardTotal, battle.summary.rewards);
-        }
-
-        await tx.playerProvinceProgress.update({
-          where: {
-            playerId_provinceId: {
-              playerId: loaded.playerId,
-              provinceId: province.province_id,
-            },
-          },
-          data: {
-            explorationCount: { increment: record.count },
-            bestExploreStage: { increment: record.count },
-            lastActionAt: new Date(),
-          },
-        });
-        const completedTaskIds = await incrementPlayerTasks(tx, loaded.playerId, {
-          novice_explore_ji: province.province_id === "ji" ? record.count : 0,
-          daily_explore: record.count,
-          weekly_explore_10: record.count,
-        });
-        const experience = buildExploreExperience({
-          provinceName: province.name,
-          count: record.count,
-          battles,
-          rewards: rewardTotal,
-          actionPointsAfter: actionState.action_points,
-          completedTaskCount: completedTaskIds.length,
-        });
-        const updatedRecord = await tx.exploreActionRecord.update({
-          where: { recordId: record.recordId },
-          data: {
-            rewardSnapshot: rewardTotal as unknown as Prisma.InputJsonValue,
-            battleSnapshot: battles as unknown as Prisma.InputJsonValue,
-            completedTaskIds: completedTaskIds as unknown as Prisma.InputJsonValue,
-            experienceSnapshot: experience as unknown as Prisma.InputJsonValue,
-            actionStateSnapshot: actionState as unknown as Prisma.InputJsonValue,
-          },
-        });
-        let responseActionState = actionState;
-        if (record.actionMode === "long_term") {
-          const cleared = await tx.playerActionState.update({
-            where: { playerId: loaded.playerId },
-            data: {
-              activeActionType: null,
-              activeActionId: null,
-              activeActionProvinceId: null,
-              activeActionStartedAt: null,
-              activeActionEndedAt: null,
-              activeActionRewardSnapshot: Prisma.JsonNull,
-            },
-          });
-          responseActionState = toActionState(cleared);
-        }
-        const response = toExploreResponse(updatedRecord, responseActionState);
-
-        await this.writeAudit(tx, {
-          accountId: input.accountId,
-          playerId: loaded.playerId,
-          action: "explore_claim",
-          targetType: "explore_action",
-          targetId: record.recordId,
-          afterSnapshot: response as unknown as Prisma.InputJsonValue,
-          idempotencyKey: input.idempotencyKey,
-        });
-
-        return response;
-      },
     });
   }
 
@@ -1774,11 +1552,12 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
     await this.prisma.$transaction(async (tx) => {
       const now = new Date();
       const activeRecord = await this.findActiveExploreRecord(tx, input.playerId);
-      const record = activeRecord ? await this.refreshExploreRecordStatus(tx, activeRecord) : null;
+      const record = activeRecord;
 
       if (
         record &&
         ["active", "pending"].includes(record.status) &&
+        (record.settledBattleCount ?? 0) > 0 &&
         record.eventTriggerAt &&
         record.eventTriggerAt.getTime() <= now.getTime()
       ) {
@@ -1924,23 +1703,6 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
         status: { in: ["active", "offline_claimable", "pending"] },
       },
       orderBy: { createdAt: "desc" },
-    });
-  }
-
-  private async refreshExploreRecordStatus(
-    tx: DbClient,
-    record: ExploreActionRecord,
-  ): Promise<ExploreActionRecord> {
-    if (record.actionMode === "long_term") {
-      return record;
-    }
-    if (record.status !== "pending" || record.completesAt.getTime() > Date.now()) {
-      return record;
-    }
-
-    return tx.exploreActionRecord.update({
-      where: { recordId: record.recordId },
-      data: { status: "completed" },
     });
   }
 
@@ -2097,16 +1859,30 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       (sum, item) => sum + item.affixes.reduce((affixSum, affix) => affixSum + affix.value, 0),
       0,
     );
-    const playerPower = calculateCultivationPower(
+    const loadout = await tx.playerSkillLoadout.findUnique({
+      where: { playerId: player.playerId },
+    });
+    const skillSnapshot = getCombatSkillSnapshot({
+      route: player.route,
+      loadout,
+      enemyTraits: enemy.traits,
+    });
+    const basePower = calculateCultivationPower(
       player.currentRealm,
       player.currentStage,
       player.currentLevel,
-      Math.floor(equipmentPower / 4),
     );
+    const playerPower = calculateUnifiedCombatPower({
+      basePower,
+      equipmentPower: Math.floor(equipmentPower / 4),
+      skillSnapshot,
+    });
     const result: BattleSummary["result"] = playerPower >= enemy.enemyPower ? "win" : "lose";
     const damageDone = result === "win" ? enemy.enemyPower + player.currentLevel * 12 : playerPower;
     const damageTaken =
-      result === "win" ? Math.max(8, Math.floor(enemy.enemyPower / 3)) : enemy.enemyPower;
+      result === "win"
+        ? Math.max(8, Math.floor(enemy.enemyPower / 3 * skillSnapshot.defenseMultiplier))
+        : Math.max(1, Math.floor(enemy.enemyPower * skillSnapshot.defenseMultiplier));
     const loot =
       result === "win"
         ? selectExploreLoot(province.province_id, exploreRecordId, battleIndex, enemy.enemyId)
@@ -2146,19 +1922,18 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       },
     );
 
-    const loadout = await tx.playerSkillLoadout.findUnique({
-      where: { playerId: player.playerId },
-    });
-    const skillNames = getCombatSkillNames(player.route, loadout);
     const battleLog: BattleRoundLog[] = createBattleRoundLog({
       playerName: player.name,
       enemyName: enemy.enemyName,
       damageDone,
       damageTaken,
       result,
-      activeSkillName: skillNames.activeSkillName,
+      activeSkillName: skillSnapshot.activeSkillName,
+      activeSkillId: skillSnapshot.activeSkillId,
       enemySkillName: enemy.skillName,
-      treasureSkillName: skillNames.treasureSkillName,
+      treasureSkillName: skillSnapshot.treasureSkillName,
+      treasureSkillId: skillSnapshot.treasureSkillId,
+      skillEffect: skillSnapshot.reason,
     });
     const battle = await tx.battleLog.create({
       data: {
@@ -2182,12 +1957,16 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
     return {
       summary: {
         ...summary,
+        reason_summary: [
+          ...(summary.reason_summary ?? []),
+          skillSnapshot.reason,
+        ],
         battle_hint: buildExploreBattleHint({
           enemyName: enemy.enemyName,
           enemyTraits: enemy.traits,
           loot: loot ?? undefined,
           result,
-        }),
+        }) + `；${skillSnapshot.activeSkillName}与${skillSnapshot.treasureSkillName}已生效`,
         enemy_traits: enemy.traits,
         loot_highlights: loot ? [`${loot.name} x1 · ${loot.usageHint}`] : [],
       },
@@ -2584,11 +2363,6 @@ function calculateRecoveredActionPoints(state: PlayerActionState): number {
   return Math.min(state.actionPointCap, state.actionPoints + recovered);
 }
 
-function normalizeExploreClaimRequest(body: ExploreClaimRequest): ExploreClaimRequest {
-  const recordId = body?.record_id?.trim();
-  return recordId ? { record_id: recordId } : {};
-}
-
 function buildOfflineActionReward(
   record: ExploreActionRecord,
   offlineMinutes: number,
@@ -2710,50 +2484,6 @@ function normalizeBattleResultFilter(
 function normalizeOptionalTextFilter(input: string | undefined): string | undefined {
   const value = input?.trim();
   return value ? value : undefined;
-}
-
-function toExploreResponse(
-  record: ExploreActionRecord,
-  actionState: ActionState,
-  event?: ExploreEventRecord | null,
-): ExploreResponse {
-  const rewards =
-    record.rewardSnapshot && typeof record.rewardSnapshot === "object"
-      ? (record.rewardSnapshot as unknown as RewardBundle)
-      : ({ cultivation: "0", spirit_stone: "0", items: [] } satisfies RewardBundle);
-  const battles = Array.isArray(record.battleSnapshot)
-    ? (record.battleSnapshot as unknown as BattleSummary[])
-    : [];
-  const completedTaskIds = Array.isArray(record.completedTaskIds)
-    ? (record.completedTaskIds as unknown as string[])
-    : [];
-  const experience =
-    record.experienceSnapshot && typeof record.experienceSnapshot === "object"
-      ? (record.experienceSnapshot as unknown as ExploreResponse["experience"])
-      : undefined;
-
-  return {
-    record_id: record.recordId,
-    province_id: record.provinceId,
-    province_name: record.provinceName,
-    count: record.count,
-    status: normalizeExploreStatus(record.status),
-    seconds_per_explore: record.secondsPerExplore,
-    total_seconds: record.totalSeconds,
-    started_at: record.startedAt.toISOString(),
-    event_trigger_at: record.eventTriggerAt?.toISOString() ?? null,
-    completes_at: record.completesAt.toISOString(),
-    claimed_at: record.claimedAt?.toISOString() ?? null,
-    can_claim: record.status === "completed" && !record.claimedAt,
-    explore_boost_percent: record.exploreBoostPercent,
-    action_state: actionState,
-    battles,
-    rewards,
-    completed_task_ids: completedTaskIds,
-    experience,
-    event: event ? toExploreEventState(event) : null,
-    linked_event_hint: event ? `${event.title}已出现，可在今日修行的探索奇遇中处理。` : null,
-  };
 }
 
 function toExploreEventState(record: ExploreEventRecord): ExploreEventState {
@@ -3267,20 +2997,6 @@ function getActiveTaskResetKeys(): string[] {
   return [...new Set(getTaskDefinitions().map((definition) => definition.resetKey))];
 }
 
-function normalizeExploreStatus(status: string): ExploreResponse["status"] {
-  if (
-    status === "active" ||
-    status === "pending" ||
-    status === "completed" ||
-    status === "claimed" ||
-    status === "expired"
-  ) {
-    return status;
-  }
-
-  return "pending";
-}
-
 function mergeRewards(target: RewardBundle, source: RewardBundle) {
   target.cultivation = (
     BigInt(target.cultivation ?? "0") + BigInt(source.cultivation ?? "0")
@@ -3312,8 +3028,11 @@ function createBattleRoundLog(input: {
   damageTaken: number;
   result: BattleSummary["result"];
   activeSkillName: string;
+  activeSkillId: string;
   enemySkillName: string;
   treasureSkillName: string;
+  treasureSkillId: string;
+  skillEffect: string;
 }): BattleRoundLog[] {
   const enemyRemainingHp = Math.max(0, input.result === "win" ? 0 : input.damageTaken);
 
@@ -3322,6 +3041,8 @@ function createBattleRoundLog(input: {
       round: 1,
       actor: input.playerName,
       skill: input.activeSkillName,
+      skill_id: input.activeSkillId,
+      skill_effect: input.skillEffect,
       damage: Math.floor(input.damageDone * 0.55),
       target_hp: Math.max(0, input.damageDone - Math.floor(input.damageDone * 0.55)),
     },
@@ -3336,37 +3057,14 @@ function createBattleRoundLog(input: {
       round: 3,
       actor: input.playerName,
       skill: input.treasureSkillName,
+      skill_id: input.treasureSkillId,
+      skill_effect: input.skillEffect,
       damage: Math.ceil(input.damageDone * 0.45),
       target_hp: enemyRemainingHp,
     },
   ];
 }
 
-function getCombatSkillNames(
-  route: string,
-  loadout: PlayerSkillLoadout | null,
-): { activeSkillName: string; treasureSkillName: string } {
-  const fallback = getDefaultSkillLoadout(route as CultivationRoute);
-  const activeSkillIds = normalizeStringArray(loadout?.activeSkillIds) ?? fallback.active_skill_ids;
-  const autoPriority = normalizeStringArray(loadout?.autoPriority) ?? fallback.auto_priority;
-  const treasureSkillId = loadout?.treasureSkillId ?? fallback.treasure_skill_id;
-  const activeSkillId =
-    autoPriority.find((skillId) => activeSkillIds.includes(skillId)) ?? activeSkillIds[0];
-
-  return {
-    activeSkillName: getSkillName(activeSkillId),
-    treasureSkillName: getSkillName(treasureSkillId),
-  };
-}
-
-function normalizeStringArray(value: Prisma.JsonValue | undefined): string[] | null {
-  if (!Array.isArray(value)) {
-    return null;
-  }
-
-  const items = value.filter((item): item is string => typeof item === "string");
-  return items.length ? items : null;
-}
 
 function sortProvincesByConfig<T extends { provinceId: string }>(items: T[]): T[] {
   const order = new Map(provinceConfigs.map((province, index) => [province.provinceId, index]));

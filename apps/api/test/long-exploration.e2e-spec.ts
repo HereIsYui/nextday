@@ -63,6 +63,77 @@ describe("长期探索结算", () => {
     ).toBe(1);
   });
 
+  it("按每日二十一场基准累计，不会因小时批量放大收益", async () => {
+    const { token, playerId } = await createPlayer(app, "日基准");
+    const started = await request(app.getHttpServer())
+      .post("/api/game/actions/start")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `long_start_${Date.now()}_daily_basis`)
+      .send({ action_type: "explore", province_id: "ji" })
+      .expect(201);
+    const recordId = started.body.data.action.action_id as string;
+    const now = new Date();
+    await prisma.exploreActionRecord.update({
+      where: { recordId },
+      data: {
+        lastSettledAt: new Date(now.getTime() - 24 * 60 * 60_000),
+        lastActiveAt: now,
+      },
+    });
+
+    const current = await request(app.getHttpServer())
+      .get("/api/game/actions/current")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(current.body.data.action.settled_minutes).toBe(1_440);
+    expect(current.body.data.action.settled_battle_count).toBe(21);
+    expect(await prisma.battleLog.count({ where: { playerId, battleType: "explore" } })).toBe(21);
+  });
+
+  it("奇遇必须在至少一场有效探索战斗后才会触发", async () => {
+    const { token } = await createPlayer(app, "奇遇门槛");
+    const started = await request(app.getHttpServer())
+      .post("/api/game/actions/start")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `long_start_${Date.now()}_event_gate`)
+      .send({ action_type: "explore", province_id: "ji" })
+      .expect(201);
+    const recordId = started.body.data.action.action_id as string;
+    const now = new Date();
+    await prisma.exploreActionRecord.update({
+      where: { recordId },
+      data: {
+        eventTriggerAt: new Date(now.getTime() - 60_000),
+        lastSettledAt: new Date(now.getTime() - 10 * 60_000),
+        lastActiveAt: now,
+      },
+    });
+
+    const beforeBattle = await request(app.getHttpServer())
+      .get("/api/game/explore/events?status=pending")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(beforeBattle.body.data.events).toHaveLength(0);
+
+    await prisma.exploreActionRecord.update({
+      where: { recordId },
+      data: {
+        lastSettledAt: new Date(now.getTime() - 24 * 60 * 60_000),
+        lastActiveAt: now,
+      },
+    });
+    await request(app.getHttpServer())
+      .get("/api/game/actions/current")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    const afterBattle = await request(app.getHttpServer())
+      .get("/api/game/explore/events?status=pending")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(afterBattle.body.data.events).toHaveLength(1);
+  });
+
   it("离线收益最多计算八小时，快照可重复查看并只能领取一次", async () => {
     const { token, playerId } = await createPlayer(app, "离线");
     const started = await request(app.getHttpServer())
@@ -112,6 +183,22 @@ describe("长期探索结算", () => {
       .send({ province_id: "ji", count: 1 })
       .expect(400);
     expect(response.body.message).toContain("长期行动");
+  });
+
+  it("旧的当前探索和领取探索接口不再提供", async () => {
+    const { token } = await createPlayer(app, "旧路由");
+
+    await request(app.getHttpServer())
+      .get("/api/game/explore/current")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post("/api/game/explore/claim")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `long_legacy_claim_${Date.now()}`)
+      .send({})
+      .expect(404);
   });
 });
 

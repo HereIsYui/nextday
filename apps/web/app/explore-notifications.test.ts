@@ -1,32 +1,12 @@
-import type { ExploreEventState, ExploreResponse } from "@nextday/shared";
+import type { ExploreEventState } from "@nextday/shared";
 import { describe, expect, it } from "vitest";
 import {
-  createExploreCompletionNotice,
   createExploreEventAutoResolveNotice,
   createExploreEventNotice,
-  getExplorePollDelay,
 } from "./explore-notifications";
 
-describe("探索主动传音", () => {
-  it("在探索完成待领取时给出精确的结算指令", () => {
-    const explore = {
-      can_claim: true,
-      completes_at: "2026-08-05T10:00:00.000Z",
-      count: 2,
-      province_name: "冀州",
-      status: "completed",
-    } satisfies Pick<
-      ExploreResponse,
-      "can_claim" | "completes_at" | "count" | "province_name" | "status"
-    >;
-
-    expect(createExploreCompletionNotice(explore)).toEqual({
-      lines: ["冀州的 2 次探索已结束。输入“领取探索”结算战报与奖励。"],
-      tone: "success",
-    });
-  });
-
-  it("将待选择奇遇主动引导至网页选项卡", () => {
+describe("长期探索奇遇传音", () => {
+  it("将待选择奇遇主动发送给用户", () => {
     const event = {
       event_id: "event_001",
       status: "pending",
@@ -59,28 +39,5 @@ describe("探索主动传音", () => {
       lines: ["奇遇“炉火余温”久未选择，已自动择取“借火行功”。"],
       tone: "system",
     });
-  });
-
-  it("仅为进行中的探索安排下一次检查", () => {
-    const pendingExplore = {
-      completes_at: "1970-01-01T00:00:02.000Z",
-      event_trigger_at: null,
-      status: "pending",
-    } satisfies Pick<ExploreResponse, "completes_at" | "event_trigger_at" | "status">;
-
-    expect(getExplorePollDelay(pendingExplore, false, 0)).toBe(2_500);
-    expect(getExplorePollDelay({ ...pendingExplore, status: "completed" }, false, 0)).toBeNull();
-  });
-
-  it("在预定奇遇触发时刻前主动缩短轮询间隔", () => {
-    const explore = {
-      completes_at: "1970-01-01T00:00:20.000Z",
-      event_trigger_at: "1970-01-01T00:00:05.000Z",
-      status: "pending",
-    } satisfies Pick<ExploreResponse, "completes_at" | "event_trigger_at" | "status">;
-
-    expect(getExplorePollDelay(explore, false, 0)).toBe(5_500);
-    expect(getExplorePollDelay(explore, false, 6_000)).toBe(1_000);
-    expect(getExplorePollDelay(explore, true, 6_000)).toBe(10_000);
   });
 });

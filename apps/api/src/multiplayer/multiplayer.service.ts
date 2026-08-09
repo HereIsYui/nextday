@@ -47,6 +47,7 @@ import { allocateCultivation, calculateCultivationPower } from "../game/cultivat
 import { defaultEraId, maxOfflineCultivationHours } from "../game/game.constants";
 import { toActionState } from "../game/game.mappers";
 import { incrementPlayerTasks } from "../game/task-progress.utils";
+import { calculateUnifiedCombatPower, getCombatSkillSnapshot } from "../game/combat-skills";
 import { writeJournalFromResponse } from "../journal/journal.utils";
 import {
   buildBossExperience,
@@ -424,7 +425,8 @@ export class MultiplayerService implements OnModuleInit, OnModuleDestroy {
           player.playerId,
           bossConfig.actionPointCost,
         );
-        const playerPower = await this.calculatePlayerPower(tx, player.playerId);
+        const combat = await this.calculatePlayerPower(tx, player.playerId, ["术法", "强攻"]);
+        const playerPower = combat.power;
         const damageDone = Math.max(80, playerPower * 3 + rollRange(input.idempotencyKey, 20, 80));
         const defeated = boss.remainingHp - damageDone <= 0;
         const nextTotalHp = defeated ? boss.totalHp + 1000 : boss.totalHp;
@@ -496,6 +498,7 @@ export class MultiplayerService implements OnModuleInit, OnModuleDestroy {
           action_state: actionState,
           log,
           ...bossInsight,
+          reason_summary: [...(bossInsight.reason_summary ?? []), combat.snapshot.reason],
           experience: buildBossExperience({
             bossBefore,
             bossAfter: toBossStateSummary(boss),
@@ -1658,7 +1661,11 @@ export class MultiplayerService implements OnModuleInit, OnModuleDestroy {
     return toActionState(updated);
   }
 
-  private async calculatePlayerPower(tx: DbClient, playerId: string): Promise<number> {
+  private async calculatePlayerPower(
+    tx: DbClient,
+    playerId: string,
+    enemyTraits: string[] = [],
+  ): Promise<{ power: number; snapshot: ReturnType<typeof getCombatSkillSnapshot> }> {
     const player = await tx.player.findUniqueOrThrow({ where: { playerId } });
     const equipments = await tx.equipmentInstance.findMany({
       where: { playerId, status: "active", equippedSlot: { not: null } },
@@ -1670,12 +1677,25 @@ export class MultiplayerService implements OnModuleInit, OnModuleDestroy {
       0,
     );
 
-    return calculateCultivationPower(
+    const loadout = await tx.playerSkillLoadout.findUnique({ where: { playerId } });
+    const snapshot = getCombatSkillSnapshot({
+      route: player.route,
+      loadout,
+      enemyTraits,
+    });
+    const basePower = calculateCultivationPower(
       player.currentRealm,
       player.currentStage,
       player.currentLevel,
-      Math.floor(affixPower / 4),
     );
+    return {
+      power: calculateUnifiedCombatPower({
+        basePower,
+        equipmentPower: Math.floor(affixPower / 4),
+        skillSnapshot: snapshot,
+      }),
+      snapshot,
+    };
   }
 
   private async consumeSpiritStone(

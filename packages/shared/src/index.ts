@@ -672,6 +672,8 @@ export interface BattleRoundLog {
   round: number;
   actor: string;
   skill: string;
+  skill_id?: string;
+  skill_effect?: string;
   damage: number;
   target_hp: number;
 }
@@ -723,11 +725,11 @@ export interface RewardBundle {
 
 export interface ExploreRequest {
   province_id: string;
-  /** 已废弃：服务端将拒绝按次数探索。 */
-  count?: number;
+  /** @deprecated 仅用于识别旧客户端请求，服务端会明确拒绝。 */
+  count?: never;
 }
 
-/** 旧探索响应的兼容状态；active 为长期探索的运行中状态。 */
+/** 历史探索记录的只读状态，不再作为新探索接口的响应。 */
 export type ExploreActionStatus = "active" | "pending" | "completed" | "claimed" | "expired";
 
 export type ExploreEventStatus = "pending" | "resolved" | "expired";
@@ -2838,7 +2840,6 @@ export type TextCommandId =
   | "action_claim"
   | "breakthrough"
   | "explore"
-  | "explore_claim"
   | "explore_events"
   | "explore_event_resolve"
   | "cave_status"
@@ -2910,8 +2911,6 @@ export type TextCommandResult =
   | BagSummaryResponse
   | CultivationClaimResponse
   | BreakthroughResponse
-  | ExploreResponse
-  | ExploreCurrentResponse
   | ExploreEventListResponse
   | ResolveExploreEventResponse
   | CaveCollectResponse

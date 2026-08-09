@@ -9,7 +9,7 @@ import type {
   BagSummaryResponse,
   BattleNarrativeResponse,
   CultivationStatus,
-  ExploreResponse,
+  EquipmentListResponse,
   FactionRoutesResponse,
   GameOverviewResponse,
   HealthStatus,
@@ -26,6 +26,7 @@ import type {
   RealmProgressionResponse,
   SectDetailResponse,
   SectListResponse,
+  SkillLoadoutResponse,
   StoryScrollDetailState,
   StoryScrollListResponse,
   TowerListResponse,
@@ -44,7 +45,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { exploreActionCard } from "./explore-action-card";
 import {
   type PendingExploreEvent,
   buildExploreEventCommand,
@@ -82,7 +82,16 @@ type OverlayView =
   | "feature"
   | "production";
 type LeftPanelView = "brief" | "bag";
-type FeatureKind = "activity" | "inner_world" | "sect" | "boss" | "rank" | "ancient" | "tower";
+type FeatureKind =
+  | "activity"
+  | "inner_world"
+  | "sect"
+  | "boss"
+  | "rank"
+  | "ancient"
+  | "tower"
+  | "equipment"
+  | "skills";
 
 type FeatureData =
   | { kind: "activity"; data: ActivityListResponse }
@@ -91,7 +100,9 @@ type FeatureData =
   | { kind: "boss"; data: WorldBossResponse }
   | { kind: "rank"; data: RankListResponse }
   | { kind: "ancient"; data: AncientTreasureListResponse }
-  | { kind: "tower"; data: TowerListResponse };
+  | { kind: "tower"; data: TowerListResponse }
+  | { kind: "equipment"; data: EquipmentListResponse }
+  | { kind: "skills"; data: SkillLoadoutResponse };
 
 interface ItemDetail {
   name: string;
@@ -166,6 +177,8 @@ const corePlayCommands: CommandAction[] = [
   { label: "Boss", command: "Boss" },
   { label: "排行", command: "排行" },
   { label: "古宝", command: "古宝" },
+  { label: "装备", command: "装备" },
+  { label: "技能", command: "技能" },
   { label: "炼丹", command: "炼丹" },
   { label: "炼器", command: "炼器" },
   { label: "九塔", command: "九塔" },
@@ -181,6 +194,8 @@ function featureKindFromCommand(command: string): FeatureKind | null {
       排行: "rank",
       古宝: "ancient",
       九塔: "tower",
+      装备: "equipment",
+      技能: "skills",
     }[command] as FeatureKind | undefined) ?? null
   );
 }
@@ -212,14 +227,14 @@ const fallbackHelpGroups: CommandHelpGroup[] = [
       },
       {
         syntax: "领取行动收益",
-        description: "领取已结束的长期修炼或探索收益。",
+        description: "领取已结束的长期修炼收益；探索在线自动结算，离线收益在弹窗确认。",
         aliases: ["领取行动"],
       },
       { syntax: "突破", description: "在条件满足时尝试突破境界。", aliases: [] },
       {
-        syntax: "探索 <州域> [次数]",
-        description: "输入“探索”即可查看当前可前往的州域；省略次数时默认探索 1 次。",
-        aliases: ["游历 <州域> [次数]"],
+        syntax: "探索 <州域>",
+        description: "开始指定州域的长期探索；在线收益自动结算，离线收益回归后确认领取。",
+        aliases: ["游历 <州域>"],
       },
       {
         syntax: "奇遇 <选项ID>",
@@ -283,7 +298,6 @@ export default function HomePage() {
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [pendingExploreEvents, setPendingExploreEvents] = useState<PendingExploreEvent[]>([]);
   const [resolvingExploreEventId, setResolvingExploreEventId] = useState<string | null>(null);
-  const [currentExplore, setCurrentExplore] = useState<ExploreResponse | null>(null);
   const [offlineActionReward, setOfflineActionReward] = useState<OfflineActionReward | null>(null);
   const [activeOverlay, setActiveOverlay] = useState<OverlayView | null>(null);
   const [overlayReturnView, setOverlayReturnView] = useState<OverlayView | null>(null);
@@ -292,6 +306,8 @@ export default function HomePage() {
   const [featureData, setFeatureData] = useState<FeatureData | null>(null);
   const [featureMessage, setFeatureMessage] = useState<string | null>(null);
   const [featureRankType, setFeatureRankType] = useState<RankType>("personal");
+  const [skillActiveIds, setSkillActiveIds] = useState<string[]>([]);
+  const [skillTreasureId, setSkillTreasureId] = useState("");
   const [innerDispatchCreature, setInnerDispatchCreature] = useState("");
   const [innerDispatchProvince, setInnerDispatchProvince] = useState("");
   const [featureLoading, setFeatureLoading] = useState(false);
@@ -335,14 +351,13 @@ export default function HomePage() {
   const exploreEventActionsRef = useRef<HTMLElement | null>(null);
   const loadVersionRef = useRef(0);
   const notificationSessionKeyRef = useRef<string | null>(null);
-  const notifiedExploreRecordIdsRef = useRef(new Set<string>());
   const notifiedExploreEventIdsRef = useRef(new Set<string>());
   const manuallyResolvedExploreEventIdsRef = useRef(new Set<string>());
   const pendingExploreEventsRef = useRef<PendingExploreEvent[]>([]);
   const resolvingExploreEventIdsRef = useRef(new Set<string>());
   const offlineNoticeKeyRef = useRef<string | null>(null);
+  const actionSettlementRef = useRef<{ actionId: string; battleCount: number } | null>(null);
   const chatAfterRef = useRef<string | undefined>(undefined);
-  const [clockNow, setClockNow] = useState(() => Date.now());
 
   const activeProfile = overview?.profile ?? profile;
   const player = activeProfile?.player ?? login?.player ?? null;
@@ -355,20 +370,6 @@ export default function HomePage() {
   const readableStoryScrolls = useMemo(
     () => storyScrolls.filter((scroll) => scroll.unlock_state !== "locked"),
     [storyScrolls],
-  );
-  const currentExploreActionCard = useMemo(
-    () =>
-      exploreActionCard({
-        currentExplore,
-        now: clockNow,
-        pendingEvent: pendingExploreEvents[0]
-          ? {
-              choiceCount: pendingExploreEvents[0].choices.length,
-              title: pendingExploreEvents[0].title,
-            }
-          : null,
-      }),
-    [clockNow, currentExplore, pendingExploreEvents],
   );
   const breakthroughSummary = useMemo(() => summarizeBreakthrough(cultivation), [cultivation]);
   const visibleHelpGroups = useMemo(() => {
@@ -383,7 +384,6 @@ export default function HomePage() {
       }))
       .filter((group) => group.items.length > 0);
   }, [helpGroups, pendingExploreEvents.length]);
-  const canClaimExplore = false;
   const bagDisplayItems = useMemo(() => summarizeBagItemsForDisplay(bag?.items ?? []), [bag]);
   const chatShareItem = useMemo(
     () => bagDisplayItems.find((item) => item.item_instance_id === chatItemInstanceId) ?? null,
@@ -420,7 +420,6 @@ export default function HomePage() {
   );
   const quickCommands = useMemo(() => {
     const actions = [
-      ...(canClaimExplore ? [{ label: "领取探索", command: "领取探索" }] : []),
       ...commandSuggestions,
       ...baseQuickCommands,
     ];
@@ -432,7 +431,7 @@ export default function HomePage() {
       commandSet.add(action.command);
       return true;
     });
-  }, [canClaimExplore, commandSuggestions]);
+  }, [commandSuggestions]);
 
   useEffect(() => {
     setOpenHelpGroupId((current) => {
@@ -811,14 +810,13 @@ export default function HomePage() {
     const sessionKey = `${token}:${playerId}`;
     if (notificationSessionKeyRef.current !== sessionKey) {
       notificationSessionKeyRef.current = sessionKey;
-      notifiedExploreRecordIdsRef.current.clear();
       notifiedExploreEventIdsRef.current.clear();
       manuallyResolvedExploreEventIdsRef.current.clear();
       pendingExploreEventsRef.current = [];
       resolvingExploreEventIdsRef.current.clear();
       setPendingExploreEvents([]);
       setResolvingExploreEventId(null);
-      setCurrentExplore(null);
+      actionSettlementRef.current = null;
     }
 
     const client = createClient(token);
@@ -865,10 +863,34 @@ export default function HomePage() {
         if (currentResult.status === "fulfilled") {
           try {
             const currentAction = readResponse(currentResult.value).action;
-            setCurrentExplore(null);
             taskPollDelay = 60_000;
             if (currentAction?.offline_reward?.claimable) {
               setOfflineActionReward(currentAction.offline_reward);
+            }
+            if (currentAction?.action_type === "explore") {
+              const battleCount = currentAction.settled_battle_count ?? 0;
+              const previousSettlement = actionSettlementRef.current;
+              if (
+                previousSettlement &&
+                previousSettlement.actionId === currentAction.action_id &&
+                battleCount > previousSettlement.battleCount
+              ) {
+                notifications.push({
+                  lines: [
+                    `${currentAction.province_name ?? "州域"}长期探索已自动结算 ${
+                      battleCount - previousSettlement.battleCount
+                    } 场，奖励已入账。`,
+                  ],
+                  tone: "success",
+                });
+                nextMessage = "长期探索收益已自动结算";
+              }
+              actionSettlementRef.current = {
+                actionId: currentAction.action_id,
+                battleCount,
+              };
+            } else {
+              actionSettlementRef.current = null;
             }
           } catch {
             shouldRetry = true;
@@ -1092,6 +1114,16 @@ export default function HomePage() {
         case "tower":
           setFeatureData({ kind, data: readResponse(await client.towers()) });
           break;
+        case "equipment":
+          setFeatureData({ kind, data: readResponse(await client.equipmentList()) });
+          break;
+        case "skills": {
+          const data = readResponse(await client.skillLoadout());
+          setSkillActiveIds(data.active_skill_ids);
+          setSkillTreasureId(data.treasure_skill_id);
+          setFeatureData({ kind, data });
+          break;
+        }
       }
     } catch (error) {
       setFeatureMessage(`读取失败：${messageFromError(error)}`);
@@ -1230,6 +1262,53 @@ export default function HomePage() {
         ),
       "九塔行动已结算",
       "tower",
+    );
+  }
+
+  function equipOrUnequipEquipment(equipmentInstanceId: string, equippedSlot: string | null) {
+    if (!token) return;
+    void runFeatureMutation(
+      () =>
+        equippedSlot
+          ? createClient(token).equipmentUnequip(
+              { equipment_instance_id: equipmentInstanceId },
+              createIdempotencyKey("web_equipment_unequip"),
+            )
+          : createClient(token).equipmentEquip(
+              { equipment_instance_id: equipmentInstanceId, slot: "main" },
+              createIdempotencyKey("web_equipment_equip"),
+            ),
+      equippedSlot ? "法宝已卸下" : "法宝已装备",
+      "equipment",
+    );
+  }
+
+  function learnFeatureSkill(skillId: string) {
+    if (!token) return;
+    void runFeatureMutation(
+      () => createClient(token).learnSkill({ skill_id: skillId }, createIdempotencyKey("web_skill_learn")),
+      "技能已掌握",
+      "skills",
+    );
+  }
+
+  function saveFeatureSkillLoadout() {
+    if (!token || !skillTreasureId || skillActiveIds.length === 0) {
+      setFeatureMessage("请至少选择一个主动技能和一个本命技能。");
+      return;
+    }
+    void runFeatureMutation(
+      () =>
+        createClient(token).saveSkillLoadout(
+          {
+            active_skill_ids: skillActiveIds,
+            treasure_skill_id: skillTreasureId,
+            auto_priority: [skillTreasureId, ...skillActiveIds],
+          },
+          createIdempotencyKey("web_skill_loadout"),
+        ),
+      "技能编组已保存",
+      "skills",
     );
   }
 
@@ -1478,7 +1557,6 @@ export default function HomePage() {
     appendTerminalEntries([
       terminalEntry("command", "你", [`> ${options.displayCommand ?? nextCommand}`]),
     ]);
-    let shouldRestoreCommandFocus = false;
 
     try {
       const client = createCommandClient(token);
@@ -1488,7 +1566,7 @@ export default function HomePage() {
       );
       const data = readResponse(response);
       const pendingEvents =
-        data.command_id === "explore_claim" || data.command_id === "explore_events"
+        data.command_id === "explore_events"
           ? pendingExploreEventsFromCommandState(data.state)
           : [];
       const taskItems =
@@ -1509,7 +1587,7 @@ export default function HomePage() {
         entries.length > 0 ? entries : [terminalEntry("success", "九州传音", ["指令已执行。"])],
       );
       applyCommandState(data.state, { setOverview, setProfile, setScrolls });
-      if (data.command_id === "explore_claim" || data.command_id === "explore_events") {
+      if (data.command_id === "explore_events") {
         if (data.command_id === "explore_events") {
           pendingExploreEventsRef.current = pendingEvents;
           setPendingExploreEvents(pendingEvents);
@@ -1550,10 +1628,6 @@ export default function HomePage() {
           );
         }
       }
-      if (data.command_id === "explore_claim") {
-        setCurrentExplore(null);
-        shouldRestoreCommandFocus = true;
-      }
 
       await Promise.all([
         refreshDashboard(token, true).catch(() => undefined),
@@ -1573,9 +1647,6 @@ export default function HomePage() {
       setMessage("指令执行失败");
     } finally {
       setBusy(false);
-      if (shouldRestoreCommandFocus) {
-        window.requestAnimationFrame(() => commandInputRef.current?.focus());
-      }
     }
   }
 
@@ -1603,15 +1674,6 @@ export default function HomePage() {
   function handleCommandSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void executeCommand(command);
-  }
-
-  function focusExploreEventActions() {
-    const eventActions = exploreEventActionsRef.current;
-    if (!eventActions) {
-      return;
-    }
-    eventActions.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    eventActions.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
   }
 
   function handleCommandKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -1657,7 +1719,6 @@ export default function HomePage() {
     pendingExploreEventsRef.current = [];
     setPendingExploreEvents([]);
     setResolvingExploreEventId(null);
-    setCurrentExplore(null);
     setActiveOverlay(null);
     setOverlayReturnView(null);
     setFeatureCommand(null);
@@ -1679,7 +1740,6 @@ export default function HomePage() {
     setChatItemInstanceId("");
     chatAfterRef.current = undefined;
     notificationSessionKeyRef.current = null;
-    notifiedExploreRecordIdsRef.current.clear();
     notifiedExploreEventIdsRef.current.clear();
     manuallyResolvedExploreEventIdsRef.current.clear();
     resolvingExploreEventIdsRef.current.clear();
@@ -1915,46 +1975,6 @@ export default function HomePage() {
                             结束行动
                           </button>
                         )}
-                      </article>
-                    </section>
-                  ) : currentExploreActionCard ? (
-                    <section className="cultivation-journey" aria-label="当前行旅">
-                      <article
-                        className={`explore-action-card explore-action-card-${currentExploreActionCard.action}`}
-                      >
-                        <div className="action-card-heading">
-                          <p className="console-eyebrow">当前行旅</p>
-                          <span>
-                            {currentExploreActionCard.action === "waiting" ? "途中" : "待处理"}
-                          </span>
-                        </div>
-                        <strong>{currentExploreActionCard.title}</strong>
-                        <p>{currentExploreActionCard.detail}</p>
-                        {currentExploreActionCard.action === "claim" ? (
-                          <button
-                            className="action-card-button"
-                            disabled={busy || hydrating}
-                            onClick={() => {
-                              void executeCommand("领取探索", {
-                                displayCommand: "领取探索",
-                                saveToHistory: false,
-                              });
-                            }}
-                            type="button"
-                          >
-                            领取探索
-                          </button>
-                        ) : null}
-                        {currentExploreActionCard.action === "event" ? (
-                          <button
-                            className="action-card-button"
-                            disabled={busy || hydrating}
-                            onClick={focusExploreEventActions}
-                            type="button"
-                          >
-                            前往选择
-                          </button>
-                        ) : null}
                       </article>
                     </section>
                   ) : (
@@ -2400,7 +2420,11 @@ export default function HomePage() {
                                     ? "九州榜单"
                                     : featureKind === "ancient"
                                       ? "古宝收藏"
-                                      : "九塔行动"
+                                      : featureKind === "equipment"
+                                        ? "法宝管理"
+                                        : featureKind === "skills"
+                                          ? "技能配置"
+                                          : "九塔行动"
                           : activeOverlay === "production"
                             ? "材料选择"
                             : activeOverlay === "faction"
@@ -2813,6 +2837,130 @@ export default function HomePage() {
                       ))}
                       {featureData.data.treasures.length === 0 ? (
                         <p className="empty-copy">尚未发现古宝记录。</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {featureKind === "equipment" && featureData?.kind === "equipment" ? (
+                    <div className="feature-card-grid">
+                      {featureData.data.equipments.map((equipment) => (
+                        <article className="feature-card" key={equipment.equipment_instance_id}>
+                          <div className="feature-card-heading">
+                            <div>
+                              <span className="feature-card-kicker">{equipment.rarity}</span>
+                              <h3>{equipment.name}</h3>
+                            </div>
+                            <strong>{equipment.equipped_slot ? "已装备" : "未装备"}</strong>
+                          </div>
+                          <p>
+                            {equipment.equipment_type} · {equipment.star_level} 星 · 耐久 {equipment.durability}/{equipment.max_durability}
+                          </p>
+                          <div className="feature-tag-list">
+                            {equipment.affixes.map((affix) => (
+                              <span key={affix.affix_id}>{affix.name} +{affix.value}</span>
+                            ))}
+                          </div>
+                          <div className="feature-card-actions">
+                            <button
+                              disabled={featureLoading || busy || hydrating}
+                              onClick={() =>
+                                equipOrUnequipEquipment(
+                                  equipment.equipment_instance_id,
+                                  equipment.equipped_slot,
+                                )
+                              }
+                              type="button"
+                            >
+                              {equipment.equipped_slot ? "卸下" : "装备"}
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                      {featureData.data.equipments.length === 0 ? (
+                        <p className="empty-copy">当前没有可管理的法宝。</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {featureKind === "skills" && featureData?.kind === "skills" ? (
+                    <div className="feature-stack">
+                      <div className="feature-subsection">
+                        <div className="feature-subsection-heading">
+                          <h3>主动技能</h3>
+                          <span>最多选择 3 个</span>
+                        </div>
+                        <div className="feature-card-grid">
+                          {featureData.data.available_skills
+                            .filter((skill) => skill.skill_type === "active")
+                            .map((skill) => {
+                              const selected = skillActiveIds.includes(skill.skill_id);
+                              return (
+                                <button
+                                  className={`feature-card skill-choice${selected ? " skill-choice-selected" : ""}`}
+                                  disabled={!skill.learned || featureLoading || busy || hydrating}
+                                  key={skill.skill_id}
+                                  onClick={() =>
+                                    setSkillActiveIds((current) =>
+                                      selected
+                                        ? current.filter((id) => id !== skill.skill_id)
+                                        : current.length >= 3
+                                          ? current
+                                          : [...current, skill.skill_id],
+                                    )
+                                  }
+                                  type="button"
+                                >
+                                  <strong>{skill.name}</strong>
+                                  <span>{skill.learned ? skill.description : skill.unlock_reasons.join("、")}</span>
+                                  <small>{selected ? "已编入" : skill.learned ? "点击编入" : "尚未掌握"}</small>
+                                </button>
+                              );
+                            })}
+                        </div>
+                      </div>
+                      <div className="feature-inline-form">
+                        <label htmlFor="feature-treasure-skill">本命技能</label>
+                        <select
+                          id="feature-treasure-skill"
+                          disabled={featureLoading || busy || hydrating}
+                          value={skillTreasureId}
+                          onChange={(event) => setSkillTreasureId(event.target.value)}
+                        >
+                          {featureData.data.available_skills
+                            .filter((skill) => skill.skill_type === "treasure" && skill.learned)
+                            .map((skill) => (
+                              <option key={skill.skill_id} value={skill.skill_id}>
+                                {skill.name}
+                              </option>
+                            ))}
+                        </select>
+                        <button
+                          disabled={featureLoading || busy || hydrating || skillActiveIds.length === 0}
+                          onClick={saveFeatureSkillLoadout}
+                          type="button"
+                        >
+                          保存编组
+                        </button>
+                      </div>
+                      {featureData.data.preset_suggestions?.length ? (
+                        <div className="feature-list">
+                          {featureData.data.preset_suggestions.map((suggestion) => (
+                            <div className="feature-list-row" key={suggestion.suggestion_id}>
+                              <strong>{suggestion.title}</strong>
+                              <span>{suggestion.reason}</span>
+                              <button
+                                disabled={featureLoading || busy || hydrating}
+                                onClick={() => {
+                                  setSkillActiveIds(suggestion.active_skill_ids);
+                                  setSkillTreasureId(suggestion.treasure_skill_id);
+                                }}
+                                type="button"
+                              >
+                                使用建议
+                              </button>
+                            </div>
+                          ))}
+                        </div>
                       ) : null}
                     </div>
                   ) : null}
@@ -3439,11 +3587,14 @@ export default function HomePage() {
           ) : null}
           {offlineClaimOpen ? (
             <UtilityOverlay
-              eyebrow="离线收益"
-              title="静坐收益已到账"
+              eyebrow={offlineActionReward ? "长期探索" : "离线收益"}
+              title={offlineActionReward ? "探索收益待领取" : "静坐收益待领取"}
               onClose={() => setOfflineClaimOpen(false)}
             >
-              <section className="offline-reward-dialog" aria-label="离线修为收益">
+              <section
+                className="offline-reward-dialog"
+                aria-label={offlineActionReward ? "离线探索收益" : "离线修为收益"}
+              >
                 <p>
                   {offlineActionReward
                     ? `离开九州 ${offlineActionReward.offline_minutes} 分钟期间，${offlineActionReward.province_name ?? "州域"}探索已产生待领取收益。`
@@ -3473,7 +3624,7 @@ export default function HomePage() {
                     onClick={() => void handleOfflineClaim()}
                     type="button"
                   >
-                    领取修为
+                    {offlineActionReward ? "领取探索收益" : "领取修为"}
                   </button>
                 </div>
               </section>

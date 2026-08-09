@@ -243,6 +243,8 @@ function normalizeBattleLog(value: unknown): BattleSummary["log"] {
       round: Number(record.round ?? 0),
       actor: String(record.actor ?? ""),
       skill: String(record.skill ?? ""),
+      ...(typeof record.skill_id === "string" ? { skill_id: record.skill_id } : {}),
+      ...(typeof record.skill_effect === "string" ? { skill_effect: record.skill_effect } : {}),
       damage: Number(record.damage ?? 0),
       target_hp: Number(record.target_hp ?? 0),
     };

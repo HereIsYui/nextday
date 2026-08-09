@@ -131,27 +131,34 @@ describe("M9 MVP 总体验收与小纪元演练", () => {
       .post("/api/game/explore")
       .set("Authorization", `Bearer ${leader.token}`)
       .set("Idempotency-Key", exploreKey)
-      .send({ province_id: "ji", count: 3 })
+      .send({ province_id: "ji" })
       .expect(201);
     const repeatedExplore = await request(app.getHttpServer())
       .post("/api/game/explore")
       .set("Authorization", `Bearer ${leader.token}`)
       .set("Idempotency-Key", exploreKey)
-      .send({ province_id: "ji", count: 3 })
+      .send({ province_id: "ji" })
       .expect(201);
-    expect(repeatedExplore.body.data.record_id).toBe(explored.body.data.record_id);
-    expect(explored.body.data.status).toBe("pending");
+    expect(repeatedExplore.body.data.action.action_id).toBe(explored.body.data.action.action_id);
+    expect(explored.body.data.action.status).toBe("active");
     await prisma.exploreActionRecord.update({
-      where: { recordId: explored.body.data.record_id },
-      data: { completesAt: new Date(Date.now() - 1000) },
+      where: { recordId: explored.body.data.action.action_id },
+      data: {
+        lastSettledAt: new Date(Date.now() - 24 * 60 * 60_000),
+        lastActiveAt: new Date(),
+      },
     });
-    const claimedExplore = await request(app.getHttpServer())
-      .post("/api/game/explore/claim")
+    await request(app.getHttpServer())
+      .get("/api/game/actions/current")
       .set("Authorization", `Bearer ${leader.token}`)
-      .set("Idempotency-Key", `idem_m9_explore_claim_${randomSuffix()}`)
-      .send({ record_id: explored.body.data.record_id })
-      .expect(201);
-    expect(claimedExplore.body.data.completed_task_ids).toContain("daily_explore");
+      .expect(200);
+    const overviewAfterExplore = await request(app.getHttpServer())
+      .get("/api/game/overview")
+      .set("Authorization", `Bearer ${leader.token}`)
+      .expect(200);
+    expect(
+      overviewAfterExplore.body.data.tasks.find((task: { task_id: string }) => task.task_id === "daily_explore")?.status,
+    ).toBe("completed");
 
     await request(app.getHttpServer())
       .post("/api/game/tasks/claim")
@@ -476,7 +483,7 @@ async function seedM9Resources(prisma: PrismaClient, playerId: string) {
   });
   await prisma.playerActionState.update({
     where: { playerId },
-    data: { actionPoints: 300, lastRecoveredAt: new Date() },
+    data: { actionPointCap: 300, actionPoints: 300, lastRecoveredAt: new Date() },
   });
   await prisma.playerCaveState.update({
     where: { playerId },

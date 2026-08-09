@@ -15,6 +15,7 @@ const journalSourceLabels: Record<string, string> = {
   "POST /api/game/cultivation/breakthrough": "境界突破",
   "POST /api/game/cultivation/claim": "领取修为",
   "POST /api/game/explore/claim": "探索领取",
+  "POST /api/game/actions/settle": "长期探索结算",
   "POST /api/game/explore/events/resolve": "探索奇遇",
   "POST /api/inner-world/assignments/claim": "内天地收取",
   "POST /api/inner-world/assignments/dispatch": "内天地派驻",

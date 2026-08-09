@@ -59,25 +59,27 @@ describe("文字命令接口", () => {
     expect(invalid.body.data.entries).toEqual([
       expect.objectContaining({ entry_id: "entry_1", tone: "error" }),
     ]);
-    expect(invalid.body.data.entries[0].text).toContain("探索 <州域> [次数]");
+    expect(invalid.body.data.entries[0].text).toContain("探索 <州域>");
 
     const idempotencyKey = `idem_text_explore_${randomSuffix()}`;
     const first = await request(app.getHttpServer())
       .post("/api/game/commands")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", idempotencyKey)
-      .send({ command: "游历 冀州 1" })
+      .send({ command: "探索 冀州" })
       .expect(201);
     const repeated = await request(app.getHttpServer())
       .post("/api/game/commands")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", idempotencyKey)
-      .send({ command: "游历 冀州 1" })
+      .send({ command: "探索 冀州" })
       .expect(201);
 
     expect(first.body.data.command_id).toBe("explore");
     expect(first.body.data.entries[0]).toMatchObject({ entry_id: "entry_1", tone: "success" });
-    expect(first.body.data.state.result.record_id).toBe(repeated.body.data.state.result.record_id);
+    expect(first.body.data.state.result.action.action_id).toBe(
+      repeated.body.data.state.result.action.action_id,
+    );
   }, 15_000);
 });
 

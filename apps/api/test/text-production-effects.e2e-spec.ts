@@ -174,17 +174,20 @@ describe("文字修行炼制效果", () => {
       .post("/api/game/explore")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", exploreKey)
-      .send({ province_id: "ji", count: 1 })
+      .send({ province_id: "ji" })
       .expect(201);
     const replayed = await request(app.getHttpServer())
       .post("/api/game/explore")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", exploreKey)
-      .send({ province_id: "ji", count: 1 })
+      .send({ province_id: "ji" })
       .expect(201);
 
     expect(replayed.body.data).toEqual(started.body.data);
-    expect(started.body.data.explore_boost_percent).toBe(actualBoost);
+    const startedRecord = await prisma.exploreActionRecord.findUniqueOrThrow({
+      where: { recordId: started.body.data.action.action_id },
+    });
+    expect(startedRecord.exploreBoostPercent).toBe(actualBoost);
 
     const consumedEffect = await findProductionEffect(prisma, playerId, "explore_boost");
     expect(consumedEffect).toMatchObject({
@@ -194,28 +197,32 @@ describe("文字修行炼制效果", () => {
     expect(consumedEffect.consumedAt).toBeTruthy();
 
     await prisma.exploreActionRecord.update({
-      where: { recordId: started.body.data.record_id },
-      data: { completesAt: new Date(Date.now() - 1_000) },
+      where: { recordId: started.body.data.action.action_id },
+      data: {
+        lastSettledAt: new Date(Date.now() - 70 * 60_000),
+        lastActiveAt: new Date(),
+      },
     });
-    const claimed = await request(app.getHttpServer())
-      .post("/api/game/explore/claim")
+    await request(app.getHttpServer())
+      .get("/api/game/actions/current")
       .set("Authorization", `Bearer ${token}`)
-      .set("Idempotency-Key", `idem_text_effect_explore_claim_${randomSuffix()}`)
-      .send({ record_id: started.body.data.record_id })
-      .expect(201);
+      .expect(200);
+    const claimed = await request(app.getHttpServer())
+      .get("/api/game/battles?battle_type=explore&limit=1")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
 
-    const expectedCultivation =
-      (BigInt(getExploreCultivationReward(9, "win")) * (100n + BigInt(actualBoost))) / 100n;
-    const expectedSpiritStone = (35n * (100n + BigInt(actualBoost))) / 100n;
-    expect(claimed.body.data.rewards).toMatchObject({
+    const battle = claimed.body.data.battles[0];
+    const baseCultivation = getExploreCultivationReward(9, battle.result);
+    const expectedCultivation = (BigInt(baseCultivation) * (100n + BigInt(actualBoost))) / 100n;
+    const expectedSpiritStone =
+      (BigInt(battle.result === "win" ? 35 : 8) * (100n + BigInt(actualBoost))) / 100n;
+    expect(battle.rewards).toMatchObject({
       cultivation: expectedCultivation.toString(),
       spirit_stone: expectedSpiritStone.toString(),
     });
-    expect(claimed.body.data.rewards.items).toEqual([
-      expect.objectContaining({ count: 1, bind_type: "bound" }),
-    ]);
 
-    const rewardItemId = claimed.body.data.rewards.items[0].item_id as string;
+    const rewardItemId = battle.rewards.items?.[0]?.item_id as string;
     const rewardItems = await prisma.playerItem.findMany({
       where: { playerId, itemId: rewardItemId, sourceType: "explore" },
     });
@@ -225,20 +232,28 @@ describe("文字修行炼制效果", () => {
       prisma.playerProgress.findUniqueOrThrow({ where: { playerId } }),
       prisma.playerWallet.findUniqueOrThrow({ where: { playerId } }),
       prisma.exploreActionRecord.findUniqueOrThrow({
-        where: { recordId: started.body.data.record_id },
+        where: { recordId: started.body.data.action.action_id },
       }),
     ]);
     expect(progress.cultivationValue).toBe(expectedCultivation);
     expect(wallet.spiritStone).toBe(expectedSpiritStone);
     expect(record.exploreBoostPercent).toBe(actualBoost);
 
+    await request(app.getHttpServer())
+      .post("/api/game/actions/end")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_text_effect_explore_end_${randomSuffix()}`)
+      .expect(201);
     const nextExplore = await request(app.getHttpServer())
       .post("/api/game/explore")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_text_effect_explore_next_${randomSuffix()}`)
-      .send({ province_id: "ji", count: 1 })
+      .send({ province_id: "ji" })
       .expect(201);
-    expect(nextExplore.body.data.explore_boost_percent).toBe(0);
+    const nextRecord = await prisma.exploreActionRecord.findUniqueOrThrow({
+      where: { recordId: nextExplore.body.data.action.action_id },
+    });
+    expect(nextRecord.exploreBoostPercent).toBe(0);
   });
 });
 

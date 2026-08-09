@@ -40,18 +40,19 @@ describe("M8 运营后台闭环", () => {
       .post("/api/game/explore")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_m8_explore_${randomSuffix()}`)
-      .send({ province_id: "ji", count: 1 })
+      .send({ province_id: "ji" })
       .expect(201);
     await prisma.exploreActionRecord.update({
-      where: { recordId: explored.body.data.record_id },
-      data: { completesAt: new Date(Date.now() - 1000) },
+      where: { recordId: explored.body.data.action.action_id },
+      data: {
+        lastSettledAt: new Date(Date.now() - 24 * 60 * 60_000),
+        lastActiveAt: new Date(),
+      },
     });
     await request(app.getHttpServer())
-      .post("/api/game/explore/claim")
+      .get("/api/game/actions/current")
       .set("Authorization", `Bearer ${token}`)
-      .set("Idempotency-Key", `idem_m8_explore_claim_${randomSuffix()}`)
-      .send({ record_id: explored.body.data.record_id })
-      .expect(201);
+      .expect(200);
     await request(app.getHttpServer())
       .post("/api/game/cave/collect")
       .set("Authorization", `Bearer ${token}`)

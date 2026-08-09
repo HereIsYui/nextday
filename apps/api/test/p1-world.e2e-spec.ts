@@ -143,27 +143,27 @@ describe("P1 九州全域与九塔机制", () => {
       .post("/api/game/explore")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_p1_world_explore_${Date.now()}_${randomSuffix()}`)
-      .send({ province_id: "ji", count: 1 })
+      .send({ province_id: "ji" })
       .expect(201);
 
-    expect(started.body.data).toMatchObject({
+    expect(started.body.data.action).toMatchObject({
       province_id: "ji",
       province_name: "冀州",
-      status: "pending",
+      status: "active",
     });
     await prisma.exploreActionRecord.update({
-      where: { recordId: started.body.data.record_id },
-      data: { completesAt: new Date(Date.now() - 1000) },
+      where: { recordId: started.body.data.action.action_id },
+      data: {
+        lastSettledAt: new Date(Date.now() - 24 * 60 * 60_000),
+        lastActiveAt: new Date(),
+      },
     });
-    const claimed = await request(app.getHttpServer())
-      .post("/api/game/explore/claim")
+    const settled = await request(app.getHttpServer())
+      .get("/api/game/actions/current")
       .set("Authorization", `Bearer ${token}`)
-      .set("Idempotency-Key", `idem_p1_world_claim_${Date.now()}_${randomSuffix()}`)
-      .send({ record_id: started.body.data.record_id })
-      .expect(201);
+      .expect(200);
 
-    expect(claimed.body.data.status).toBe("claimed");
-    expect(claimed.body.data.battles).toHaveLength(1);
+    expect(settled.body.data.action.settled_battle_count).toBe(21);
   });
 });
 

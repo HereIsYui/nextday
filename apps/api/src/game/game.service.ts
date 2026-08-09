@@ -126,10 +126,12 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(GameService.name);
   private exploreEventLifecycleTimer: ReturnType<typeof setInterval> | null = null;
   private isRefreshingDueExploreEvents = false;
+  private isDestroyed = false;
 
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   onModuleInit() {
+    this.isDestroyed = false;
     void this.refreshDueExploreEventLifecycles();
     this.exploreEventLifecycleTimer = setInterval(() => {
       void this.refreshDueExploreEventLifecycles();
@@ -137,6 +139,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleDestroy() {
+    this.isDestroyed = true;
     if (this.exploreEventLifecycleTimer) {
       clearInterval(this.exploreEventLifecycleTimer);
       this.exploreEventLifecycleTimer = null;
@@ -455,6 +458,26 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
         rulesetVersion: record.rulesetVersion,
       },
     });
+    if (newBattles > 0) {
+      const account = await tx.player.findUniqueOrThrow({
+        where: { playerId },
+        select: { accountId: true },
+      });
+      await writeJournalFromResponse(tx, {
+        accountId: account.accountId,
+        endpoint: "POST /api/game/actions/settle",
+        response: {
+          record_id: settlementIdempotencyKey,
+          experience: buildExploreSettlementExperience({
+            provinceName: province.name,
+            source,
+            battleCount: newBattles,
+            rewards: rewardTotal,
+          }),
+        },
+        idempotencyKey: settlementIdempotencyKey,
+      });
+    }
     return { record: updated, rewards: rewardTotal, battles };
   }
 
@@ -502,7 +525,19 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
           provinceId = province.province_id;
           provinceName = province.name;
           const existing = await this.findActiveExploreRecord(tx, player.playerId);
-          if (existing) throw new BadRequestException("已有探索记录，请先结束或领取");
+          if (existing) throw new BadRequestException("已有探索记录，请先结束当前行动");
+          const exploreBoostEffect = await this.findActiveProductionEffect(
+            tx,
+            player.playerId,
+            "explore_boost",
+          );
+          const exploreBoostPercent = exploreBoostEffect?.effectValue ?? 0;
+          if (exploreBoostEffect) {
+            const consumed = await this.consumeProductionEffect(tx, exploreBoostEffect);
+            if (!consumed) {
+              throw new BadRequestException("探索增益已失效，请稍后重试");
+            }
+          }
           const secondsPerExplore = provinceExploreSeconds[province.province_id] ?? 30;
           const totalSeconds = 0;
           await tx.exploreActionRecord.create({
@@ -529,6 +564,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
                 actionId,
                 1,
               ) as unknown as Prisma.InputJsonValue,
+              exploreBoostPercent,
               idempotencyKey: input.idempotencyKey,
               configVersion: "long_action_v1",
               rulesetVersion: "long_action_v1",
@@ -1512,7 +1548,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async refreshDueExploreEventLifecycles() {
-    if (this.isRefreshingDueExploreEvents) {
+    if (this.isDestroyed || this.isRefreshingDueExploreEvents) {
       return;
     }
 
@@ -1553,9 +1589,15 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       }
 
       for (const [playerId, accountId] of duePlayers) {
+        if (this.isDestroyed) {
+          break;
+        }
         try {
           await this.refreshExploreEventLifecycle({ accountId, playerId });
         } catch (error) {
+          if (this.isDestroyed) {
+            continue;
+          }
           this.logger.error(
             `刷新玩家 ${playerId} 的探索奇遇生命周期失败`,
             error instanceof Error ? error.stack : String(error),
@@ -2760,6 +2802,35 @@ function buildExploreEventExperience(
         reason: "探索奇遇已处理，可继续安排下一次州域探索。",
       },
     ],
+  });
+}
+
+function buildExploreSettlementExperience(input: {
+  provinceName: string;
+  source: "online" | "offline";
+  battleCount: number;
+  rewards: RewardBundle;
+}) {
+  const rewardParts: string[] = [];
+  if (input.rewards.cultivation && BigInt(input.rewards.cultivation) > 0n) {
+    rewardParts.push(`修为 ${input.rewards.cultivation}`);
+  }
+  if (input.rewards.spirit_stone && BigInt(input.rewards.spirit_stone) > 0n) {
+    rewardParts.push(`灵石 ${input.rewards.spirit_stone}`);
+  }
+  for (const item of input.rewards.items ?? []) {
+    if (item.count > 0) {
+      rewardParts.push(`${item.name} x${item.count}`);
+    }
+  }
+  const sourceLabel = input.source === "offline" ? "离线" : "在线";
+  return buildJournalExperience({
+    title: `${input.provinceName}探索结算`,
+    summary: `${sourceLabel}长期探索完成 ${input.battleCount} 场战斗${rewardParts.length ? `，获得${rewardParts.join("、")}` : ""}。`,
+    deltas: rewardParts.length
+      ? [{ label: "探索收益", delta: rewardParts.join("，") }]
+      : [],
+    tags: [{ code: "auto_battle", label: "自动战斗", tone: "success" }],
   });
 }
 

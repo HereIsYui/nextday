@@ -271,22 +271,32 @@ async function startAndClaimExplore(
     .post("/api/game/explore")
     .set("Authorization", `Bearer ${token}`)
     .set("Idempotency-Key", `idem_p2_story_explore_${Date.now()}_${randomSuffix()}`)
-    .send({ count: 1, province_id: "ji" })
+    .send({ province_id: "ji" })
     .expect(201);
 
   await prisma.exploreActionRecord.update({
-    where: { recordId: started.body.data.record_id },
-    data: { completesAt: new Date(Date.now() - 1000) },
+    where: { recordId: started.body.data.action.action_id },
+    data: {
+      lastSettledAt: new Date(Date.now() - 24 * 60 * 60_000),
+      lastActiveAt: new Date(),
+    },
   });
 
-  const claimed = await request(app.getHttpServer())
-    .post("/api/game/explore/claim")
+  await request(app.getHttpServer())
+    .get("/api/game/actions/current")
     .set("Authorization", `Bearer ${token}`)
-    .set("Idempotency-Key", `idem_p2_story_claim_${Date.now()}_${randomSuffix()}`)
-    .send({ record_id: started.body.data.record_id })
-    .expect(201);
+    .expect(200);
 
-  return claimed.body.data.battles[0].battle_id as string;
+  const battles = await request(app.getHttpServer())
+    .get("/api/game/battles?battle_type=explore&limit=1")
+    .set("Authorization", `Bearer ${token}`)
+    .expect(200);
+  await request(app.getHttpServer())
+    .post("/api/game/actions/end")
+    .set("Authorization", `Bearer ${token}`)
+    .set("Idempotency-Key", `idem_p2_story_end_${Date.now()}_${randomSuffix()}`)
+    .expect(201);
+  return battles.body.data.battles[0].battle_id as string;
 }
 
 function randomSuffix(): string {

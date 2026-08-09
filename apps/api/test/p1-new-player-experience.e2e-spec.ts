@@ -34,7 +34,7 @@ describe("P1-9 新手 30 分钟体验与玩法厚度", () => {
     await app.close();
   });
 
-  it("overview 返回服务端新手路线，并为老玩家补齐 P1-9 任务", async () => {
+  it("overview 返回新手任务，并且不再返回今日路线", async () => {
     const { token } = await createP19Player(app, prisma);
 
     const overview = await request(app.getHttpServer())
@@ -42,18 +42,7 @@ describe("P1-9 新手 30 分钟体验与玩法厚度", () => {
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
 
-    expect(overview.body.data.new_player_route.route_id).toBe("first_30_minutes_ji");
-    expect(
-      overview.body.data.new_player_route.steps.map((step: { step_id: string }) => step.step_id),
-    ).toEqual([
-      "enter_ji",
-      "first_explore",
-      "resolve_event",
-      "craft_alchemy",
-      "seal_xuantie",
-      "claim_chapter_reward",
-    ]);
-    expect(overview.body.data.new_player_route.primary_action_hint).toBe("explore");
+    expect(overview.body.data.new_player_route).toBeUndefined();
     expect(
       overview.body.data.tasks.some(
         (task: { task_id: string }) => task.task_id === "chapter_first_30_minutes",
@@ -61,52 +50,33 @@ describe("P1-9 新手 30 分钟体验与玩法厚度", () => {
     ).toBe(true);
   });
 
-  it("新手未处理奇遇时每次冀州探索均预定途中奇遇，旧探索不会补发", async () => {
+  it("奇遇只由长期探索中的有效战斗触发，旧按次数请求不会补发", async () => {
     const { token } = await createP19Player(app, prisma);
-    const firstExplore = await request(app.getHttpServer())
+    await request(app.getHttpServer())
       .post("/api/game/explore")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_p19_first_event_${Date.now()}_${randomSuffix()}`)
       .send({ count: 1, province_id: "ji" })
-      .expect(201);
+      .expect(400);
 
-    expect(firstExplore.body.data.event_trigger_at).toBeTruthy();
-
-    const firstRecordId = firstExplore.body.data.record_id as string;
+    const started = await startLongExplore(app, token, prisma);
     await prisma.exploreActionRecord.update({
-      where: { recordId: firstRecordId },
+      where: { recordId: started.recordId },
       data: {
-        completesAt: new Date(Date.now() - 1_000),
-        eventTriggerAt: new Date(Date.now() - 2_000),
+        lastSettledAt: new Date(Date.now() - 24 * 60 * 60_000),
+        lastActiveAt: new Date(),
+        eventTriggerAt: new Date(Date.now() - 1_000),
       },
     });
-
-    const pendingBeforeClaim = await request(app.getHttpServer())
-      .get("/api/game/explore/events?status=pending")
-      .set("Authorization", `Bearer ${token}`)
-      .expect(200);
-    expect(pendingBeforeClaim.body.data.events).toHaveLength(0);
-
     await request(app.getHttpServer())
-      .post("/api/game/explore/claim")
+      .get("/api/game/actions/current")
       .set("Authorization", `Bearer ${token}`)
-      .set("Idempotency-Key", `idem_p19_first_claim_${Date.now()}_${randomSuffix()}`)
-      .send({ record_id: firstRecordId })
-      .expect(201);
-
-    const pendingAfterClaim = await request(app.getHttpServer())
+      .expect(200);
+    const pending = await request(app.getHttpServer())
       .get("/api/game/explore/events?status=pending")
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
-    expect(pendingAfterClaim.body.data.events).toHaveLength(0);
-
-    const secondExplore = await request(app.getHttpServer())
-      .post("/api/game/explore")
-      .set("Authorization", `Bearer ${token}`)
-      .set("Idempotency-Key", `idem_p19_second_event_${Date.now()}_${randomSuffix()}`)
-      .send({ count: 1, province_id: "ji" })
-      .expect(201);
-    expect(secondExplore.body.data.event_trigger_at).toBeTruthy();
+    expect(pending.body.data.events).toHaveLength(1);
   });
 
   it("只有领取冀州初定章节奖励才推进章节并开放兖州", async () => {
@@ -225,7 +195,6 @@ describe("P1-9 新手 30 分钟体验与玩法厚度", () => {
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
     expect(overview.body.data.recent_battles[0].reason_summary.length).toBeGreaterThan(0);
-    expect(overview.body.data.new_player_route.primary_action_hint).toBe("explore_event");
   });
 
   it("章节任务未完成时不会把章节奖励标成可领取", async () => {
@@ -253,11 +222,9 @@ describe("P1-9 新手 30 分钟体验与玩法厚度", () => {
       .get("/api/game/overview")
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
-    const chapterRouteStep = overview.body.data.new_player_route.steps.find(
-      (step: { step_id: string }) => step.step_id === "claim_chapter_reward",
-    );
-    expect(chapterRouteStep.status).toBe("pending");
-    expect(chapterRouteStep.action_label).toBe("查看章节任务");
+    expect(overview.body.data.tasks.find(
+      (task: { task_id: string }) => task.task_id === "chapter_first_30_minutes",
+    )).toMatchObject({ status: "in_progress" });
   });
 
   it("生产接口只公开可投炉材料，不再暴露默认丹方和器方", async () => {
@@ -349,12 +316,9 @@ describe("P1-9 新手 30 分钟体验与玩法厚度", () => {
       (task: { task_id: string }) => task.task_id === "chapter_first_30_minutes",
     );
     expect(chapterTask.status).toBe("completed");
-    expect(overview.body.data.new_player_route.primary_action_hint).toBe("task");
-    const chapterRouteStep = overview.body.data.new_player_route.steps.find(
-      (step: { step_id: string }) => step.step_id === "claim_chapter_reward",
-    );
-    expect(chapterRouteStep.status).toBe("active");
-    expect(chapterRouteStep.action_label).toBe("领取章节奖励");
+    expect(overview.body.data.tasks.find(
+      (task: { task_id: string }) => task.task_id === "chapter_first_30_minutes",
+    )).toMatchObject({ status: "completed" });
   });
 });
 
@@ -370,24 +334,28 @@ async function triggerEventAndClaimExplore(
   route_step_hint?: string;
 }> {
   const started = await request(app.getHttpServer())
-    .post("/api/game/explore")
+    .post("/api/game/actions/start")
     .set("Authorization", `Bearer ${token}`)
     .set("Idempotency-Key", `idem_p19_explore_${Date.now()}_${randomSuffix()}`)
-    .send({ count: 1, province_id: "ji" })
+    .send({ action_type: "explore", province_id: "ji" })
     .expect(201);
 
   const now = Date.now();
-  const recordId = started.body.data.record_id as string;
+  const recordId = started.body.data.action.action_id as string;
   await prisma.exploreActionRecord.update({
     where: { recordId },
     data: {
-      completesAt: new Date(now + 60_000),
       eventContextSnapshot: { itemIds: ["low_herb"], traits: ["毒蚀"] },
       eventTriggerAt: new Date(now - 1_000),
-      startedAt: new Date(now - 10_000),
-      status: "pending",
+      lastSettledAt: new Date(now - 24 * 60 * 60_000),
+      lastActiveAt: new Date(now),
     },
   });
+
+  await request(app.getHttpServer())
+    .get("/api/game/actions/current")
+    .set("Authorization", `Bearer ${token}`)
+    .expect(200);
 
   const pending = await request(app.getHttpServer())
     .get("/api/game/explore/events?status=pending")
@@ -396,21 +364,38 @@ async function triggerEventAndClaimExplore(
   const event = pending.body.data.events[0];
   expect(event).toBeTruthy();
 
-  await prisma.exploreActionRecord.update({
-    where: { recordId },
-    data: { completesAt: new Date(Date.now() - 1_000) },
-  });
-
-  const claimed = await request(app.getHttpServer())
-    .post("/api/game/explore/claim")
+  const ended = await request(app.getHttpServer())
+    .post("/api/game/actions/end")
     .set("Authorization", `Bearer ${token}`)
-    .set("Idempotency-Key", `idem_p19_claim_${Date.now()}_${randomSuffix()}`)
-    .send({ record_id: recordId })
+    .set("Idempotency-Key", `idem_p19_end_${Date.now()}_${randomSuffix()}`)
     .expect(201);
 
-  expect(claimed.body.data.battles[0].reason_summary.length).toBeGreaterThan(0);
-  expect(claimed.body.data.event).toBeNull();
+  expect(ended.body.data.rewards).toBeDefined();
+  const battles = await request(app.getHttpServer())
+    .get("/api/game/battles?battle_type=explore")
+    .set("Authorization", `Bearer ${token}`)
+    .expect(200);
+  expect(battles.body.data.battles[0].reason_summary.length).toBeGreaterThan(0);
   return event;
+}
+
+async function startLongExplore(
+  app: INestApplication,
+  token: string,
+  prisma: PrismaClient,
+): Promise<{ recordId: string }> {
+  const started = await request(app.getHttpServer())
+    .post("/api/game/actions/start")
+    .set("Authorization", `Bearer ${token}`)
+    .set("Idempotency-Key", `idem_p19_start_${Date.now()}_${randomSuffix()}`)
+    .send({ action_type: "explore", province_id: "ji" })
+    .expect(201);
+  const recordId = started.body.data.action.action_id as string;
+  await prisma.exploreActionRecord.update({
+    where: { recordId },
+    data: { lastActiveAt: new Date() },
+  });
+  return { recordId };
 }
 
 async function createP19Player(

@@ -9,11 +9,13 @@ import type {
   BagSummaryResponse,
   BattleNarrativeResponse,
   CultivationStatus,
+  EntitlementOverviewResponse,
   EquipmentListResponse,
   FactionRoutesResponse,
   GameOverviewResponse,
   HealthStatus,
   InnerWorldSummaryResponse,
+  InnerWorldSupportType,
   LoginResponse,
   OfflineActionReward,
   PlayerProfileResponse,
@@ -25,6 +27,7 @@ import type {
   RankType,
   RealmProgressionResponse,
   SectDetailResponse,
+  SectAlignment,
   SectListResponse,
   SkillLoadoutResponse,
   StoryScrollDetailState,
@@ -91,7 +94,8 @@ type FeatureKind =
   | "ancient"
   | "tower"
   | "equipment"
-  | "skills";
+  | "skills"
+  | "commerce";
 
 type FeatureData =
   | { kind: "activity"; data: ActivityListResponse }
@@ -102,7 +106,8 @@ type FeatureData =
   | { kind: "ancient"; data: AncientTreasureListResponse }
   | { kind: "tower"; data: TowerListResponse }
   | { kind: "equipment"; data: EquipmentListResponse }
-  | { kind: "skills"; data: SkillLoadoutResponse };
+  | { kind: "skills"; data: SkillLoadoutResponse }
+  | { kind: "commerce"; data: EntitlementOverviewResponse };
 
 interface ItemDetail {
   name: string;
@@ -182,6 +187,7 @@ const corePlayCommands: CommandAction[] = [
   { label: "炼丹", command: "炼丹" },
   { label: "炼器", command: "炼器" },
   { label: "九塔", command: "九塔" },
+  { label: "权益", command: "权益" },
 ];
 
 function featureKindFromCommand(command: string): FeatureKind | null {
@@ -196,6 +202,7 @@ function featureKindFromCommand(command: string): FeatureKind | null {
       九塔: "tower",
       装备: "equipment",
       技能: "skills",
+      权益: "commerce",
     }[command] as FeatureKind | undefined) ?? null
   );
 }
@@ -310,6 +317,13 @@ export default function HomePage() {
   const [skillTreasureId, setSkillTreasureId] = useState("");
   const [innerDispatchCreature, setInnerDispatchCreature] = useState("");
   const [innerDispatchProvince, setInnerDispatchProvince] = useState("");
+  const [innerSupportType, setInnerSupportType] = useState<InnerWorldSupportType>("spirit_vein");
+  const [sectName, setSectName] = useState("");
+  const [sectAlignment, setSectAlignment] = useState<SectAlignment>("neutral");
+  const [sectTaskId, setSectTaskId] = useState("sect_patrol");
+  const [sectWarehouseItemInstanceId, setSectWarehouseItemInstanceId] = useState("");
+  const [sectWarehouseItemId, setSectWarehouseItemId] = useState("");
+  const [factionTransferTaskId, setFactionTransferTaskId] = useState("");
   const [featureLoading, setFeatureLoading] = useState(false);
   const [productionKind, setProductionKind] = useState<ProductionFormulaKind | null>(null);
   const [productionMaterials, setProductionMaterials] = useState<ProductionCraftMaterialState[]>(
@@ -325,6 +339,8 @@ export default function HomePage() {
   const [productionLoading, setProductionLoading] = useState(false);
   const [productionCrafting, setProductionCrafting] = useState(false);
   const [productionResult, setProductionResult] = useState<string[]>([]);
+  const [productionFormulaName, setProductionFormulaName] = useState("");
+  const [productionLastRecordId, setProductionLastRecordId] = useState<string | null>(null);
   const [itemDetail, setItemDetail] = useState<ItemDetail | null>(null);
   const [battleDetail, setBattleDetail] = useState<BattleNarrativeResponse | null>(null);
   const [battleDetailLoading, setBattleDetailLoading] = useState(false);
@@ -686,6 +702,32 @@ export default function HomePage() {
         const detail = messageFromError(error);
         setSessionError(detail);
         appendTerminalEntries([terminalEntry("error", "仙魔抉择未完成", [detail])]);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [appendTerminalEntries, busy, hydrating, refreshDashboard, token],
+  );
+
+  const transferFactionRoute = useCallback(
+    async (routeId: string, taskId: string) => {
+      if (!token || busy || hydrating || !taskId) return;
+      setBusy(true);
+      try {
+        const response = await createClient(token).transferFactionRoute(
+          { route_id: routeId, task_id: taskId },
+          createIdempotencyKey("web_transfer_faction"),
+        );
+        const result = readResponse(response);
+        setFaction((current) => (current ? { ...current, state: result.state } : current));
+        appendTerminalEntries([
+          terminalEntry("success", "道途已转", [`已转入${result.state.route_name}。`]),
+        ]);
+        await refreshDashboard(token, true);
+      } catch (error) {
+        const detail = messageFromError(error);
+        setSessionError(detail);
+        appendTerminalEntries([terminalEntry("error", "道途转移未完成", [detail])]);
       } finally {
         setBusy(false);
       }
@@ -1124,6 +1166,9 @@ export default function HomePage() {
           setFeatureData({ kind, data });
           break;
         }
+        case "commerce":
+          setFeatureData({ kind, data: readResponse(await client.commerceOverview()) });
+          break;
       }
     } catch (error) {
       setFeatureMessage(`读取失败：${messageFromError(error)}`);
@@ -1229,12 +1274,102 @@ export default function HomePage() {
     );
   }
 
+  function upgradeInnerWorld(targetType: "world" | "creature", creatureId?: string) {
+    if (!token) return;
+    void runFeatureMutation(
+      () =>
+        createClient(token).innerWorldUpgrade(
+          { target_type: targetType, ...(creatureId ? { creature_id: creatureId } : {}) },
+          createIdempotencyKey("web_inner_world_upgrade"),
+        ),
+      targetType === "world" ? "内天地等级已提升" : "内天地生灵等级已提升",
+      "inner_world",
+    );
+  }
+
+  function supportInnerWorld() {
+    if (!token || !innerDispatchProvince) {
+      setFeatureMessage("请先选择支援州域。");
+      return;
+    }
+    void runFeatureMutation(
+      () =>
+        createClient(token).innerWorldSupport(
+          { province_id: innerDispatchProvince, support_type: innerSupportType },
+          createIdempotencyKey("web_inner_world_support"),
+        ),
+      "州域支援已结算",
+      "inner_world",
+    );
+  }
+
   function joinSect(sectId: string) {
     if (!token) return;
     void runFeatureMutation(
       () =>
         createClient(token).joinSect({ sect_id: sectId }, createIdempotencyKey("web_sect_join")),
       "已加入宗门",
+      "sect",
+    );
+  }
+
+  function createSect() {
+    if (!token || !sectName.trim()) {
+      setFeatureMessage("请输入宗门名称。");
+      return;
+    }
+    void runFeatureMutation(
+      () =>
+        createClient(token).createSect(
+          { name: sectName.trim(), alignment: sectAlignment },
+          createIdempotencyKey("web_sect_create"),
+        ),
+      "宗门已创建",
+      "sect",
+    );
+  }
+
+  function completeSectTask() {
+    if (!token) return;
+    void runFeatureMutation(
+      () =>
+        createClient(token).completeSectTask(
+          { task_id: sectTaskId },
+          createIdempotencyKey("web_sect_task"),
+        ),
+      "宗门任务已完成",
+      "sect",
+    );
+  }
+
+  function depositSectWarehouse() {
+    if (!token || !sectWarehouseItemInstanceId) {
+      setFeatureMessage("请选择要存入的未绑定材料。");
+      return;
+    }
+    void runFeatureMutation(
+      () =>
+        createClient(token).depositSectWarehouse(
+          { item_instance_id: sectWarehouseItemInstanceId, count: 1 },
+          createIdempotencyKey("web_sect_warehouse_deposit"),
+        ),
+      "材料已存入宗门仓库",
+      "sect",
+    );
+  }
+
+  function withdrawSectWarehouse(itemId = sectWarehouseItemId) {
+    if (!token || !itemId) {
+      setFeatureMessage("请选择要取出的材料。");
+      return;
+    }
+    void runFeatureMutation(
+      () =>
+        createClient(token).withdrawSectWarehouse(
+          { item_id: itemId, count: 1 },
+          createIdempotencyKey("web_sect_warehouse_withdraw"),
+        ),
+      "材料已取出",
       "sect",
     );
   }
@@ -1249,6 +1384,45 @@ export default function HomePage() {
         ),
       "世界 Boss 挑战已结算",
       "boss",
+    );
+  }
+
+  function claimRankTitle() {
+    if (!token || featureKind !== "rank") return;
+    void runFeatureMutation(
+      () =>
+        createClient(token).claimRankTitle(
+          { rank_type: featureRankType },
+          createIdempotencyKey("web_rank_title_claim"),
+        ),
+      "榜单称号已领取",
+      "rank",
+    );
+  }
+
+  function drawAncientTreasure() {
+    if (!token) return;
+    void runFeatureMutation(
+      () =>
+        createClient(token).gachaDraw(
+          { pool_type: "ancient_treasure", cost_type: "bound_jade" },
+          createIdempotencyKey("web_ancient_draw"),
+        ),
+      "古宝抽取已结算",
+      "ancient",
+    );
+  }
+
+  function claimMonthlyDaily(cardType: "small_monthly" | "large_monthly") {
+    if (!token) return;
+    void runFeatureMutation(
+      () =>
+        createClient(token).claimMonthlyDaily(
+          { card_type: cardType },
+          createIdempotencyKey("web_monthly_daily"),
+        ),
+      "月卡每日权益已领取",
+      "commerce",
     );
   }
 
@@ -1322,6 +1496,8 @@ export default function HomePage() {
     setSelectedProductionFormulaId(null);
     setSelectedProductionMaterials({});
     setProductionResult([]);
+    setProductionFormulaName("");
+    setProductionLastRecordId(null);
     setOverlayReturnView("tools");
     setActiveOverlay("production");
     setProductionLoading(true);
@@ -1374,7 +1550,8 @@ export default function HomePage() {
             );
       const result = readResponse(response as ApiResponse<unknown>) as {
         rewards?: { cultivation?: string; spirit_stone?: string; action_points?: number };
-        record?: { success?: boolean; quality?: string | null };
+        record_id?: string;
+        record?: { record_id?: string; success?: boolean; quality?: string | null };
         equipment?: { name?: string } | null;
       };
       const detail =
@@ -1384,6 +1561,7 @@ export default function HomePage() {
             ? `炼器完成：${result.equipment.name}`
             : "炼器完成";
       setProductionResult([detail, `资源结算：${formatRewards(result.rewards ?? {})}`]);
+      setProductionLastRecordId(result.record?.record_id ?? result.record_id ?? null);
       setSelectedProductionMaterials({});
       setSelectedProductionFormulaId(null);
       await Promise.all([refreshBag(token), refreshDashboard(token, true)]);
@@ -1391,6 +1569,31 @@ export default function HomePage() {
       setProductionResult([`投炉失败：${messageFromError(error)}`]);
     } finally {
       setProductionCrafting(false);
+    }
+  }
+
+  async function saveProductionFormula() {
+    if (!token || !productionKind || !productionLastRecordId || !productionFormulaName.trim()) {
+      setProductionResult((current) => [...current, "请先成功炼制并填写单方名称。"]);
+      return;
+    }
+    try {
+      await createClient(token).saveProductionFormula(
+        {
+          kind: productionKind,
+          source_record_id: productionLastRecordId,
+          name: productionFormulaName.trim(),
+        },
+        createIdempotencyKey("web_production_formula_save"),
+      );
+      setProductionResult((current) => [...current, "单方已保存。"]);
+      const formulas = readResponse(
+        await createClient(token).productionFormulas({ kind: productionKind, scope: "mine" }),
+      ).formulas;
+      setProductionFormulas(formulas);
+      setProductionFormulaName("");
+    } catch (error) {
+      setProductionResult((current) => [...current, `保存单方失败：${messageFromError(error)}`]);
     }
   }
 
@@ -2424,7 +2627,9 @@ export default function HomePage() {
                                         ? "法宝管理"
                                         : featureKind === "skills"
                                           ? "技能配置"
-                                          : "九塔行动"
+                                          : featureKind === "commerce"
+                                            ? "权益中心"
+                                            : "九塔行动"
                           : activeOverlay === "production"
                             ? "材料选择"
                             : activeOverlay === "faction"
@@ -2588,6 +2793,33 @@ export default function HomePage() {
                       </div>
                       <div className="feature-subsection">
                         <div className="feature-subsection-heading">
+                          <h3>天地成长</h3>
+                          <span>达到解锁境界后才可操作</span>
+                        </div>
+                        <div className="feature-card-actions">
+                          <button
+                            disabled={!featureData.data.state.unlocked || featureLoading || busy || hydrating}
+                            onClick={() => upgradeInnerWorld("world")}
+                            type="button"
+                          >
+                            升级内天地
+                          </button>
+                          {featureData.data.creatures
+                            .filter((creature) => creature.status !== "assigned")
+                            .map((creature) => (
+                              <button
+                                disabled={!featureData.data.state.unlocked || featureLoading || busy || hydrating}
+                                key={`upgrade_${creature.creature_id}`}
+                                onClick={() => upgradeInnerWorld("creature", creature.creature_id)}
+                                type="button"
+                              >
+                                {creature.name}升级
+                              </button>
+                            ))}
+                        </div>
+                      </div>
+                      <div className="feature-subsection">
+                        <div className="feature-subsection-heading">
                           <h3>派驻生灵</h3>
                           <span>选择州域后即可出发</span>
                         </div>
@@ -2679,6 +2911,31 @@ export default function HomePage() {
                           ) : null}
                         </div>
                       </div>
+                      <div className="feature-subsection">
+                        <div className="feature-subsection-heading">
+                          <h3>州域支援</h3>
+                          <span>每日支援次数受内天地状态限制</span>
+                        </div>
+                        <div className="feature-inline-form">
+                          <select
+                            aria-label="支援类型"
+                            disabled={!featureData.data.state.unlocked || featureLoading || busy || hydrating}
+                            value={innerSupportType}
+                            onChange={(event) => setInnerSupportType(event.target.value as InnerWorldSupportType)}
+                          >
+                            <option value="spirit_vein">灵脉支援</option>
+                            <option value="tower_supply">九塔补给</option>
+                            <option value="secret_realm">秘境支援</option>
+                          </select>
+                          <button
+                            disabled={!featureData.data.state.unlocked || featureLoading || busy || hydrating || !innerDispatchProvince}
+                            onClick={supportInnerWorld}
+                            type="button"
+                          >
+                            支援州域
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   ) : null}
 
@@ -2715,9 +2972,107 @@ export default function HomePage() {
                               ))}
                             </div>
                           </div>
+                          <div className="feature-subsection">
+                            <div className="feature-subsection-heading">
+                              <h3>宗门任务</h3>
+                              <span>完成任务获得贡献与宗门资金</span>
+                            </div>
+                            <div className="feature-inline-form">
+                              <select
+                                aria-label="宗门任务"
+                                disabled={featureLoading || busy || hydrating}
+                                value={sectTaskId}
+                                onChange={(event) => setSectTaskId(event.target.value)}
+                              >
+                                <option value="sect_patrol">灵脉巡护</option>
+                                <option value="sect_tower_supply">九塔补给</option>
+                              </select>
+                              <button
+                                disabled={featureLoading || busy || hydrating}
+                                onClick={completeSectTask}
+                                type="button"
+                              >
+                                完成任务
+                              </button>
+                            </div>
+                          </div>
+                          <div className="feature-subsection">
+                            <div className="feature-subsection-heading">
+                              <h3>宗门仓库</h3>
+                              <span>{featureData.data.detail.warehouse.length} 种材料</span>
+                            </div>
+                            <div className="feature-list">
+                              {featureData.data.detail.warehouse.map((item) => (
+                                <div className="feature-list-row" key={item.item_id}>
+                                  <strong>{item.name}</strong>
+                                  <span>×{item.count}</span>
+                                  <button
+                                    disabled={featureLoading || busy || hydrating}
+                                    onClick={() => {
+                                      setSectWarehouseItemId(item.item_id);
+                                      withdrawSectWarehouse(item.item_id);
+                                    }}
+                                    type="button"
+                                  >
+                                    取出 1
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="feature-inline-form">
+                              <select
+                                aria-label="存入宗门仓库的材料"
+                                disabled={featureLoading || busy || hydrating}
+                                value={sectWarehouseItemInstanceId}
+                                onChange={(event) => setSectWarehouseItemInstanceId(event.target.value)}
+                              >
+                                <option value="">选择未绑定材料</option>
+                                {(bag?.items ?? [])
+                                  .filter((item) => item.bind_type === "unbound" && item.tradeable && !item.expired)
+                                  .map((item) => (
+                                    <option key={item.item_instance_id} value={item.item_instance_id}>
+                                      {item.name} ×{item.count}
+                                    </option>
+                                  ))}
+                              </select>
+                              <button
+                                disabled={featureLoading || busy || hydrating || !sectWarehouseItemInstanceId}
+                                onClick={depositSectWarehouse}
+                                type="button"
+                              >
+                                存入 1
+                              </button>
+                            </div>
+                          </div>
                         </>
                       ) : (
-                        <div className="feature-card-grid">
+                        <div className="feature-stack">
+                          <div className="feature-inline-form">
+                            <input
+                              aria-label="宗门名称"
+                              maxLength={16}
+                              onChange={(event) => setSectName(event.target.value)}
+                              placeholder="输入宗门名称"
+                              value={sectName}
+                            />
+                            <select
+                              aria-label="宗门路线"
+                              value={sectAlignment}
+                              onChange={(event) => setSectAlignment(event.target.value as SectAlignment)}
+                            >
+                              <option value="neutral">中立</option>
+                              <option value="immortal">仙门</option>
+                              <option value="demon">魔门</option>
+                            </select>
+                            <button
+                              disabled={featureLoading || busy || hydrating || !sectName.trim()}
+                              onClick={createSect}
+                              type="button"
+                            >
+                              创建宗门
+                            </button>
+                          </div>
+                          <div className="feature-card-grid">
                           {(featureData.data.list?.sects ?? []).map((sect) => (
                             <article className="feature-card" key={sect.sect_id}>
                               <div className="feature-card-heading">
@@ -2739,6 +3094,7 @@ export default function HomePage() {
                           {(featureData.data.list?.sects ?? []).length === 0 ? (
                             <p className="empty-copy">当前没有可加入的宗门。</p>
                           ) : null}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -2797,6 +3153,15 @@ export default function HomePage() {
                           <option value="faction">阵营排行</option>
                         </select>
                         <span>周期：{featureData.data.period_key}</span>
+                        {featureData.data.title_rewards?.length ? (
+                          <button
+                            disabled={featureLoading || busy || hydrating}
+                            onClick={claimRankTitle}
+                            type="button"
+                          >
+                            领取榜单称号
+                          </button>
+                        ) : null}
                       </div>
                       <div className="feature-list feature-rank-list">
                         {featureData.data.entries.map((entry) => (
@@ -2819,7 +3184,18 @@ export default function HomePage() {
                   ) : null}
 
                   {featureKind === "ancient" && featureData?.kind === "ancient" ? (
-                    <div className="feature-card-grid feature-treasure-grid">
+                    <div className="feature-stack">
+                      <div className="feature-inline-form">
+                        <span className="empty-copy">使用绑定仙玉抽取古宝，重复获得会转化为残页与灵魄。</span>
+                        <button
+                          disabled={featureLoading || busy || hydrating}
+                          onClick={drawAncientTreasure}
+                          type="button"
+                        >
+                          抽取一次
+                        </button>
+                      </div>
+                      <div className="feature-card-grid feature-treasure-grid">
                       {featureData.data.treasures.map((treasure) => (
                         <article
                           className={`feature-card feature-treasure-card${treasure.owned ? " feature-treasure-owned" : ""}`}
@@ -2838,6 +3214,54 @@ export default function HomePage() {
                       {featureData.data.treasures.length === 0 ? (
                         <p className="empty-copy">尚未发现古宝记录。</p>
                       ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {featureKind === "commerce" && featureData?.kind === "commerce" ? (
+                    <div className="feature-stack">
+                      <div className="feature-stat-grid">
+                        <FeatureStat label="当前权益" value={featureData.data.effective_tier} />
+                        <FeatureStat
+                          label="VIP"
+                          value={featureData.data.vip.active ? `VIP ${featureData.data.vip.vip_level}` : "未激活"}
+                        />
+                        <FeatureStat
+                          label="便利批次"
+                          value={`${featureData.data.convenience.batch_sweep_limit} 次`}
+                        />
+                        <FeatureStat
+                          label="月卡赠抽"
+                          value={`${featureData.data.available_monthly_grants.reduce((sum, grant) => sum + grant.draw_count - grant.used_count, 0)} 次`}
+                        />
+                      </div>
+                      <div className="feature-subsection">
+                        <div className="feature-subsection-heading">
+                          <h3>月卡状态</h3>
+                          <span>订单权益只由服务端验证后写入</span>
+                        </div>
+                        <div className="feature-card-grid">
+                          {featureData.data.monthly_cards.map((card) => (
+                            <article className="feature-card feature-card-compact" key={card.card_type}>
+                              <div className="feature-card-heading">
+                                <h3>{card.card_type === "small_monthly" ? "小月卡" : "大月卡"}</h3>
+                                <strong>{card.active ? "生效中" : "已失效"}</strong>
+                              </div>
+                              <p>剩余 {card.remaining_days} 天 · 到期 {formatDateTime(card.active_until)}</p>
+                              <button
+                                disabled={!card.active || featureLoading || busy || hydrating}
+                                onClick={() => claimMonthlyDaily(card.card_type)}
+                                type="button"
+                              >
+                                领取每日权益
+                              </button>
+                            </article>
+                          ))}
+                          {featureData.data.monthly_cards.length === 0 ? (
+                            <p className="empty-copy">当前没有生效月卡；购买和 VIP 权益请通过已验证订单开通。</p>
+                          ) : null}
+                        </div>
+                      </div>
                     </div>
                   ) : null}
 
@@ -3032,6 +3456,24 @@ export default function HomePage() {
                         <p key={line}>{line}</p>
                       ))}
                     </output>
+                  ) : null}
+                  {productionLastRecordId ? (
+                    <div className="feature-inline-form production-formula-save">
+                      <input
+                        aria-label="单方名称"
+                        maxLength={24}
+                        onChange={(event) => setProductionFormulaName(event.target.value)}
+                        placeholder={productionKind === "alchemy" ? "为这次炼丹命名" : "为这次炼器命名"}
+                        value={productionFormulaName}
+                      />
+                      <button
+                        disabled={productionCrafting || busy || hydrating || !productionFormulaName.trim()}
+                        onClick={() => void saveProductionFormula()}
+                        type="button"
+                      >
+                        保存单方
+                      </button>
+                    </div>
                   ) : null}
                   {productionFormulas.length > 0 ? (
                     <section className="production-formula-section" aria-label="已保存单方">
@@ -3500,8 +3942,36 @@ export default function HomePage() {
                             ? "你只能镇封九塔；补给与守卫仍可参与。"
                             : faction.state.route === "demon"
                               ? "你只能破阵九塔；补给与守卫仍可参与。"
-                              : "散修不能镇封或破阵，但可继续补给与守卫。"}
+                          : "散修不能镇封或破阵，但可继续补给与守卫。"}
                         </span>
+                        {faction.state.transfer_available ? (
+                          <div className="feature-inline-form">
+                            <select
+                              aria-label="转移道途"
+                              value={factionTransferTaskId}
+                              onChange={(event) => setFactionTransferTaskId(event.target.value)}
+                            >
+                              <option value="">选择新的道途</option>
+                              {faction.routes
+                                .filter((routeOption) => routeOption.route_id !== faction.state.route && routeOption.route_id !== "undecided")
+                                .map((routeOption) => (
+                                  <option key={routeOption.route_id} value={`${routeOption.route_id}:${routeOption.task_chain[0] ?? ""}`}>
+                                    转入{routeOption.name}
+                                  </option>
+                                ))}
+                            </select>
+                            <button
+                              disabled={busy || hydrating || !factionTransferTaskId}
+                              onClick={() => {
+                                const [routeId, taskId] = factionTransferTaskId.split(":");
+                                if (routeId && taskId) void transferFactionRoute(routeId, taskId);
+                              }}
+                              type="button"
+                            >
+                              确认转道
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
                     )}
                   </section>

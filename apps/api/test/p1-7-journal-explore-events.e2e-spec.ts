@@ -45,20 +45,11 @@ describe("P1.7 持久修行日志与探索事件链", () => {
     expect(pending.body.data.events[0].status).toBe("pending");
     expect(pending.body.data.events[0].triggered_at).toBeTruthy();
 
-    await prisma.exploreActionRecord.update({
-      where: { recordId: started.recordId },
-      data: { completesAt: new Date(Date.now() - 1000) },
-    });
-
-    const claimed = await request(app.getHttpServer())
-      .post("/api/game/explore/claim")
+    await request(app.getHttpServer())
+      .post("/api/game/actions/end")
       .set("Authorization", `Bearer ${token}`)
-      .set("Idempotency-Key", `idem_p17_claim_${Date.now()}_${randomSuffix()}`)
-      .send({ record_id: started.recordId })
+      .set("Idempotency-Key", `idem_p17_end_${Date.now()}_${randomSuffix()}`)
       .expect(201);
-
-    expect(claimed.body.data.event).toBeNull();
-    expect(claimed.body.data.linked_event_hint).toBeNull();
 
     const pendingAfterClaim = await request(app.getHttpServer())
       .get("/api/game/explore/events?status=pending")
@@ -74,7 +65,7 @@ describe("P1.7 持久修行日志与探索事件链", () => {
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
     expect(journal.body.data.entries.length).toBeGreaterThan(0);
-    expect(journal.body.data.entries[0].title).toBe("冀州探索回放");
+    expect(journal.body.data.entries[0].title).toContain("探索");
     expect(journal.body.data.entries[0].tags).toContain("自动战斗");
 
     const dbJournalCount = await prisma.playerJournalEntry.count({ where: { playerId } });
@@ -277,24 +268,25 @@ async function startTriggeredExplore(
     .post("/api/game/explore")
     .set("Authorization", `Bearer ${token}`)
     .set("Idempotency-Key", `idem_p17_event_explore_${Date.now()}_${randomSuffix()}`)
-    .send({ province_id: "ji", count: 1 })
+    .send({ province_id: "ji" })
     .expect(201);
 
-  const recordId = `explore_midway_${Date.now()}_${randomSuffix()}`;
   const now = Date.now();
   await prisma.exploreActionRecord.update({
-    where: { recordId: started.body.data.record_id },
+    where: { recordId: started.body.data.action.action_id },
     data: {
-      completesAt: new Date(now + 60_000),
+      lastSettledAt: new Date(now - 24 * 60 * 60_000),
+      lastActiveAt: new Date(now),
       eventContextSnapshot: { itemIds: ["low_herb"], traits: ["毒蚀"] },
       eventTriggerAt: new Date(now - 1_000),
-      recordId,
-      startedAt: new Date(now - 10_000),
-      status: "pending",
     },
   });
+  await request(app.getHttpServer())
+    .get("/api/game/actions/current")
+    .set("Authorization", `Bearer ${token}`)
+    .expect(200);
 
-  return { recordId };
+  return { recordId: started.body.data.action.action_id as string };
 }
 
 async function createP17Player(

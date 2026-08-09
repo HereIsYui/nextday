@@ -521,9 +521,13 @@ describe("P3-2 自研丹器与材料链", () => {
       .post("/api/game/explore")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_p3_explore_boost_${Date.now()}_${randomSuffix()}`)
-      .send({ province_id: "ji", count: 1 })
+      .send({ province_id: "ji" })
       .expect(201);
-    expect(started.body.data.explore_boost_percent).toBe(exploreBonus);
+    expect(started.body.data.action.action_type).toBe("explore");
+    const startedRecord = await prisma.exploreActionRecord.findUniqueOrThrow({
+      where: { recordId: started.body.data.action.action_id },
+    });
+    expect(startedRecord.exploreBoostPercent).toBe(exploreBonus);
     const consumedExploreEffect = (await getProductionEffects(prisma, playerId)).find(
       (effect) => effect.effectId === exploreEffect?.effectId,
     );
@@ -531,22 +535,27 @@ describe("P3-2 自研丹器与材料链", () => {
     expect(consumedExploreEffect?.consumedAt).toBeTruthy();
 
     await prisma.exploreActionRecord.update({
-      where: { recordId: started.body.data.record_id },
-      data: { completesAt: new Date(Date.now() - 1000) },
+      where: { recordId: started.body.data.action.action_id },
+      data: {
+        lastSettledAt: new Date(Date.now() - 24 * 60 * 60_000),
+        lastActiveAt: new Date(),
+      },
     });
-    const claimed = await request(app.getHttpServer())
-      .post("/api/game/explore/claim")
+    const settled = await request(app.getHttpServer())
+      .get("/api/game/actions/current")
       .set("Authorization", `Bearer ${token}`)
-      .set("Idempotency-Key", `idem_p3_explore_boost_claim_${Date.now()}_${randomSuffix()}`)
-      .send({ record_id: started.body.data.record_id })
-      .expect(201);
+      .expect(200);
     const expectedCultivation = Math.floor(
       getExploreCultivationReward(2, "win") * (1 + exploreBonus / 100),
     );
-    expect(claimed.body.data.rewards.cultivation).toBe(String(expectedCultivation));
-    expect(claimed.body.data.rewards.spirit_stone).toBe(
-      String(Math.floor(35 * (1 + exploreBonus / 100))),
-    );
+    const battle = await prisma.battleLog.findFirstOrThrow({
+      where: { playerId, battleType: "explore" },
+      orderBy: { createdAt: "desc" },
+    });
+    const reward = battle.rewardSnapshot as { cultivation?: string; spirit_stone?: string };
+    expect(reward.cultivation).toBe(String(expectedCultivation));
+    expect(reward.spirit_stone).toBe(String(Math.floor(35 * (1 + exploreBonus / 100))));
+    expect(settled.body.data.action.settled_battle_count).toBeGreaterThan(0);
   });
 
   it("材料链配置与断供预警不包含付费或唯一战力产物", async () => {

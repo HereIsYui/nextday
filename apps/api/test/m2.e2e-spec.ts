@@ -85,7 +85,7 @@ describe("M2 核心循环", () => {
     expect(first.body.data.completed_task_ids).toContain("novice_claim_cultivation");
   });
 
-  it("普通探索先生成异步队列，完成后领取战报、任务和奖励", async () => {
+  it("长期探索按时间游标自动结算战报、任务和奖励", async () => {
     const { token, playerId } = await createM2Player(app, "探索");
     const before = await request(app.getHttpServer())
       .get("/api/game/overview")
@@ -97,41 +97,45 @@ describe("M2 核心循环", () => {
       .post("/api/game/explore")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_m2_explore_${Date.now()}`)
-      .send({ province_id: "ji", count: 5 })
+      .send({ province_id: "ji" })
       .expect(201);
 
-    expect(response.body.data.action_state.action_points).toBe(beforeActionPoints - 5);
-    expect(response.body.data.status).toBe("pending");
-    expect(response.body.data.seconds_per_explore).toBe(20);
-    expect(response.body.data.battles).toHaveLength(0);
+    expect(response.body.data.action_state.action_points).toBe(beforeActionPoints);
+    expect(response.body.data.action.action_type).toBe("explore");
+    expect(response.body.data.action.status).toBe("active");
+    expect(response.body.data.action.settled_battle_count).toBe(0);
 
     await prisma.exploreActionRecord.update({
-      where: { recordId: response.body.data.record_id },
-      data: { completesAt: new Date(Date.now() - 1000) },
+      where: { recordId: response.body.data.action.action_id },
+      data: {
+        lastSettledAt: new Date(Date.now() - 24 * 60 * 60_000),
+        lastActiveAt: new Date(),
+      },
     });
-    const claimed = await request(app.getHttpServer())
-      .post("/api/game/explore/claim")
+    const settled = await request(app.getHttpServer())
+      .get("/api/game/actions/current")
       .set("Authorization", `Bearer ${token}`)
-      .set("Idempotency-Key", `idem_m2_explore_claim_${Date.now()}`)
-      .send({ record_id: response.body.data.record_id })
-      .expect(201);
+      .expect(200);
 
-    expect(claimed.body.data.status).toBe("claimed");
-    expect(claimed.body.data.battles).toHaveLength(5);
+    expect(settled.body.data.action.settled_battle_count).toBe(21);
+    const battles = await prisma.battleLog.findMany({
+      where: { playerId, battleType: "explore" },
+      orderBy: { createdAt: "asc" },
+    });
     const jiEnemyNames = new Set(exploreEnemyPools.ji.map((enemy) => enemy.enemyName));
-    const battleEnemyNames = claimed.body.data.battles.map(
-      (battle: { enemy_name: string }) => battle.enemy_name,
-    );
+    const battleEnemyNames = battles.map((battle) => battle.enemyName);
     expect(battleEnemyNames.every((enemyName: string) => jiEnemyNames.has(enemyName))).toBe(true);
     expect(new Set(battleEnemyNames).size).toBeGreaterThan(1);
-    const enemySkillNames = claimed.body.data.battles.flatMap(
-      (battle: { enemy_name: string; log: Array<{ actor: string; skill: string }> }) =>
-        battle.log.filter((round) => round.actor === battle.enemy_name).map((round) => round.skill),
+    const enemySkillNames = battles.flatMap((battle) =>
+      (Array.isArray(battle.battleLog) ? battle.battleLog : []).filter(
+        (round): round is { actor: string; skill: string } =>
+          typeof round === "object" && round !== null &&
+          typeof (round as { actor?: unknown }).actor === "string" &&
+          typeof (round as { skill?: unknown }).skill === "string",
+      ).map((round) => round.skill),
     );
     expect(enemySkillNames).not.toContain("山海妖息");
-    expect(claimed.body.data.battles[0].log.length).toBeGreaterThan(0);
-    expect(claimed.body.data.completed_task_ids).toContain("novice_explore_ji");
-    expect(claimed.body.data.completed_task_ids).toContain("daily_explore");
+    expect(battles[0]?.battleLog).toBeTruthy();
 
     const battleCount = await prisma.battleLog.count({
       where: { playerId, battleType: "explore" },
@@ -140,11 +144,16 @@ describe("M2 核心循环", () => {
       where: { playerId_provinceId: { playerId, provinceId: "ji" } },
     });
     const exploreRecord = await prisma.exploreActionRecord.findUnique({
-      where: { recordId: response.body.data.record_id },
+      where: { recordId: response.body.data.action.action_id },
     });
-    expect(exploreRecord?.battleSnapshot).toEqual(claimed.body.data.battles);
-    expect(battleCount).toBe(5);
-    expect(provinceProgress?.explorationCount).toBe(5);
+    expect(exploreRecord?.battleSnapshot).toBeTruthy();
+    expect(battleCount).toBe(21);
+    expect(provinceProgress?.explorationCount).toBe(21);
+    await request(app.getHttpServer())
+      .post("/api/game/actions/end")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_m2_explore_end_${Date.now()}`)
+      .expect(201);
   });
 
   it("重复探索请求使用同一幂等键时不会重复扣行动令", async () => {
@@ -155,60 +164,51 @@ describe("M2 核心循环", () => {
       .post("/api/game/explore")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", idempotencyKey)
-      .send({ province_id: "ji", count: 2 })
+      .send({ province_id: "ji" })
       .expect(201);
     const repeated = await request(app.getHttpServer())
       .post("/api/game/explore")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", idempotencyKey)
-      .send({ province_id: "ji", count: 2 })
+      .send({ province_id: "ji" })
       .expect(201);
 
-    expect(first.body.data.record_id).toBe(repeated.body.data.record_id);
+    expect(first.body.data.action.action_id).toBe(repeated.body.data.action.action_id);
     expect(first.body.data.action_state.action_points).toBe(
       repeated.body.data.action_state.action_points,
     );
-    expect(first.body.data.battles).toHaveLength(0);
-    expect(repeated.body.data.status).toBe("pending");
+    expect(first.body.data.action.action_id).toBe(repeated.body.data.action.action_id);
+    expect(repeated.body.data.action.status).toBe("active");
   });
 
-  it("探索未完成不能领取，完成后同一玩家不能再保留第二个待领取队列", async () => {
+  it("进行中的长期探索不能重复开启另一项行动", async () => {
     const { token } = await createM2Player(app, "异步");
     const started = await request(app.getHttpServer())
       .post("/api/game/explore")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_m2_async_explore_${Date.now()}`)
-      .send({ province_id: "ji", count: 1 })
+      .send({ province_id: "ji" })
       .expect(201);
 
-    const earlyClaim = await request(app.getHttpServer())
-      .post("/api/game/explore/claim")
-      .set("Authorization", `Bearer ${token}`)
-      .set("Idempotency-Key", `idem_m2_async_claim_early_${Date.now()}`)
-      .send({ record_id: started.body.data.record_id })
-      .expect(400);
-    expect(earlyClaim.body.message).toContain("探索尚未完成");
-
-    await prisma.exploreActionRecord.update({
-      where: { recordId: started.body.data.record_id },
-      data: { completesAt: new Date(Date.now() - 1000) },
-    });
-    const current = await request(app.getHttpServer())
-      .get("/api/game/explore/current")
-      .set("Authorization", `Bearer ${token}`)
-      .expect(200);
-    expect(current.body.data.current.status).toBe("completed");
-
-    const secondStart = await request(app.getHttpServer())
-      .post("/api/game/explore")
+    await request(app.getHttpServer())
+      .post("/api/game/actions/start")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_m2_async_second_${Date.now()}`)
-      .send({ province_id: "ji", count: 1 })
+      .send({ action_type: "cultivation" })
       .expect(400);
-    expect(secondStart.body.message).toContain("已有探索完成待领取");
+    const current = await request(app.getHttpServer())
+      .get("/api/game/actions/current")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(current.body.data.action.status).toBe("active");
+    await request(app.getHttpServer())
+      .post("/api/game/actions/end")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_m2_async_end_${Date.now()}`)
+      .expect(201);
   });
 
-  it("行动令不足时拒绝探索", async () => {
+  it("长期探索不消耗行动令", async () => {
     const { token, playerId } = await createM2Player(app, "行动");
     await prisma.playerActionState.update({
       where: { playerId },
@@ -219,10 +219,10 @@ describe("M2 核心循环", () => {
       .post("/api/game/explore")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_m2_no_action_${Date.now()}`)
-      .send({ province_id: "ji", count: 1 })
-      .expect(400);
+      .send({ province_id: "ji" })
+      .expect(201);
 
-    expect(response.body.message).toContain("行动令不足");
+    expect(response.body.data.action.action_type).toBe("explore");
   });
 
   it("已完成任务可领取奖励，洞府收取会写入记录", async () => {

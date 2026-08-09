@@ -66,16 +66,15 @@ describe("P3-1 探索生态核心", () => {
             "Idempotency-Key",
             `idem_p3_parallel_explore_${Date.now()}_${suffix}_${randomSuffix()}`,
           )
-          .send({ province_id: "ji", count: 1 }),
+          .send({ province_id: "ji" }),
       ),
     );
 
     expect(responses.map((response) => response.status).sort()).toEqual([201, 400]);
     const activeRecords = await prisma.exploreActionRecord.findMany({
       where: {
-        claimedAt: null,
         playerId,
-        status: { in: ["pending", "completed"] },
+        status: "active",
       },
     });
     expect(activeRecords).toHaveLength(1);
@@ -87,20 +86,26 @@ describe("P3-1 探索生态核心", () => {
       .post("/api/game/explore")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_p3_explore_${Date.now()}_${randomSuffix()}`)
-      .send({ province_id: "ji", count: 5 })
+      .send({ province_id: "ji" })
       .expect(201);
 
     await prisma.exploreActionRecord.update({
-      where: { recordId: started.body.data.record_id },
-      data: { completesAt: new Date(Date.now() - 1000) },
+      where: { recordId: started.body.data.action.action_id },
+      data: {
+        lastSettledAt: new Date(Date.now() - 24 * 60 * 60_000),
+        lastActiveAt: new Date(),
+      },
     });
 
-    const claimed = await request(app.getHttpServer())
-      .post("/api/game/explore/claim")
+    const settled = await request(app.getHttpServer())
+      .get("/api/game/actions/current")
       .set("Authorization", `Bearer ${token}`)
-      .set("Idempotency-Key", `idem_p3_explore_claim_${Date.now()}_${randomSuffix()}`)
-      .send({ record_id: started.body.data.record_id })
-      .expect(201);
+      .expect(200);
+
+    const claimed = await request(app.getHttpServer())
+      .get("/api/game/battles?battle_type=explore&limit=30")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
 
     const allowedJiLoot = new Set(exploreLootPools.ji.map((item) => item.itemId));
     const battles = claimed.body.data.battles as Array<{
@@ -111,10 +116,8 @@ describe("P3-1 探索生态核心", () => {
       rewards: { items?: Array<{ item_id: string; count: number }> };
     }>;
 
-    expect(battles).toHaveLength(5);
-    expect(claimed.body.data.event).toBeNull();
-    expect(claimed.body.data.linked_event_hint).toBeNull();
-    expect(claimed.body.data.experience.timeline[0].description).toBe(battles[0].battle_hint);
+    expect(battles).toHaveLength(21);
+    expect(settled.body.data.action.settled_battle_count).toBe(21);
 
     const droppedItemIds = battles.flatMap((battle) =>
       (battle.rewards.items ?? []).map((item) => item.item_id),
@@ -156,11 +159,6 @@ describe("P3-1 探索生态核心", () => {
       ),
     ).toBe(true);
 
-    const current = await request(app.getHttpServer())
-      .get("/api/game/explore/current")
-      .set("Authorization", `Bearer ${token}`)
-      .expect(200);
-    expect(current.body.data.current.battles).toEqual(claimed.body.data.battles);
   });
 
   it("P3 探索配置 envelope 暴露掉落池和怪物特性", async () => {

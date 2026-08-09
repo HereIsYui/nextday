@@ -297,20 +297,25 @@ describe("M3 生产成长循环", () => {
       .post("/api/game/explore")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_m3_skill_explore_${Date.now()}_${randomSuffix()}`)
-      .send({ province_id: "ji", count: 1 })
+      .send({ province_id: "ji" })
       .expect(201);
     await prisma.exploreActionRecord.update({
-      where: { recordId: explored.body.data.record_id },
-      data: { completesAt: new Date(Date.now() - 1000) },
+      where: { recordId: explored.body.data.action.action_id },
+      data: {
+        lastSettledAt: new Date(Date.now() - 24 * 60 * 60_000),
+        lastActiveAt: new Date(),
+      },
     });
-    const claimed = await request(app.getHttpServer())
-      .post("/api/game/explore/claim")
+    await request(app.getHttpServer())
+      .get("/api/game/actions/current")
       .set("Authorization", `Bearer ${token}`)
-      .set("Idempotency-Key", `idem_m3_skill_claim_${Date.now()}_${randomSuffix()}`)
-      .send({ record_id: explored.body.data.record_id })
-      .expect(201);
+      .expect(200);
+    const battles = await request(app.getHttpServer())
+      .get("/api/game/battles?battle_type=explore&limit=1")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
 
-    const skillNames = claimed.body.data.battles[0].log.map(
+    const skillNames = battles.body.data.battles[0].log.map(
       (round: { skill: string }) => round.skill,
     );
     expect(skillNames).toContain("小周天剑气");

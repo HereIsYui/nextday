@@ -288,33 +288,17 @@ h2 {
   margin-bottom: 0;
 }
 
-.core-play-actions {
-  border-top: 1px solid #394338;
-  padding: 10px 12px 12px;
-}
-
-.core-play-actions .console-eyebrow {
-  margin-bottom: 7px;
-}
-
-.core-play-action-grid {
+.cultivation-panel-heading-actions {
+  align-items: stretch;
   display: grid;
-  gap: 6px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  flex: 0 0 auto;
+  gap: 4px;
 }
 
-.core-play-action {
-  background: rgba(49, 67, 49, 0.68);
-  border: 1px solid #586951;
-  color: #dce5d4;
-  font-size: 11px;
-  min-height: 32px;
-  padding: 5px 6px;
-}
-
-.core-play-action:hover:not(:disabled) {
-  border-color: #d1af6a;
-  color: #f0e4c9;
+.cultivation-panel-heading-actions .quiet-button,
+.cultivation-panel-heading-actions .realm-overview-button {
+  font-size: 10px;
+  padding: 4px 6px;
 }
 
 .realm-overview-button {
@@ -541,8 +525,7 @@ h2 {
   border-color: #d1af6a;
 }
 
-.terminal-heading-actions,
-.utility-button-list {
+.terminal-heading-actions {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
@@ -551,10 +534,6 @@ h2 {
 
 .terminal-heading-actions {
   justify-content: flex-end;
-}
-
-.utility-button-list {
-  gap: 5px;
 }
 
 .quiet-button {
@@ -865,22 +844,48 @@ h2 {
   border-color: #d1af6a;
 }
 
-.quick-command-list {
+.command-action-dock {
+  background: rgba(18, 24, 18, 0.72);
   border-top: 1px solid #394338;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-  padding: 13px 20px 18px;
+  display: grid;
+  gap: 8px;
+  padding: 10px 16px 12px;
 }
 
-.text-console-shell-active .quick-command-list {
-  padding: 9px 16px 12px;
+.command-action-group {
+  align-items: flex-start;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.command-action-label {
+  color: #8e9b8a;
+  flex: 0 0 34px;
+  font-size: 11px;
+  line-height: 30px;
+  text-align: right;
+}
+
+.quick-command-list {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
 }
 
 .quick-command-list button {
   color: #cdd7c7;
   font-size: 12px;
+  min-height: 30px;
   padding: 6px 9px;
+}
+
+.play-command-list button {
+  background: rgba(47, 62, 48, 0.56);
+  border-color: #4f604c;
+  color: #b9c6b5;
 }
 
 .utility-dialog {
@@ -929,6 +934,48 @@ h2 {
   display: flex;
   justify-content: flex-end;
   margin-bottom: 12px;
+}
+
+.utility-hub {
+  display: grid;
+  gap: 14px;
+}
+
+.utility-hub > .empty-copy {
+  margin-bottom: 0;
+}
+
+.utility-hub-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.utility-hub-item {
+  background: #1a241b;
+  border: 1px solid #4f604c;
+  color: #d9e1d4;
+  display: grid;
+  gap: 4px;
+  min-height: 64px;
+  padding: 10px 11px;
+  text-align: left;
+}
+
+.utility-hub-item:hover:not(:disabled) {
+  background: #263529;
+  border-color: #d1af6a;
+}
+
+.utility-hub-item strong {
+  color: #eee3c8;
+  font-size: 13px;
+}
+
+.utility-hub-item span {
+  color: #99a58f;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .panel-warning {
@@ -1421,6 +1468,20 @@ h2 {
 
   .terminal-heading-actions {
     justify-content: flex-start;
+  }
+
+  .command-action-group {
+    display: grid;
+    gap: 5px;
+  }
+
+  .command-action-label {
+    line-height: 1.4;
+    text-align: left;
+  }
+
+  .utility-hub-grid {
+    grid-template-columns: 1fr;
   }
 
   .utility-dialog {

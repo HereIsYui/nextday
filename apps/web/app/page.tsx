@@ -57,7 +57,7 @@ import {
 
 type HealthText = "检测中" | "正常" | "不可用";
 type RouteValue = "qi" | "body";
-type OverlayView = "help" | "bag" | "scrolls" | "battles" | "faction" | "realms";
+type OverlayView = "help" | "bag" | "scrolls" | "battles" | "faction" | "realms" | "tools";
 
 interface BreakthroughSummary {
   actionable: boolean;
@@ -110,10 +110,20 @@ const baseQuickCommands: CommandAction[] = [
   { label: "状态", command: "状态" },
   { label: "背包", command: "背包" },
   { label: "修炼", command: "修炼" },
-  { label: "突破", command: "突破" },
   { label: "探索", command: "探索" },
   { label: "领取洞府", command: "领取洞府" },
   { label: "任务", command: "任务" },
+];
+
+const corePlayCommands: CommandAction[] = [
+  { label: "活动", command: "活动" },
+  { label: "内天地", command: "内天地" },
+  { label: "宗门", command: "宗门" },
+  { label: "Boss", command: "Boss" },
+  { label: "排行", command: "排行" },
+  { label: "古宝", command: "古宝" },
+  { label: "炼丹", command: "炼丹" },
+  { label: "炼器", command: "炼器" },
   { label: "九塔", command: "九塔" },
 ];
 
@@ -1116,17 +1126,33 @@ export default function HomePage() {
                   <p className="console-eyebrow">修行状态</p>
                   <h2>道途简报</h2>
                 </div>
-                <button
-                  aria-haspopup="dialog"
-                  className="realm-overview-button"
-                  onClick={() => {
-                    setActiveOverlay("realms");
-                    void refreshRealmProgression();
-                  }}
-                  type="button"
-                >
-                  境界一览
-                </button>
+                <div className="cultivation-panel-heading-actions">
+                  <button
+                    className="quiet-button"
+                    disabled={hydrating || busy}
+                    onClick={() => {
+                      if (token) {
+                        void refreshDashboard(token).catch((error) =>
+                          setSessionError(messageFromError(error)),
+                        );
+                      }
+                    }}
+                    type="button"
+                  >
+                    同步
+                  </button>
+                  <button
+                    aria-haspopup="dialog"
+                    className="realm-overview-button"
+                    onClick={() => {
+                      setActiveOverlay("realms");
+                      void refreshRealmProgression();
+                    }}
+                    type="button"
+                  >
+                    境界一览
+                  </button>
+                </div>
               </div>
               <div className="status-strip">
                 {metrics.map((metric) => (
@@ -1203,32 +1229,6 @@ export default function HomePage() {
                   </article>
                 </section>
               ) : null}
-              <section className="core-play-actions" aria-label="玩法入口">
-                <p className="console-eyebrow">九州玩法</p>
-                <div className="core-play-action-grid">
-                  {[
-                    ["活动", "活动"],
-                    ["内天地", "内天地"],
-                    ["宗门", "宗门"],
-                    ["Boss", "Boss"],
-                    ["排行", "排行"],
-                    ["古宝", "古宝"],
-                    ["炼丹", "炼丹"],
-                    ["炼器", "炼器"],
-                    ["九塔", "九塔"],
-                  ].map(([label, action]) => (
-                    <button
-                      className="core-play-action"
-                      disabled={busy || hydrating}
-                      key={action}
-                      onClick={() => void executeCommand(action, { displayCommand: label, saveToHistory: false })}
-                      type="button"
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </section>
               <button className="logout-button" onClick={handleLogout} type="button">
                 离开
               </button>
@@ -1241,67 +1241,13 @@ export default function HomePage() {
                 </div>
                 <div className="terminal-heading-actions">
                   <button
-                    className="quiet-button"
-                    disabled={hydrating || busy}
-                    onClick={() => {
-                      if (token) {
-                        void refreshDashboard(token).catch((error) =>
-                          setSessionError(messageFromError(error)),
-                        );
-                      }
-                    }}
+                    aria-haspopup="dialog"
+                    className="utility-button"
+                    onClick={() => setActiveOverlay("tools")}
                     type="button"
                   >
-                    刷新状态
+                    功能
                   </button>
-                  <div className="utility-button-list" aria-label="辅助面板">
-                    <button
-                      aria-haspopup="dialog"
-                      className="utility-button"
-                      onClick={() => setActiveOverlay("help")}
-                      type="button"
-                    >
-                      帮助
-                    </button>
-                    <button
-                      aria-haspopup="dialog"
-                      className="utility-button"
-                      disabled={bagLoading || busy || hydrating}
-                      onClick={() => {
-                        setActiveOverlay("bag");
-                        if (token) {
-                          void refreshBag(token);
-                        }
-                      }}
-                      type="button"
-                    >
-                      背包
-                    </button>
-                    <button
-                      aria-haspopup="dialog"
-                      className="utility-button"
-                      onClick={() => setActiveOverlay("scrolls")}
-                      type="button"
-                    >
-                      卷轴
-                    </button>
-                    <button
-                      aria-haspopup="dialog"
-                      className="utility-button"
-                      onClick={() => setActiveOverlay("faction")}
-                      type="button"
-                    >
-                      仙魔
-                    </button>
-                    <button
-                      aria-haspopup="dialog"
-                      className="utility-button"
-                      onClick={() => setActiveOverlay("battles")}
-                      type="button"
-                    >
-                      战报
-                    </button>
-                  </div>
                 </div>
               </div>
               <div className="terminal-log" role="log" aria-live="polite">
@@ -1437,25 +1383,50 @@ export default function HomePage() {
                   ))}
                 </output>
               ) : null}
-              <div className="quick-command-list" aria-label="快捷指令">
-                {quickCommands.map((item) => (
-                  <button
-                    disabled={busy || hydrating}
-                    key={item.command}
-                    onClick={() => {
-                      if (item.command === "探索") {
-                        setCommand("探索");
-                        setHistoryIndex(-1);
-                        commandInputRef.current?.focus();
-                        return;
-                      }
-                      void executeCommand(item.command);
-                    }}
-                    type="button"
-                  >
-                    {item.label}
-                  </button>
-                ))}
+              <div className="command-action-dock" aria-label="快捷操作">
+                <div className="command-action-group">
+                  <span className="command-action-label">常用</span>
+                  <div className="quick-command-list" aria-label="常用操作">
+                    {quickCommands.map((item) => (
+                      <button
+                        disabled={busy || hydrating}
+                        key={item.command}
+                        onClick={() => {
+                          if (item.command === "探索") {
+                            setCommand("探索");
+                            setHistoryIndex(-1);
+                            commandInputRef.current?.focus();
+                            return;
+                          }
+                          void executeCommand(item.command);
+                        }}
+                        type="button"
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="command-action-group">
+                  <span className="command-action-label">玩法</span>
+                  <div className="quick-command-list play-command-list" aria-label="玩法入口">
+                    {corePlayCommands.map((item) => (
+                      <button
+                        disabled={busy || hydrating}
+                        key={item.command}
+                        onClick={() =>
+                          void executeCommand(item.command, {
+                            displayCommand: item.label,
+                            saveToHistory: false,
+                          })
+                        }
+                        type="button"
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </section>
           </section>
@@ -1478,9 +1449,11 @@ export default function HomePage() {
                         : "已见故事"
                       : activeOverlay === "realms"
                         ? "境界一览"
-                        : activeOverlay === "faction"
-                          ? "仙魔抉择"
-                          : "斗法余音"
+                        : activeOverlay === "tools"
+                          ? "功能面板"
+                          : activeOverlay === "faction"
+                            ? "仙魔抉择"
+                            : "斗法余音"
               }
               eyebrow={
                 activeOverlay === "help"
@@ -1491,11 +1464,51 @@ export default function HomePage() {
                       ? "章节卷轴"
                       : activeOverlay === "realms"
                         ? "修行境界"
-                        : activeOverlay === "faction"
-                          ? "道途分流"
-                          : "最近战报"
+                        : activeOverlay === "tools"
+                          ? "常用功能"
+                          : activeOverlay === "faction"
+                            ? "道途分流"
+                            : "最近战报"
               }
             >
+              {activeOverlay === "tools" ? (
+                <section className="utility-hub" aria-label="常用功能">
+                  <p className="empty-copy">
+                    低频功能集中在这里，常用修行操作仍可在输入框下方直接执行。
+                  </p>
+                  <div className="utility-hub-grid">
+                    {[
+                      ["帮助", "查看指令语法和玩法说明", "help"],
+                      ["背包", "查看物品数量、用途并服丹", "bag"],
+                      ["卷轴", "回看已经解锁的章节故事", "scrolls"],
+                      ["仙魔", "查看或选择仙魔道途", "faction"],
+                      ["战报", "回看最近探索与战斗记录", "battles"],
+                      ["境界", "查看全部境界、小境界和等级", "realms"],
+                    ].map(([label, detail, view]) => (
+                      <button
+                        className="utility-hub-item"
+                        disabled={busy || hydrating || (view === "bag" && bagLoading)}
+                        key={view}
+                        onClick={() => {
+                          const nextView = view as Exclude<OverlayView, "tools">;
+                          setActiveOverlay(nextView);
+                          if (nextView === "bag" && token) {
+                            void refreshBag(token);
+                          }
+                          if (nextView === "realms") {
+                            void refreshRealmProgression();
+                          }
+                        }}
+                        type="button"
+                      >
+                        <strong>{label}</strong>
+                        <span>{detail}</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
               {activeOverlay === "help" ? (
                 <>
                   <div className="utility-dialog-actions">

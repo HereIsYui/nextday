@@ -1138,11 +1138,12 @@ export class CommerceService {
     activeDays?: number;
   }> {
     if (process.env.NODE_ENV !== "production") {
-      if (process.env.COMMERCE_MOCK_ENABLED === "true") {
-        const expectedToken = process.env.COMMERCE_MOCK_TOKEN;
-        if (!expectedToken || input.developmentToken !== expectedToken) {
-          throw new ForbiddenException("商业化模拟接口需要开发令牌");
-        }
+      if (process.env.COMMERCE_MOCK_ENABLED !== "true") {
+        throw new ForbiddenException("开发环境未启用商业化模拟接口");
+      }
+      const expectedToken = process.env.COMMERCE_MOCK_TOKEN;
+      if (!expectedToken || input.developmentToken !== expectedToken) {
+        throw new ForbiddenException("商业化模拟接口需要开发令牌");
       }
       return {
         providerTransactionId: input.providerTransactionId,

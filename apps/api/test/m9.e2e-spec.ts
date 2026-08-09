@@ -291,13 +291,13 @@ describe("M9 MVP 总体验收与小纪元演练", () => {
       .post("/api/commerce/monthly-cards/purchase")
       .set("Authorization", `Bearer ${leader.token}`)
       .set("Idempotency-Key", purchaseKey)
-      .send({ card_type: "small_monthly" })
+      .send({ card_type: "small_monthly", development_token: process.env.COMMERCE_MOCK_TOKEN })
       .expect(201);
     const repeatedPurchase = await request(app.getHttpServer())
       .post("/api/commerce/monthly-cards/purchase")
       .set("Authorization", `Bearer ${leader.token}`)
       .set("Idempotency-Key", purchaseKey)
-      .send({ card_type: "small_monthly" })
+      .send({ card_type: "small_monthly", development_token: process.env.COMMERCE_MOCK_TOKEN })
       .expect(201);
     expect(repeatedPurchase.body.data.order_id).toBe(purchased.body.data.order_id);
     const monthlyClaim = await request(app.getHttpServer())

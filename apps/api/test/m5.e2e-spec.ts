@@ -39,13 +39,13 @@ describe("M5 商业化与便利边界", () => {
       .post("/api/commerce/monthly-cards/purchase")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", purchaseKey)
-      .send({ card_type: "small_monthly" })
+      .send({ card_type: "small_monthly", development_token: process.env.COMMERCE_MOCK_TOKEN })
       .expect(201);
     const repeatedPurchase = await request(app.getHttpServer())
       .post("/api/commerce/monthly-cards/purchase")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", purchaseKey)
-      .send({ card_type: "small_monthly" })
+      .send({ card_type: "small_monthly", development_token: process.env.COMMERCE_MOCK_TOKEN })
       .expect(201);
     expect(repeatedPurchase.body.data.order_id).toBe(purchased.body.data.order_id);
 
@@ -204,7 +204,7 @@ describe("M5 商业化与便利边界", () => {
       .post("/api/commerce/vip/sync")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_m5_vip3_${Date.now()}_${randomSuffix()}`)
-      .send({ vip_level: 3, active_days: 30 })
+      .send({ vip_level: 3, active_days: 30, development_token: process.env.COMMERCE_MOCK_TOKEN })
       .expect(201);
     const vip3Overview = await request(app.getHttpServer())
       .get("/api/commerce/overview")
@@ -218,7 +218,7 @@ describe("M5 商业化与便利边界", () => {
       .post("/api/commerce/vip/sync")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_m5_vip4_${Date.now()}_${randomSuffix()}`)
-      .send({ vip_level: 4, active_days: 30 })
+      .send({ vip_level: 4, active_days: 30, development_token: process.env.COMMERCE_MOCK_TOKEN })
       .expect(201);
     const vip4Queue = await request(app.getHttpServer())
       .post("/api/commerce/convenience/automation-queues")
@@ -235,7 +235,7 @@ describe("M5 商业化与便利边界", () => {
       .post("/api/commerce/monthly-cards/purchase")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_m5_large_purchase_${Date.now()}_${randomSuffix()}`)
-      .send({ card_type: "large_monthly" })
+      .send({ card_type: "large_monthly", development_token: process.env.COMMERCE_MOCK_TOKEN })
       .expect(201);
     await request(app.getHttpServer())
       .post("/api/commerce/monthly-cards/claim-daily")

@@ -238,7 +238,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
           where: { recordId: state.activeActionId },
         });
         const minutes = normalizeOfflineSnapshotMinutes(snapshot);
-        const settled = await this.settleExploreWindow(tx, player.playerId, record, minutes);
+        const settled = await this.settleExploreWindow(tx, player.playerId, record, minutes, "offline");
         const now = new Date();
         const updatedRecord = await tx.exploreActionRecord.update({
           where: { recordId: record.recordId },
@@ -350,7 +350,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
         : 0;
     let settled: LongExploreSettlement | null = null;
     if (minutesToSettle > 0) {
-      settled = await this.settleExploreWindow(tx, playerId, record, minutesToSettle);
+      settled = await this.settleExploreWindow(tx, playerId, record, minutesToSettle, "online");
     }
     const nextSettledAt = minutesToSettle > 0
       ? new Date(lastSettledAt.getTime() + minutesToSettle * 60_000)
@@ -374,8 +374,15 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
     playerId: string,
     record: ExploreActionRecord,
     additionalMinutes: number,
+    source: "online" | "offline",
   ): Promise<LongExploreSettlement> {
     const safeMinutes = Math.max(0, Math.floor(additionalMinutes));
+    if (safeMinutes <= 0) {
+      return { record, rewards: { cultivation: "0", spirit_stone: "0", items: [] }, battles: [] };
+    }
+    const settlementStartAt = record.lastSettledAt ?? record.startedAt;
+    const settlementEndAt = new Date(settlementStartAt.getTime() + safeMinutes * 60_000);
+    const settlementIdempotencyKey = `long-explore:${record.recordId}:${settlementStartAt.toISOString()}:${settlementEndAt.toISOString()}`;
     const previousMinutes = record.settledMinutes ?? 0;
     const previousBattles = record.settledBattleCount ?? record.count ?? 0;
     const totalMinutes = previousMinutes + safeMinutes;
@@ -429,6 +436,23 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
         battleSnapshot: battles.length
           ? ([...(Array.isArray(record.battleSnapshot) ? record.battleSnapshot : []), ...battles] as unknown as Prisma.InputJsonValue)
           : record.battleSnapshot ?? Prisma.JsonNull,
+      },
+    });
+    await tx.actionSettlementRecord.create({
+      data: {
+        settlementId: `settlement_${randomUUID()}`,
+        playerId,
+        actionId: record.recordId,
+        actionType: "explore",
+        source,
+        settlementStartAt,
+        settlementEndAt,
+        effectiveMinutes: safeMinutes,
+        battleCount: newBattles,
+        rewardSnapshot: rewardTotal as unknown as Prisma.InputJsonValue,
+        battleIds: battles.map((battle) => battle.battle_id) as unknown as Prisma.InputJsonValue,
+        idempotencyKey: settlementIdempotencyKey,
+        rulesetVersion: record.rulesetVersion,
       },
     });
     return { record: updated, rewards: rewardTotal, battles };

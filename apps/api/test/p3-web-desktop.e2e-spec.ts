@@ -41,17 +41,17 @@ describe("P3 后续桌面 Web 体验闭环", () => {
       .post("/api/game/explore")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_p3_desktop_running_${Date.now()}_${randomSuffix()}`)
-      .send({ province_id: "ji", count: 1 })
+      .send({ province_id: "ji" })
       .expect(201);
 
     const current = await request(app.getHttpServer())
-      .get("/api/game/explore/current")
+      .get("/api/game/actions/current")
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
 
-    expect(current.body.data.current).toMatchObject({
+    expect(current.body.data.action).toMatchObject({
       province_id: "ji",
-      status: "pending",
+      status: "active",
       can_claim: false,
     });
   });
@@ -60,17 +60,12 @@ describe("P3 后续桌面 Web 体验闭环", () => {
     const { token, playerId } = await createDesktopRoutePlayer(app);
     await markCompletedTasksClaimed(prisma, playerId);
     await markCaveJustCollected(prisma, playerId);
-    await prisma.playerActionState.update({
-      where: { playerId },
-      data: { actionPoints: 0 },
-    });
-
     const current = await request(app.getHttpServer())
-      .get("/api/game/explore/current")
+      .get("/api/game/actions/current")
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
 
-    expect(current.body.data.current).toBeNull();
+    expect(current.body.data.action).toBeNull();
     await request(app.getHttpServer())
       .get("/api/game/daily-route")
       .set("Authorization", `Bearer ${token}`)

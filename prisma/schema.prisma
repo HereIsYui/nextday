@@ -68,6 +68,7 @@ model Player {
   eventRewardRecords          EventRewardRecord[]
   battleLogs                  BattleLog[]
   exploreActionRecords        ExploreActionRecord[]
+  actionSettlementRecords     ActionSettlementRecord[]
   exploreEventRecords         ExploreEventRecord[]
   journalEntries              PlayerJournalEntry[]
   caveRecords                 CaveCollectRecord[]
@@ -365,6 +366,7 @@ model ExploreActionRecord {
 
   player      Player              @relation(fields: [playerId], references: [playerId])
   eventRecord ExploreEventRecord?
+  settlements ActionSettlementRecord[]
 
   @@index([playerId])
   @@index([eraId, provinceId])
@@ -373,6 +375,32 @@ model ExploreActionRecord {
   @@index([eventTriggerAt])
   @@index([createdAt])
   @@map("explore_action_record")
+}
+
+/// 长期行动的独立结算账本。每个时间窗口只允许生成一条记录，奖励实际入账后才推进行动游标。
+model ActionSettlementRecord {
+  settlementId       String   @id @map("settlement_id")
+  playerId           String   @map("player_id")
+  actionId           String   @map("action_id")
+  actionType         String   @map("action_type")
+  source             String   @default("online")
+  settlementStartAt  DateTime @map("settlement_start_at")
+  settlementEndAt    DateTime @map("settlement_end_at")
+  effectiveMinutes   Int      @map("effective_minutes")
+  battleCount        Int      @default(0) @map("battle_count")
+  rewardSnapshot     Json     @map("reward_snapshot")
+  battleIds          Json?    @map("battle_ids")
+  idempotencyKey     String   @unique @map("idempotency_key")
+  rulesetVersion     String   @map("ruleset_version")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  player        Player             @relation(fields: [playerId], references: [playerId], onDelete: Cascade)
+  exploreRecord ExploreActionRecord @relation(fields: [actionId], references: [recordId], onDelete: Cascade)
+
+  @@unique([actionId, settlementStartAt, settlementEndAt])
+  @@index([playerId, createdAt])
+  @@index([actionId, createdAt])
+  @@map("action_settlement_record")
 }
 
 model ExploreEventRecord {

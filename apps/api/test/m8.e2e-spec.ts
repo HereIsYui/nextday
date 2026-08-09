@@ -62,7 +62,7 @@ describe("M8 运营后台闭环", () => {
       .post("/api/commerce/monthly-cards/purchase")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_m8_monthly_${randomSuffix()}`)
-      .send({ card_type: "small_monthly" })
+      .send({ card_type: "small_monthly", development_token: process.env.COMMERCE_MOCK_TOKEN })
       .expect(201);
     await request(app.getHttpServer())
       .post("/api/commerce/monthly-cards/claim-daily")

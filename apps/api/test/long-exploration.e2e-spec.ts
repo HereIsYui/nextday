@@ -61,6 +61,12 @@ describe("长期探索结算", () => {
     expect(
       await prisma.battleLog.count({ where: { playerId, battleType: "explore" } }),
     ).toBe(1);
+    const settlements = await prisma.actionSettlementRecord.findMany({
+      where: { playerId, actionId: recordId },
+    });
+    expect(settlements).toHaveLength(1);
+    expect(settlements[0].source).toBe("online");
+    expect(settlements[0].effectiveMinutes).toBe(120);
   });
 
   it("按每日二十一场基准累计，不会因小时批量放大收益", async () => {
@@ -172,6 +178,11 @@ describe("长期探索结算", () => {
     const record = await prisma.exploreActionRecord.findUniqueOrThrow({ where: { recordId } });
     expect(record.offlineSnapshotClaimedAt).not.toBeNull();
     expect(record.settledMinutes).toBe(480);
+    const settlement = await prisma.actionSettlementRecord.findFirstOrThrow({
+      where: { playerId, actionId: recordId },
+    });
+    expect(settlement.source).toBe("offline");
+    expect(settlement.effectiveMinutes).toBe(480);
   });
 
   it("带探索次数的旧请求明确拒绝", async () => {

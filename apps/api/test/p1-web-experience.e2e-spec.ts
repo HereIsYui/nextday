@@ -213,7 +213,7 @@ describe("P1 Web 玩法过程反馈", () => {
       .post("/api/commerce/monthly-cards/purchase")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_p1_monthly_${Date.now()}_${randomSuffix()}`)
-      .send({ card_type: "small_monthly" })
+      .send({ card_type: "small_monthly", development_token: process.env.COMMERCE_MOCK_TOKEN })
       .expect(201);
     const claimed = await request(app.getHttpServer())
       .post("/api/commerce/monthly-cards/claim-daily")

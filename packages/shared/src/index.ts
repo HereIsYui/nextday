@@ -729,9 +729,6 @@ export interface ExploreRequest {
   count?: never;
 }
 
-/** 历史探索记录的只读状态，不再作为新探索接口的响应。 */
-export type ExploreActionStatus = "active" | "pending" | "completed" | "claimed" | "expired";
-
 export type ExploreEventStatus = "pending" | "resolved" | "expired";
 
 export interface ExploreEventChoice {
@@ -763,37 +760,6 @@ export interface ExploreEventState {
   resolution_mode: "manual" | "auto" | null;
   created_at: string;
   resolved_at: string | null;
-}
-
-export interface ExploreResponse {
-  record_id: string;
-  province_id: string;
-  province_name: string;
-  count: number;
-  status: ExploreActionStatus;
-  seconds_per_explore: number;
-  total_seconds: number;
-  explore_boost_percent: number;
-  started_at: string;
-  event_trigger_at: string | null;
-  completes_at: string;
-  claimed_at: string | null;
-  can_claim: boolean;
-  action_state: ActionState;
-  battles: BattleSummary[];
-  rewards: RewardBundle;
-  completed_task_ids: string[];
-  experience?: ExperiencePayload;
-  event?: ExploreEventState | null;
-  linked_event_hint?: string | null;
-}
-
-export interface ExploreCurrentResponse {
-  current: ExploreResponse | null;
-}
-
-export interface ExploreClaimRequest {
-  record_id?: string;
 }
 
 export interface ExploreEventListResponse {

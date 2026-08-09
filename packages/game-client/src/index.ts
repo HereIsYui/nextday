@@ -1,5 +1,8 @@
 import type {
   AcceptSectHireRequest,
+  ActionCurrentResponse,
+  ActionMutationResponse,
+  ActionStartRequest,
   ActivityDetailResponse,
   ActivityListResponse,
   AdminConfigVersionListResponse,
@@ -192,6 +195,9 @@ import type {
   WorldBossChallengeRequest,
   WorldBossChallengeResponse,
   WorldBossResponse,
+  WorldChatListResponse,
+  WorldChatMessageState,
+  WorldChatSendRequest,
 } from "@nextday/shared";
 
 export interface GameClientOptions {
@@ -417,6 +423,47 @@ export class GameClient {
 
   gameOverview(): Promise<ApiResponse<GameOverviewResponse>> {
     return this.get<GameOverviewResponse>("/api/game/overview");
+  }
+
+  currentAction(): Promise<ApiResponse<ActionCurrentResponse>> {
+    return this.get<ActionCurrentResponse>("/api/game/actions/current");
+  }
+
+  startAction(
+    body: ActionStartRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<ActionMutationResponse>> {
+    return this.post<ActionMutationResponse, ActionStartRequest>("/api/game/actions/start", body, {
+      idempotencyKey,
+    });
+  }
+
+  endAction(idempotencyKey: string): Promise<ApiResponse<ActionMutationResponse>> {
+    return this.post<ActionMutationResponse>("/api/game/actions/end", {}, { idempotencyKey });
+  }
+
+  claimAction(idempotencyKey: string): Promise<ApiResponse<ActionMutationResponse>> {
+    return this.post<ActionMutationResponse>("/api/game/actions/claim", {}, { idempotencyKey });
+  }
+
+  chatMessages(
+    mapId?: string,
+    after?: string,
+    limit = 30,
+  ): Promise<ApiResponse<WorldChatListResponse>> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (mapId) params.set("map_id", mapId);
+    if (after) params.set("after", after);
+    return this.get<WorldChatListResponse>(`/api/chat/messages?${params.toString()}`);
+  }
+
+  sendChat(
+    body: WorldChatSendRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<WorldChatMessageState>> {
+    return this.post<WorldChatMessageState, WorldChatSendRequest>("/api/chat/messages", body, {
+      idempotencyKey,
+    });
   }
 
   commandHelp(): Promise<ApiResponse<TextCommandHelpResponse>> {

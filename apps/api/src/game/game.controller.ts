@@ -1,5 +1,8 @@
 import { Body, Controller, Get, Inject, Post, Query, Req, UseGuards } from "@nestjs/common";
 import type {
+  ActionCurrentResponse,
+  ActionMutationResponse,
+  ActionStartRequest,
   BattleListResponse,
   BreakthroughResponse,
   CaveCollectResponse,
@@ -37,6 +40,39 @@ export class GameController {
   @Get("overview")
   overview(@Req() request: Request): Promise<GameOverviewResponse> {
     return this.gameService.getOverview(requireAccountId(request));
+  }
+
+  @Get("actions/current")
+  currentAction(@Req() request: Request): Promise<ActionCurrentResponse> {
+    return this.gameService.getCurrentAction(requireAccountId(request));
+  }
+
+  @Post("actions/start")
+  startAction(
+    @Body() body: ActionStartRequest,
+    @Req() request: Request,
+  ): Promise<ActionMutationResponse> {
+    return this.gameService.startAction({
+      accountId: requireAccountId(request),
+      body,
+      idempotencyKey: requireIdempotencyKey(request),
+    });
+  }
+
+  @Post("actions/end")
+  endAction(@Req() request: Request): Promise<ActionMutationResponse> {
+    return this.gameService.endAction({
+      accountId: requireAccountId(request),
+      idempotencyKey: requireIdempotencyKey(request),
+    });
+  }
+
+  @Post("actions/claim")
+  claimAction(@Req() request: Request): Promise<ActionMutationResponse> {
+    return this.gameService.claimAction({
+      accountId: requireAccountId(request),
+      idempotencyKey: requireIdempotencyKey(request),
+    });
   }
 
   @Get("command-help")

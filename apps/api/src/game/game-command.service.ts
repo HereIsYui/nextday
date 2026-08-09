@@ -36,6 +36,9 @@ type ParsedCommand =
   | { commandId: "status" }
   | { commandId: "bag"; selector?: string }
   | { commandId: "cultivation_claim" }
+  | { commandId: "action_start"; actionType: "cultivation" | "explore"; province?: string }
+  | { commandId: "action_end" }
+  | { commandId: "action_claim" }
   | { commandId: "breakthrough" }
   | { commandId: "explore"; province: string; count: number }
   | { commandId: "explore_claim"; recordId?: string }
@@ -123,6 +126,24 @@ const commandHelpGroups: TextCommandHelpGroup[] = [
         description: "收束离线修为。",
       },
       {
+        command_id: "action_start",
+        syntax: "开始修炼 | 探索 <州域>",
+        aliases: ["开始行动"],
+        description: "开始一项长期行动；修炼与探索互斥，手动结束后领取收益。",
+      },
+      {
+        command_id: "action_end",
+        syntax: "结束修炼 | 结束探索",
+        aliases: ["结束行动"],
+        description: "手动结束当前长期行动并固定离线收益。",
+      },
+      {
+        command_id: "action_claim",
+        syntax: "领取行动收益",
+        aliases: ["领取行动"],
+        description: "领取已经结束的长期行动收益。",
+      },
+      {
         command_id: "breakthrough",
         syntax: "突破",
         aliases: [],
@@ -132,7 +153,8 @@ const commandHelpGroups: TextCommandHelpGroup[] = [
         command_id: "explore",
         syntax: "探索 <州域> [次数]",
         aliases: ["游历 <州域> [次数]"],
-        description: "州域可使用州名、简称或英文标识；省略次数时默认 1 次，最多 5 次。",
+        description:
+          "州域可使用州名、简称或英文标识；省略次数时开始长期探索，填写次数仅兼容旧的定时探索。",
       },
       {
         command_id: "explore_claim",
@@ -290,17 +312,72 @@ const commandHelpGroups: TextCommandHelpGroup[] = [
     group_id: "world",
     title: "活动与九州",
     items: [
-      { command_id: "activities", syntax: "活动", aliases: [], description: "查看当前活动周期与进度。" },
-      { command_id: "activity_claim", syntax: "领取活动 <活动>", aliases: [], description: "领取已完成活动奖励。" },
-      { command_id: "inner_world", syntax: "内天地", aliases: [], description: "查看内天地派驻与法则状态。" },
-      { command_id: "inner_world_dispatch", syntax: "派驻 <州域>", aliases: [], description: "派遣空闲生灵支援州域。" },
-      { command_id: "inner_world_claim", syntax: "收取派驻", aliases: [], description: "收取已完成的内天地派驻。" },
-      { command_id: "inner_world_support", syntax: "支援 <州域>", aliases: [], description: "消耗法则经验支援州域。" },
-      { command_id: "sect", syntax: "宗门", aliases: [], description: "查看宗门、职位与仓库状态。" },
-      { command_id: "sect_task", syntax: "宗门任务 [任务ID]", aliases: [], description: "完成宗门任务。" },
-      { command_id: "boss", syntax: "Boss", aliases: ["世界Boss"], description: "查看世界 Boss 状态。" },
-      { command_id: "rank", syntax: "排行 [类型]", aliases: ["排行榜"], description: "查看指定排行榜。" },
-      { command_id: "ancient_treasure", syntax: "古宝", aliases: [], description: "查看已获得古宝与赠抽次数。" },
+      {
+        command_id: "activities",
+        syntax: "活动",
+        aliases: [],
+        description: "查看当前活动周期与进度。",
+      },
+      {
+        command_id: "activity_claim",
+        syntax: "领取活动 <活动>",
+        aliases: [],
+        description: "领取已完成活动奖励。",
+      },
+      {
+        command_id: "inner_world",
+        syntax: "内天地",
+        aliases: [],
+        description: "查看内天地派驻与法则状态。",
+      },
+      {
+        command_id: "inner_world_dispatch",
+        syntax: "派驻 <州域>",
+        aliases: [],
+        description: "派遣空闲生灵支援州域。",
+      },
+      {
+        command_id: "inner_world_claim",
+        syntax: "收取派驻",
+        aliases: [],
+        description: "收取已完成的内天地派驻。",
+      },
+      {
+        command_id: "inner_world_support",
+        syntax: "支援 <州域>",
+        aliases: [],
+        description: "消耗法则经验支援州域。",
+      },
+      {
+        command_id: "sect",
+        syntax: "宗门",
+        aliases: [],
+        description: "查看宗门、职位与仓库状态。",
+      },
+      {
+        command_id: "sect_task",
+        syntax: "宗门任务 [任务ID]",
+        aliases: [],
+        description: "完成宗门任务。",
+      },
+      {
+        command_id: "boss",
+        syntax: "Boss",
+        aliases: ["世界Boss"],
+        description: "查看世界 Boss 状态。",
+      },
+      {
+        command_id: "rank",
+        syntax: "排行 [类型]",
+        aliases: ["排行榜"],
+        description: "查看指定排行榜。",
+      },
+      {
+        command_id: "ancient_treasure",
+        syntax: "古宝",
+        aliases: [],
+        description: "查看已获得古宝与赠抽次数。",
+      },
     ],
   },
 ];
@@ -308,7 +385,7 @@ const commandHelpGroups: TextCommandHelpGroup[] = [
 const defaultSuggestions: TextCommandSuggestion[] = [
   { label: "查看状态", command: "状态" },
   { label: "查看背包", command: "背包" },
-  { label: "收束修为", command: "修炼" },
+  { label: "开始修炼", command: "开始修炼" },
   { label: "探索冀州", command: "探索 冀州" },
   { label: "查看任务", command: "任务" },
 ];
@@ -364,6 +441,12 @@ export class GameCommandService {
           return this.bag(input.accountId, parsed.selector);
         case "cultivation_claim":
           return this.claimCultivation(input);
+        case "action_start":
+          return this.startAction(input, parsed.actionType, parsed.province);
+        case "action_end":
+          return this.endAction(input);
+        case "action_claim":
+          return this.claimAction(input);
         case "breakthrough":
           return this.breakthrough(input);
         case "explore":
@@ -491,9 +574,9 @@ export class GameCommandService {
       [
         ...(cultivation?.can_breakthrough
           ? [{ label: "尝试突破", command: "突破" }]
-          : [{ label: "收束修为", command: "修炼" }]),
+          : [{ label: "开始修炼", command: "开始修炼" }]),
         { label: "查看背包", command: "背包" },
-        { label: "探索冀州", command: "探索 冀州 1" },
+        { label: "探索冀州", command: "探索 冀州" },
         { label: "查看任务", command: "任务" },
       ],
     );
@@ -511,7 +594,7 @@ export class GameCommandService {
         selector
           ? `背包中未找到“${selector}”。可输入“背包”查看当前持有物品。`
           : "背包暂为空。完成探索、洞府收取或炼制后会获得物品。",
-        [{ label: "前往探索", command: "探索 冀州 1" }],
+        [{ label: "前往探索", command: "探索 冀州" }],
       );
     }
 
@@ -557,7 +640,7 @@ export class GameCommandService {
         : baseMessage,
       unlockedProvinces.map((province) => ({
         label: `探索${province.name}`,
-        command: `探索 ${province.name} 1`,
+        command: `探索 ${province.name}`,
       })),
     );
   }
@@ -578,7 +661,62 @@ export class GameCommandService {
       ["overview", "tasks"],
       result.status.can_breakthrough
         ? [{ label: "尝试突破", command: "突破" }]
-        : [{ label: "继续探索", command: "探索 冀州 1" }],
+        : [{ label: "继续探索", command: "探索 冀州" }],
+    );
+  }
+
+  private async startAction(
+    input: { accountId: string; idempotencyKey: string },
+    actionType: "cultivation" | "explore",
+    province?: string,
+  ): Promise<TextCommandResponse> {
+    const result = await this.gameService.startAction({
+      accountId: input.accountId,
+      body: { action_type: actionType, ...(province ? { province_id: province } : {}) },
+      idempotencyKey: input.idempotencyKey,
+    });
+    return this.success(
+      "action_start",
+      [
+        {
+          tone: "success",
+          text:
+            actionType === "cultivation"
+              ? "已开始长期修炼，结束后可领取离线修为。"
+              : `已开始${result.action?.province_name ?? "州域"}长期探索。`,
+        },
+      ],
+      result,
+      ["overview", "explore"],
+      [{ label: "结束行动", command: "结束行动" }],
+    );
+  }
+
+  private async endAction(input: {
+    accountId: string;
+    idempotencyKey: string;
+  }): Promise<TextCommandResponse> {
+    const result = await this.gameService.endAction(input);
+    return this.success(
+      "action_end",
+      [{ tone: "success", text: `长期行动已结束，${formatRewards(result.rewards)}现在可以领取。` }],
+      result,
+      ["overview", "explore"],
+      [{ label: "领取行动收益", command: "领取行动收益" }],
+    );
+  }
+
+  private async claimAction(input: {
+    accountId: string;
+    idempotencyKey: string;
+  }): Promise<TextCommandResponse> {
+    const result = await this.gameService.claimAction(input);
+    return this.success(
+      "action_claim",
+      [{ tone: "success", text: `行动收益已领取：${formatRewards(result.rewards)}。` }],
+      result,
+      ["overview", "explore", "tasks", "battles"],
+      [{ label: "查看状态", command: "状态" }],
     );
   }
 
@@ -593,8 +731,8 @@ export class GameCommandService {
       result,
       ["overview", "tasks"],
       result.success
-        ? [{ label: "前往探索", command: "探索 冀州 1" }]
-        : [{ label: "继续修炼", command: "修炼" }],
+        ? [{ label: "前往探索", command: "探索 冀州" }]
+        : [{ label: "继续修炼", command: "开始修炼" }],
     );
   }
 
@@ -668,7 +806,7 @@ export class GameCommandService {
                   : `奇遇 ${result.events[0].event_id} ${result.events[0].choices[0].choice_id}`,
             },
           ]
-        : [{ label: "继续探索", command: "探索 冀州 1" }],
+        : [{ label: "继续探索", command: "探索 冀州" }],
     );
   }
 
@@ -685,7 +823,7 @@ export class GameCommandService {
       });
       if (pendingEvents.events.length === 0) {
         return this.failure("explore_event_resolve", "暂无待处理奇遇。", [
-          { label: "继续探索", command: "探索 冀州 1" },
+          { label: "继续探索", command: "探索 冀州" },
         ]);
       }
       if (pendingEvents.events.length > 1) {
@@ -718,7 +856,7 @@ export class GameCommandService {
       ],
       result,
       ["overview", "events", "tasks"],
-      [{ label: "继续探索", command: "探索 冀州 1" }],
+      [{ label: "继续探索", command: "探索 冀州" }],
     );
   }
 
@@ -774,7 +912,7 @@ export class GameCommandService {
       ["tasks"],
       claimable
         ? [{ label: "领取已完成任务", command: `领取任务 ${claimable.task_id}` }]
-        : [{ label: "前往探索", command: "探索 冀州 1" }],
+        : [{ label: "前往探索", command: "探索 冀州" }],
     );
   }
 
@@ -1213,7 +1351,7 @@ export class GameCommandService {
       ["battles"],
       result.battles[0]
         ? [{ label: "阅读最近战报", command: `战报 ${result.battles[0].battle_id}` }]
-        : [{ label: "探索冀州", command: "探索 冀州 1" }],
+        : [{ label: "探索冀州", command: "探索 冀州" }],
     );
   }
 
@@ -1242,10 +1380,12 @@ export class GameCommandService {
       })),
       result,
       ["events"],
-      result.events.filter((event) => event.claimable).map((event) => ({
-        label: `领取${event.name}`,
-        command: `领取活动 ${event.event_id}`,
-      })),
+      result.events
+        .filter((event) => event.claimable)
+        .map((event) => ({
+          label: `领取${event.name}`,
+          command: `领取活动 ${event.event_id}`,
+        })),
     );
   }
 
@@ -1271,12 +1411,14 @@ export class GameCommandService {
     const result = await this.innerWorldService!.getSummary(accountId);
     return this.success(
       "inner_world",
-      [{
-        tone: result.state.unlocked ? "info" : "warning",
-        text: result.state.unlocked
-          ? `内天地法则 ${result.state.law_level} 级，${result.state.claimable_assignment_count} 个派驻可收取。`
-          : result.state.unlock_hint,
-      }],
+      [
+        {
+          tone: result.state.unlocked ? "info" : "warning",
+          text: result.state.unlocked
+            ? `内天地法则 ${result.state.law_level} 级，${result.state.claimable_assignment_count} 个派驻可收取。`
+            : result.state.unlock_hint,
+        },
+      ],
       result,
       ["overview"],
       result.state.claimable_assignment_count > 0
@@ -1296,7 +1438,12 @@ export class GameCommandService {
     });
     return this.success(
       "inner_world_dispatch",
-      [{ tone: "success", text: `已派驻${result.assignment.province_name}，完成后可输入“收取派驻”。` }],
+      [
+        {
+          tone: "success",
+          text: `已派驻${result.assignment.province_name}，完成后可输入“收取派驻”。`,
+        },
+      ],
       result,
       ["overview"],
       [{ label: "查看内天地", command: "内天地" }],
@@ -1333,7 +1480,12 @@ export class GameCommandService {
     });
     return this.success(
       "inner_world_support",
-      [{ tone: "success", text: `已完成${result.support.province_name}支援：${formatRewards(result.support.reward_summary)}` }],
+      [
+        {
+          tone: "success",
+          text: `已完成${result.support.province_name}支援：${formatRewards(result.support.reward_summary)}`,
+        },
+      ],
       result,
       ["overview", "events"],
       [{ label: "查看内天地", command: "内天地" }],
@@ -1344,7 +1496,11 @@ export class GameCommandService {
     const result = await this.multiplayerService.getMySect(accountId);
     return this.success(
       "sect",
-      [result.sect ? { tone: "info", text: `宗门${result.sect.name}，成员 ${result.members.length} 人。` } : { tone: "info", text: "尚未加入宗门。" }],
+      [
+        result.sect
+          ? { tone: "info", text: `宗门${result.sect.name}，成员 ${result.members.length} 人。` }
+          : { tone: "info", text: "尚未加入宗门。" },
+      ],
       result,
       ["overview"],
       result.sect ? [{ label: "完成宗门任务", command: "宗门任务" }] : [],
@@ -1356,26 +1512,62 @@ export class GameCommandService {
     taskId?: string,
   ): Promise<TextCommandResponse> {
     if (!taskId) {
-      return this.failure("sect_task", "请提供宗门任务 ID。", [{ label: "查看宗门", command: "宗门" }]);
+      return this.failure("sect_task", "请提供宗门任务 ID。", [
+        { label: "查看宗门", command: "宗门" },
+      ]);
     }
     const result = await this.multiplayerService.completeSectTask({
       accountId: input.accountId,
       body: { task_id: taskId },
       idempotencyKey: input.idempotencyKey,
     });
-    return this.success("sect_task", [{ tone: "success", text: "宗门任务已完成。" }], result, ["overview"], [{ label: "查看宗门", command: "宗门" }]);
+    return this.success(
+      "sect_task",
+      [{ tone: "success", text: "宗门任务已完成。" }],
+      result,
+      ["overview"],
+      [{ label: "查看宗门", command: "宗门" }],
+    );
   }
 
   private async boss(): Promise<TextCommandResponse> {
     const result = await this.multiplayerService.getWorldBoss();
-    return this.success("boss", [{ tone: "info", text: `世界 Boss：${result.boss.name}，阶段 ${result.boss.phase}，剩余生命 ${result.boss.remaining_hp}。` }], result, ["overview"], defaultSuggestions);
+    return this.success(
+      "boss",
+      [
+        {
+          tone: "info",
+          text: `世界 Boss：${result.boss.name}，阶段 ${result.boss.phase}，剩余生命 ${result.boss.remaining_hp}。`,
+        },
+      ],
+      result,
+      ["overview"],
+      defaultSuggestions,
+    );
   }
 
   private async rank(rankType?: string): Promise<TextCommandResponse> {
-    const allowed = ["personal", "sect", "tower_week", "production", "era", "inner_world", "faction"] as const;
-    const type = (allowed.find((item) => item === rankType) ?? "personal");
+    const allowed = [
+      "personal",
+      "sect",
+      "tower_week",
+      "production",
+      "era",
+      "inner_world",
+      "faction",
+    ] as const;
+    const type = allowed.find((item) => item === rankType) ?? "personal";
     const result = await this.multiplayerService.getRankList(type);
-    return this.success("rank", result.entries.slice(0, 10).map((entry) => ({ tone: "info" as const, text: `第${entry.rank_no}名 ${entry.display_name}：${entry.score}` })), result, ["overview"], defaultSuggestions);
+    return this.success(
+      "rank",
+      result.entries.slice(0, 10).map((entry) => ({
+        tone: "info" as const,
+        text: `第${entry.rank_no}名 ${entry.display_name}：${entry.score}`,
+      })),
+      result,
+      ["overview"],
+      defaultSuggestions,
+    );
   }
 
   private async ancientTreasure(accountId: string): Promise<TextCommandResponse> {
@@ -1387,7 +1579,18 @@ export class GameCommandService {
       (sum, grant) => sum + grant.draw_count - grant.used_count,
       0,
     );
-    return this.success("ancient_treasure", [{ tone: "info", text: `古宝 ${result.treasures.filter((item) => item.owned).length}/${result.treasures.length}，可用赠抽 ${availableDraws} 次。` }], result, ["overview"], defaultSuggestions);
+    return this.success(
+      "ancient_treasure",
+      [
+        {
+          tone: "info",
+          text: `古宝 ${result.treasures.filter((item) => item.owned).length}/${result.treasures.length}，可用赠抽 ${availableDraws} 次。`,
+        },
+      ],
+      result,
+      ["overview"],
+      defaultSuggestions,
+    );
   }
 
   private success(
@@ -1449,7 +1652,7 @@ function toExploreEventEntries(event: ExploreEventState, canOmitEventId: boolean
 function parseCommand(input: TextCommandRequest): ParsedCommand | InvalidCommand {
   const raw = typeof input?.command === "string" ? input.command.trim() : "";
   if (!raw) {
-    return invalid("请输入指令。示例：状态、修炼、探索 冀州 1。");
+    return invalid("请输入指令。示例：状态、开始修炼、探索 冀州。");
   }
   if (raw.length > 120) {
     return invalid("指令过长，请使用简短的确定性指令。可输入“帮助”查看用法。");
@@ -1471,6 +1674,17 @@ function parseCommand(input: TextCommandRequest): ParsedCommand | InvalidCommand
     }
     return { commandId: "bag", ...(args[0] ? { selector: args[0] } : {}) };
   }
+  if (["开始修炼", "开始行动"].includes(command)) {
+    return args.length === 0
+      ? { commandId: "action_start", actionType: "cultivation" }
+      : invalid("开始修炼不接受参数。用法：开始修炼。 ");
+  }
+  if (["结束修炼", "结束探索", "结束行动"].includes(command)) {
+    return args.length === 0 ? { commandId: "action_end" } : invalid("结束行动不接受参数。 ");
+  }
+  if (["领取行动收益", "领取行动"].includes(command)) {
+    return args.length === 0 ? { commandId: "action_claim" } : invalid("领取行动收益不接受参数。 ");
+  }
   if (["修炼", "吐纳", "收功"].includes(command)) {
     return noArguments("cultivation_claim", args, "修炼");
   }
@@ -1491,7 +1705,10 @@ function parseCommand(input: TextCommandRequest): ParsedCommand | InvalidCommand
     if (!province) {
       return invalid(`未知州域“${args[0]}”。用法：探索 <州域> [次数]，例如：探索 冀州 1。`);
     }
-    const count = args[1] ? parseCount(args[1]) : 1;
+    if (!args[1]) {
+      return { commandId: "action_start", actionType: "explore", province };
+    }
+    const count = parseCount(args[1]);
     if (!count) {
       return invalid("探索次数须为 1-5 的整数。用法：探索 冀州 1。");
     }
@@ -1642,7 +1859,9 @@ function parseCommand(input: TextCommandRequest): ParsedCommand | InvalidCommand
   }
   if (["排行", "排行榜", "rank"].includes(command)) {
     if (args.length > 1) {
-      return invalid("排行最多接受一个类型。用法：排行 [personal|sect|tower_week|production|era|inner_world|faction]。");
+      return invalid(
+        "排行最多接受一个类型。用法：排行 [personal|sect|tower_week|production|era|inner_world|faction]。",
+      );
     }
     return { commandId: "rank", ...(args[0] ? { rankType: args[0] } : {}) };
   }

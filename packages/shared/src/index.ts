@@ -555,6 +555,72 @@ export interface ActionState {
   action_point_cap: number;
   action_point_restore_per_hour: number;
   last_recovered_at: string;
+  active_action: LongActionState | null;
+}
+
+export type LongActionType = "cultivation" | "explore";
+export type LongActionStatus = "active" | "ended" | "claimable";
+
+export interface LongActionState {
+  action_id: string;
+  action_type: LongActionType;
+  status: LongActionStatus;
+  province_id: string | null;
+  province_name: string | null;
+  started_at: string;
+  ended_at: string | null;
+  can_end: boolean;
+  can_claim: boolean;
+  rewards: RewardBundle | null;
+}
+
+export interface ActionCurrentResponse {
+  action: LongActionState | null;
+}
+
+export interface ActionStartRequest {
+  action_type: LongActionType;
+  province_id?: string;
+}
+
+export interface ActionMutationResponse {
+  action: LongActionState | null;
+  action_state: ActionState;
+  rewards: RewardBundle;
+}
+
+export interface WorldChatItemShare {
+  item_id: string;
+  name: string;
+  usage_hint: string;
+  category: ItemCategory;
+  quality?: PillQuality | null;
+  count: string;
+  bind_type: string;
+  tradeable: boolean;
+  expired: boolean;
+}
+
+export interface WorldChatMessageState {
+  message_id: string;
+  map_id: string;
+  player_id: string;
+  player_name: string;
+  content: string;
+  item_share: WorldChatItemShare | null;
+  created_at: string;
+}
+
+export interface WorldChatListResponse {
+  map_id: string;
+  messages: WorldChatMessageState[];
+  next_cursor: string | null;
+}
+
+export interface WorldChatSendRequest {
+  map_id?: string;
+  content: string;
+  item_instance_id?: string;
 }
 
 export interface ProvinceSummary {
@@ -2760,6 +2826,9 @@ export type TextCommandId =
   | "status"
   | "bag"
   | "cultivation_claim"
+  | "action_start"
+  | "action_end"
+  | "action_claim"
   | "breakthrough"
   | "explore"
   | "explore_claim"
@@ -2830,6 +2899,7 @@ export type TextCommandRefreshTarget =
 
 export type TextCommandResult =
   | GameOverviewResponse
+  | ActionMutationResponse
   | BagSummaryResponse
   | CultivationClaimResponse
   | BreakthroughResponse

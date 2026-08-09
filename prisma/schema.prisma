@@ -104,6 +104,7 @@ model Player {
   transferRequests            TransferRequestRecord[]
   productionEffects           PlayerProductionEffect[]
   productionFormulas          ProductionFormula[]
+  worldChatMessages           WorldChatMessage[]
 
   @@index([accountId])
   @@index([sectId])
@@ -223,12 +224,37 @@ model PlayerActionState {
   actionPointCap            Int      @default(180) @map("action_point_cap")
   actionPointRestorePerHour Int      @default(12) @map("action_point_restore_per_hour")
   lastRecoveredAt           DateTime @default(now()) @map("last_recovered_at")
+  activeActionType           String?  @map("active_action_type")
+  activeActionId             String?  @map("active_action_id")
+  activeActionProvinceId     String?  @map("active_action_province_id")
+  activeActionStartedAt      DateTime? @map("active_action_started_at")
+  activeActionEndedAt        DateTime? @map("active_action_ended_at")
+  activeActionRewardSnapshot Json?    @map("active_action_reward_snapshot")
   updatedAt                 DateTime @updatedAt @map("updated_at")
 
   player Player @relation(fields: [playerId], references: [playerId])
 
   @@index([eraId])
   @@map("player_action_state")
+}
+
+model WorldChatMessage {
+  messageId      String   @id @map("message_id")
+  playerId       String   @map("player_id")
+  eraId          String   @default("era_mvp_001") @map("era_id")
+  serverId       String   @default("default") @map("server_id")
+  mapId          String   @map("map_id")
+  playerName     String   @map("player_name")
+  content        String
+  itemShare      Json?    @map("item_share")
+  idempotencyKey String   @unique @map("idempotency_key")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  player Player @relation(fields: [playerId], references: [playerId], onDelete: Cascade)
+
+  @@index([serverId, mapId, createdAt])
+  @@index([playerId, createdAt])
+  @@map("world_chat_message")
 }
 
 model ProvinceState {
@@ -304,6 +330,7 @@ model ExploreActionRecord {
   provinceId          String    @map("province_id")
   provinceName        String    @map("province_name")
   count               Int
+  actionMode          String    @default("timed") @map("action_mode")
   secondsPerExplore   Int       @map("seconds_per_explore")
   totalSeconds        Int       @map("total_seconds")
   status              String    @default("pending")

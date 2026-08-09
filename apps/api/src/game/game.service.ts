@@ -9,6 +9,9 @@ import {
 } from "@nestjs/common";
 import type {
   ActionState,
+  ActionCurrentResponse,
+  ActionMutationResponse,
+  ActionStartRequest,
   BattleListResponse,
   BattleRoundLog,
   BattleSummary,
@@ -37,17 +40,17 @@ import type {
   TaskState,
   TaskSummaryResponse,
 } from "@nextday/shared";
-import type {
-  ExploreActionRecord,
-  ExploreEventRecord,
-  Player,
-  PlayerActionState,
-  PlayerCaveState,
-  PlayerProductionEffect,
-  PlayerProgress,
-  PlayerSkillLoadout,
-  PlayerWallet,
+import {
   Prisma,
+  type ExploreActionRecord,
+  type ExploreEventRecord,
+  type Player,
+  type PlayerActionState,
+  type PlayerCaveState,
+  type PlayerProductionEffect,
+  type PlayerProgress,
+  type PlayerSkillLoadout,
+  type PlayerWallet,
 } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
 import { lockAccountForTransaction } from "../database/player-transaction";
@@ -168,6 +171,296 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       cave,
       recent_battles: recentBattles.map((battle) => toBattleSummary(battle)),
       new_player_route: newPlayerRoute,
+    };
+  }
+
+  async getCurrentAction(accountId: string): Promise<ActionCurrentResponse> {
+    const player = await this.requirePlayer(accountId);
+    await this.ensureM2State(player.playerId);
+    const state = await this.prisma.playerActionState.findUniqueOrThrow({
+      where: { playerId: player.playerId },
+    });
+    return { action: await this.toLongActionState(this.prisma, state) };
+  }
+
+  async startAction(input: {
+    accountId: string;
+    body: ActionStartRequest;
+    idempotencyKey: string;
+  }): Promise<ActionMutationResponse> {
+    const player = await this.requirePlayer(input.accountId);
+    const actionType = input.body?.action_type;
+    if (actionType !== "cultivation" && actionType !== "explore") {
+      throw new BadRequestException("行动类型只能是 cultivation 或 explore");
+    }
+    return this.withIdempotency({
+      accountId: input.accountId,
+      endpoint: "POST /api/game/actions/start",
+      idempotencyKey: input.idempotencyKey,
+      requestBody: input.body,
+      handler: async (tx) => {
+        await this.ensureM2State(player.playerId, tx);
+        const state = await tx.playerActionState.findUniqueOrThrow({
+          where: { playerId: player.playerId },
+        });
+        if (state.activeActionType && !state.activeActionEndedAt) {
+          throw new BadRequestException("已有进行中的长期行动，请先手动结束");
+        }
+        if (
+          actionType === "cultivation" &&
+          (await this.findActiveExploreRecord(tx, player.playerId))
+        ) {
+          throw new BadRequestException("当前有探索记录，请先领取探索收益");
+        }
+        const now = new Date();
+        const actionId = `${actionType}_${randomUUID()}`;
+        let provinceId: string | null = null;
+        let provinceName: string | null = null;
+        if (actionType === "explore") {
+          const province = await this.getProvinceForPlayer(
+            tx,
+            player.playerId,
+            input.body.province_id ?? "ji",
+          );
+          if (!province.unlocked) throw new BadRequestException("该州尚未开放");
+          provinceId = province.province_id;
+          provinceName = province.name;
+          const existing = await this.findActiveExploreRecord(tx, player.playerId);
+          if (existing) throw new BadRequestException("已有探索记录，请先结束或领取");
+          const secondsPerExplore = provinceExploreSeconds[province.province_id] ?? 30;
+          const totalSeconds = 24 * 60 * 60;
+          await tx.exploreActionRecord.create({
+            data: {
+              recordId: actionId,
+              playerId: player.playerId,
+              eraId: defaultEraId,
+              provinceId: province.province_id,
+              provinceName: province.name,
+              count: 1,
+              actionMode: "long_term",
+              secondsPerExplore,
+              totalSeconds,
+              status: "pending",
+              startedAt: now,
+              completesAt: new Date(now.getTime() + totalSeconds * 1000),
+              eventTriggerAt: new Date(now.getTime() + 10 * 60 * 1000),
+              eventContextSnapshot: buildPlannedExploreEventLinkContext(
+                province.province_id,
+                actionId,
+                1,
+              ) as unknown as Prisma.InputJsonValue,
+              idempotencyKey: input.idempotencyKey,
+              configVersion: "long_action_v1",
+              rulesetVersion: "long_action_v1",
+              rewardConfigVersion: "reward_p1_7_v1",
+            },
+          });
+        }
+        const updated = await tx.playerActionState.update({
+          where: { playerId: player.playerId },
+          data: {
+            activeActionType: actionType,
+            activeActionId: actionId,
+            activeActionProvinceId: provinceId,
+            activeActionStartedAt: now,
+            activeActionEndedAt: null,
+            activeActionRewardSnapshot: Prisma.JsonNull,
+          },
+        });
+        const action = await this.toLongActionState(tx, updated, provinceName);
+        if (!action) throw new Error("长期行动状态写入失败");
+        return { action, action_state: toActionState(updated, provinceName), rewards: {} };
+      },
+    });
+  }
+
+  async endAction(input: {
+    accountId: string;
+    idempotencyKey: string;
+  }): Promise<ActionMutationResponse> {
+    const player = await this.requirePlayer(input.accountId);
+    return this.withIdempotency({
+      accountId: input.accountId,
+      endpoint: "POST /api/game/actions/end",
+      idempotencyKey: input.idempotencyKey,
+      requestBody: {},
+      handler: async (tx) => {
+        const state = await tx.playerActionState.findUniqueOrThrow({
+          where: { playerId: player.playerId },
+        });
+        if (!state.activeActionType || !state.activeActionId || !state.activeActionStartedAt) {
+          throw new BadRequestException("当前没有进行中的长期行动");
+        }
+        if (state.activeActionEndedAt) {
+          const action = await this.toLongActionState(tx, state);
+          if (!action) throw new Error("长期行动状态缺失");
+          return { action, action_state: toActionState(state), rewards: {} };
+        }
+        const endedAt = new Date();
+        let rewards: RewardBundle = {};
+        let provinceName: string | null = null;
+        if (state.activeActionType === "cultivation") {
+          const loaded = await this.requirePlayerInTx(tx, player.playerId);
+          const elapsedHours = Math.min(
+            maxOfflineCultivationHours,
+            Math.max(0, (endedAt.getTime() - state.activeActionStartedAt.getTime()) / 3_600_000),
+          );
+          const base = BigInt(Math.floor(elapsedHours * loaded.progress.cultivationRatePerHour));
+          const bonus = (base * BigInt(loaded.progress.catchupBonusRate)) / 100n;
+          rewards = { cultivation: (base + bonus).toString() };
+        } else {
+          const record = await tx.exploreActionRecord.findUniqueOrThrow({
+            where: { recordId: state.activeActionId },
+          });
+          provinceName = record.provinceName;
+          const elapsedHours = Math.max(
+            1,
+            Math.floor((endedAt.getTime() - record.startedAt.getTime()) / 3_600_000),
+          );
+          await tx.exploreActionRecord.update({
+            where: { recordId: record.recordId },
+            data: { status: "completed", completesAt: endedAt, count: Math.min(5, elapsedHours) },
+          });
+        }
+        const updated = await tx.playerActionState.update({
+          where: { playerId: player.playerId },
+          data: {
+            activeActionEndedAt: endedAt,
+            activeActionRewardSnapshot: rewards as unknown as Prisma.InputJsonValue,
+          },
+        });
+        const action = await this.toLongActionState(tx, updated, provinceName);
+        if (!action) throw new Error("长期行动状态写入失败");
+        return { action, action_state: toActionState(updated, provinceName), rewards };
+      },
+    });
+  }
+
+  async claimAction(input: {
+    accountId: string;
+    idempotencyKey: string;
+  }): Promise<ActionMutationResponse> {
+    const player = await this.requirePlayer(input.accountId);
+    const currentState = await this.prisma.playerActionState.findUniqueOrThrow({
+      where: { playerId: player.playerId },
+    });
+    if (currentState.activeActionType === "explore") {
+      const replay = await this.prisma.idempotencyRecord.findUnique({
+        where: { idempotencyKey: input.idempotencyKey },
+      });
+      if (replay) return replay.responseData as unknown as ActionMutationResponse;
+      if (!currentState.activeActionId || !currentState.activeActionEndedAt) {
+        throw new BadRequestException("探索尚未结束");
+      }
+      const result = await this.claimExplore({
+        accountId: input.accountId,
+        body: { record_id: currentState.activeActionId },
+        idempotencyKey: `${input.idempotencyKey}:explore`,
+      });
+      const response: ActionMutationResponse = await this.prisma.$transaction(async (tx) => {
+        await lockAccountForTransaction(tx, input.accountId);
+        const updatedState = await tx.playerActionState.update({
+          where: { playerId: player.playerId },
+          data: {
+            activeActionType: null,
+            activeActionId: null,
+            activeActionProvinceId: null,
+            activeActionStartedAt: null,
+            activeActionEndedAt: null,
+            activeActionRewardSnapshot: Prisma.JsonNull,
+          },
+        });
+        const value: ActionMutationResponse = {
+          action: null,
+          action_state: toActionState(updatedState),
+          rewards: result.rewards,
+        };
+        await tx.idempotencyRecord.create({
+          data: {
+            idempotencyKey: input.idempotencyKey,
+            accountId: input.accountId,
+            endpoint: "POST /api/game/actions/claim",
+            requestHash: hashRequestBody({}),
+            responseData: value as unknown as Prisma.InputJsonValue,
+            statusCode: 200,
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          },
+        });
+        return value;
+      });
+      return response;
+    }
+    return this.withIdempotency({
+      accountId: input.accountId,
+      endpoint: "POST /api/game/actions/claim",
+      idempotencyKey: input.idempotencyKey,
+      requestBody: {},
+      handler: async (tx) => {
+        const state = await tx.playerActionState.findUniqueOrThrow({
+          where: { playerId: player.playerId },
+        });
+        if (!state.activeActionType || !state.activeActionId || !state.activeActionEndedAt) {
+          throw new BadRequestException("行动尚未结束");
+        }
+        const loaded = await this.requirePlayerInTx(tx, player.playerId);
+        let rewards =
+          state.activeActionRewardSnapshot && typeof state.activeActionRewardSnapshot === "object"
+            ? normalizeRewardBundle(state.activeActionRewardSnapshot)
+            : {};
+        if (state.activeActionType === "cultivation") {
+          const gained = BigInt(rewards.cultivation ?? "0");
+          const granted = await this.grantCultivation(tx, loaded, gained, {
+            lastCultivationAt: new Date(),
+          });
+          rewards = { ...rewards, cultivation: gained.toString() };
+          const updatedState = await tx.playerActionState.update({
+            where: { playerId: player.playerId },
+            data: {
+              activeActionType: null,
+              activeActionId: null,
+              activeActionProvinceId: null,
+              activeActionStartedAt: null,
+              activeActionEndedAt: null,
+              activeActionRewardSnapshot: Prisma.JsonNull,
+            },
+          });
+          const action = await this.toLongActionState(tx, updatedState);
+          return { action, action_state: toActionState(updatedState), rewards };
+        }
+        throw new BadRequestException("探索行动请先结束并领取");
+      },
+    });
+  }
+
+  private async toLongActionState(
+    tx: DbClient,
+    state: PlayerActionState,
+    provinceName?: string | null,
+  ) {
+    if (!state.activeActionType || !state.activeActionId || !state.activeActionStartedAt)
+      return null;
+    let resolvedProvinceName = provinceName ?? null;
+    if (!resolvedProvinceName && state.activeActionProvinceId) {
+      const province = await tx.provinceState.findFirst({
+        where: { eraId: defaultEraId, provinceId: state.activeActionProvinceId },
+        select: { name: true },
+      });
+      resolvedProvinceName = province?.name ?? null;
+    }
+    return {
+      action_id: state.activeActionId,
+      action_type: state.activeActionType as "cultivation" | "explore",
+      status: state.activeActionEndedAt ? ("claimable" as const) : ("active" as const),
+      province_id: state.activeActionProvinceId,
+      province_name: resolvedProvinceName,
+      started_at: state.activeActionStartedAt.toISOString(),
+      ended_at: state.activeActionEndedAt?.toISOString() ?? null,
+      can_end: !state.activeActionEndedAt,
+      can_claim: Boolean(state.activeActionEndedAt),
+      rewards:
+        state.activeActionRewardSnapshot && typeof state.activeActionRewardSnapshot === "object"
+          ? normalizeRewardBundle(state.activeActionRewardSnapshot)
+          : null,
     };
   }
 
@@ -301,6 +594,12 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       handler: async (tx) => {
         await this.ensureM2State(player.playerId, tx);
         const loaded = await this.requirePlayerInTx(tx, player.playerId);
+        const actionState = await tx.playerActionState.findUniqueOrThrow({
+          where: { playerId: loaded.playerId },
+        });
+        if (actionState.activeActionType) {
+          throw new BadRequestException("当前有长期行动，请先结束并领取行动收益");
+        }
         const beforeStage = loaded.currentStage;
         const beforeLevel = loaded.currentLevel;
         const gainedCultivation = calculateClaimableCultivation(loaded.progress);
@@ -398,6 +697,12 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       handler: async (tx) => {
         await this.ensureM2State(player.playerId, tx);
         const loaded = await this.requirePlayerInTx(tx, player.playerId);
+        const actionState = await tx.playerActionState.findUniqueOrThrow({
+          where: { playerId: loaded.playerId },
+        });
+        if (actionState.activeActionType) {
+          throw new BadRequestException("当前有长期行动，请先结束并领取行动收益");
+        }
         const realmConfig = getRealmConfig(loaded.currentRealm);
         const requirement = BigInt(realmConfig.breakthroughCultivation);
         const breakthroughEffect = await this.findActiveProductionEffect(
@@ -520,6 +825,18 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
     idempotencyKey: string;
   }): Promise<ExploreResponse> {
     const player = await this.requirePlayer(input.accountId);
+    if (input.body && typeof input.body.count === "undefined") {
+      const action = await this.startAction({
+        accountId: input.accountId,
+        body: { action_type: "explore", province_id: input.body.province_id },
+        idempotencyKey: input.idempotencyKey,
+      });
+      if (!action.action) throw new Error("长期探索状态写入失败");
+      const record = await this.prisma.exploreActionRecord.findUniqueOrThrow({
+        where: { recordId: action.action.action_id },
+      });
+      return toExploreResponse(record, action.action_state);
+    }
     const body = normalizeExploreRequest(input.body);
 
     return this.withIdempotency({
@@ -530,6 +847,12 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       handler: async (tx) => {
         await this.ensureM2State(player.playerId, tx);
         const loaded = await this.requirePlayerInTx(tx, player.playerId);
+        const currentActionState = await tx.playerActionState.findUniqueOrThrow({
+          where: { playerId: loaded.playerId },
+        });
+        if (currentActionState.activeActionType) {
+          throw new BadRequestException("当前有长期行动，请先结束并领取行动收益");
+        }
         const province = await this.getProvinceForPlayer(tx, loaded.playerId, body.province_id);
 
         if (!province.unlocked) {
@@ -758,7 +1081,22 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
             actionStateSnapshot: actionState as unknown as Prisma.InputJsonValue,
           },
         });
-        const response = toExploreResponse(updatedRecord, actionState);
+        let responseActionState = actionState;
+        if (record.actionMode === "long_term") {
+          const cleared = await tx.playerActionState.update({
+            where: { playerId: loaded.playerId },
+            data: {
+              activeActionType: null,
+              activeActionId: null,
+              activeActionProvinceId: null,
+              activeActionStartedAt: null,
+              activeActionEndedAt: null,
+              activeActionRewardSnapshot: Prisma.JsonNull,
+            },
+          });
+          responseActionState = toActionState(cleared);
+        }
+        const response = toExploreResponse(updatedRecord, responseActionState);
 
         await this.writeAudit(tx, {
           accountId: input.accountId,
@@ -1084,7 +1422,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
     const recoveredPoints = calculateRecoveredActionPoints(state);
 
     if (recoveredPoints === state.actionPoints && recoveredPoints < state.actionPointCap) {
-      return toActionState(state);
+      return toActionState(state, await this.actionProvinceName(tx, state.activeActionProvinceId));
     }
 
     const updated = await tx.playerActionState.update({
@@ -1095,7 +1433,22 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
-    return toActionState(updated);
+    return toActionState(
+      updated,
+      await this.actionProvinceName(tx, updated.activeActionProvinceId),
+    );
+  }
+
+  private async actionProvinceName(
+    tx: DbClient,
+    provinceId: string | null,
+  ): Promise<string | null> {
+    if (!provinceId) return null;
+    const province = await tx.provinceState.findFirst({
+      where: { eraId: defaultEraId, provinceId },
+      select: { name: true },
+    });
+    return province?.name ?? null;
   }
 
   private async shouldGuaranteeNoviceExploreEvent(
@@ -1401,6 +1754,9 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
     tx: DbClient,
     record: ExploreActionRecord,
   ): Promise<ExploreActionRecord> {
+    if (record.actionMode === "long_term") {
+      return record;
+    }
     if (record.status !== "pending" || record.completesAt.getTime() > Date.now()) {
       return record;
     }

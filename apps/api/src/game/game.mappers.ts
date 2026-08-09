@@ -24,12 +24,31 @@ import {
   provinceConfigs,
 } from "./game.constants";
 
-export function toActionState(state: PlayerActionState): ActionState {
+export function toActionState(state: PlayerActionState, provinceName?: string | null): ActionState {
+  const activeAction =
+    state.activeActionType && state.activeActionId && state.activeActionStartedAt
+      ? {
+          action_id: state.activeActionId,
+          action_type: state.activeActionType as "cultivation" | "explore",
+          status: (state.activeActionEndedAt ? "claimable" : "active") as "claimable" | "active",
+          province_id: state.activeActionProvinceId,
+          province_name: provinceName ?? null,
+          started_at: state.activeActionStartedAt.toISOString(),
+          ended_at: state.activeActionEndedAt?.toISOString() ?? null,
+          can_end: !state.activeActionEndedAt,
+          can_claim: Boolean(state.activeActionEndedAt),
+          rewards:
+            state.activeActionRewardSnapshot && typeof state.activeActionRewardSnapshot === "object"
+              ? normalizeRewardBundle(state.activeActionRewardSnapshot)
+              : null,
+        }
+      : null;
   return {
     action_points: state.actionPoints,
     action_point_cap: state.actionPointCap,
     action_point_restore_per_hour: state.actionPointRestorePerHour,
     last_recovered_at: state.lastRecoveredAt.toISOString(),
+    active_action: activeAction,
   };
 }
 

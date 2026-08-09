@@ -3,6 +3,7 @@ import { AdminModule } from "./admin/admin.module";
 import { AppearancePlusModule } from "./appearance-plus/appearance-plus.module";
 import { AuthModule } from "./auth/auth.module";
 import { CollectionModule } from "./collection/collection.module";
+import { ChatModule } from "./chat/chat.module";
 import { CommerceModule } from "./commerce/commerce.module";
 import { DatabaseModule } from "./database/database.module";
 import { EventsModule } from "./events/events.module";
@@ -34,6 +35,7 @@ import { TransferModule } from "./transfer/transfer.module";
     AuthModule,
     PlayerModule,
     CollectionModule,
+    ChatModule,
     GameModule,
     GameConfigModule,
     ProductionModule,

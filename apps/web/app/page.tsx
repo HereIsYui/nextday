@@ -16,6 +16,7 @@ import type {
   RealmProgressionResponse,
   StoryScrollDetailState,
   StoryScrollListResponse,
+  WorldChatMessageState,
 } from "@nextday/shared";
 import {
   type FormEvent,
@@ -109,7 +110,7 @@ const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:300
 const baseQuickCommands: CommandAction[] = [
   { label: "状态", command: "状态" },
   { label: "背包", command: "背包" },
-  { label: "修炼", command: "修炼" },
+  { label: "开始修炼", command: "开始修炼" },
   { label: "探索", command: "探索" },
   { label: "领取洞府", command: "领取洞府" },
   { label: "任务", command: "任务" },
@@ -147,7 +148,16 @@ const fallbackHelpGroups: CommandHelpGroup[] = [
     id: "cultivation",
     title: "修行与探索",
     items: [
-      { syntax: "修炼", description: "收取本次可得的修为。", aliases: ["吐纳"] },
+      {
+        syntax: "开始修炼",
+        description: "开始长期修炼；结束行动后领取离线修为。",
+        aliases: ["开始行动"],
+      },
+      {
+        syntax: "领取行动收益",
+        description: "领取已结束的长期修炼或探索收益。",
+        aliases: ["领取行动"],
+      },
       { syntax: "突破", description: "在条件满足时尝试突破境界。", aliases: [] },
       {
         syntax: "探索 <州域> [次数]",
@@ -218,6 +228,14 @@ export default function HomePage() {
   const [resolvingExploreEventId, setResolvingExploreEventId] = useState<string | null>(null);
   const [currentExplore, setCurrentExplore] = useState<ExploreResponse | null>(null);
   const [activeOverlay, setActiveOverlay] = useState<OverlayView | null>(null);
+  const [offlineClaimOpen, setOfflineClaimOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<WorldChatMessageState[]>([]);
+  const [chatMapId, setChatMapId] = useState("ji");
+  const [chatAfter, setChatAfter] = useState<string | undefined>();
+  const [chatContent, setChatContent] = useState("");
+  const [chatItemId, setChatItemId] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatSending, setChatSending] = useState(false);
   const [terminalEntries, setTerminalEntries] = useState<TerminalEntry[]>([
     {
       id: "welcome",
@@ -236,6 +254,8 @@ export default function HomePage() {
   const manuallyResolvedExploreEventIdsRef = useRef(new Set<string>());
   const pendingExploreEventsRef = useRef<PendingExploreEvent[]>([]);
   const resolvingExploreEventIdsRef = useRef(new Set<string>());
+  const offlineNoticeKeyRef = useRef<string | null>(null);
+  const chatAfterRef = useRef<string | undefined>(undefined);
   const [clockNow, setClockNow] = useState(() => Date.now());
 
   const activeProfile = overview?.profile ?? profile;
@@ -243,6 +263,7 @@ export default function HomePage() {
   const progress = activeProfile?.progress ?? null;
   const cultivation = overview?.cultivation ?? null;
   const wallet = activeProfile?.wallet ?? null;
+  const activeLongAction = overview?.action_state?.active_action ?? null;
   const recentBattles = overview?.recent_battles ?? [];
   const storyScrolls = scrolls?.scrolls ?? [];
   const readableStoryScrolls = useMemo(
@@ -380,6 +401,87 @@ export default function HomePage() {
       setBagLoading(false);
     }
   }, []);
+
+  const refreshChat = useCallback(
+    async (activeToken: string, reset = false) => {
+      setChatLoading(true);
+      try {
+        const response = await createClient(activeToken).chatMessages(
+          chatMapId,
+          reset ? undefined : chatAfterRef.current,
+          30,
+        );
+        const data = readResponse(response);
+        setChatMessages((current) => {
+          if (reset) return data.messages;
+          const seen = new Set(current.map((item) => item.message_id));
+          return [...current, ...data.messages.filter((item) => !seen.has(item.message_id))].slice(
+            -80,
+          );
+        });
+        chatAfterRef.current = data.next_cursor ?? chatAfterRef.current;
+        setChatAfter(chatAfterRef.current);
+      } catch {
+        // 聊天属于可选信息，暂时不可用时不打断修行主流程。
+      } finally {
+        setChatLoading(false);
+      }
+    },
+    [chatMapId],
+  );
+
+  const sendChatMessage = useCallback(async () => {
+    if (!token || !chatContent.trim() || chatSending || busy || hydrating) return;
+    setChatSending(true);
+    try {
+      const response = await createClient(token).sendChat(
+        {
+          map_id: chatMapId,
+          content: chatContent.trim(),
+          ...(chatItemId && bagDisplayItems[Number(chatItemId)]
+            ? { item_instance_id: bagDisplayItems[Number(chatItemId)].item_instance_id }
+            : {}),
+        },
+        createIdempotencyKey("web_chat_send"),
+      );
+      const sent = readResponse(response);
+      setChatMessages((current) =>
+        [...current.filter((item) => item.message_id !== sent.message_id), sent].slice(-80),
+      );
+      chatAfterRef.current = sent.created_at;
+      setChatAfter(sent.created_at);
+      setChatContent("");
+      setChatItemId("");
+    } catch (error) {
+      setSessionError(messageFromError(error));
+    } finally {
+      setChatSending(false);
+    }
+  }, [bagDisplayItems, busy, chatContent, chatItemId, chatMapId, chatSending, hydrating, token]);
+
+  useEffect(() => {
+    if (!token || !player?.player_id || hydrating) return;
+    chatAfterRef.current = undefined;
+    setChatAfter(undefined);
+    void refreshChat(token, true);
+    const timer = window.setInterval(() => void refreshChat(token), 15_000);
+    const handleFocus = () => void refreshChat(token);
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [chatMapId, hydrating, player?.player_id, refreshChat, token]);
+
+  useEffect(() => {
+    const claimable = cultivation?.claimable_cultivation ?? "0";
+    if (!token || !cultivation || BigInt(claimable) <= 0n || activeLongAction) return;
+    const key = `${cultivation.last_cultivation_at}:${claimable}`;
+    if (offlineNoticeKeyRef.current !== key) {
+      offlineNoticeKeyRef.current = key;
+      setOfflineClaimOpen(true);
+    }
+  }, [activeLongAction, cultivation, token]);
 
   const refreshRealmProgression = useCallback(async () => {
     if (!token || realmProgressionLoading) {
@@ -840,6 +942,74 @@ export default function HomePage() {
     }
   }
 
+  async function handleLongAction(
+    kind: "start_cultivation" | "start_explore" | "end" | "claim",
+    provinceId?: string,
+  ) {
+    if (!token || busy || hydrating) return;
+    setBusy(true);
+    try {
+      const client = createClient(token);
+      const response =
+        kind === "start_cultivation"
+          ? await client.startAction(
+              { action_type: "cultivation" },
+              createIdempotencyKey("web_action_start"),
+            )
+          : kind === "start_explore"
+            ? await client.startAction(
+                { action_type: "explore", province_id: provinceId ?? "ji" },
+                createIdempotencyKey("web_action_start"),
+              )
+            : kind === "end"
+              ? await client.endAction(createIdempotencyKey("web_action_end"))
+              : await client.claimAction(createIdempotencyKey("web_action_claim"));
+      const result = readResponse(response);
+      appendTerminalEntries([
+        terminalEntry("success", "九州传音", [
+          kind === "start_cultivation"
+            ? "已开始长期修炼。"
+            : kind === "start_explore"
+              ? `已开始${result.action?.province_name ?? "州域"}长期探索。`
+              : kind === "end"
+                ? `行动已结束，${formatRewards(result.rewards)}可以领取。`
+                : `行动收益已领取：${formatRewards(result.rewards)}。`,
+        ]),
+      ]);
+      await refreshDashboard(token, true);
+    } catch (error) {
+      const detail = messageFromError(error);
+      setSessionError(detail);
+      appendTerminalEntries([terminalEntry("error", "行动未完成", [detail])]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleOfflineClaim() {
+    if (!token || busy || hydrating) return;
+    if (activeLongAction?.status === "claimable") {
+      setOfflineClaimOpen(false);
+      await handleLongAction("claim");
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = readResponse(
+        await createClient(token).claimCultivation(createIdempotencyKey("web_cultivation_claim")),
+      );
+      appendTerminalEntries([
+        terminalEntry("success", "离线修为", [`已领取修为 +${result.gained_cultivation}。`]),
+      ]);
+      setOfflineClaimOpen(false);
+      await refreshDashboard(token, true);
+    } catch (error) {
+      setSessionError(messageFromError(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function executeCommand(rawCommand: string, options: CommandExecutionOptions = {}) {
     const nextCommand = rawCommand.trim();
     if (!nextCommand || !token || busy) {
@@ -1035,6 +1205,11 @@ export default function HomePage() {
     setResolvingExploreEventId(null);
     setCurrentExplore(null);
     setActiveOverlay(null);
+    setOfflineClaimOpen(false);
+    setChatMessages([]);
+    setChatContent("");
+    setChatItemId("");
+    chatAfterRef.current = undefined;
     notificationSessionKeyRef.current = null;
     notifiedExploreRecordIdsRef.current.clear();
     notifiedExploreEventIdsRef.current.clear();
@@ -1188,7 +1363,47 @@ export default function HomePage() {
                   </button>
                 ) : null}
               </section>
-              {currentExploreActionCard ? (
+              {activeLongAction ? (
+                <section className="cultivation-journey" aria-label="当前长期行动">
+                  <article
+                    className={`explore-action-card explore-action-card-${activeLongAction.status === "claimable" ? "claim" : "waiting"}`}
+                  >
+                    <div className="action-card-heading">
+                      <p className="console-eyebrow">当前行旅</p>
+                      <span>{activeLongAction.status === "claimable" ? "待领取" : "进行中"}</span>
+                    </div>
+                    <strong>
+                      {activeLongAction.action_type === "cultivation"
+                        ? "长期修炼"
+                        : `${activeLongAction.province_name ?? "州域"}长期探索`}
+                    </strong>
+                    <p>
+                      {activeLongAction.status === "claimable"
+                        ? `已固定收益：${formatRewards(activeLongAction.rewards ?? {})}`
+                        : "修炼与探索互斥；需要收益时手动结束行动。"}
+                    </p>
+                    {activeLongAction.status === "claimable" ? (
+                      <button
+                        className="action-card-button"
+                        disabled={busy || hydrating}
+                        onClick={() => void handleLongAction("claim")}
+                        type="button"
+                      >
+                        领取行动收益
+                      </button>
+                    ) : (
+                      <button
+                        className="action-card-button"
+                        disabled={busy || hydrating}
+                        onClick={() => void handleLongAction("end")}
+                        type="button"
+                      >
+                        结束行动
+                      </button>
+                    )}
+                  </article>
+                </section>
+              ) : currentExploreActionCard ? (
                 <section className="cultivation-journey" aria-label="当前行旅">
                   <article
                     className={`explore-action-card explore-action-card-${currentExploreActionCard.action}`}
@@ -1228,7 +1443,44 @@ export default function HomePage() {
                     ) : null}
                   </article>
                 </section>
-              ) : null}
+              ) : (
+                <section className="cultivation-journey" aria-label="开始长期行动">
+                  <article className="explore-action-card explore-action-card-waiting">
+                    <div className="action-card-heading">
+                      <p className="console-eyebrow">当前行旅</p>
+                      <span>可出发</span>
+                    </div>
+                    <strong>选择下一段行旅</strong>
+                    <p>开始修炼或选择已开放州域探索，两者同一时间只能进行一项。</p>
+                    <div className="action-card-buttons">
+                      <button
+                        className="action-card-button"
+                        disabled={busy || hydrating}
+                        onClick={() => void handleLongAction("start_cultivation")}
+                        type="button"
+                      >
+                        开始修炼
+                      </button>
+                      {overview?.provinces
+                        .filter((province) => province.unlocked)
+                        .slice(0, 2)
+                        .map((province) => (
+                          <button
+                            className="action-card-button action-card-button-secondary"
+                            disabled={busy || hydrating}
+                            key={province.province_id}
+                            onClick={() =>
+                              void handleLongAction("start_explore", province.province_id)
+                            }
+                            type="button"
+                          >
+                            探索{province.name}
+                          </button>
+                        ))}
+                    </div>
+                  </article>
+                </section>
+              )}
               <button className="logout-button" onClick={handleLogout} type="button">
                 离开
               </button>
@@ -1429,6 +1681,104 @@ export default function HomePage() {
                 </div>
               </div>
             </section>
+            <aside className="chat-panel" aria-label="九州聊天">
+              <div className="panel-heading chat-panel-heading">
+                <div>
+                  <p className="console-eyebrow">同地图传音</p>
+                  <h2>九州聊天</h2>
+                </div>
+                <button
+                  className="quiet-button"
+                  disabled={chatLoading || !token}
+                  onClick={() => token && void refreshChat(token, true)}
+                  type="button"
+                >
+                  {chatLoading ? "同步…" : "刷新"}
+                </button>
+              </div>
+              <div className="chat-toolbar">
+                <label>
+                  <span>地图</span>
+                  <select value={chatMapId} onChange={(event) => setChatMapId(event.target.value)}>
+                    <option value="all">全服</option>
+                    {(overview?.provinces ?? [])
+                      .filter((province) => province.unlocked)
+                      .map((province) => (
+                        <option key={province.province_id} value={province.province_id}>
+                          {province.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              </div>
+              <div className="chat-message-list" aria-live="polite">
+                {chatMessages.length === 0 ? (
+                  <p className="empty-copy">当前地图还没有传音。</p>
+                ) : null}
+                {chatMessages.map((item) => (
+                  <article className="chat-message" key={item.message_id}>
+                    <div className="chat-message-meta">
+                      <strong>{item.player_name}</strong>
+                      <small>{formatDateTime(item.created_at)}</small>
+                    </div>
+                    <p>{item.content}</p>
+                    {item.item_share ? (
+                      <span className="chat-item-share">
+                        {item.item_share.name} ×{item.item_share.count}
+                        <span className="chat-item-tooltip">
+                          <strong>{item.item_share.name}</strong>
+                          <span>用途：{item.item_share.usage_hint}</span>
+                          <small>
+                            {item.item_share.tradeable ? "可交易" : "不可交易"} ·{" "}
+                            {item.item_share.bind_type === "unbound" ? "未绑定" : "已绑定"}
+                          </small>
+                        </span>
+                      </span>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+              <form
+                className="chat-compose"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void sendChatMessage();
+                }}
+              >
+                <textarea
+                  maxLength={240}
+                  onChange={(event) => setChatContent(event.target.value)}
+                  placeholder="向当前地图传音…"
+                  value={chatContent}
+                />
+                <div className="chat-compose-row">
+                  <select
+                    aria-label="分享背包物品"
+                    value={chatItemId}
+                    onChange={(event) => setChatItemId(event.target.value)}
+                  >
+                    <option value="">不分享物品</option>
+                    {bagDisplayItems
+                      .filter((item) => !item.expired && BigInt(item.count) > 0n)
+                      .map((item) => (
+                        <option
+                          key={`${item.item_id}_${item.name}`}
+                          value={bagDisplayItems.indexOf(item)}
+                        >
+                          {item.name} ×{item.count}
+                        </option>
+                      ))}
+                  </select>
+                  <button
+                    className="console-button console-button-primary"
+                    disabled={!chatContent.trim() || chatSending || busy || hydrating}
+                    type="submit"
+                  >
+                    {chatSending ? "发送中…" : "发送"}
+                  </button>
+                </div>
+              </form>
+            </aside>
           </section>
 
           {activeOverlay ? (
@@ -1908,6 +2258,41 @@ export default function HomePage() {
               ) : null}
             </UtilityOverlay>
           ) : null}
+          {offlineClaimOpen ? (
+            <UtilityOverlay
+              eyebrow="离线收益"
+              title="静坐收益已到账"
+              onClose={() => setOfflineClaimOpen(false)}
+            >
+              <section className="offline-reward-dialog" aria-label="离线修为收益">
+                <p>离开九州期间，灵台按当前速率积累了可领取修为。</p>
+                <div className="offline-reward-value">
+                  修为 +{cultivation?.claimable_cultivation ?? "0"}
+                </div>
+                <small>
+                  当前速率：每小时 {progress?.cultivation_rate_per_hour ?? 0} 修为（最多计算 8
+                  小时）
+                </small>
+                <div className="utility-dialog-actions">
+                  <button
+                    className="quiet-button"
+                    onClick={() => setOfflineClaimOpen(false)}
+                    type="button"
+                  >
+                    稍后领取
+                  </button>
+                  <button
+                    className="console-button console-button-primary"
+                    disabled={busy || hydrating}
+                    onClick={() => void handleOfflineClaim()}
+                    type="button"
+                  >
+                    领取修为
+                  </button>
+                </div>
+              </section>
+            </UtilityOverlay>
+          ) : null}
         </>
       )}
     </main>
@@ -2100,7 +2485,7 @@ function buildCommandHint(
         command: `探索 ${province.name}`,
         label: province.name,
       })),
-      text: `可选州域：${unlockedProvinces.map((province) => province.name).join("、")}；省略次数默认 1 次，最多 5 次。`,
+      text: `可选州域：${unlockedProvinces.map((province) => province.name).join("、")}；直接点击州名即可开始长期探索。`,
     };
   }
 
@@ -2162,6 +2547,21 @@ function pillQualityLabel(quality: NonNullable<BagSummaryResponse["items"][numbe
       flawless: "无瑕",
     }[quality] ?? quality
   );
+}
+
+function formatRewards(rewards: {
+  cultivation?: string;
+  spirit_stone?: string;
+  action_points?: number;
+}): string {
+  const parts: string[] = [];
+  if (rewards.cultivation && rewards.cultivation !== "0")
+    parts.push(`修为 +${rewards.cultivation}`);
+  if (rewards.spirit_stone && rewards.spirit_stone !== "0")
+    parts.push(`灵石 +${rewards.spirit_stone}`);
+  if (typeof rewards.action_points === "number" && rewards.action_points !== 0)
+    parts.push(`行动令 +${rewards.action_points}`);
+  return parts.join("，") || "暂无可见资源";
 }
 
 function summarizeBagItemsForDisplay(items: BagItemState[]): BagItemState[] {

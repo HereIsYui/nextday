@@ -58,7 +58,8 @@ import {
 
 type HealthText = "检测中" | "正常" | "不可用";
 type RouteValue = "qi" | "body";
-type OverlayView = "help" | "bag" | "scrolls" | "battles" | "faction" | "realms" | "tools";
+type OverlayView = "help" | "scrolls" | "battles" | "faction" | "realms" | "tools";
+type LeftPanelView = "brief" | "bag";
 
 interface BreakthroughSummary {
   actionable: boolean;
@@ -109,8 +110,6 @@ const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:300
 
 const baseQuickCommands: CommandAction[] = [
   { label: "状态", command: "状态" },
-  { label: "背包", command: "背包" },
-  { label: "开始修炼", command: "开始修炼" },
   { label: "探索", command: "探索" },
   { label: "领取洞府", command: "领取洞府" },
   { label: "任务", command: "任务" },
@@ -228,12 +227,13 @@ export default function HomePage() {
   const [resolvingExploreEventId, setResolvingExploreEventId] = useState<string | null>(null);
   const [currentExplore, setCurrentExplore] = useState<ExploreResponse | null>(null);
   const [activeOverlay, setActiveOverlay] = useState<OverlayView | null>(null);
+  const [leftPanelView, setLeftPanelView] = useState<LeftPanelView>("brief");
   const [offlineClaimOpen, setOfflineClaimOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<WorldChatMessageState[]>([]);
   const [chatMapId, setChatMapId] = useState("ji");
   const [chatAfter, setChatAfter] = useState<string | undefined>();
   const [chatContent, setChatContent] = useState("");
-  const [chatItemId, setChatItemId] = useState("");
+  const [chatItemInstanceId, setChatItemInstanceId] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const [chatSending, setChatSending] = useState(false);
   const [terminalEntries, setTerminalEntries] = useState<TerminalEntry[]>([
@@ -299,6 +299,10 @@ export default function HomePage() {
   }, [helpGroups, pendingExploreEvents.length]);
   const canClaimExplore = currentExplore?.status === "completed" && currentExplore.can_claim;
   const bagDisplayItems = useMemo(() => summarizeBagItemsForDisplay(bag?.items ?? []), [bag]);
+  const chatShareItem = useMemo(
+    () => bagDisplayItems.find((item) => item.item_instance_id === chatItemInstanceId) ?? null,
+    [bagDisplayItems, chatItemInstanceId],
+  );
   const commandHint = useMemo(
     () => buildCommandHint(command, overview?.provinces ?? [], helpGroups),
     [command, helpGroups, overview?.provinces],
@@ -438,9 +442,7 @@ export default function HomePage() {
         {
           map_id: chatMapId,
           content: chatContent.trim(),
-          ...(chatItemId && bagDisplayItems[Number(chatItemId)]
-            ? { item_instance_id: bagDisplayItems[Number(chatItemId)].item_instance_id }
-            : {}),
+          ...(chatShareItem ? { item_instance_id: chatShareItem.item_instance_id } : {}),
         },
         createIdempotencyKey("web_chat_send"),
       );
@@ -451,13 +453,18 @@ export default function HomePage() {
       chatAfterRef.current = sent.created_at;
       setChatAfter(sent.created_at);
       setChatContent("");
-      setChatItemId("");
+      setChatItemInstanceId("");
     } catch (error) {
       setSessionError(messageFromError(error));
     } finally {
       setChatSending(false);
     }
-  }, [bagDisplayItems, busy, chatContent, chatItemId, chatMapId, chatSending, hydrating, token]);
+  }, [busy, chatContent, chatMapId, chatSending, chatShareItem, hydrating, token]);
+
+  const handleShareBagItem = useCallback((item: BagItemState) => {
+    setChatItemInstanceId(item.item_instance_id);
+    setSessionError(null);
+  }, []);
 
   useEffect(() => {
     if (!token || !player?.player_id || hydrating) return;
@@ -471,7 +478,7 @@ export default function HomePage() {
       window.clearInterval(timer);
       window.removeEventListener("focus", handleFocus);
     };
-  }, [chatMapId, hydrating, player?.player_id, refreshChat, token]);
+  }, [hydrating, player?.player_id, refreshChat, token]);
 
   useEffect(() => {
     const claimable = cultivation?.claimable_cultivation ?? "0";
@@ -1110,6 +1117,9 @@ export default function HomePage() {
           ? refreshBag(token)
           : Promise.resolve(),
       ]);
+      if (data.command_id === "bag") {
+        setLeftPanelView("bag");
+      }
       setMessage("指令已结算");
     } catch (error) {
       const detail = messageFromError(error);
@@ -1205,10 +1215,11 @@ export default function HomePage() {
     setResolvingExploreEventId(null);
     setCurrentExplore(null);
     setActiveOverlay(null);
+    setLeftPanelView("brief");
     setOfflineClaimOpen(false);
     setChatMessages([]);
     setChatContent("");
-    setChatItemId("");
+    setChatItemInstanceId("");
     chatAfterRef.current = undefined;
     notificationSessionKeyRef.current = null;
     notifiedExploreRecordIdsRef.current.clear();
@@ -1299,186 +1310,291 @@ export default function HomePage() {
               <div className="cultivation-panel-heading">
                 <div>
                   <p className="console-eyebrow">修行状态</p>
-                  <h2>道途简报</h2>
+                  <h2>{leftPanelView === "brief" ? "道途简报" : "纳物囊"}</h2>
                 </div>
                 <div className="cultivation-panel-heading-actions">
-                  <button
-                    className="quiet-button"
-                    disabled={hydrating || busy}
-                    onClick={() => {
-                      if (token) {
-                        void refreshDashboard(token).catch((error) =>
-                          setSessionError(messageFromError(error)),
-                        );
-                      }
-                    }}
-                    type="button"
-                  >
-                    同步
-                  </button>
-                  <button
-                    aria-haspopup="dialog"
-                    className="realm-overview-button"
-                    onClick={() => {
-                      setActiveOverlay("realms");
-                      void refreshRealmProgression();
-                    }}
-                    type="button"
-                  >
-                    境界一览
-                  </button>
-                </div>
-              </div>
-              <div className="status-strip">
-                {metrics.map((metric) => (
-                  <article className="status-metric" key={metric.label}>
-                    <span>{metric.label}</span>
-                    <strong>{metric.value}</strong>
-                    <small>{metric.detail}</small>
-                  </article>
-                ))}
-              </div>
-              <section
-                className={`breakthrough-status breakthrough-status-${breakthroughSummary.state}`}
-                aria-label="突破状态"
-              >
-                <div>
-                  <span>破境</span>
-                  <strong>{breakthroughSummary.title}</strong>
-                  <small>{breakthroughSummary.detail}</small>
-                </div>
-                {breakthroughSummary.actionable ? (
-                  <button
-                    className="breakthrough-action"
-                    disabled={busy || hydrating}
-                    onClick={() => {
-                      void executeCommand("突破", {
-                        displayCommand: "突破",
-                        saveToHistory: false,
-                      });
-                    }}
-                    type="button"
-                  >
-                    突破
-                  </button>
-                ) : null}
-              </section>
-              {activeLongAction ? (
-                <section className="cultivation-journey" aria-label="当前长期行动">
-                  <article
-                    className={`explore-action-card explore-action-card-${activeLongAction.status === "claimable" ? "claim" : "waiting"}`}
-                  >
-                    <div className="action-card-heading">
-                      <p className="console-eyebrow">当前行旅</p>
-                      <span>{activeLongAction.status === "claimable" ? "待领取" : "进行中"}</span>
-                    </div>
-                    <strong>
-                      {activeLongAction.action_type === "cultivation"
-                        ? "长期修炼"
-                        : `${activeLongAction.province_name ?? "州域"}长期探索`}
-                    </strong>
-                    <p>
-                      {activeLongAction.status === "claimable"
-                        ? `已固定收益：${formatRewards(activeLongAction.rewards ?? {})}`
-                        : "修炼与探索互斥；需要收益时手动结束行动。"}
-                    </p>
-                    {activeLongAction.status === "claimable" ? (
+                  <div className="left-panel-tabs" role="tablist" aria-label="左侧面板">
+                    <button
+                      aria-selected={leftPanelView === "brief"}
+                      className={`left-panel-tab${leftPanelView === "brief" ? " left-panel-tab-active" : ""}`}
+                      onClick={() => setLeftPanelView("brief")}
+                      role="tab"
+                      type="button"
+                    >
+                      简报
+                    </button>
+                    <button
+                      aria-selected={leftPanelView === "bag"}
+                      className={`left-panel-tab${leftPanelView === "bag" ? " left-panel-tab-active" : ""}`}
+                      disabled={bagLoading && !bag}
+                      onClick={() => {
+                        setLeftPanelView("bag");
+                        if (token && !bag) {
+                          void refreshBag(token);
+                        }
+                      }}
+                      role="tab"
+                      type="button"
+                    >
+                      背包
+                    </button>
+                  </div>
+                  {leftPanelView === "brief" ? (
+                    <>
                       <button
-                        className="action-card-button"
-                        disabled={busy || hydrating}
-                        onClick={() => void handleLongAction("claim")}
+                        className="quiet-button"
+                        disabled={hydrating || busy}
+                        onClick={() => {
+                          if (token) {
+                            void refreshDashboard(token).catch((error) =>
+                              setSessionError(messageFromError(error)),
+                            );
+                          }
+                        }}
                         type="button"
                       >
-                        领取行动收益
+                        同步
                       </button>
-                    ) : (
                       <button
-                        className="action-card-button"
-                        disabled={busy || hydrating}
-                        onClick={() => void handleLongAction("end")}
+                        aria-haspopup="dialog"
+                        className="realm-overview-button"
+                        onClick={() => {
+                          setActiveOverlay("realms");
+                          void refreshRealmProgression();
+                        }}
                         type="button"
                       >
-                        结束行动
+                        境界一览
                       </button>
-                    )}
-                  </article>
-                </section>
-              ) : currentExploreActionCard ? (
-                <section className="cultivation-journey" aria-label="当前行旅">
-                  <article
-                    className={`explore-action-card explore-action-card-${currentExploreActionCard.action}`}
+                    </>
+                  ) : (
+                    <button
+                      className="quiet-button"
+                      disabled={bagLoading || busy || hydrating || !token}
+                      onClick={() => token && void refreshBag(token)}
+                      type="button"
+                    >
+                      {bagLoading ? "读取中…" : "刷新"}
+                    </button>
+                  )}
+                </div>
+              </div>
+              {leftPanelView === "brief" ? (
+                <>
+                  <div className="status-strip">
+                    {metrics.map((metric) => (
+                      <article className="status-metric" key={metric.label}>
+                        <span>{metric.label}</span>
+                        <strong>{metric.value}</strong>
+                        <small>{metric.detail}</small>
+                      </article>
+                    ))}
+                  </div>
+                  <section
+                    className={`breakthrough-status breakthrough-status-${breakthroughSummary.state}`}
+                    aria-label="突破状态"
                   >
-                    <div className="action-card-heading">
-                      <p className="console-eyebrow">当前行旅</p>
-                      <span>
-                        {currentExploreActionCard.action === "waiting" ? "途中" : "待处理"}
-                      </span>
+                    <div>
+                      <span>破境</span>
+                      <strong>{breakthroughSummary.title}</strong>
+                      <small>{breakthroughSummary.detail}</small>
                     </div>
-                    <strong>{currentExploreActionCard.title}</strong>
-                    <p>{currentExploreActionCard.detail}</p>
-                    {currentExploreActionCard.action === "claim" ? (
+                    {breakthroughSummary.actionable ? (
                       <button
-                        className="action-card-button"
+                        className="breakthrough-action"
                         disabled={busy || hydrating}
                         onClick={() => {
-                          void executeCommand("领取探索", {
-                            displayCommand: "领取探索",
+                          void executeCommand("突破", {
+                            displayCommand: "突破",
                             saveToHistory: false,
                           });
                         }}
                         type="button"
                       >
-                        领取探索
+                        突破
                       </button>
                     ) : null}
-                    {currentExploreActionCard.action === "event" ? (
-                      <button
-                        className="action-card-button"
-                        disabled={busy || hydrating}
-                        onClick={focusExploreEventActions}
-                        type="button"
+                  </section>
+                  {activeLongAction ? (
+                    <section className="cultivation-journey" aria-label="当前长期行动">
+                      <article
+                        className={`explore-action-card explore-action-card-${activeLongAction.status === "claimable" ? "claim" : "waiting"}`}
                       >
-                        前往选择
-                      </button>
-                    ) : null}
-                  </article>
-                </section>
-              ) : (
-                <section className="cultivation-journey" aria-label="开始长期行动">
-                  <article className="explore-action-card explore-action-card-waiting">
-                    <div className="action-card-heading">
-                      <p className="console-eyebrow">当前行旅</p>
-                      <span>可出发</span>
-                    </div>
-                    <strong>选择下一段行旅</strong>
-                    <p>开始修炼或选择已开放州域探索，两者同一时间只能进行一项。</p>
-                    <div className="action-card-buttons">
-                      <button
-                        className="action-card-button"
-                        disabled={busy || hydrating}
-                        onClick={() => void handleLongAction("start_cultivation")}
-                        type="button"
-                      >
-                        开始修炼
-                      </button>
-                      {overview?.provinces
-                        .filter((province) => province.unlocked)
-                        .slice(0, 2)
-                        .map((province) => (
+                        <div className="action-card-heading">
+                          <p className="console-eyebrow">当前行旅</p>
+                          <span>
+                            {activeLongAction.status === "claimable" ? "待领取" : "进行中"}
+                          </span>
+                        </div>
+                        <strong>
+                          {activeLongAction.action_type === "cultivation"
+                            ? "长期修炼"
+                            : `${activeLongAction.province_name ?? "州域"}长期探索`}
+                        </strong>
+                        <p>
+                          {activeLongAction.status === "claimable"
+                            ? `已固定收益：${formatRewards(activeLongAction.rewards ?? {})}`
+                            : "修炼与探索互斥；需要收益时手动结束行动。"}
+                        </p>
+                        {activeLongAction.status === "claimable" ? (
                           <button
-                            className="action-card-button action-card-button-secondary"
+                            className="action-card-button"
                             disabled={busy || hydrating}
-                            key={province.province_id}
-                            onClick={() =>
-                              void handleLongAction("start_explore", province.province_id)
-                            }
+                            onClick={() => void handleLongAction("claim")}
                             type="button"
                           >
-                            探索{province.name}
+                            领取行动收益
                           </button>
-                        ))}
-                    </div>
-                  </article>
+                        ) : (
+                          <button
+                            className="action-card-button"
+                            disabled={busy || hydrating}
+                            onClick={() => void handleLongAction("end")}
+                            type="button"
+                          >
+                            结束行动
+                          </button>
+                        )}
+                      </article>
+                    </section>
+                  ) : currentExploreActionCard ? (
+                    <section className="cultivation-journey" aria-label="当前行旅">
+                      <article
+                        className={`explore-action-card explore-action-card-${currentExploreActionCard.action}`}
+                      >
+                        <div className="action-card-heading">
+                          <p className="console-eyebrow">当前行旅</p>
+                          <span>
+                            {currentExploreActionCard.action === "waiting" ? "途中" : "待处理"}
+                          </span>
+                        </div>
+                        <strong>{currentExploreActionCard.title}</strong>
+                        <p>{currentExploreActionCard.detail}</p>
+                        {currentExploreActionCard.action === "claim" ? (
+                          <button
+                            className="action-card-button"
+                            disabled={busy || hydrating}
+                            onClick={() => {
+                              void executeCommand("领取探索", {
+                                displayCommand: "领取探索",
+                                saveToHistory: false,
+                              });
+                            }}
+                            type="button"
+                          >
+                            领取探索
+                          </button>
+                        ) : null}
+                        {currentExploreActionCard.action === "event" ? (
+                          <button
+                            className="action-card-button"
+                            disabled={busy || hydrating}
+                            onClick={focusExploreEventActions}
+                            type="button"
+                          >
+                            前往选择
+                          </button>
+                        ) : null}
+                      </article>
+                    </section>
+                  ) : (
+                    <section className="cultivation-journey" aria-label="开始长期行动">
+                      <article className="explore-action-card explore-action-card-waiting">
+                        <div className="action-card-heading">
+                          <p className="console-eyebrow">当前行旅</p>
+                          <span>可出发</span>
+                        </div>
+                        <strong>选择下一段行旅</strong>
+                        <p>开始修炼或选择已开放州域探索，两者同一时间只能进行一项。</p>
+                        <div className="action-card-buttons">
+                          <button
+                            className="action-card-button"
+                            disabled={busy || hydrating}
+                            onClick={() => void handleLongAction("start_cultivation")}
+                            type="button"
+                          >
+                            开始修炼
+                          </button>
+                          {overview?.provinces
+                            .filter((province) => province.unlocked)
+                            .slice(0, 2)
+                            .map((province) => (
+                              <button
+                                className="action-card-button action-card-button-secondary"
+                                disabled={busy || hydrating}
+                                key={province.province_id}
+                                onClick={() =>
+                                  void handleLongAction("start_explore", province.province_id)
+                                }
+                                type="button"
+                              >
+                                探索{province.name}
+                              </button>
+                            ))}
+                        </div>
+                      </article>
+                    </section>
+                  )}
+                </>
+              ) : (
+                <section className="left-bag-panel" aria-label="背包物品">
+                  {bagError ? <p className="panel-warning">背包暂时无法读取：{bagError}</p> : null}
+                  {bagLoading && !bag ? <p className="empty-copy">正在整理纳物囊…</p> : null}
+                  {!bagLoading && !bagError && bag && bagDisplayItems.length === 0 ? (
+                    <p className="empty-copy">背包暂为空。探索、洞府收取和炼制都可能带来物品。</p>
+                  ) : null}
+                  {bagDisplayItems.length > 0 ? (
+                    <ul className="bag-list">
+                      {bagDisplayItems.map((item) => (
+                        <li className="bag-item" key={item.item_instance_id}>
+                          <button
+                            className="bag-item-info"
+                            disabled={busy || hydrating}
+                            onClick={() => handleShareBagItem(item)}
+                            title="点击选择此物品并分享到聊天"
+                            type="button"
+                          >
+                            <span className="bag-item-title">
+                              <strong>
+                                {item.name} ×{item.count}
+                                {item.quality ? `（${pillQualityLabel(item.quality)}）` : ""}
+                              </strong>
+                              <small>点击分享</small>
+                            </span>
+                            <span className="bag-item-tooltip" role="tooltip">
+                              <strong>{item.name}</strong>
+                              <span>用途：{item.usage_hint}</span>
+                              <small>
+                                {item.expired
+                                  ? "已过期"
+                                  : item.locked
+                                    ? "已锁定"
+                                    : item.bind_type === "unbound"
+                                      ? "未绑定"
+                                      : "绑定"}
+                                {item.tradeable ? " · 可交易" : " · 不可交易"}
+                              </small>
+                            </span>
+                          </button>
+                          {item.category === "pill" && !item.expired && !item.locked ? (
+                            <button
+                              className="quiet-button"
+                              disabled={busy || hydrating}
+                              onClick={() => {
+                                void executeCommand(`服丹 ${item.item_instance_id}`, {
+                                  displayCommand: `服丹 ${item.name}`,
+                                  saveToHistory: false,
+                                });
+                              }}
+                              type="button"
+                            >
+                              服用
+                            </button>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </section>
               )}
               <button className="logout-button" onClick={handleLogout} type="button">
@@ -1659,26 +1775,6 @@ export default function HomePage() {
                     ))}
                   </div>
                 </div>
-                <div className="command-action-group">
-                  <span className="command-action-label">玩法</span>
-                  <div className="quick-command-list play-command-list" aria-label="玩法入口">
-                    {corePlayCommands.map((item) => (
-                      <button
-                        disabled={busy || hydrating}
-                        key={item.command}
-                        onClick={() =>
-                          void executeCommand(item.command, {
-                            displayCommand: item.label,
-                            saveToHistory: false,
-                          })
-                        }
-                        type="button"
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
               </div>
             </section>
             <aside className="chat-panel" aria-label="九州聊天">
@@ -1718,7 +1814,12 @@ export default function HomePage() {
                 {chatMessages.map((item) => (
                   <article className="chat-message" key={item.message_id}>
                     <div className="chat-message-meta">
-                      <strong>{item.player_name}</strong>
+                      <strong
+                        className={`chat-player-name chat-player-name-${item.membership_tier}`}
+                      >
+                        {item.player_name}
+                        <span className="chat-player-level">{item.player_level_text}</span>
+                      </strong>
                       <small>{formatDateTime(item.created_at)}</small>
                     </div>
                     <p>{item.content}</p>
@@ -1728,6 +1829,9 @@ export default function HomePage() {
                         <span className="chat-item-tooltip">
                           <strong>{item.item_share.name}</strong>
                           <span>用途：{item.item_share.usage_hint}</span>
+                          {item.item_share.quality ? (
+                            <span>品质：{pillQualityLabel(item.item_share.quality)}</span>
+                          ) : null}
                           <small>
                             {item.item_share.tradeable ? "可交易" : "不可交易"} ·{" "}
                             {item.item_share.bind_type === "unbound" ? "未绑定" : "已绑定"}
@@ -1752,23 +1856,20 @@ export default function HomePage() {
                   value={chatContent}
                 />
                 <div className="chat-compose-row">
-                  <select
-                    aria-label="分享背包物品"
-                    value={chatItemId}
-                    onChange={(event) => setChatItemId(event.target.value)}
-                  >
-                    <option value="">不分享物品</option>
-                    {bagDisplayItems
-                      .filter((item) => !item.expired && BigInt(item.count) > 0n)
-                      .map((item) => (
-                        <option
-                          key={`${item.item_id}_${item.name}`}
-                          value={bagDisplayItems.indexOf(item)}
-                        >
-                          {item.name} ×{item.count}
-                        </option>
-                      ))}
-                  </select>
+                  {chatShareItem ? (
+                    <span className="chat-share-selection">
+                      分享：{chatShareItem.name} ×{chatShareItem.count}
+                      <button
+                        aria-label="取消分享物品"
+                        onClick={() => setChatItemInstanceId("")}
+                        type="button"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ) : (
+                    <span className="chat-share-hint">请从左侧背包点击物品后分享</span>
+                  )}
                   <button
                     className="console-button console-button-primary"
                     disabled={!chatContent.trim() || chatSending || busy || hydrating}
@@ -1791,45 +1892,40 @@ export default function HomePage() {
               title={
                 activeOverlay === "help"
                   ? "可用语法"
-                  : activeOverlay === "bag"
-                    ? "纳物囊"
-                    : activeOverlay === "scrolls"
-                      ? selectedScroll
-                        ? "故事回放"
-                        : "已见故事"
-                      : activeOverlay === "realms"
-                        ? "境界一览"
-                        : activeOverlay === "tools"
-                          ? "功能面板"
-                          : activeOverlay === "faction"
-                            ? "仙魔抉择"
-                            : "斗法余音"
+                  : activeOverlay === "scrolls"
+                    ? selectedScroll
+                      ? "故事回放"
+                      : "已见故事"
+                    : activeOverlay === "realms"
+                      ? "境界一览"
+                      : activeOverlay === "tools"
+                        ? "功能面板"
+                        : activeOverlay === "faction"
+                          ? "仙魔抉择"
+                          : "斗法余音"
               }
               eyebrow={
                 activeOverlay === "help"
                   ? "指令帮助"
-                  : activeOverlay === "bag"
-                    ? "随身背包"
-                    : activeOverlay === "scrolls"
-                      ? "章节卷轴"
-                      : activeOverlay === "realms"
-                        ? "修行境界"
-                        : activeOverlay === "tools"
-                          ? "常用功能"
-                          : activeOverlay === "faction"
-                            ? "道途分流"
-                            : "最近战报"
+                  : activeOverlay === "scrolls"
+                    ? "章节卷轴"
+                    : activeOverlay === "realms"
+                      ? "修行境界"
+                      : activeOverlay === "tools"
+                        ? "常用功能"
+                        : activeOverlay === "faction"
+                          ? "道途分流"
+                          : "最近战报"
               }
             >
               {activeOverlay === "tools" ? (
                 <section className="utility-hub" aria-label="常用功能">
                   <p className="empty-copy">
-                    低频功能集中在这里，常用修行操作仍可在输入框下方直接执行。
+                    低频功能与核心玩法集中在这里，常用修行操作仍可在输入框下方直接执行。
                   </p>
                   <div className="utility-hub-grid">
                     {[
                       ["帮助", "查看指令语法和玩法说明", "help"],
-                      ["背包", "查看物品数量、用途并服丹", "bag"],
                       ["卷轴", "回看已经解锁的章节故事", "scrolls"],
                       ["仙魔", "查看或选择仙魔道途", "faction"],
                       ["战报", "回看最近探索与战斗记录", "battles"],
@@ -1837,14 +1933,11 @@ export default function HomePage() {
                     ].map(([label, detail, view]) => (
                       <button
                         className="utility-hub-item"
-                        disabled={busy || hydrating || (view === "bag" && bagLoading)}
+                        disabled={busy || hydrating}
                         key={view}
                         onClick={() => {
                           const nextView = view as Exclude<OverlayView, "tools">;
                           setActiveOverlay(nextView);
-                          if (nextView === "bag" && token) {
-                            void refreshBag(token);
-                          }
                           if (nextView === "realms") {
                             void refreshRealmProgression();
                           }
@@ -1855,6 +1948,28 @@ export default function HomePage() {
                         <span>{detail}</span>
                       </button>
                     ))}
+                  </div>
+                  <div className="utility-core-section">
+                    <p className="console-eyebrow">核心玩法</p>
+                    <div className="utility-core-grid" aria-label="核心玩法入口">
+                      {corePlayCommands.map((item) => (
+                        <button
+                          className="utility-core-button"
+                          disabled={busy || hydrating}
+                          key={item.command}
+                          onClick={() => {
+                            setActiveOverlay(null);
+                            void executeCommand(item.command, {
+                              displayCommand: item.label,
+                              saveToHistory: false,
+                            });
+                          }}
+                          type="button"
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </section>
               ) : null}
@@ -2010,70 +2125,6 @@ export default function HomePage() {
                     </ol>
                   ) : null}
                 </section>
-              ) : null}
-
-              {activeOverlay === "bag" ? (
-                <>
-                  <div className="utility-dialog-actions">
-                    <button
-                      className="quiet-button"
-                      disabled={bagLoading || busy || hydrating || !token}
-                      onClick={() => {
-                        if (token) {
-                          void refreshBag(token);
-                        }
-                      }}
-                      type="button"
-                    >
-                      {bagLoading ? "读取中…" : "刷新背包"}
-                    </button>
-                  </div>
-                  {bagError ? <p className="panel-warning">背包暂时无法读取：{bagError}</p> : null}
-                  {bagLoading && !bag ? <p className="empty-copy">正在整理纳物囊…</p> : null}
-                  {!bagLoading && !bagError && bag && bagDisplayItems.length === 0 ? (
-                    <p className="empty-copy">背包暂为空。探索、洞府收取和炼制都可能带来物品。</p>
-                  ) : null}
-                  {bagDisplayItems.length > 0 ? (
-                    <ul className="bag-list">
-                      {bagDisplayItems.map((item) => (
-                        <li key={item.item_instance_id}>
-                          <div>
-                            <strong>
-                              {item.name} ×{item.count}
-                              {item.quality ? `（${pillQualityLabel(item.quality)}）` : ""}
-                            </strong>
-                            <span>{item.usage_hint}</span>
-                            <small>
-                              {item.expired
-                                ? "已过期"
-                                : item.locked
-                                  ? "已锁定"
-                                  : item.bind_type === "unbound"
-                                    ? "未绑定"
-                                    : "绑定"}
-                            </small>
-                          </div>
-                          {item.category === "pill" && !item.expired && !item.locked ? (
-                            <button
-                              className="quiet-button"
-                              disabled={busy || hydrating}
-                              onClick={() => {
-                                setActiveOverlay(null);
-                                void executeCommand(`服丹 ${item.item_instance_id}`, {
-                                  displayCommand: `服丹 ${item.name}`,
-                                  saveToHistory: false,
-                                });
-                              }}
-                              type="button"
-                            >
-                              服用
-                            </button>
-                          ) : null}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </>
               ) : null}
 
               {activeOverlay === "scrolls" ? (

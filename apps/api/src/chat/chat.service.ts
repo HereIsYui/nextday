@@ -31,6 +31,7 @@ export class ChatService {
       },
       orderBy: { createdAt: "asc" },
       take: limit,
+      include: { player: { select: chatPlayerSelect } },
     });
     return {
       map_id: mapId,
@@ -55,6 +56,7 @@ export class ChatService {
       await lockPlayerForTransaction(tx, player.playerId);
       const existing = await tx.worldChatMessage.findUnique({
         where: { idempotencyKey: input.idempotencyKey },
+        include: { player: { select: chatPlayerSelect } },
       });
       if (existing) return toChatMessage(existing);
       let itemShare: Prisma.InputJsonValue | undefined;
@@ -92,6 +94,7 @@ export class ChatService {
           ...(itemShare ? { itemShare } : {}),
           idempotencyKey: input.idempotencyKey,
         },
+        include: { player: { select: chatPlayerSelect } },
       });
       return toChatMessage(row);
     });
@@ -131,12 +134,16 @@ function toChatMessage(row: {
   content: string;
   itemShare: unknown;
   createdAt: Date;
+  player?: ChatPlayerSnapshot | null;
 }): WorldChatMessageState {
+  const player = row.player;
   return {
     message_id: row.messageId,
     map_id: row.mapId,
     player_id: row.playerId,
     player_name: row.playerName,
+    player_level_text: player ? formatPlayerLevel(player) : "修士",
+    membership_tier: player ? getMembershipTier(player) : "free",
     content: row.content,
     item_share:
       row.itemShare && typeof row.itemShare === "object"
@@ -144,6 +151,43 @@ function toChatMessage(row: {
         : null,
     created_at: row.createdAt.toISOString(),
   };
+}
+
+const chatPlayerSelect = {
+  currentRealm: true,
+  currentStage: true,
+  currentLevel: true,
+  vipState: { select: { vipLevel: true, activeUntil: true } },
+  monthlyCards: { select: { activeUntil: true } },
+} as const;
+
+type ChatPlayerSnapshot = {
+  currentRealm: number;
+  currentStage: number;
+  currentLevel: number;
+  vipState: { vipLevel: number; activeUntil: Date | null } | null;
+  monthlyCards: Array<{ activeUntil: Date }>;
+};
+
+function formatPlayerLevel(player: ChatPlayerSnapshot): string {
+  const stageName =
+    ["初期", "中期", "后期"][Math.max(0, Math.min(2, player.currentStage - 1))] ?? "初期";
+  return `第${player.currentRealm}境·${stageName}·${player.currentLevel}级`;
+}
+
+function getMembershipTier(player: ChatPlayerSnapshot): WorldChatMessageState["membership_tier"] {
+  const now = Date.now();
+  const vipActive =
+    player.vipState &&
+    (player.vipState.activeUntil === null || player.vipState.activeUntil.getTime() > now) &&
+    player.vipState.vipLevel > 0;
+  if (vipActive) {
+    return "vip";
+  }
+  if (player.monthlyCards.some((card) => card.activeUntil.getTime() > now)) {
+    return "monthly";
+  }
+  return "free";
 }
 
 function normalizeMapId(value: string | undefined): string | null {

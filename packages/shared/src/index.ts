@@ -606,6 +606,10 @@ export interface WorldChatMessageState {
   map_id: string;
   player_id: string;
   player_name: string;
+  /** 发言时的境界、阶段和等级快照，用于公开聊天展示。 */
+  player_level_text: string;
+  /** free、monthly 或 vip，用于昵称强调色。 */
+  membership_tier: "free" | "monthly" | "vip";
   content: string;
   item_share: WorldChatItemShare | null;
   created_at: string;

@@ -487,8 +487,13 @@ h2 {
   border: 1px solid #596553;
   color: #d8dfd2;
   min-width: 0;
-  padding: 5px 7px;
-  width: 100%;
+  padding: 4px 6px;
+  width: auto;
+}
+
+.chat-map-select {
+  font-size: 11px;
+  max-width: 112px;
 }
 
 .chat-message-list {
@@ -656,6 +661,12 @@ h2 {
 }
 .chat-compose-row button {
   flex: 0 0 auto;
+}
+
+.chat-send-button {
+  font-size: 11px;
+  min-height: 30px;
+  padding: 5px 8px;
 }
 
 .action-card-buttons {
@@ -1200,6 +1211,144 @@ h2 {
 .utility-hub {
   display: grid;
   gap: 14px;
+}
+
+.feature-dialog,
+.production-dialog {
+  display: grid;
+  gap: 12px;
+}
+
+.feature-result-list {
+  display: grid;
+  gap: 10px;
+}
+
+.feature-suggestion-list {
+  align-items: center;
+  border-top: 1px solid #394338;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding-top: 12px;
+}
+
+.feature-suggestion-list > span {
+  color: #8e9b8a;
+  font-size: 11px;
+}
+
+.feature-suggestion-list button {
+  color: #d5c083;
+  font-size: 11px;
+  padding: 5px 8px;
+}
+
+.production-result {
+  background: rgba(62, 83, 57, 0.35);
+  border: 1px solid #69775f;
+  color: #e6d19f;
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+}
+
+.production-result p {
+  font-size: 12px;
+  margin: 0;
+}
+
+.production-material-list {
+  display: grid;
+  gap: 7px;
+  max-height: 390px;
+  overflow-y: auto;
+}
+
+.production-material-row {
+  align-items: center;
+  background: rgba(28, 39, 29, 0.72);
+  border: 1px solid #465446;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 9px 10px;
+}
+
+.production-material-row > div:first-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.production-material-row strong {
+  color: #ebdfc6;
+  font-size: 13px;
+}
+
+.production-material-row span,
+.production-material-row small {
+  color: #9eaa99;
+  font-size: 11px;
+}
+
+.production-material-counter {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.production-material-counter button {
+  background: #263426;
+  border: 1px solid #61715b;
+  color: #e5d3a3;
+  font-size: 14px;
+  height: 26px;
+  line-height: 1;
+  padding: 2px 7px;
+}
+
+.production-material-counter input {
+  background: #111711;
+  border: 1px solid #596553;
+  color: #e8e2d1;
+  font-size: 12px;
+  height: 26px;
+  text-align: center;
+  width: 44px;
+}
+
+.item-detail-tooltip {
+  background: #202b22;
+  border: 1px solid #c19b56;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  color: #d9e0d4;
+  display: grid;
+  gap: 2px;
+  max-width: min(240px, calc(100vw - 16px));
+  min-width: 205px;
+  padding: 9px;
+  pointer-events: none;
+  position: fixed;
+  transform: translateY(0);
+  z-index: 1000;
+}
+
+.item-detail-tooltip-above {
+  transform: translateY(-100%);
+}
+
+.item-detail-tooltip strong {
+  color: #f0d18c;
+  line-height: 1.5;
+}
+
+.item-detail-tooltip span,
+.item-detail-tooltip small {
+  color: #c0cdbb;
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .utility-hub > .empty-copy {

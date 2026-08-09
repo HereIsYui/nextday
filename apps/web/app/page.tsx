@@ -12,6 +12,8 @@ import type {
   HealthStatus,
   LoginResponse,
   PlayerProfileResponse,
+  ProductionCraftMaterialState,
+  ProductionFormulaKind,
   ProvinceSummary,
   RealmProgressionResponse,
   StoryScrollDetailState,
@@ -19,8 +21,10 @@ import type {
   WorldChatMessageState,
 } from "@nextday/shared";
 import {
+  type FocusEvent,
   type FormEvent,
   type KeyboardEvent,
+  type MouseEvent,
   type ReactNode,
   useCallback,
   useEffect,
@@ -58,8 +62,28 @@ import {
 
 type HealthText = "检测中" | "正常" | "不可用";
 type RouteValue = "qi" | "body";
-type OverlayView = "help" | "scrolls" | "battles" | "faction" | "realms" | "tools";
+type OverlayView =
+  | "help"
+  | "scrolls"
+  | "battles"
+  | "faction"
+  | "realms"
+  | "tools"
+  | "feature"
+  | "production";
 type LeftPanelView = "brief" | "bag";
+
+interface ItemDetail {
+  name: string;
+  usageHint: string;
+  quality?: string | null;
+  tradeable: boolean;
+  bindType: string;
+  expired?: boolean;
+  left: number;
+  top: number;
+  above: boolean;
+}
 
 interface BreakthroughSummary {
   actionable: boolean;
@@ -227,6 +251,21 @@ export default function HomePage() {
   const [resolvingExploreEventId, setResolvingExploreEventId] = useState<string | null>(null);
   const [currentExplore, setCurrentExplore] = useState<ExploreResponse | null>(null);
   const [activeOverlay, setActiveOverlay] = useState<OverlayView | null>(null);
+  const [featureCommand, setFeatureCommand] = useState<CommandAction | null>(null);
+  const [featureEntries, setFeatureEntries] = useState<TerminalEntry[]>([]);
+  const [featureSuggestions, setFeatureSuggestions] = useState<CommandAction[]>([]);
+  const [featureLoading, setFeatureLoading] = useState(false);
+  const [productionKind, setProductionKind] = useState<ProductionFormulaKind | null>(null);
+  const [productionMaterials, setProductionMaterials] = useState<ProductionCraftMaterialState[]>(
+    [],
+  );
+  const [selectedProductionMaterials, setSelectedProductionMaterials] = useState<
+    Record<string, number>
+  >({});
+  const [productionLoading, setProductionLoading] = useState(false);
+  const [productionCrafting, setProductionCrafting] = useState(false);
+  const [productionResult, setProductionResult] = useState<string[]>([]);
+  const [itemDetail, setItemDetail] = useState<ItemDetail | null>(null);
   const [leftPanelView, setLeftPanelView] = useState<LeftPanelView>("brief");
   const [offlineClaimOpen, setOfflineClaimOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<WorldChatMessageState[]>([]);
@@ -246,6 +285,7 @@ export default function HomePage() {
   ]);
   const commandInputRef = useRef<HTMLInputElement | null>(null);
   const terminalEndRef = useRef<HTMLDivElement | null>(null);
+  const chatMessageListRef = useRef<HTMLDivElement | null>(null);
   const exploreEventActionsRef = useRef<HTMLElement | null>(null);
   const loadVersionRef = useRef(0);
   const notificationSessionKeyRef = useRef<string | null>(null);
@@ -303,6 +343,31 @@ export default function HomePage() {
     () => bagDisplayItems.find((item) => item.item_instance_id === chatItemInstanceId) ?? null,
     [bagDisplayItems, chatItemInstanceId],
   );
+  const lastChatMessageId = chatMessages.at(-1)?.message_id;
+  const showItemDetail = useCallback(
+    (
+      event: MouseEvent<HTMLElement> | FocusEvent<HTMLElement>,
+      item: Pick<BagItemState, "name" | "usage_hint" | "quality" | "tradeable" | "bind_type"> & {
+        expired?: boolean;
+      },
+    ) => {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const above = rect.top > Math.min(window.innerHeight * 0.58, 420);
+      setItemDetail({
+        name: item.name,
+        usageHint: item.usage_hint,
+        quality: item.quality,
+        tradeable: item.tradeable,
+        bindType: item.bind_type,
+        expired: item.expired,
+        left: Math.min(Math.max(rect.left, 8), Math.max(8, window.innerWidth - 248)),
+        top: above ? rect.top - 8 : rect.bottom + 8,
+        above,
+      });
+    },
+    [],
+  );
+  const hideItemDetail = useCallback(() => setItemDetail(null), []);
   const commandHint = useMemo(
     () => buildCommandHint(command, overview?.provinces ?? [], helpGroups),
     [command, helpGroups, overview?.provinces],
@@ -855,6 +920,14 @@ export default function HomePage() {
     }
   }, [terminalEntries]);
 
+  useEffect(() => {
+    const element = chatMessageListRef.current;
+    if (!element || !lastChatMessageId) {
+      return;
+    }
+    element.scrollTo({ top: element.scrollHeight, behavior: "smooth" });
+  }, [lastChatMessageId]);
+
   const metrics = useMemo(
     () => [
       {
@@ -889,6 +962,110 @@ export default function HomePage() {
     ],
     [cultivation, overview?.action_state, player, progress, readableStoryScrolls.length, wallet],
   );
+
+  async function runFeatureCommand(action: CommandAction, replace = true) {
+    if (!token || busy || hydrating) {
+      return;
+    }
+
+    setFeatureLoading(true);
+    setActiveOverlay("feature");
+    setFeatureCommand((current) => current ?? action);
+    try {
+      const response = await createCommandClient(token).executeCommand(
+        { command: action.command },
+        createIdempotencyKey("web_feature"),
+      );
+      const data = readResponse(response);
+      const entries =
+        data.command_id === "task_list"
+          ? [taskTerminalEntry(taskItemsFromResult(data.state?.result))]
+          : normalizeCommandEntries(data.entries);
+      setFeatureEntries(
+        replace
+          ? entries.length > 0
+            ? entries
+            : [terminalEntry("system", "九州传音", ["当前没有可显示的内容。"])]
+          : (current) => [...current, ...entries],
+      );
+      setFeatureSuggestions(commandSuggestionsFromState(data.state, []));
+      applyCommandState(data.state, { setOverview, setProfile, setScrolls });
+      await Promise.all([
+        refreshDashboard(token, true).catch(() => undefined),
+        data.command_id === "bag" || data.command_id === "pill_use"
+          ? refreshBag(token)
+          : Promise.resolve(),
+      ]);
+    } catch (error) {
+      const detail = messageFromError(error);
+      setFeatureEntries([terminalEntry("error", "功能暂不可用", [detail])]);
+      setSessionError(detail);
+    } finally {
+      setFeatureLoading(false);
+    }
+  }
+
+  async function openProductionDialog(kind: ProductionFormulaKind) {
+    if (!token || busy || hydrating) {
+      return;
+    }
+    setProductionKind(kind);
+    setProductionMaterials([]);
+    setSelectedProductionMaterials({});
+    setProductionResult([]);
+    setActiveOverlay("production");
+    setProductionLoading(true);
+    try {
+      const response = await createClient(token).productionMaterials(kind);
+      setProductionMaterials(readResponse(response).materials);
+      await refreshBag(token);
+    } catch (error) {
+      setProductionResult([`材料清单读取失败：${messageFromError(error)}`]);
+    } finally {
+      setProductionLoading(false);
+    }
+  }
+
+  async function craftProduction() {
+    if (!token || !productionKind || productionCrafting || busy || hydrating) {
+      return;
+    }
+    const materials = Object.entries(selectedProductionMaterials)
+      .filter(([, count]) => count > 0)
+      .map(([item_id, count]) => ({ item_id, count }));
+    if (materials.length === 0) {
+      setProductionResult(["请至少选择一种已有材料。"]);
+      return;
+    }
+    setProductionCrafting(true);
+    try {
+      const response =
+        productionKind === "alchemy"
+          ? await createClient(token).alchemyCraft(
+              { materials },
+              createIdempotencyKey("web_alchemy"),
+            )
+          : await createClient(token).forgeCraft({ materials }, createIdempotencyKey("web_forge"));
+      const result = readResponse(response as ApiResponse<unknown>) as {
+        rewards?: { cultivation?: string; spirit_stone?: string; action_points?: number };
+        record?: { success?: boolean; quality?: string | null };
+        equipment?: { name?: string } | null;
+      };
+      const detail =
+        productionKind === "alchemy"
+          ? `炼丹${result.record?.success ? "成功" : "完成"}${result.record?.quality ? ` · ${pillQualityLabel(result.record.quality as NonNullable<BagSummaryResponse["items"][number]["quality"]>)}` : ""}`
+          : result.equipment?.name
+            ? `炼器完成：${result.equipment.name}`
+            : "炼器完成";
+      setProductionResult([detail, `资源结算：${formatRewards(result.rewards ?? {})}`]);
+      setSelectedProductionMaterials({});
+      await Promise.all([refreshBag(token), refreshDashboard(token, true)]);
+    } catch (error) {
+      setProductionResult([`投炉失败：${messageFromError(error)}`]);
+    } finally {
+      setProductionCrafting(false);
+    }
+  }
 
   async function handleGuestLogin() {
     setBusy(true);
@@ -1215,6 +1392,14 @@ export default function HomePage() {
     setResolvingExploreEventId(null);
     setCurrentExplore(null);
     setActiveOverlay(null);
+    setFeatureCommand(null);
+    setFeatureEntries([]);
+    setFeatureSuggestions([]);
+    setProductionKind(null);
+    setProductionMaterials([]);
+    setSelectedProductionMaterials({});
+    setProductionResult([]);
+    setItemDetail(null);
     setLeftPanelView("brief");
     setOfflineClaimOpen(false);
     setChatMessages([]);
@@ -1551,7 +1736,11 @@ export default function HomePage() {
                             className="bag-item-info"
                             disabled={busy || hydrating}
                             onClick={() => handleShareBagItem(item)}
-                            title="点击选择此物品并分享到聊天"
+                            onFocus={(event) => showItemDetail(event, item)}
+                            onMouseEnter={(event) => showItemDetail(event, item)}
+                            onMouseLeave={hideItemDetail}
+                            onBlur={hideItemDetail}
+                            title="点击选择此物品并分享到聊天；悬浮查看详情"
                             type="button"
                           >
                             <span className="bag-item-title">
@@ -1560,20 +1749,6 @@ export default function HomePage() {
                                 {item.quality ? `（${pillQualityLabel(item.quality)}）` : ""}
                               </strong>
                               <small>点击分享</small>
-                            </span>
-                            <span className="bag-item-tooltip" role="tooltip">
-                              <strong>{item.name}</strong>
-                              <span>用途：{item.usage_hint}</span>
-                              <small>
-                                {item.expired
-                                  ? "已过期"
-                                  : item.locked
-                                    ? "已锁定"
-                                    : item.bind_type === "unbound"
-                                      ? "未绑定"
-                                      : "绑定"}
-                                {item.tradeable ? " · 可交易" : " · 不可交易"}
-                              </small>
                             </span>
                           </button>
                           {item.category === "pill" && !item.expired && !item.locked ? (
@@ -1795,7 +1970,12 @@ export default function HomePage() {
               <div className="chat-toolbar">
                 <label>
                   <span>地图</span>
-                  <select value={chatMapId} onChange={(event) => setChatMapId(event.target.value)}>
+                  <select
+                    aria-label="聊天地图"
+                    className="chat-map-select"
+                    value={chatMapId}
+                    onChange={(event) => setChatMapId(event.target.value)}
+                  >
                     <option value="all">全服</option>
                     {(overview?.provinces ?? [])
                       .filter((province) => province.unlocked)
@@ -1807,7 +1987,7 @@ export default function HomePage() {
                   </select>
                 </label>
               </div>
-              <div className="chat-message-list" aria-live="polite">
+              <div className="chat-message-list" aria-live="polite" ref={chatMessageListRef}>
                 {chatMessages.length === 0 ? (
                   <p className="empty-copy">当前地图还没有传音。</p>
                 ) : null}
@@ -1824,19 +2004,17 @@ export default function HomePage() {
                     </div>
                     <p>{item.content}</p>
                     {item.item_share ? (
-                      <span className="chat-item-share">
+                      <span
+                        className="chat-item-share"
+                        onBlur={hideItemDetail}
+                        onMouseEnter={(event) => {
+                          if (item.item_share) {
+                            showItemDetail(event, item.item_share);
+                          }
+                        }}
+                        onMouseLeave={hideItemDetail}
+                      >
                         {item.item_share.name} ×{item.item_share.count}
-                        <span className="chat-item-tooltip">
-                          <strong>{item.item_share.name}</strong>
-                          <span>用途：{item.item_share.usage_hint}</span>
-                          {item.item_share.quality ? (
-                            <span>品质：{pillQualityLabel(item.item_share.quality)}</span>
-                          ) : null}
-                          <small>
-                            {item.item_share.tradeable ? "可交易" : "不可交易"} ·{" "}
-                            {item.item_share.bind_type === "unbound" ? "未绑定" : "已绑定"}
-                          </small>
-                        </span>
                       </span>
                     ) : null}
                   </article>
@@ -1852,6 +2030,16 @@ export default function HomePage() {
                 <textarea
                   maxLength={240}
                   onChange={(event) => setChatContent(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === "Enter" &&
+                      !event.shiftKey &&
+                      !event.nativeEvent.isComposing
+                    ) {
+                      event.preventDefault();
+                      void sendChatMessage();
+                    }
+                  }}
                   placeholder="向当前地图传音…"
                   value={chatContent}
                 />
@@ -1871,7 +2059,7 @@ export default function HomePage() {
                     <span className="chat-share-hint">请从左侧背包点击物品后分享</span>
                   )}
                   <button
-                    className="console-button console-button-primary"
+                    className="console-button console-button-primary chat-send-button"
                     disabled={!chatContent.trim() || chatSending || busy || hydrating}
                     type="submit"
                   >
@@ -1900,9 +2088,15 @@ export default function HomePage() {
                       ? "境界一览"
                       : activeOverlay === "tools"
                         ? "功能面板"
-                        : activeOverlay === "faction"
-                          ? "仙魔抉择"
-                          : "斗法余音"
+                        : activeOverlay === "feature"
+                          ? (featureCommand?.label ?? "玩法")
+                          : activeOverlay === "production"
+                            ? productionKind === "alchemy"
+                              ? "炼丹投炉"
+                              : "炼器投炉"
+                            : activeOverlay === "faction"
+                              ? "仙魔抉择"
+                              : "斗法余音"
               }
               eyebrow={
                 activeOverlay === "help"
@@ -1913,9 +2107,13 @@ export default function HomePage() {
                       ? "修行境界"
                       : activeOverlay === "tools"
                         ? "常用功能"
-                        : activeOverlay === "faction"
-                          ? "道途分流"
-                          : "最近战报"
+                        : activeOverlay === "feature"
+                          ? "玩法状态"
+                          : activeOverlay === "production"
+                            ? "材料选择"
+                            : activeOverlay === "faction"
+                              ? "道途分流"
+                              : "最近战报"
               }
             >
               {activeOverlay === "tools" ? (
@@ -1958,11 +2156,16 @@ export default function HomePage() {
                           disabled={busy || hydrating}
                           key={item.command}
                           onClick={() => {
-                            setActiveOverlay(null);
-                            void executeCommand(item.command, {
-                              displayCommand: item.label,
-                              saveToHistory: false,
-                            });
+                            if (item.command === "炼丹") {
+                              void openProductionDialog("alchemy");
+                            } else if (item.command === "炼器") {
+                              void openProductionDialog("forge");
+                            } else {
+                              setFeatureCommand(item);
+                              setFeatureEntries([]);
+                              setFeatureSuggestions([]);
+                              void runFeatureCommand(item);
+                            }
                           }}
                           type="button"
                         >
@@ -1970,6 +2173,172 @@ export default function HomePage() {
                         </button>
                       ))}
                     </div>
+                  </div>
+                </section>
+              ) : null}
+
+              {activeOverlay === "feature" ? (
+                <section
+                  className="feature-dialog"
+                  aria-label={`${featureCommand?.label ?? "玩法"}内容`}
+                >
+                  {featureLoading && featureEntries.length === 0 ? (
+                    <p className="empty-copy">正在读取玩法状态…</p>
+                  ) : null}
+                  <div className="feature-result-list">
+                    {featureEntries.map((entry) => (
+                      <article className={`terminal-entry terminal-${entry.tone}`} key={entry.id}>
+                        {entry.title ? <strong>{entry.title}</strong> : null}
+                        {entry.tasks ? (
+                          <div className="terminal-task-list">
+                            {entry.tasks.map((task) => (
+                              <div className="terminal-task-row" key={`${entry.id}_${task.taskId}`}>
+                                <p>{formatTaskItem(task)}</p>
+                                {task.status === "completed" ? (
+                                  <button
+                                    className="terminal-task-claim"
+                                    disabled={featureLoading || busy || hydrating}
+                                    onClick={() =>
+                                      void runFeatureCommand({
+                                        command: `领取任务 ${task.taskId}`,
+                                        label: `领取任务“${task.title}”`,
+                                      })
+                                    }
+                                    type="button"
+                                  >
+                                    领取
+                                  </button>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          entry.lines.map((line, index) => (
+                            <p key={`${entry.id}_${index}`}>{line}</p>
+                          ))
+                        )}
+                      </article>
+                    ))}
+                  </div>
+                  {featureSuggestions.length > 0 ? (
+                    <div className="feature-suggestion-list" aria-label="相关操作">
+                      <span>相关操作</span>
+                      {featureSuggestions.map((suggestion) => (
+                        <button
+                          disabled={featureLoading || busy || hydrating}
+                          key={suggestion.command}
+                          onClick={() => void runFeatureCommand(suggestion)}
+                          type="button"
+                        >
+                          {suggestion.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </section>
+              ) : null}
+
+              {activeOverlay === "production" && productionKind ? (
+                <section className="production-dialog" aria-label="炼制材料选择">
+                  <p className="empty-copy">
+                    选择要投入的材料；材料数量只会在提交时校验，文字指令仍可继续使用。
+                  </p>
+                  {productionResult.length > 0 ? (
+                    <output className="production-result">
+                      {productionResult.map((line) => (
+                        <p key={line}>{line}</p>
+                      ))}
+                    </output>
+                  ) : null}
+                  {productionLoading ? <p className="empty-copy">正在整理可投炉材料…</p> : null}
+                  {!productionLoading && productionMaterials.length === 0 ? (
+                    <p className="empty-copy">
+                      当前没有可投炉材料，请先通过探索或洞府收取获取材料。
+                    </p>
+                  ) : null}
+                  <div className="production-material-list">
+                    {productionMaterials.map((material) => {
+                      const owned = Number(
+                        bagDisplayItems.find((item) => item.item_id === material.item_id)?.count ??
+                          0,
+                      );
+                      const selected = selectedProductionMaterials[material.item_id] ?? 0;
+                      return (
+                        <div className="production-material-row" key={material.item_id}>
+                          <div>
+                            <strong>{material.name}</strong>
+                            <span>{material.source_hint}</span>
+                            <small>拥有 {owned}</small>
+                          </div>
+                          <div className="production-material-counter">
+                            <button
+                              aria-label={`减少${material.name}`}
+                              disabled={selected <= 0 || productionCrafting}
+                              onClick={() =>
+                                setSelectedProductionMaterials((current) => ({
+                                  ...current,
+                                  [material.item_id]: Math.max(
+                                    0,
+                                    (current[material.item_id] ?? 0) - 1,
+                                  ),
+                                }))
+                              }
+                              type="button"
+                            >
+                              −
+                            </button>
+                            <input
+                              aria-label={`${material.name}数量`}
+                              disabled={productionCrafting || owned <= 0}
+                              max={owned}
+                              min={0}
+                              onChange={(event) => {
+                                const next = Math.min(
+                                  owned,
+                                  Math.max(0, Number.parseInt(event.target.value, 10) || 0),
+                                );
+                                setSelectedProductionMaterials((current) => ({
+                                  ...current,
+                                  [material.item_id]: next,
+                                }));
+                              }}
+                              type="number"
+                              value={selected}
+                            />
+                            <button
+                              aria-label={`增加${material.name}`}
+                              disabled={selected >= owned || productionCrafting}
+                              onClick={() =>
+                                setSelectedProductionMaterials((current) => ({
+                                  ...current,
+                                  [material.item_id]: Math.min(
+                                    owned,
+                                    (current[material.item_id] ?? 0) + 1,
+                                  ),
+                                }))
+                              }
+                              type="button"
+                            >
+                              ＋
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="utility-dialog-actions">
+                    <button
+                      className="console-button console-button-primary"
+                      disabled={productionCrafting || productionLoading || busy || hydrating}
+                      onClick={() => void craftProduction()}
+                      type="button"
+                    >
+                      {productionCrafting
+                        ? "投炉中…"
+                        : productionKind === "alchemy"
+                          ? "开始炼丹"
+                          : "开始炼器"}
+                    </button>
                   </div>
                 </section>
               ) : null}
@@ -2343,6 +2712,35 @@ export default function HomePage() {
                 </div>
               </section>
             </UtilityOverlay>
+          ) : null}
+          {itemDetail ? (
+            <div
+              aria-live="polite"
+              className={`item-detail-tooltip${itemDetail.above ? " item-detail-tooltip-above" : ""}`}
+              role="tooltip"
+              style={{ left: itemDetail.left, top: itemDetail.top }}
+            >
+              <strong>{itemDetail.name}</strong>
+              <span>用途：{itemDetail.usageHint}</span>
+              {itemDetail.quality ? (
+                <span>
+                  品质：
+                  {pillQualityLabel(
+                    itemDetail.quality as NonNullable<
+                      BagSummaryResponse["items"][number]["quality"]
+                    >,
+                  )}
+                </span>
+              ) : null}
+              <small>
+                {itemDetail.expired
+                  ? "已过期"
+                  : itemDetail.bindType === "unbound"
+                    ? "未绑定"
+                    : "绑定"}
+                {itemDetail.tradeable ? " · 可交易" : " · 不可交易"}
+              </small>
+            </div>
           ) : null}
         </>
       )}

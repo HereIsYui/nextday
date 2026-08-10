@@ -2461,7 +2461,7 @@ export interface PluginQuickClaimRequest {
 }
 
 export interface PluginQuickClaimItem {
-  action: "cultivation" | "cave" | "task" | "inner_world";
+  action: "cultivation" | "explore" | "cave" | "task" | "inner_world";
   label: string;
   record_id: string | null;
   status: "claimed" | "skipped";
@@ -2474,7 +2474,7 @@ export interface PluginQuickClaimResponse {
   status: PluginStatusCardResponse;
 }
 
-export type PluginPresetId = "explore_ji_once" | "tower_seal_once" | "sect_patrol";
+export type PluginPresetId = "tower_seal_once" | "sect_patrol";
 
 export interface PluginSubmitPresetRequest {
   preset_id: PluginPresetId | string;

@@ -1310,6 +1310,32 @@ h2 {
   margin: 0;
 }
 
+.skill-choice {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  display: grid;
+  gap: 6px;
+  padding: 0;
+  text-align: left;
+}
+
+.skill-choice:hover:not(:disabled) {
+  color: #f0e4c9;
+}
+
+.skill-choice strong {
+  color: #eee3c8;
+  font-size: 12px;
+}
+
+.skill-choice span,
+.skill-choice small {
+  color: #aeb8a8;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
 .feature-card-actions {
   display: flex;
   flex-wrap: wrap;

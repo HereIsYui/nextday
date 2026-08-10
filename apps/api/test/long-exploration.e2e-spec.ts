@@ -190,6 +190,62 @@ describe("长期探索结算", () => {
     });
     expect(settlement.source).toBe("offline");
     expect(settlement.effectiveMinutes).toBe(480);
+    const afterClaimPreview = await request(app.getHttpServer())
+      .get("/api/game/actions/offline-reward")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(afterClaimPreview.body.data.reward).toBeNull();
+  });
+
+  it("长期修炼离线收益领取后继续修炼且不会重复发放", async () => {
+    const { token, playerId } = await createPlayer(app, "离线修炼");
+    await request(app.getHttpServer())
+      .post("/api/game/actions/start")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `long_start_${Date.now()}_cultivation_offline`)
+      .send({ action_type: "cultivation" })
+      .expect(201);
+
+    const lastActiveAt = new Date(Date.now() - 90 * 60_000);
+    await prisma.playerActionState.update({
+      where: { playerId },
+      data: {
+        activeActionStartedAt: lastActiveAt,
+        activeActionLastActiveAt: lastActiveAt,
+        activeActionSettledUntil: lastActiveAt,
+      },
+    });
+
+    const current = await request(app.getHttpServer())
+      .get("/api/game/actions/current")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(current.body.data.action.action_type).toBe("cultivation");
+    expect(current.body.data.action.offline_reward).toMatchObject({
+      action_type: "cultivation",
+      offline_minutes: 90,
+      claimable: true,
+    });
+
+    const before = await prisma.playerProgress.findUniqueOrThrow({ where: { playerId } });
+    const claim = await request(app.getHttpServer())
+      .post("/api/game/actions/offline-reward/claim")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `long_claim_${Date.now()}_cultivation_offline`)
+      .expect(201);
+    expect(claim.body.data.action.action_type).toBe("cultivation");
+    expect(claim.body.data.action.offline_reward).toBeNull();
+    expect(BigInt(claim.body.data.rewards.cultivation)).toBeGreaterThan(0n);
+
+    const after = await prisma.playerProgress.findUniqueOrThrow({ where: { playerId } });
+    expect(after.cultivationValue).toBeGreaterThan(before.cultivationValue);
+    expect(after.lastCultivationAt.getTime()).toBeGreaterThanOrEqual(Date.now() - 5_000);
+
+    const repeated = await request(app.getHttpServer())
+      .get("/api/game/actions/offline-reward")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(repeated.body.data.reward).toBeNull();
   });
 
   it("在线结算按完整分钟推进，59 分钟不结算、60 分钟推进游标", async () => {

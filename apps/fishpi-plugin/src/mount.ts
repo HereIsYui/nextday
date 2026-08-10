@@ -38,7 +38,7 @@ export function mountPluginCard(container: HTMLElement, options: PluginCardOptio
           autocomplete="off"
           data-role="command-input"
           maxlength="120"
-          placeholder="输入指令，如：奇遇 事件ID 选项ID"
+          placeholder="输入指令，如：奇遇 选项ID"
           type="text"
         />
         <button data-action="command" type="submit">发送</button>
@@ -49,7 +49,6 @@ export function mountPluginCard(container: HTMLElement, options: PluginCardOptio
       </div>
       <div class="nextday-card__actions">
         <button type="button" data-action="claim">一键领取</button>
-        <button type="button" data-action="preset">预设提交</button>
         <button type="button" data-action="web">打开 Web</button>
       </div>
     </div>
@@ -67,7 +66,6 @@ export function mountPluginCard(container: HTMLElement, options: PluginCardOptio
   const commandResult = card.querySelector<HTMLElement>('[data-role="command-result"]');
   const commandResultText = card.querySelector<HTMLElement>('[data-role="command-result-text"]');
   const claimButton = card.querySelector<HTMLButtonElement>('[data-action="claim"]');
-  const presetButton = card.querySelector<HTMLButtonElement>('[data-action="preset"]');
   const webButton = card.querySelector<HTMLButtonElement>('[data-action="web"]');
   const client = createClient();
 
@@ -214,29 +212,6 @@ export function mountPluginCard(container: HTMLElement, options: PluginCardOptio
     }
   });
 
-  presetButton?.addEventListener("click", async () => {
-    const token = getToken();
-    if (!token) {
-      updateState("请先打开 Web 登录");
-      return;
-    }
-    presetButton.disabled = true;
-    try {
-      const response = await createClient(token).pluginSubmitPreset(
-        { preset_id: "explore_ji_once" },
-        createIdempotencyKey("fishpi_preset"),
-      );
-      ensureOk(response);
-      updateState(`${response.data.label}已提交`);
-      renderStatus(response.data.status, summaryLine, null);
-      await loadPanel();
-    } catch (error) {
-      updateState(error instanceof Error ? error.message : "预设提交失败");
-    } finally {
-      presetButton.disabled = false;
-    }
-  });
-
   commandForm?.addEventListener("submit", (event) => {
     event.preventDefault();
     void submitCommand();
@@ -254,7 +229,13 @@ function renderStatus(
   state: HTMLElement | null,
 ) {
   if (summaryLine) {
-    summaryLine.textContent = `${status.player.name} · ${status.realm_text} · 行动令 ${status.action_state.action_points}/${status.action_state.action_point_cap}`;
+    const activeAction = status.action_state.active_action;
+    const actionText = activeAction
+      ? activeAction.action_type === "cultivation"
+        ? "长期修炼"
+        : `${activeAction.province_name ?? "州域"}长期探索`
+      : "暂无长期行动";
+    summaryLine.textContent = `${status.player.name} · ${status.realm_text} · ${actionText} · 行动令 ${status.action_state.action_points}/${status.action_state.action_point_cap}`;
   }
   if (state) {
     state.textContent = status.reminders.length ? status.reminders.join("，") : "今日状态平稳";

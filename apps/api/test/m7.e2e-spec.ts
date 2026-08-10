@@ -83,19 +83,17 @@ describe("M7 前端与插件体验接口", () => {
     expect(second.body.data.items.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("插件预设行动只接受白名单并继续消耗服务端行动令", async () => {
+  it("插件九塔预设只接受白名单并完成一次九塔操作", async () => {
     const { token } = await createM7Player(app, "预设", "qi");
 
     const response = await request(app.getHttpServer())
       .post("/api/plugin/submit-preset")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", `idem_m7_preset_${Date.now()}_${randomSuffix()}`)
-      .send({ preset_id: "explore_ji_once" })
+      .send({ preset_id: "tower_seal_once" })
       .expect(201);
-    expect(response.body.data.preset_id).toBe("explore_ji_once");
-    expect(response.body.data.status.action_state.action_points).toBeLessThan(
-      response.body.data.status.action_state.action_point_cap,
-    );
+    expect(response.body.data.preset_id).toBe("tower_seal_once");
+    expect(response.body.data.result).toBeTruthy();
 
     await request(app.getHttpServer())
       .post("/api/plugin/submit-preset")

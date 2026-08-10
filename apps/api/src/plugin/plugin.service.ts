@@ -53,11 +53,14 @@ export class PluginService {
       (sum, grant) => sum + grant.draw_count - grant.used_count,
       0,
     );
+    const activeAction = overview.action_state.active_action;
+    const offlineActionMinutes = activeAction?.offline_reward?.offline_minutes ?? 0;
     const reminders = [
       Number(overview.cultivation?.claimable_cultivation ?? "0") > 0 ? "修为可领" : null,
       (overview.cave?.claimable_minutes ?? 0) > 0 ? "洞府可收" : null,
       completedTaskCount > 0 ? `${completedTaskCount} 个任务可领` : null,
       monthlyGrantCount > 0 ? `${monthlyGrantCount} 次古宝赠抽` : null,
+      offlineActionMinutes > 0 ? "离线行动收益待领取" : null,
       (activities?.claimable_count ?? 0) > 0 ? `${activities?.claimable_count} 个活动可领` : null,
     ].filter((item): item is string => Boolean(item));
 
@@ -70,7 +73,7 @@ export class PluginService {
         can_breakthrough: overview.cultivation?.can_breakthrough ?? false,
       },
       action_state: overview.action_state,
-      offline_minutes: overview.cave?.claimable_minutes ?? 0,
+      offline_minutes: offlineActionMinutes,
       wallet,
       reminders,
       monthly_grant_count: monthlyGrantCount,
@@ -147,7 +150,22 @@ export class PluginService {
     idempotencyKey: string;
   }): Promise<PluginQuickClaimResponse> {
     const items: PluginQuickClaimItem[] = [];
-    // 修为不再通过独立的被动领取入口结算，必须由长期修炼行动结束后领取。
+    const offlineReward = (await this.gameService.getOfflineActionReward(input.accountId)).reward;
+    if (offlineReward?.claimable) {
+      await this.tryClaim(
+        items,
+        offlineReward.action_type,
+        offlineReward.action_type === "cultivation" ? "离线修炼收益" : "离线探索收益",
+        async () => {
+          const result = await this.gameService.claimOfflineAction({
+            accountId: input.accountId,
+            idempotencyKey: `${input.idempotencyKey}:offline_action`,
+          });
+          return { recordId: offlineReward.action_id, message: "离线行动收益已领取" };
+        },
+      );
+    }
+
     await this.tryClaim(items, "cave", "洞府收取", async () => {
       const result = await this.gameService.collectCave({
         accountId: input.accountId,
@@ -197,14 +215,6 @@ export class PluginService {
     const presetId = normalizePresetId(input.body.preset_id);
     const preset = pluginPresetLabels[presetId];
     let result: unknown;
-
-    if (presetId === "explore_ji_once") {
-      result = await this.gameService.explore({
-        accountId: input.accountId,
-        body: { province_id: "ji" },
-        idempotencyKey: `${input.idempotencyKey}:explore`,
-      });
-    }
 
     if (presetId === "tower_seal_once") {
       const [towers, faction] = await Promise.all([
@@ -425,17 +435,12 @@ export class PluginService {
 }
 
 const pluginPresetLabels: Record<PluginPresetId, string> = {
-  explore_ji_once: "冀州探索",
   tower_seal_once: "九塔支援",
   sect_patrol: "宗门巡山",
 };
 
 function normalizePresetId(presetId: string): PluginPresetId {
-  if (
-    presetId === "explore_ji_once" ||
-    presetId === "tower_seal_once" ||
-    presetId === "sect_patrol"
-  ) {
+  if (presetId === "tower_seal_once" || presetId === "sect_patrol") {
     return presetId;
   }
 

@@ -32,7 +32,7 @@ describe("P1.7 持久修行日志与探索事件链", () => {
     await app.close();
   });
 
-  it("探索进行中触发奇遇，领取探索不会重复生成", async () => {
+  it("探索进行中触发奇遇，结束行动不会重复生成", async () => {
     const { token, playerId } = await createP17Player(app, prisma);
 
     const started = await startTriggeredExplore(app, prisma, token);
@@ -51,14 +51,12 @@ describe("P1.7 持久修行日志与探索事件链", () => {
       .set("Idempotency-Key", `idem_p17_end_${Date.now()}_${randomSuffix()}`)
       .expect(201);
 
-    const pendingAfterClaim = await request(app.getHttpServer())
+    const pendingAfterEnd = await request(app.getHttpServer())
       .get("/api/game/explore/events?status=pending")
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
-    expect(pendingAfterClaim.body.data.events).toHaveLength(1);
-    expect(pendingAfterClaim.body.data.events[0].event_id).toBe(
-      pending.body.data.events[0].event_id,
-    );
+    expect(pendingAfterEnd.body.data.events).toHaveLength(1);
+    expect(pendingAfterEnd.body.data.events[0].event_id).toBe(pending.body.data.events[0].event_id);
 
     const journal = await request(app.getHttpServer())
       .get("/api/game/journal?limit=8")

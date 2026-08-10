@@ -2053,7 +2053,8 @@ export default function HomePage() {
 
   async function handleOfflineClaim() {
     if (!token || busy || hydrating) return;
-    if (offlineActionReward?.claimable) {
+    const pendingReward = offlineActionReward ?? activeLongAction?.offline_reward;
+    if (pendingReward?.claimable) {
       setBusy(true);
       try {
         const result = readResponse(
@@ -2481,6 +2482,16 @@ export default function HomePage() {
                   </section>
                   {activeLongAction ? (
                     <section className="cultivation-journey" aria-label="当前长期行动">
+                      {activeLongAction.offline_reward?.claimable ? (
+                        <output className="feature-lock-notice">
+                          <strong>离线行动收益待领取</strong>
+                          <span>
+                            {activeLongAction.action_type === "cultivation"
+                              ? "长期修炼收益已整理，领取后会继续当前修炼。"
+                              : "长期探索收益已整理，领取后会继续当前探索。"}
+                          </span>
+                        </output>
+                      ) : null}
                       <article
                         className={`explore-action-card explore-action-card-${activeLongAction.status === "claimable" ? "claim" : "waiting"}`}
                       >
@@ -2496,14 +2507,25 @@ export default function HomePage() {
                             : `${activeLongAction.province_name ?? "州域"}长期探索`}
                         </strong>
                         <p>
-                          {activeLongAction.action_type === "explore"
-                            ? `已结算 ${activeLongAction.settled_battle_count ?? 0} 场；在线每小时自动入账，结束时补齐完整分钟。`
-                            : activeLongAction.status === "claimable"
-                              ? `已固定收益：${formatRewards(activeLongAction.rewards ?? {})}`
-                              : "修炼与探索互斥；需要收益时手动结束行动。"}
+                          {activeLongAction.offline_reward?.claimable
+                            ? `待领取：${formatRewards(activeLongAction.offline_reward.rewards)}`
+                            : activeLongAction.action_type === "explore"
+                              ? `已结算 ${activeLongAction.settled_battle_count ?? 0} 场；在线每小时自动入账，结束时补齐完整分钟。`
+                              : activeLongAction.status === "claimable"
+                                ? `已固定收益：${formatRewards(activeLongAction.rewards ?? {})}`
+                                : "修炼与探索互斥；需要收益时手动结束行动。"}
                         </p>
-                        {activeLongAction.action_type !== "explore" &&
-                        activeLongAction.status === "claimable" ? (
+                        {activeLongAction.offline_reward?.claimable ? (
+                          <button
+                            className="action-card-button"
+                            disabled={busy || hydrating}
+                            onClick={() => void handleOfflineClaim()}
+                            type="button"
+                          >
+                            领取离线收益
+                          </button>
+                        ) : activeLongAction.action_type !== "explore" &&
+                          activeLongAction.status === "claimable" ? (
                           <button
                             className="action-card-button"
                             disabled={busy || hydrating}
@@ -4269,31 +4291,49 @@ export default function HomePage() {
                             .map((skill) => {
                               const selected = skillActiveIds.includes(skill.skill_id);
                               return (
-                                <button
-                                  className={`feature-card skill-choice${selected ? " skill-choice-selected" : ""}`}
-                                  disabled={!skill.learned || featureLoading || busy || hydrating}
-                                  key={skill.skill_id}
-                                  onClick={() =>
-                                    setSkillActiveIds((current) =>
-                                      selected
-                                        ? current.filter((id) => id !== skill.skill_id)
-                                        : current.length >= 3
-                                          ? current
-                                          : [...current, skill.skill_id],
-                                    )
-                                  }
-                                  type="button"
-                                >
-                                  <strong>{skill.name}</strong>
-                                  <span>
-                                    {skill.learned
-                                      ? skill.description
-                                      : skill.unlock_reasons.join("、")}
-                                  </span>
-                                  <small>
-                                    {selected ? "已编入" : skill.learned ? "点击编入" : "尚未掌握"}
-                                  </small>
-                                </button>
+                                <article className="feature-card" key={skill.skill_id}>
+                                  <button
+                                    className={`skill-choice${selected ? " skill-choice-selected" : ""}`}
+                                    disabled={!skill.learned || featureLoading || busy || hydrating}
+                                    onClick={() =>
+                                      setSkillActiveIds((current) =>
+                                        selected
+                                          ? current.filter((id) => id !== skill.skill_id)
+                                          : current.length >= 3
+                                            ? current
+                                            : [...current, skill.skill_id],
+                                      )
+                                    }
+                                    type="button"
+                                  >
+                                    <strong>{skill.name}</strong>
+                                    <span>
+                                      {skill.learned
+                                        ? skill.description
+                                        : skill.unlock_reasons.join("、")}
+                                    </span>
+                                    <small>
+                                      {selected
+                                        ? "已编入"
+                                        : skill.learned
+                                          ? "点击编入"
+                                          : "尚未掌握"}
+                                    </small>
+                                  </button>
+                                  {!skill.learned ? (
+                                    <button
+                                      disabled={
+                                        !skill.learnable || featureLoading || busy || hydrating
+                                      }
+                                      onClick={() => learnFeatureSkill(skill.skill_id)}
+                                      type="button"
+                                    >
+                                      {skill.learnable
+                                        ? `学习${skill.learn_cost?.spirit_stone ? `（灵石 ${skill.learn_cost.spirit_stone}）` : ""}`
+                                        : "暂不可学习"}
+                                    </button>
+                                  ) : null}
+                                </article>
                               );
                             })}
                         </div>
@@ -5074,14 +5114,22 @@ export default function HomePage() {
               title="离线收益待领取"
               onClose={() => setOfflineClaimOpen(false)}
             >
-              <section className="offline-reward-dialog" aria-label="离线探索收益">
+              <section className="offline-reward-dialog" aria-label="离线行动收益">
                 <p>
-                  {`离开九州 ${offlineActionReward.offline_minutes} 分钟期间，${offlineActionReward.province_name ?? "州域"}探索已产生待领取收益。`}
+                  {offlineActionReward.action_type === "cultivation"
+                    ? `离开九州 ${offlineActionReward.offline_minutes} 分钟期间，长期修炼已产生待领取修为。`
+                    : `离开九州 ${offlineActionReward.offline_minutes} 分钟期间，${offlineActionReward.province_name ?? "州域"}探索已产生待领取收益。`}
                 </p>
                 <div className="offline-reward-value">
-                  {`探索 ${offlineActionReward.estimated_battle_count} 场待结算（胜 ${offlineActionReward.estimated_win_count} · 败 ${offlineActionReward.estimated_lose_count}） · ${formatRewards(offlineActionReward.rewards)}`}
+                  {offlineActionReward.action_type === "cultivation"
+                    ? `修炼收益 · ${formatRewards(offlineActionReward.rewards)}`
+                    : `探索 ${offlineActionReward.estimated_battle_count} 场待结算（胜 ${offlineActionReward.estimated_win_count} · 败 ${offlineActionReward.estimated_lose_count}） · ${formatRewards(offlineActionReward.rewards)}`}
                 </div>
-                <small>探索收益遵守每日 21 场基准，离线最多计算 8 小时。</small>
+                <small>
+                  {offlineActionReward.action_type === "cultivation"
+                    ? "修炼收益按当前境界速率计算，离线最多计算 8 小时。"
+                    : "探索收益遵守每日 21 场基准，离线最多计算 8 小时。"}
+                </small>
                 <div className="utility-dialog-actions">
                   <button
                     className="quiet-button"

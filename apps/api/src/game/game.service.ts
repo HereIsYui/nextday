@@ -182,6 +182,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
     return this.prisma.$transaction(async (tx) => {
       await lockPlayerForTransaction(tx, player.playerId);
       await this.settleLongExplore(tx, player.playerId, new Date(), "status");
+      await this.prepareCultivationOfflineSnapshot(tx, player.playerId, new Date());
       const state = await tx.playerActionState.findUniqueOrThrow({
         where: { playerId: player.playerId },
       });
@@ -193,6 +194,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
     return this.prisma.$transaction(async (tx) => {
       await lockPlayerForTransaction(tx, playerId);
       await this.settleLongExplore(tx, playerId, new Date(), "status");
+      await this.prepareCultivationOfflineSnapshot(tx, playerId, new Date());
       const actionState = await this.refreshActionState(playerId, tx);
       const state = await tx.playerActionState.findUniqueOrThrow({ where: { playerId } });
       const activeAction = await this.toLongActionState(tx, state);
@@ -206,6 +208,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
     return this.prisma.$transaction(async (tx) => {
       await lockPlayerForTransaction(tx, player.playerId);
       await this.settleLongExplore(tx, player.playerId, new Date(), "status");
+      await this.prepareCultivationOfflineSnapshot(tx, player.playerId, new Date());
       const state = await tx.playerActionState.findUniqueOrThrow({
         where: { playerId: player.playerId },
       });
@@ -231,11 +234,58 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
         const state = await tx.playerActionState.findUniqueOrThrow({
           where: { playerId: player.playerId },
         });
-        if (state.activeActionType !== "explore" || !state.activeActionId) {
-          throw new BadRequestException("当前没有待领取的离线探索收益");
-        }
         const snapshot = state.activeActionOfflineSnapshot;
-        if (!snapshot || typeof snapshot !== "object") {
+        if (
+          !snapshot ||
+          typeof snapshot !== "object" ||
+          (state.activeActionType !== "explore" && state.activeActionType !== "cultivation")
+        ) {
+          throw new BadRequestException("当前没有待领取的离线行动收益");
+        }
+        const now = new Date();
+        if (state.activeActionType === "cultivation") {
+          const loaded = await this.requirePlayerInTx(tx, player.playerId);
+          const rewards = normalizeOfflineActionReward(snapshot).rewards;
+          const gained = BigInt(rewards.cultivation ?? "0");
+          const granted = await this.grantCultivation(tx, loaded, gained, {
+            lastCultivationAt: now,
+          });
+          await incrementPlayerTasks(tx, player.playerId, {
+            novice_claim_cultivation: 1,
+          });
+          const updatedState = await tx.playerActionState.update({
+            where: { playerId: player.playerId },
+            data: {
+              activeActionStartedAt: now,
+              activeActionLastActiveAt: now,
+              activeActionSettledUntil: now,
+              activeActionOfflineSnapshot: Prisma.JsonNull,
+              activeActionOfflineSnapshotAt: null,
+            },
+          });
+          const action = await this.toLongActionState(tx, updatedState);
+          return {
+            action,
+            action_state: toActionState(updatedState),
+            rewards,
+            experience: buildJournalExperience({
+              title: "离线修炼收益",
+              summary: `离线修炼收益入体，修为 +${gained.toString()}。`,
+              deltas: [
+                { label: "修为", delta: `+${gained.toString()}`, tone: "success" },
+                {
+                  label: "修行进度",
+                  before: `${loaded.currentStage}-${loaded.currentLevel}`,
+                  after: `${granted.allocation.currentStage}-${granted.allocation.currentLevel}`,
+                  tone: "success",
+                },
+              ],
+              recommendations: [],
+              tags: [{ code: "offline_cultivation", label: "离线修炼", tone: "success" }],
+            }),
+          };
+        }
+        if (state.activeActionType !== "explore" || !state.activeActionId) {
           throw new BadRequestException("当前没有待领取的离线探索收益");
         }
         const record = await tx.exploreActionRecord.findUniqueOrThrow({
@@ -249,7 +299,6 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
           minutes,
           "offline",
         );
-        const now = new Date();
         const updatedRecord = await tx.exploreActionRecord.update({
           where: { recordId: record.recordId },
           data: {
@@ -275,6 +324,67 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
           action_state: toActionState(updatedState, updatedRecord.provinceName),
           rewards: settled.rewards,
         };
+      },
+    });
+  }
+
+  private async prepareCultivationOfflineSnapshot(
+    tx: Tx,
+    playerId: string,
+    now: Date,
+  ): Promise<void> {
+    const state = await tx.playerActionState.findUnique({ where: { playerId } });
+    if (
+      !state ||
+      state.activeActionType !== "cultivation" ||
+      !state.activeActionId ||
+      !state.activeActionStartedAt ||
+      state.activeActionEndedAt ||
+      state.activeActionOfflineSnapshot
+    ) {
+      return;
+    }
+
+    const lastActiveAt = state.activeActionLastActiveAt ?? state.activeActionStartedAt;
+    const elapsedMinutes = Math.max(
+      0,
+      Math.floor((now.getTime() - lastActiveAt.getTime()) / 60_000),
+    );
+    const inactive = now.getTime() - lastActiveAt.getTime() > longActionHeartbeatGraceMilliseconds;
+    if (!inactive || elapsedMinutes <= 0) {
+      if (now.getTime() > lastActiveAt.getTime()) {
+        await tx.playerActionState.update({
+          where: { playerId },
+          data: { activeActionLastActiveAt: now },
+        });
+      }
+      return;
+    }
+
+    const offlineMinutes = Math.min(longActionOfflineCapMinutes, elapsedMinutes);
+    const player = await this.requirePlayerInTx(tx, playerId);
+    const base = BigInt(Math.floor((offlineMinutes * player.progress.cultivationRatePerHour) / 60));
+    const bonus = (base * BigInt(player.progress.catchupBonusRate)) / 100n;
+    const snapshot: OfflineActionReward = {
+      action_id: state.activeActionId,
+      action_type: "cultivation",
+      province_name: null,
+      offline_minutes: offlineMinutes,
+      from_at: lastActiveAt.toISOString(),
+      to_at: new Date(
+        Math.min(now.getTime(), lastActiveAt.getTime() + offlineMinutes * 60_000),
+      ).toISOString(),
+      estimated_battle_count: 0,
+      estimated_win_count: 0,
+      estimated_lose_count: 0,
+      rewards: { cultivation: (base + bonus).toString() },
+      claimable: true,
+    };
+    await tx.playerActionState.update({
+      where: { playerId },
+      data: {
+        activeActionOfflineSnapshot: snapshot as unknown as Prisma.InputJsonValue,
+        activeActionOfflineSnapshotAt: now,
       },
     });
   }
@@ -513,6 +623,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       handler: async (tx) => {
         await this.ensureM2State(player.playerId, tx);
         await this.settleLongExplore(tx, player.playerId, new Date(), "status");
+        await this.prepareCultivationOfflineSnapshot(tx, player.playerId, new Date());
         const state = await tx.playerActionState.findUniqueOrThrow({
           where: { playerId: player.playerId },
         });
@@ -627,6 +738,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
         // 结束行动也必须先走一次状态结算，确保页面关闭期间先生成离线快照，
         // 不会绕过 8 小时上限直接把整段离线时间当作在线收益发放。
         await this.settleLongExplore(tx, player.playerId, new Date(), "status");
+        await this.prepareCultivationOfflineSnapshot(tx, player.playerId, new Date());
         const state = await tx.playerActionState.findUniqueOrThrow({
           where: { playerId: player.playerId },
         });
@@ -1525,7 +1637,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
             eventRecord: { is: null },
             eventTriggerAt: { lte: now },
             actionMode: "long_term",
-            status: { in: ["active", "pending"] },
+            status: "active",
           },
           orderBy: { eventTriggerAt: "asc" },
           select: {
@@ -1586,7 +1698,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
 
       if (
         record &&
-        ["active", "pending"].includes(record.status) &&
+        record.status === "active" &&
         (record.settledBattleCount ?? 0) > 0 &&
         record.eventTriggerAt &&
         record.eventTriggerAt.getTime() <= now.getTime()
@@ -1730,7 +1842,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       where: {
         playerId,
         actionMode: "long_term",
-        status: { in: ["active", "offline_claimable", "pending"] },
+        status: "active",
       },
       orderBy: { createdAt: "desc" },
     });

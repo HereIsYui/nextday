@@ -197,6 +197,42 @@ describe("长期探索结算", () => {
     expect(afterClaimPreview.body.data.reward).toBeNull();
   });
 
+  it("离线探索领取沿用预览时的境界和战斗配置", async () => {
+    const { token, playerId } = await createPlayer(app, "快照配置");
+    const started = await request(app.getHttpServer())
+      .post("/api/game/actions/start")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `long_start_${Date.now()}_snapshot_config`)
+      .send({ action_type: "explore", province_id: "ji" })
+      .expect(201);
+    const recordId = started.body.data.action.action_id as string;
+    const lastActiveAt = new Date(Date.now() - 4 * 60 * 60_000);
+    await prisma.exploreActionRecord.update({
+      where: { recordId },
+      data: { lastSettledAt: lastActiveAt, lastActiveAt },
+    });
+
+    const preview = await request(app.getHttpServer())
+      .get("/api/game/actions/offline-reward")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    const previewRewards = preview.body.data.reward.rewards;
+
+    // 模拟玩家在离线收益弹窗出现后完成一次境界变化；领取仍必须按快照结算。
+    await prisma.player.update({
+      where: { playerId },
+      data: { currentRealm: 2, currentStage: 1, currentLevel: 1 },
+    });
+
+    const claimed = await request(app.getHttpServer())
+      .post("/api/game/actions/offline-reward/claim")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `long_claim_${Date.now()}_snapshot_config`)
+      .send({})
+      .expect(201);
+    expect(claimed.body.data.rewards).toEqual(previewRewards);
+  });
+
   it("长期修炼离线收益领取后继续修炼且不会重复发放", async () => {
     const { token, playerId } = await createPlayer(app, "离线修炼");
     await request(app.getHttpServer())

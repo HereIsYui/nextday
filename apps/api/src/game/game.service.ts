@@ -108,6 +108,24 @@ interface LongExploreSettlement {
   battles: BattleSummary[];
 }
 
+/**
+ * 离线探索快照中的战斗输入。
+ *
+ * 离线预览生成后，玩家仍可能在其他页面服丹、学习技能或更换法宝。
+ * 领取时必须沿用快照时的战斗条件，否则预览奖励和实际入账会不一致。
+ */
+interface ExploreCombatSnapshot {
+  currentRealm: number;
+  currentStage: number;
+  currentLevel: number;
+  equipmentPower: number;
+  loadout: {
+    activeSkillIds: Prisma.JsonValue;
+    treasureSkillId: string;
+    autoPriority: Prisma.JsonValue;
+  } | null;
+}
+
 const exploreEventTriggerChancePercent = 35;
 const exploreEventAutoResolveMilliseconds = 5 * 60 * 1000;
 const exploreEventLifecycleIntervalMilliseconds = 5 * 1000;
@@ -292,12 +310,14 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
           where: { recordId: state.activeActionId },
         });
         const minutes = normalizeOfflineSnapshotMinutes(snapshot);
+        const combatSnapshot = normalizeExploreCombatSnapshot(snapshot);
         const settled = await this.settleExploreWindow(
           tx,
           player.playerId,
           record,
           minutes,
           "offline",
+          combatSnapshot,
         );
         const updatedRecord = await tx.exploreActionRecord.update({
           where: { recordId: record.recordId },
@@ -499,6 +519,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
     record: ExploreActionRecord,
     additionalMinutes: number,
     source: "online" | "offline",
+    combatSnapshot?: ExploreCombatSnapshot | null,
   ): Promise<LongExploreSettlement> {
     const safeMinutes = Math.max(0, Math.floor(additionalMinutes));
     if (safeMinutes <= 0) {
@@ -527,6 +548,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
         record.recordId,
         previousBattles + index,
         record.exploreBoostPercent,
+        combatSnapshot,
       );
       battles.push(battle.summary);
       currentPlayer = battle.player;
@@ -1974,6 +1996,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
     exploreRecordId: string,
     battleIndex: number,
     exploreBoostPercent: number,
+    combatSnapshot?: ExploreCombatSnapshot | null,
   ): Promise<{
     summary: BattleSummary;
     player: PlayerWithCore;
@@ -2001,26 +2024,25 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       (sum, item) => sum + item.affixes.reduce((affixSum, affix) => affixSum + affix.value, 0),
       0,
     );
-    const loadout = await tx.playerSkillLoadout.findUnique({
-      where: { playerId: player.playerId },
-    });
+    const loadout =
+      combatSnapshot?.loadout ??
+      (await tx.playerSkillLoadout.findUnique({ where: { playerId: player.playerId } }));
     const skillSnapshot = getCombatSkillSnapshot({
       route: player.route,
       loadout,
       enemyTraits: enemy.traits,
     });
-    const basePower = calculateCultivationPower(
-      player.currentRealm,
-      player.currentStage,
-      player.currentLevel,
-    );
+    const currentRealm = combatSnapshot?.currentRealm ?? player.currentRealm;
+    const currentStage = combatSnapshot?.currentStage ?? player.currentStage;
+    const currentLevel = combatSnapshot?.currentLevel ?? player.currentLevel;
+    const basePower = calculateCultivationPower(currentRealm, currentStage, currentLevel);
     const playerPower = calculateUnifiedCombatPower({
       basePower,
-      equipmentPower: Math.floor(equipmentPower / 4),
+      equipmentPower: combatSnapshot?.equipmentPower ?? Math.floor(equipmentPower / 4),
       skillSnapshot,
     });
     const result: BattleSummary["result"] = playerPower >= enemy.enemyPower ? "win" : "lose";
-    const damageDone = result === "win" ? enemy.enemyPower + player.currentLevel * 12 : playerPower;
+    const damageDone = result === "win" ? enemy.enemyPower + currentLevel * 12 : playerPower;
     const damageTaken =
       result === "win"
         ? Math.max(8, Math.floor((enemy.enemyPower / 3) * skillSnapshot.defenseMultiplier))
@@ -2032,14 +2054,14 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
     const baseRewards: RewardBundle =
       result === "win"
         ? {
-            cultivation: String(getExploreCultivationReward(player.currentRealm, result)),
+            cultivation: String(getExploreCultivationReward(currentRealm, result)),
             spirit_stone: "35",
             items: loot
               ? [{ item_id: loot.itemId, name: loot.name, count: 1, bind_type: "bound" }]
               : undefined,
           }
         : {
-            cultivation: String(getExploreCultivationReward(player.currentRealm, result)),
+            cultivation: String(getExploreCultivationReward(currentRealm, result)),
             spirit_stone: "8",
           };
     const rewards = applyExploreRewardBoost(baseRewards, exploreBoostPercent);
@@ -2504,7 +2526,7 @@ async function buildOfflineActionReward(
   now: Date,
   player: Pick<Player, "route" | "currentRealm" | "currentStage" | "currentLevel">,
   province: ProvinceSummary,
-): Promise<OfflineActionReward> {
+): Promise<OfflineActionReward & { combat_snapshot: ExploreCombatSnapshot }> {
   const previousMinutes = record.settledMinutes ?? 0;
   const previousBattles = record.settledBattleCount ?? record.count ?? 0;
   const totalMinutes = previousMinutes + offlineMinutes;
@@ -2577,6 +2599,19 @@ async function buildOfflineActionReward(
     estimated_lose_count: estimatedLoseCount,
     rewards,
     claimable: true,
+    combat_snapshot: {
+      currentRealm: player.currentRealm,
+      currentStage: player.currentStage,
+      currentLevel: player.currentLevel,
+      equipmentPower: Math.floor(equipmentPower / 4),
+      loadout: loadout
+        ? {
+            activeSkillIds: loadout.activeSkillIds,
+            treasureSkillId: loadout.treasureSkillId,
+            autoPriority: loadout.autoPriority,
+          }
+        : null,
+    },
   };
 }
 
@@ -2586,6 +2621,49 @@ function normalizeOfflineSnapshotMinutes(value: Prisma.JsonValue): number {
   }
   const minutes = Number((value as Record<string, unknown>).offline_minutes ?? 0);
   return Number.isFinite(minutes) ? Math.max(0, Math.floor(minutes)) : 0;
+}
+
+function normalizeExploreCombatSnapshot(value: Prisma.JsonValue): ExploreCombatSnapshot | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const snapshot = record.combat_snapshot;
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    return null;
+  }
+  const source = snapshot as Record<string, unknown>;
+  const currentRealm = Number(source.currentRealm);
+  const currentStage = Number(source.currentStage);
+  const currentLevel = Number(source.currentLevel);
+  const equipmentPower = Number(source.equipmentPower);
+  if (
+    !Number.isSafeInteger(currentRealm) ||
+    currentRealm < 1 ||
+    currentRealm > maximumRealm ||
+    !Number.isSafeInteger(currentStage) ||
+    currentStage < 1 ||
+    currentStage > stagesPerRealm ||
+    !Number.isSafeInteger(currentLevel) ||
+    currentLevel < 1 ||
+    !Number.isSafeInteger(equipmentPower) ||
+    equipmentPower < 0
+  ) {
+    return null;
+  }
+  const loadoutSource = source.loadout;
+  let loadout: ExploreCombatSnapshot["loadout"] = null;
+  if (loadoutSource && typeof loadoutSource === "object" && !Array.isArray(loadoutSource)) {
+    const candidate = loadoutSource as Record<string, unknown>;
+    if (typeof candidate.treasureSkillId === "string") {
+      loadout = {
+        activeSkillIds: (candidate.activeSkillIds ?? []) as Prisma.JsonValue,
+        treasureSkillId: candidate.treasureSkillId,
+        autoPriority: (candidate.autoPriority ?? []) as Prisma.JsonValue,
+      };
+    }
+  }
+  return { currentRealm, currentStage, currentLevel, equipmentPower, loadout };
 }
 
 function normalizeOfflineActionReward(value: Prisma.JsonValue): OfflineActionReward {

@@ -341,7 +341,6 @@ export default function HomePage() {
   const [playerName, setPlayerName] = useState("");
   const [route, setRoute] = useState<RouteValue>("qi");
   const [command, setCommand] = useState("");
-  const [commandSuggestions, setCommandSuggestions] = useState<CommandAction[]>([]);
   const [commandHistory, setCommandHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [pendingExploreEvents, setPendingExploreEvents] = useState<PendingExploreEvent[]>([]);
@@ -490,17 +489,9 @@ export default function HomePage() {
     () => buildCommandHint(command, overview?.provinces ?? [], helpGroups),
     [command, helpGroups, overview?.provinces],
   );
-  const quickCommands = useMemo(() => {
-    const actions = [...commandSuggestions, ...baseQuickCommands];
-    const commandSet = new Set<string>();
-    return actions.filter((action) => {
-      if (commandSet.has(action.command)) {
-        return false;
-      }
-      commandSet.add(action.command);
-      return true;
-    });
-  }, [commandSuggestions]);
+  // 快捷区只保留固定功能入口；命令响应中的建议不再自动变成“下一步”按钮。
+  // 玩家可以通过功能面板、帮助和输入提示自行探索玩法，避免九州传音替玩家规划路线。
+  const quickCommands = baseQuickCommands;
 
   useEffect(() => {
     setOpenHelpGroupId((current) => {
@@ -2115,14 +2106,6 @@ export default function HomePage() {
           : [];
       const taskItems =
         data.command_id === "task_list" ? taskItemsFromResult(data.state?.result) : null;
-      setCommandSuggestions(
-        data.command_id === "task_list"
-          ? []
-          : commandSuggestionsFromState(
-              data.state,
-              pendingEvents.length > 0 ? pendingEvents : pendingExploreEventsRef.current,
-            ),
-      );
       const entries =
         data.command_id === "task_list"
           ? [taskTerminalEntry(taskItems)]
@@ -2259,7 +2242,6 @@ export default function HomePage() {
     setBag(null);
     setBagError(null);
     setBagLoading(false);
-    setCommandSuggestions([]);
     pendingExploreEventsRef.current = [];
     setPendingExploreEvents([]);
     setResolvingExploreEventId(null);
@@ -5410,29 +5392,6 @@ function buildCommandHint(
       .map((item) => `${item.syntax}${item.description ? `：${item.description}` : ""}`)
       .join("；"),
   };
-}
-
-function commandSuggestionsFromState(
-  state: unknown,
-  pendingExploreEvents: PendingExploreEvent[],
-): CommandAction[] {
-  const stateRecord = asRecord(state);
-  const hasPendingExploreEvent = pendingExploreEvents.length > 0;
-  const commands = asArray(stateRecord?.suggestions)
-    .map((value) => {
-      const record = asRecord(value);
-      const command = pickText(record?.command);
-      const label = pickText(record?.label) || command;
-      return command ? { command, label } : null;
-    })
-    .filter((item): item is CommandAction => item !== null)
-    .filter((item) => !hasPendingExploreEvent || !/^(奇遇|处理奇遇)\s+\S+/u.test(item.command));
-
-  const unique = new Map<string, CommandAction>();
-  for (const command of commands) {
-    unique.set(command.command, command);
-  }
-  return [...unique.values()].slice(0, 2);
 }
 
 function commandHead(value: string): string {

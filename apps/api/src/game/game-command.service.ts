@@ -35,7 +35,6 @@ type ParsedCommand =
   | { commandId: "help" }
   | { commandId: "status" }
   | { commandId: "bag"; selector?: string }
-  | { commandId: "cultivation_claim" }
   | { commandId: "action_start"; actionType: "cultivation" | "explore"; province?: string }
   | { commandId: "action_end" }
   | { commandId: "action_claim" }
@@ -119,15 +118,9 @@ const commandHelpGroups: TextCommandHelpGroup[] = [
     title: "修行与探索",
     items: [
       {
-        command_id: "cultivation_claim",
-        syntax: "修炼",
-        aliases: ["吐纳", "收功"],
-        description: "收束离线修为。",
-      },
-      {
         command_id: "action_start",
-        syntax: "开始修炼 | 探索 <州域>",
-        aliases: ["开始行动"],
+        syntax: "修炼 | 开始修炼 | 探索 <州域>",
+        aliases: ["开始行动", "吐纳"],
         description: "开始一项长期行动；修炼与探索互斥，探索在线持续结算。",
       },
       {
@@ -431,8 +424,6 @@ export class GameCommandService {
           return this.status(input.accountId);
         case "bag":
           return this.bag(input.accountId, parsed.selector);
-        case "cultivation_claim":
-          return this.claimCultivation(input);
         case "action_start":
           return this.startAction(input, parsed.actionType, parsed.province);
         case "action_end":
@@ -537,7 +528,7 @@ export class GameCommandService {
     if (cultivation) {
       entries.push({
         tone: "info",
-        text: `修为 ${cultivation.cultivation_value}，可收束 ${cultivation.claimable_cultivation}${cultivation.can_breakthrough ? "，当前可尝试突破。" : "。"}`,
+        text: `修为 ${cultivation.cultivation_value}${cultivation.can_breakthrough ? "，当前可尝试突破。" : "；收益由长期行动结算。"}`,
       });
     }
     if (overview.action_state) {
@@ -632,26 +623,6 @@ export class GameCommandService {
         label: `探索${province.name}`,
         command: `探索 ${province.name}`,
       })),
-    );
-  }
-
-  private async claimCultivation(input: {
-    accountId: string;
-    idempotencyKey: string;
-  }): Promise<TextCommandResponse> {
-    const result = await this.gameService.claimCultivation(input);
-    const levelText =
-      result.after_level !== result.before_level || result.after_stage !== result.before_stage
-        ? `，修行进度由第 ${result.before_stage} 小境界第 ${result.before_level} 级提升至第 ${result.after_stage} 小境界第 ${result.after_level} 级`
-        : "";
-    return this.success(
-      "cultivation_claim",
-      [{ tone: "success", text: `收束修为 ${result.gained_cultivation}${levelText}。` }],
-      result,
-      ["overview", "tasks"],
-      result.status.can_breakthrough
-        ? [{ label: "尝试突破", command: "突破" }]
-        : [{ label: "继续探索", command: "探索 冀州" }],
     );
   }
 
@@ -1337,7 +1308,7 @@ export class GameCommandService {
   }
 
   private async activities(accountId: string): Promise<TextCommandResponse> {
-    const result = await this.eventsService!.list(accountId);
+    const result = await requireService(this.eventsService, "活动").list(accountId);
     return this.success(
       "activities",
       result.events.map((event) => ({
@@ -1359,7 +1330,7 @@ export class GameCommandService {
     input: { accountId: string; idempotencyKey: string },
     eventId: string,
   ): Promise<TextCommandResponse> {
-    const result = await this.eventsService!.claimReward({
+    const result = await requireService(this.eventsService, "活动").claimReward({
       accountId: input.accountId,
       body: { event_id: eventId },
       idempotencyKey: input.idempotencyKey,
@@ -1374,7 +1345,7 @@ export class GameCommandService {
   }
 
   private async innerWorld(accountId: string): Promise<TextCommandResponse> {
-    const result = await this.innerWorldService!.getSummary(accountId);
+    const result = await requireService(this.innerWorldService, "内天地").getSummary(accountId);
     return this.success(
       "inner_world",
       [
@@ -1397,7 +1368,7 @@ export class GameCommandService {
     input: { accountId: string; idempotencyKey: string },
     province: string,
   ): Promise<TextCommandResponse> {
-    const result = await this.innerWorldService!.dispatch({
+    const result = await requireService(this.innerWorldService, "内天地").dispatch({
       accountId: input.accountId,
       body: { province_id: resolveProvince(province) ?? province },
       idempotencyKey: input.idempotencyKey,
@@ -1420,7 +1391,7 @@ export class GameCommandService {
     accountId: string;
     idempotencyKey: string;
   }): Promise<TextCommandResponse> {
-    const result = await this.innerWorldService!.claim({
+    const result = await requireService(this.innerWorldService, "内天地").claim({
       accountId: input.accountId,
       body: {},
       idempotencyKey: input.idempotencyKey,
@@ -1439,7 +1410,7 @@ export class GameCommandService {
     province: string,
     supportType: string,
   ): Promise<TextCommandResponse> {
-    const result = await this.innerWorldService!.support({
+    const result = await requireService(this.innerWorldService, "内天地").support({
       accountId: input.accountId,
       body: { province_id: resolveProvince(province) ?? province, support_type: supportType },
       idempotencyKey: input.idempotencyKey,
@@ -1538,8 +1509,8 @@ export class GameCommandService {
 
   private async ancientTreasure(accountId: string): Promise<TextCommandResponse> {
     const [result, overview] = await Promise.all([
-      this.commerceService!.listAncientTreasures(accountId),
-      this.commerceService!.getOverview(accountId),
+      requireService(this.commerceService, "商业化").listAncientTreasures(accountId),
+      requireService(this.commerceService, "商业化").getOverview(accountId),
     ]);
     const availableDraws = overview.available_monthly_grants.reduce(
       (sum, grant) => sum + grant.draw_count - grant.used_count,
@@ -1651,8 +1622,13 @@ function parseCommand(input: TextCommandRequest): ParsedCommand | InvalidCommand
   if (["领取行动收益", "领取行动"].includes(command)) {
     return args.length === 0 ? { commandId: "action_claim" } : invalid("领取行动收益不接受参数。 ");
   }
-  if (["修炼", "吐纳", "收功"].includes(command)) {
-    return noArguments("cultivation_claim", args, "修炼");
+  if (["修炼", "吐纳"].includes(command)) {
+    return args.length === 0
+      ? { commandId: "action_start", actionType: "cultivation" }
+      : invalid("修炼不接受参数。用法：修炼。 ");
+  }
+  if (["收功"].includes(command)) {
+    return args.length === 0 ? { commandId: "action_end" } : invalid("收功不接受参数。 ");
   }
   if (["突破", "breakthrough"].includes(command)) {
     return noArguments("breakthrough", args, "突破");
@@ -2187,4 +2163,11 @@ function getExceptionMessage(error: HttpException): string {
     }
   }
   return error.message || "指令执行失败，请稍后重试。";
+}
+
+function requireService<T>(service: T | undefined, label: string): T {
+  if (!service) {
+    throw new Error(`${label}服务未配置`);
+  }
+  return service;
 }

@@ -58,9 +58,7 @@ describe("长期探索结算", () => {
 
     expect(current.body.data.action.settled_minutes).toBe(120);
     expect(current.body.data.action.settled_battle_count).toBe(1);
-    expect(
-      await prisma.battleLog.count({ where: { playerId, battleType: "explore" } }),
-    ).toBe(1);
+    expect(await prisma.battleLog.count({ where: { playerId, battleType: "explore" } })).toBe(1);
     const settlements = await prisma.actionSettlementRecord.findMany({
       where: { playerId, actionId: recordId },
     });
@@ -183,6 +181,41 @@ describe("长期探索结算", () => {
     });
     expect(settlement.source).toBe("offline");
     expect(settlement.effectiveMinutes).toBe(480);
+  });
+
+  it("不同请求并发补算同一在线窗口只生成一份战报与奖励", async () => {
+    const { token, playerId } = await createPlayer(app, "并发窗口");
+    const started = await request(app.getHttpServer())
+      .post("/api/game/actions/start")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `long_start_${Date.now()}_concurrent_window`)
+      .send({ action_type: "explore", province_id: "ji" })
+      .expect(201);
+    const recordId = started.body.data.action.action_id as string;
+    const now = new Date();
+    await prisma.exploreActionRecord.update({
+      where: { recordId },
+      data: {
+        lastSettledAt: new Date(now.getTime() - 120 * 60_000),
+        lastActiveAt: now,
+      },
+    });
+
+    const responses = await Promise.all([
+      request(app.getHttpServer())
+        .get("/api/game/actions/current")
+        .set("Authorization", `Bearer ${token}`),
+      request(app.getHttpServer())
+        .get("/api/game/actions/current")
+        .set("Authorization", `Bearer ${token}`),
+    ]);
+    expect(responses.every((response) => response.status === 200)).toBe(true);
+    expect(responses[0].body.data.action.settled_battle_count).toBe(1);
+    expect(responses[1].body.data.action.settled_battle_count).toBe(1);
+    expect(await prisma.battleLog.count({ where: { playerId, battleType: "explore" } })).toBe(1);
+    expect(
+      await prisma.actionSettlementRecord.count({ where: { playerId, actionId: recordId } }),
+    ).toBe(1);
   });
 
   it("带探索次数的旧请求明确拒绝", async () => {

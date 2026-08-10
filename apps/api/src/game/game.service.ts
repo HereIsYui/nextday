@@ -8,24 +8,23 @@ import {
   type OnModuleInit,
 } from "@nestjs/common";
 import type {
-  ActionState,
   ActionCurrentResponse,
   ActionMutationResponse,
-  ActionStartRequest,
   ActionOfflineRewardResponse,
-  OfflineActionReward,
+  ActionStartRequest,
+  ActionState,
   BattleListResponse,
   BattleRoundLog,
   BattleSummary,
   BreakthroughResponse,
   CaveCollectResponse,
-  CultivationClaimResponse,
   CultivationStatus,
   ExploreEventListResponse,
   ExploreEventState,
   ExploreRequest,
   GameOverviewResponse,
   JournalListResponse,
+  OfflineActionReward,
   PlayerProfileResponse,
   ProvinceSummary,
   RealmProgressionResponse,
@@ -37,7 +36,6 @@ import type {
   TaskSummaryResponse,
 } from "@nextday/shared";
 import {
-  Prisma,
   type ExploreActionRecord,
   type ExploreEventRecord,
   type Player,
@@ -46,13 +44,18 @@ import {
   type PlayerProductionEffect,
   type PlayerProgress,
   type PlayerWallet,
+  Prisma,
 } from "@prisma/client";
+import {
+  lockAccountForTransaction,
+  lockPlayerForTransaction,
+} from "../database/player-transaction";
 import { PrismaService } from "../database/prisma.service";
-import { lockAccountForTransaction, lockPlayerForTransaction } from "../database/player-transaction";
 import { buildJournalExperience, writeJournalFromResponse } from "../journal/journal.utils";
 import { buildCaveCollectExperience } from "../platform/experience";
 import { hashRequestBody } from "../platform/utils/hash";
 import { toPlayerProfileResponse } from "../player/player.mapper";
+import { calculateUnifiedCombatPower, getCombatSkillSnapshot } from "./combat-skills";
 import {
   allocateCultivation,
   calculateCultivationPower,
@@ -94,7 +97,6 @@ import {
   stagesPerRealm,
 } from "./realm-progression.constants";
 import { ensureInitialPlayerTasks, incrementPlayerTasks } from "./task-progress.utils";
-import { calculateUnifiedCombatPower, getCombatSkillSnapshot } from "./combat-skills";
 
 type Tx = Prisma.TransactionClient;
 type DbClient = Tx | PrismaService;
@@ -209,9 +211,10 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       });
       const snapshot = state.activeActionOfflineSnapshot;
       return {
-        reward: snapshot && typeof snapshot === "object"
-          ? (snapshot as unknown as OfflineActionReward)
-          : null,
+        reward:
+          snapshot && typeof snapshot === "object"
+            ? (snapshot as unknown as OfflineActionReward)
+            : null,
       };
     });
   }
@@ -241,7 +244,13 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
           where: { recordId: state.activeActionId },
         });
         const minutes = normalizeOfflineSnapshotMinutes(snapshot);
-        const settled = await this.settleExploreWindow(tx, player.playerId, record, minutes, "offline");
+        const settled = await this.settleExploreWindow(
+          tx,
+          player.playerId,
+          record,
+          minutes,
+          "offline",
+        );
         const now = new Date();
         const updatedRecord = await tx.exploreActionRecord.update({
           where: { recordId: record.recordId },
@@ -321,7 +330,9 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       }
       const loaded = await this.requirePlayerInTx(tx, playerId);
       const province = await this.getProvinceForPlayer(tx, playerId, record.provinceId);
-      const snapshot = buildOfflineActionReward(
+      const snapshot = await buildOfflineActionReward(
+        tx,
+        playerId,
         record,
         offlineMinutes,
         lastSettledAt,
@@ -346,18 +357,20 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       return null;
     }
 
-    const minutesToSettle = mode === "end"
-      ? elapsedMinutes
-      : elapsedMinutes >= longExploreSettlementMinutes
+    const minutesToSettle =
+      mode === "end"
         ? elapsedMinutes
-        : 0;
+        : elapsedMinutes >= longExploreSettlementMinutes
+          ? elapsedMinutes
+          : 0;
     let settled: LongExploreSettlement | null = null;
     if (minutesToSettle > 0) {
       settled = await this.settleExploreWindow(tx, playerId, record, minutesToSettle, "online");
     }
-    const nextSettledAt = minutesToSettle > 0
-      ? new Date(lastSettledAt.getTime() + minutesToSettle * 60_000)
-      : lastSettledAt;
+    const nextSettledAt =
+      minutesToSettle > 0
+        ? new Date(lastSettledAt.getTime() + minutesToSettle * 60_000)
+        : lastSettledAt;
     await tx.exploreActionRecord.update({
       where: { recordId: record.recordId },
       data: { lastSettledAt: nextSettledAt, lastActiveAt: now },
@@ -437,8 +450,11 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
         count: targetBattles,
         rewardSnapshot: previousRewards as unknown as Prisma.InputJsonValue,
         battleSnapshot: battles.length
-          ? ([...(Array.isArray(record.battleSnapshot) ? record.battleSnapshot : []), ...battles] as unknown as Prisma.InputJsonValue)
-          : record.battleSnapshot ?? Prisma.JsonNull,
+          ? ([
+              ...(Array.isArray(record.battleSnapshot) ? record.battleSnapshot : []),
+              ...battles,
+            ] as unknown as Prisma.InputJsonValue)
+          : (record.battleSnapshot ?? Prisma.JsonNull),
       },
     });
     await tx.actionSettlementRecord.create({
@@ -572,6 +588,11 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
             },
           });
         }
+        // 统一时间归属：从开始长期行动起，旧的被动修为游标不再继续累积。
+        await tx.playerProgress.update({
+          where: { playerId: player.playerId },
+          data: { lastCultivationAt: now },
+        });
         const updated = await tx.playerActionState.update({
           where: { playerId: player.playerId },
           data: {
@@ -706,9 +727,14 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
             ? normalizeRewardBundle(state.activeActionRewardSnapshot)
             : {};
         if (state.activeActionType === "cultivation") {
+          const beforeStage = loaded.currentStage;
+          const beforeLevel = loaded.currentLevel;
           const gained = BigInt(rewards.cultivation ?? "0");
           const granted = await this.grantCultivation(tx, loaded, gained, {
             lastCultivationAt: new Date(),
+          });
+          await incrementPlayerTasks(tx, player.playerId, {
+            novice_claim_cultivation: 1,
           });
           rewards = { ...rewards, cultivation: gained.toString() };
           const updatedState = await tx.playerActionState.update({
@@ -727,7 +753,40 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
             },
           });
           const action = await this.toLongActionState(tx, updatedState);
-          return { action, action_state: toActionState(updatedState), rewards };
+          return {
+            action,
+            action_state: toActionState(updatedState),
+            rewards,
+            experience: buildJournalExperience({
+              title: "长期修炼结算",
+              summary: `长期修炼收益入体，修为 +${gained.toString()}。`,
+              deltas: [
+                { label: "修为", delta: `+${gained.toString()}`, tone: "success" },
+                {
+                  label: "修行进度",
+                  before: `${beforeStage}-${beforeLevel}`,
+                  after: `${granted.allocation.currentStage}-${granted.allocation.currentLevel}`,
+                  tone:
+                    beforeStage !== granted.allocation.currentStage ||
+                    beforeLevel !== granted.allocation.currentLevel
+                      ? "success"
+                      : "neutral",
+                },
+              ],
+              recommendations: [
+                {
+                  label:
+                    granted.player.currentRealm < maximumRealm &&
+                    granted.player.currentStage >= stagesPerRealm
+                      ? "查看突破状态"
+                      : "继续长期行动",
+                  reason: "修炼与探索共用同一时间归属，下一次行动不会重复计算本段时间。",
+                  priority: "medium",
+                },
+              ],
+              tags: [{ code: "cultivation_gain", label: "长期修炼", tone: "success" }],
+            }),
+          };
         }
         throw new BadRequestException("探索行动请先结束并领取");
       },
@@ -749,14 +808,16 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       });
       resolvedProvinceName = province?.name ?? null;
     }
-    const exploreRecord = state.activeActionType === "explore"
-      ? await tx.exploreActionRecord.findUnique({ where: { recordId: state.activeActionId } })
-      : null;
-    const offlineReward = exploreRecord?.offlineSnapshot && typeof exploreRecord.offlineSnapshot === "object"
-      ? (exploreRecord.offlineSnapshot as unknown as OfflineActionReward)
-      : state.activeActionOfflineSnapshot && typeof state.activeActionOfflineSnapshot === "object"
-        ? (state.activeActionOfflineSnapshot as unknown as OfflineActionReward)
+    const exploreRecord =
+      state.activeActionType === "explore"
+        ? await tx.exploreActionRecord.findUnique({ where: { recordId: state.activeActionId } })
         : null;
+    const offlineReward =
+      exploreRecord?.offlineSnapshot && typeof exploreRecord.offlineSnapshot === "object"
+        ? (exploreRecord.offlineSnapshot as unknown as OfflineActionReward)
+        : state.activeActionOfflineSnapshot && typeof state.activeActionOfflineSnapshot === "object"
+          ? (state.activeActionOfflineSnapshot as unknown as OfflineActionReward)
+          : null;
     return {
       action_id: state.activeActionId,
       action_type: state.activeActionType as "cultivation" | "explore",
@@ -774,9 +835,13 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       settled_minutes: exploreRecord?.settledMinutes ?? 0,
       settled_battle_count: exploreRecord?.settledBattleCount ?? 0,
       last_settled_at:
-        exploreRecord?.lastSettledAt?.toISOString() ?? state.activeActionSettledUntil?.toISOString() ?? null,
+        exploreRecord?.lastSettledAt?.toISOString() ??
+        state.activeActionSettledUntil?.toISOString() ??
+        null,
       last_active_at:
-        exploreRecord?.lastActiveAt?.toISOString() ?? state.activeActionLastActiveAt?.toISOString() ?? null,
+        exploreRecord?.lastActiveAt?.toISOString() ??
+        state.activeActionLastActiveAt?.toISOString() ??
+        null,
       offline_reward: offlineReward,
     };
   }
@@ -896,109 +961,6 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
     });
 
     return { events: events.map(toExploreEventState) };
-  }
-
-  async claimCultivation(input: {
-    accountId: string;
-    idempotencyKey: string;
-  }): Promise<CultivationClaimResponse> {
-    const player = await this.requirePlayer(input.accountId);
-    return this.withIdempotency({
-      accountId: input.accountId,
-      endpoint: "POST /api/game/cultivation/claim",
-      idempotencyKey: input.idempotencyKey,
-      requestBody: {},
-      handler: async (tx) => {
-        await this.ensureM2State(player.playerId, tx);
-        const loaded = await this.requirePlayerInTx(tx, player.playerId);
-        const actionState = await tx.playerActionState.findUniqueOrThrow({
-          where: { playerId: loaded.playerId },
-        });
-        if (actionState.activeActionType) {
-          throw new BadRequestException("当前有长期行动，请先结束并领取行动收益");
-        }
-        const beforeStage = loaded.currentStage;
-        const beforeLevel = loaded.currentLevel;
-        const gainedCultivation = calculateClaimableCultivation(loaded.progress);
-        const granted = await this.grantCultivation(tx, loaded, gainedCultivation, {
-          lastCultivationAt: new Date(),
-          dailyActiveScore: { increment: 5 },
-          weeklyActiveScore: { increment: 5 },
-        });
-        const updatedPlayer = granted.player;
-        const updatedProgress = granted.progress;
-        const completedTaskIds = await incrementPlayerTasks(tx, loaded.playerId, {
-          novice_claim_cultivation: 1,
-        });
-        const breakthroughEffect = await this.findActiveProductionEffect(
-          tx,
-          loaded.playerId,
-          "breakthrough_support",
-        );
-        const status = toCultivationStatus({
-          player: updatedPlayer,
-          progress: updatedProgress,
-          breakthroughSupportValue: breakthroughEffect?.effectValue ?? 0,
-        });
-        const response: CultivationClaimResponse = {
-          record_id: `cultivation_claim_${randomUUID()}`,
-          gained_cultivation: gainedCultivation.toString(),
-          before_level: beforeLevel,
-          after_level: granted.allocation.currentLevel,
-          before_stage: beforeStage,
-          after_stage: granted.allocation.currentStage,
-          status,
-          completed_task_ids: completedTaskIds,
-          experience: buildJournalExperience({
-            title: "收束修为",
-            summary:
-              granted.allocation.currentLevel !== beforeLevel ||
-              granted.allocation.currentStage !== beforeStage
-                ? `静坐收益入体，修为 +${gainedCultivation.toString()}，修行进度有所提升。`
-                : `静坐收益入体，修为 +${gainedCultivation.toString()}。`,
-            deltas: [
-              {
-                label: "修为",
-                delta: `+${gainedCultivation.toString()}`,
-                tone: "success",
-              },
-              {
-                label: "修行等级",
-                before: `${beforeStage}-${beforeLevel}`,
-                after: `${granted.allocation.currentStage}-${granted.allocation.currentLevel}`,
-                tone:
-                  granted.allocation.currentLevel !== beforeLevel ||
-                  granted.allocation.currentStage !== beforeStage
-                    ? "success"
-                    : "neutral",
-              },
-            ],
-            recommendations: [
-              {
-                label: status.can_breakthrough ? "准备突破" : "继续探索",
-                reason: status.can_breakthrough
-                  ? "当前境界已经圆满，可以尝试突破。"
-                  : "继续探索、服丹或照看洞府，补足下一层修为。",
-                priority: status.can_breakthrough ? "high" : "medium",
-              },
-            ],
-            tags: [{ code: "cultivation_gain", label: "修为成长", tone: "success" }],
-          }),
-        };
-
-        await this.writeAudit(tx, {
-          accountId: input.accountId,
-          playerId: loaded.playerId,
-          action: "cultivation_claim",
-          targetType: "player_progress",
-          targetId: loaded.playerId,
-          afterSnapshot: response as unknown as Prisma.InputJsonValue,
-          idempotencyKey: input.idempotencyKey,
-        });
-
-        return response;
-      },
-    });
   }
 
   async breakthrough(input: {
@@ -1947,7 +1909,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
     const damageDone = result === "win" ? enemy.enemyPower + player.currentLevel * 12 : playerPower;
     const damageTaken =
       result === "win"
-        ? Math.max(8, Math.floor(enemy.enemyPower / 3 * skillSnapshot.defenseMultiplier))
+        ? Math.max(8, Math.floor((enemy.enemyPower / 3) * skillSnapshot.defenseMultiplier))
         : Math.max(1, Math.floor(enemy.enemyPower * skillSnapshot.defenseMultiplier));
     const loot =
       result === "win"
@@ -1985,6 +1947,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       {
         sourceType: "explore",
         sourceId: province.province_id,
+        idempotencyKey: `explore-battle:${exploreRecordId}:${battleIndex}`,
       },
     );
 
@@ -2023,16 +1986,13 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
     return {
       summary: {
         ...summary,
-        reason_summary: [
-          ...(summary.reason_summary ?? []),
-          skillSnapshot.reason,
-        ],
-        battle_hint: buildExploreBattleHint({
+        reason_summary: [...(summary.reason_summary ?? []), skillSnapshot.reason],
+        battle_hint: `${buildExploreBattleHint({
           enemyName: enemy.enemyName,
           enemyTraits: enemy.traits,
           loot: loot ?? undefined,
           result,
-        }) + `；${skillSnapshot.activeSkillName}与${skillSnapshot.treasureSkillName}已生效`,
+        })}；${skillSnapshot.activeSkillName}与${skillSnapshot.treasureSkillName}已生效`,
         enemy_traits: enemy.traits,
         loot_highlights: loot ? [`${loot.name} x1 · ${loot.usageHint}`] : [],
       },
@@ -2387,13 +2347,14 @@ function toCultivationStatus(input: {
     maximum_realm: maximumRealm,
     realm_power_bonus_percent: realmConfig.powerBonusPercent,
     current_stage: input.player.currentStage,
-    current_stage_name: stageConfig.qiName,
+    current_stage_name: input.player.route === "body" ? stageConfig.bodyName : stageConfig.qiName,
     current_stage_level_count: stageLevelCount,
     current_level: input.player.currentLevel,
     current_level_required: currentLevelRequired.toString(),
     cultivation_to_next_level: cultivationToNextLevel.toString(),
     current_stage_progress: `${input.player.currentLevel}/${stageLevelCount}`,
-    claimable_cultivation: calculateClaimableCultivation(input.progress).toString(),
+    // 独立被动领取已退役，修为只通过长期行动、探索、奇遇和生产奖励结算。
+    claimable_cultivation: "0",
     catchup_bonus_rate: input.progress.catchupBonusRate,
     last_cultivation_at: input.progress.lastCultivationAt.toISOString(),
     can_breakthrough:
@@ -2411,16 +2372,6 @@ function toCultivationStatus(input: {
   };
 }
 
-function calculateClaimableCultivation(progress: PlayerProgress): bigint {
-  const elapsedHours = Math.min(
-    maxOfflineCultivationHours,
-    Math.max(0, (Date.now() - progress.lastCultivationAt.getTime()) / (60 * 60 * 1000)),
-  );
-  const base = BigInt(Math.floor(elapsedHours * progress.cultivationRatePerHour));
-  const bonus = (base * BigInt(progress.catchupBonusRate)) / 100n;
-  return base + bonus;
-}
-
 function calculateRecoveredActionPoints(state: PlayerActionState): number {
   const elapsedHours = Math.max(
     0,
@@ -2430,14 +2381,16 @@ function calculateRecoveredActionPoints(state: PlayerActionState): number {
   return Math.min(state.actionPointCap, state.actionPoints + recovered);
 }
 
-function buildOfflineActionReward(
+async function buildOfflineActionReward(
+  tx: DbClient,
+  playerId: string,
   record: ExploreActionRecord,
   offlineMinutes: number,
   fromAt: Date,
   now: Date,
-  player: Pick<Player, "currentRealm" | "currentStage" | "currentLevel">,
+  player: Pick<Player, "route" | "currentRealm" | "currentStage" | "currentLevel">,
   province: ProvinceSummary,
-): OfflineActionReward {
+): Promise<OfflineActionReward> {
   const previousMinutes = record.settledMinutes ?? 0;
   const previousBattles = record.settledBattleCount ?? record.count ?? 0;
   const totalMinutes = previousMinutes + offlineMinutes;
@@ -2447,20 +2400,38 @@ function buildOfflineActionReward(
   );
   const rewards: RewardBundle = { cultivation: "0", spirit_stone: "0", items: [] };
   const config = provinceConfigs.find((item) => item.provinceId === province.province_id);
+  const equipments = await tx.equipmentInstance.findMany({
+    where: { playerId, status: "active", equippedSlot: { not: null } },
+    include: { affixes: true },
+  });
+  const equipmentPower = equipments.reduce(
+    (sum, equipment) =>
+      sum + equipment.affixes.reduce((affixSum, affix) => affixSum + affix.value, 0),
+    0,
+  );
+  const loadout = await tx.playerSkillLoadout.findUnique({ where: { playerId } });
   for (let index = 0; index < estimatedBattleCount; index += 1) {
     const battleIndex = previousBattles + index;
     const enemy = selectExploreEnemy(province.province_id, record.recordId, battleIndex) ?? {
       enemyPower: config?.enemyPower ?? 0,
       enemyId: config?.enemyId ?? "unknown",
+      traits: [],
     };
-    const result =
-      calculateCultivationPower(
+    const skillSnapshot = getCombatSkillSnapshot({
+      route: player.route,
+      loadout,
+      enemyTraits: enemy.traits,
+    });
+    const playerPower = calculateUnifiedCombatPower({
+      basePower: calculateCultivationPower(
         player.currentRealm,
         player.currentStage,
         player.currentLevel,
-      ) >= enemy.enemyPower
-        ? "win"
-        : "lose";
+      ),
+      equipmentPower: Math.floor(equipmentPower / 4),
+      skillSnapshot,
+    });
+    const result = playerPower >= enemy.enemyPower ? "win" : "lose";
     const loot =
       result === "win"
         ? selectExploreLoot(province.province_id, record.recordId, battleIndex, enemy.enemyId)
@@ -2477,7 +2448,9 @@ function buildOfflineActionReward(
     province_name: record.provinceName,
     offline_minutes: offlineMinutes,
     from_at: fromAt.toISOString(),
-    to_at: new Date(Math.min(now.getTime(), fromAt.getTime() + offlineMinutes * 60_000)).toISOString(),
+    to_at: new Date(
+      Math.min(now.getTime(), fromAt.getTime() + offlineMinutes * 60_000),
+    ).toISOString(),
     estimated_battle_count: estimatedBattleCount,
     rewards,
     claimable: true,
@@ -2828,9 +2801,7 @@ function buildExploreSettlementExperience(input: {
   return buildJournalExperience({
     title: `${input.provinceName}探索结算`,
     summary: `${sourceLabel}长期探索完成 ${input.battleCount} 场战斗${rewardParts.length ? `，获得${rewardParts.join("、")}` : ""}。`,
-    deltas: rewardParts.length
-      ? [{ label: "探索收益", delta: rewardParts.join("，") }]
-      : [],
+    deltas: rewardParts.length ? [{ label: "探索收益", delta: rewardParts.join("，") }] : [],
     tags: [{ code: "auto_battle", label: "自动战斗", tone: "success" }],
   });
 }
@@ -2872,7 +2843,6 @@ function stringArrayFromJson(value: Prisma.JsonValue): string[] {
     ? value.filter((item): item is string => typeof item === "string")
     : [];
 }
-
 
 function getActiveTaskResetKeys(): string[] {
   return [...new Set(getTaskDefinitions().map((definition) => definition.resetKey))];
@@ -2945,7 +2915,6 @@ function createBattleRoundLog(input: {
     },
   ];
 }
-
 
 function sortProvincesByConfig<T extends { provinceId: string }>(items: T[]): T[] {
   const order = new Map(provinceConfigs.map((province, index) => [province.provinceId, index]));

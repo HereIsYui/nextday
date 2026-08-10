@@ -116,6 +116,39 @@ describe("P1 内天地派驻系统", () => {
     ).toBeGreaterThan(0);
   });
 
+  it("不同幂等键并发收取同一派驻时只结算一次", async () => {
+    const { token, playerId } = await createUnlockedInnerWorldPlayer(app, prisma, "收取并发", "qi");
+    const dispatched = await request(app.getHttpServer())
+      .post("/api/inner-world/dispatch")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_p1_inner_concurrent_dispatch_${Date.now()}_${randomSuffix()}`)
+      .send({ province_id: "ji" })
+      .expect(201);
+    await prisma.innerWorldAssignment.update({
+      where: { assignmentId: dispatched.body.data.assignment.assignment_id },
+      data: { endsAt: new Date(Date.now() - 60_000) },
+    });
+
+    const responses = await Promise.all([
+      request(app.getHttpServer())
+        .post("/api/inner-world/claim")
+        .set("Authorization", `Bearer ${token}`)
+        .set("Idempotency-Key", `idem_p1_inner_concurrent_claim_a_${Date.now()}_${randomSuffix()}`)
+        .send({}),
+      request(app.getHttpServer())
+        .post("/api/inner-world/claim")
+        .set("Authorization", `Bearer ${token}`)
+        .set("Idempotency-Key", `idem_p1_inner_concurrent_claim_b_${Date.now()}_${randomSuffix()}`)
+        .send({}),
+    ]);
+    expect(responses.filter((response) => response.status === 201)).toHaveLength(1);
+    expect(responses.filter((response) => response.status === 400)).toHaveLength(1);
+    expect(
+      await prisma.innerWorldAssignment.count({ where: { playerId, status: "claimed" } }),
+    ).toBe(1);
+    expect(await prisma.innerWorldLawRecord.count({ where: { playerId } })).toBe(1);
+  });
+
   it("内天地升级、生灵培养和九州支援受材料、法则经验与每日次数约束", async () => {
     const { token, playerId } = await createUnlockedInnerWorldPlayer(app, prisma, "养成", "qi");
     await seedInnerWorldGrowthCost(prisma, playerId);

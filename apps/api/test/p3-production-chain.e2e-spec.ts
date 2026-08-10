@@ -180,6 +180,40 @@ describe("P3-2 自研丹器与材料链", () => {
     expect(failedSave.body.message).toContain("成功的炼丹记录");
   });
 
+  it("不同幂等键并发炼丹不会重复扣除同一批材料", async () => {
+    const { token, playerId } = await createP3ProductionPlayer(app, prisma);
+    const materials: CraftMaterial[] = [
+      { item_id: "alch_moon_dew_herb", count: 2 },
+      { item_id: "alch_spirit_resin", count: 1 },
+    ];
+    await grantProductionMaterials(prisma, playerId, {
+      alch_moon_dew_herb: 2,
+      alch_spirit_resin: 1,
+    });
+    const responses = await Promise.all([
+      request(app.getHttpServer())
+        .post("/api/production/alchemy/craft")
+        .set("Authorization", `Bearer ${token}`)
+        .set(
+          "Idempotency-Key",
+          findCraftSuccessKey("p3_concurrent_craft_a", "alchemy", materials, 8800),
+        )
+        .send({ materials }),
+      request(app.getHttpServer())
+        .post("/api/production/alchemy/craft")
+        .set("Authorization", `Bearer ${token}`)
+        .set(
+          "Idempotency-Key",
+          findCraftSuccessKey("p3_concurrent_craft_b", "alchemy", materials, 8800),
+        )
+        .send({ materials }),
+    ]);
+    expect(responses.filter((response) => response.status === 201)).toHaveLength(1);
+    expect(responses.filter((response) => response.status === 400)).toHaveLength(1);
+    expect(await getItemCount(prisma, playerId, "alch_moon_dew_herb")).toBe(0);
+    expect(await getItemCount(prisma, playerId, "alch_spirit_resin")).toBe(0);
+  });
+
   it("冀州首炉丹组合可成功炼制，失败炼丹不推进第一炉丹任务", async () => {
     const { token, playerId } = await createP3ProductionPlayer(app, prisma);
     const starterMaterials: CraftMaterial[] = [

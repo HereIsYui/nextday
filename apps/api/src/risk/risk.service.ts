@@ -13,6 +13,7 @@ import type {
   SettlementStatus,
 } from "@nextday/shared";
 import type { Prisma } from "@prisma/client";
+import { lockPlayerForTransaction } from "../database/player-transaction";
 import { PrismaService } from "../database/prisma.service";
 import { allocateCultivation } from "../game/cultivation-progress";
 import { defaultEraId } from "../game/game.constants";
@@ -336,11 +337,18 @@ export class RiskService {
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {
-      if (input.action === "release") {
-        await this.releaseDelayedRewards(tx, existing);
+      await lockPlayerForTransaction(tx, existing.playerId);
+      const current = await tx.delayedSettlementRecord.findUniqueOrThrow({
+        where: { settlementRecordId: input.settlement_record_id },
+      });
+      if (current.status !== "delayed") {
+        return current;
       }
-      return tx.delayedSettlementRecord.update({
-        where: { settlementRecordId: existing.settlementRecordId },
+      if (input.action === "release") {
+        await this.releaseDelayedRewards(tx, current);
+      }
+      const migrated = await tx.delayedSettlementRecord.updateMany({
+        where: { settlementRecordId: current.settlementRecordId, status: "delayed" },
         data: {
           status: input.action === "release" ? "settled" : "rejected",
           reviewAction: input.action,
@@ -349,6 +357,14 @@ export class RiskService {
           reviewedAt: new Date(),
           settledAt: input.action === "release" ? new Date() : null,
         },
+      });
+      if (migrated.count !== 1) {
+        return tx.delayedSettlementRecord.findUniqueOrThrow({
+          where: { settlementRecordId: current.settlementRecordId },
+        });
+      }
+      return tx.delayedSettlementRecord.findUniqueOrThrow({
+        where: { settlementRecordId: current.settlementRecordId },
       });
     });
 
@@ -409,7 +425,7 @@ export class RiskService {
 
   private async releaseDelayedRewards(
     tx: Tx,
-    record: { playerId: string; amountSnapshot: Prisma.JsonValue },
+    record: { settlementRecordId: string; playerId: string; amountSnapshot: Prisma.JsonValue },
   ) {
     const snapshot = normalizeSnapshot(record.amountSnapshot);
     const rewards = normalizeRewards(snapshot.rewards);
@@ -464,7 +480,7 @@ export class RiskService {
           sourceType: "delayed_settlement_release",
           sourceId:
             typeof snapshot.source_record_id === "string" ? snapshot.source_record_id : undefined,
-          idempotencyKey: `risk_release_${randomUUID()}`,
+          idempotencyKey: `risk_release:${record.settlementRecordId}`,
         },
       });
     }

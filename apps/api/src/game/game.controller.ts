@@ -7,7 +7,6 @@ import type {
   BattleListResponse,
   BreakthroughResponse,
   CaveCollectResponse,
-  CultivationClaimResponse,
   ExploreEventListResponse,
   ExploreRequest,
   GameOverviewResponse,
@@ -139,14 +138,6 @@ export class GameController {
       limit,
       provinceId,
       result,
-    });
-  }
-
-  @Post("cultivation/claim")
-  claimCultivation(@Req() request: Request): Promise<CultivationClaimResponse> {
-    return this.gameService.claimCultivation({
-      accountId: requireAccountId(request),
-      idempotencyKey: requireIdempotencyKey(request),
     });
   }
 

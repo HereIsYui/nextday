@@ -64,7 +64,6 @@ import type {
   CreateSectRequest,
   CreateTransferRequestRequest,
   CreateTransferRequestResponse,
-  CultivationClaimResponse,
   DiscoveredAlchemyCraftResponse,
   DiscoveredForgeCraftResponse,
   DiscoveredPillUseResponse,
@@ -74,8 +73,8 @@ import type {
   EquipAppearanceRequest,
   EquipCollectionDisplayRequest,
   EquipCollectionDisplayResponse,
-  EquipmentInscribeRequest,
   EquipmentEquipRequest,
+  EquipmentInscribeRequest,
   EquipmentListResponse,
   EquipmentOperationRecordListResponse,
   EquipmentOperationResponse,
@@ -538,16 +537,6 @@ export class GameClient {
     return this.get<JournalListResponse>(`/api/game/journal?${params.toString()}`);
   }
 
-  claimCultivation(idempotencyKey: string): Promise<ApiResponse<CultivationClaimResponse>> {
-    return this.post<CultivationClaimResponse>(
-      "/api/game/cultivation/claim",
-      {},
-      {
-        idempotencyKey,
-      },
-    );
-  }
-
   breakthrough(idempotencyKey: string): Promise<ApiResponse<BreakthroughResponse>> {
     return this.post<BreakthroughResponse>(
       "/api/game/cultivation/breakthrough",
@@ -558,7 +547,10 @@ export class GameClient {
     );
   }
 
-  explore(body: ExploreRequest, idempotencyKey: string): Promise<ApiResponse<ActionMutationResponse>> {
+  explore(
+    body: ExploreRequest,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<ActionMutationResponse>> {
     return this.post<ActionMutationResponse, ExploreRequest>("/api/game/explore", body, {
       idempotencyKey,
     });

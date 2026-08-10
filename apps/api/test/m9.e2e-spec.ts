@@ -98,18 +98,34 @@ describe("M9 MVP 总体验收与小纪元演练", () => {
       ),
     ).toBe(true);
 
+    const cultivationStartKey = `idem_m9_cultivation_start_${randomSuffix()}`;
+    await request(app.getHttpServer())
+      .post("/api/game/actions/start")
+      .set("Authorization", `Bearer ${leader.token}`)
+      .set("Idempotency-Key", cultivationStartKey)
+      .send({ action_type: "cultivation" })
+      .expect(201);
+    await prisma.playerActionState.update({
+      where: { playerId: leader.playerId },
+      data: { activeActionStartedAt: new Date(Date.now() - 60 * 60 * 1000) },
+    });
+    await request(app.getHttpServer())
+      .post("/api/game/actions/end")
+      .set("Authorization", `Bearer ${leader.token}`)
+      .set("Idempotency-Key", `idem_m9_cultivation_end_${randomSuffix()}`)
+      .expect(201);
     const claimKey = `idem_m9_cultivation_${randomSuffix()}`;
     const claim = await request(app.getHttpServer())
-      .post("/api/game/cultivation/claim")
+      .post("/api/game/actions/claim")
       .set("Authorization", `Bearer ${leader.token}`)
       .set("Idempotency-Key", claimKey)
       .expect(201);
     const repeatedClaim = await request(app.getHttpServer())
-      .post("/api/game/cultivation/claim")
+      .post("/api/game/actions/claim")
       .set("Authorization", `Bearer ${leader.token}`)
       .set("Idempotency-Key", claimKey)
       .expect(201);
-    expect(repeatedClaim.body.data.record_id).toBe(claim.body.data.record_id);
+    expect(repeatedClaim.body.data.rewards.cultivation).toBe(claim.body.data.rewards.cultivation);
 
     await request(app.getHttpServer())
       .post("/api/production/skills/loadout")
@@ -158,7 +174,9 @@ describe("M9 MVP 总体验收与小纪元演练", () => {
       .set("Authorization", `Bearer ${leader.token}`)
       .expect(200);
     expect(
-      overviewAfterExplore.body.data.tasks.find((task: { task_id: string }) => task.task_id === "daily_explore")?.status,
+      overviewAfterExplore.body.data.tasks.find(
+        (task: { task_id: string }) => task.task_id === "daily_explore",
+      )?.status,
     ).toBe("completed");
 
     await request(app.getHttpServer())

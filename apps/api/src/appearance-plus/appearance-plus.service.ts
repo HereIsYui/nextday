@@ -8,6 +8,7 @@ import type {
   EquipAppearancePlusResponse,
 } from "@nextday/shared";
 import type { AppearanceOwnershipRecord, Player, Prisma, SectMember } from "@prisma/client";
+import { lockAccountForTransaction } from "../database/player-transaction";
 import { PrismaService } from "../database/prisma.service";
 import { hashRequestBody } from "../platform/utils/hash";
 import {
@@ -271,6 +272,20 @@ export class AppearancePlusService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      await lockAccountForTransaction(tx, input.accountId);
+      const concurrentRecord = await tx.idempotencyRecord.findUnique({
+        where: { idempotencyKey: input.idempotencyKey },
+      });
+      if (concurrentRecord) {
+        if (
+          concurrentRecord.accountId !== input.accountId ||
+          concurrentRecord.endpoint !== input.endpoint ||
+          concurrentRecord.requestHash !== requestHash
+        ) {
+          throw new BadRequestException("幂等键已被其他请求使用");
+        }
+        return concurrentRecord.responseData as unknown as TResponse;
+      }
       const response = await input.handler(tx);
       await tx.idempotencyRecord.create({
         data: {

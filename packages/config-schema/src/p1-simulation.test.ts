@@ -48,6 +48,11 @@ describe("P1 数值模拟配置", () => {
     expect(standardFree?.day_reports.find((report) => report.day === 20)?.realm).toBe(
       "筑基 / 筑身",
     );
+    expect(standardFree?.day_reports.find((report) => report.day === 7)?.realm).toBe("练气 / 锻体");
+    expect(
+      standardFree?.day_reports.find((report) => report.day === 7)?.stage,
+    ).toBeGreaterThanOrEqual(1);
+    expect(standardFree?.day_reports.find((report) => report.day === 7)?.stage_name).toBeTruthy();
     expect(standardFree?.day_reports.find((report) => report.day === 55)?.realm).toBe(
       "金丹 / 血丹",
     );

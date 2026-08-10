@@ -206,7 +206,8 @@ function realm(
 ): RealmProgressionConfig {
   const schedule = realmSchedules[realmId - 1];
   if (!schedule) throw new Error(`缺少第 ${realmId} 境节奏配置`);
-  const levelCountPerStage = realmId + 2;
+  // 真仙/真魔的小境界按设定扩展到 12 级，其余境界从 3 级递增到 10 级。
+  const levelCountPerStage = realmId === maximumRealm ? 12 : realmId + 2;
   const realmBudget = schedule.targetDays * schedule.standardDailyCultivation;
   const breakthroughCultivation = realmId === maximumRealm ? 0 : Math.round(realmBudget * 0.15);
   const stages = createStages(realmId, levelCountPerStage);

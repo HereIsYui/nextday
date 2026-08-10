@@ -7,6 +7,7 @@ import type {
   PlayerProfileResponse,
 } from "@nextday/shared";
 import type { Prisma } from "@prisma/client";
+import { lockAccountForTransaction } from "../database/player-transaction";
 import { PrismaService } from "../database/prisma.service";
 import { getCultivationRatePerHour } from "../game/cultivation-progress";
 import { createInitialTaskRows, defaultEraId } from "../game/game.constants";
@@ -59,6 +60,20 @@ export class PlayerService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
+        await lockAccountForTransaction(tx, input.accountId);
+        const concurrentRecord = await tx.idempotencyRecord.findUnique({
+          where: { idempotencyKey: input.idempotencyKey },
+        });
+        if (concurrentRecord) {
+          if (
+            concurrentRecord.accountId !== input.accountId ||
+            concurrentRecord.endpoint !== input.endpoint ||
+            concurrentRecord.requestHash !== requestHash
+          ) {
+            throw new BadRequestException("幂等键已被其他请求使用");
+          }
+          return concurrentRecord.responseData as unknown as CreatePlayerResponse;
+        }
         const account = await tx.account.findUnique({
           where: { accountId: input.accountId },
           include: { player: true },

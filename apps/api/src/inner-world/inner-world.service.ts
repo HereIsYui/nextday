@@ -25,8 +25,8 @@ import type {
   PlayerProgress,
   Prisma,
 } from "@prisma/client";
-import { PrismaService } from "../database/prisma.service";
 import { lockAccountForTransaction } from "../database/player-transaction";
+import { PrismaService } from "../database/prisma.service";
 import { defaultEraId, provinceConfigs } from "../game/game.constants";
 import { writeJournalFromResponse } from "../journal/journal.utils";
 import { towerConfigs } from "../multiplayer/multiplayer.constants";
@@ -698,6 +698,19 @@ export class InnerWorldService {
 
     return this.prisma.$transaction(async (tx) => {
       await lockAccountForTransaction(tx, input.accountId);
+      const concurrentRecord = await tx.idempotencyRecord.findUnique({
+        where: { idempotencyKey: input.idempotencyKey },
+      });
+      if (concurrentRecord) {
+        if (
+          concurrentRecord.accountId !== input.accountId ||
+          concurrentRecord.endpoint !== input.endpoint ||
+          concurrentRecord.requestHash !== requestHash
+        ) {
+          throw new BadRequestException("幂等键已被其他请求使用");
+        }
+        return concurrentRecord.responseData as unknown as TResponse;
+      }
       const response = await input.handler(tx);
       await tx.idempotencyRecord.create({
         data: {

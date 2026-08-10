@@ -147,13 +147,7 @@ export class PluginService {
     idempotencyKey: string;
   }): Promise<PluginQuickClaimResponse> {
     const items: PluginQuickClaimItem[] = [];
-    await this.tryClaim(items, "cultivation", "领取修为", async () => {
-      const result = await this.gameService.claimCultivation({
-        accountId: input.accountId,
-        idempotencyKey: `${input.idempotencyKey}:cultivation`,
-      });
-      return { recordId: result.record_id, message: `修为 +${result.gained_cultivation}` };
-    });
+    // 修为不再通过独立的被动领取入口结算，必须由长期修炼行动结束后领取。
     await this.tryClaim(items, "cave", "洞府收取", async () => {
       const result = await this.gameService.collectCave({
         accountId: input.accountId,

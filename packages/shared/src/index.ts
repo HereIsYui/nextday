@@ -530,18 +530,6 @@ export interface RealmProgressionResponse {
   config_version: string;
 }
 
-export interface CultivationClaimResponse {
-  record_id: string;
-  gained_cultivation: string;
-  before_level: number;
-  after_level: number;
-  before_stage: number;
-  after_stage: number;
-  status: CultivationStatus;
-  completed_task_ids: string[];
-  experience?: ExperiencePayload;
-}
-
 export interface BreakthroughResponse {
   record_id: string;
   success: boolean;
@@ -608,6 +596,8 @@ export interface ActionMutationResponse {
   action: LongActionState | null;
   action_state: ActionState;
   rewards: RewardBundle;
+  /** 需要写入修行日志的长期行动结算说明。 */
+  experience?: ExperiencePayload;
 }
 
 export interface WorldChatItemShare {
@@ -2800,7 +2790,6 @@ export type TextCommandId =
   | "help"
   | "status"
   | "bag"
-  | "cultivation_claim"
   | "action_start"
   | "action_end"
   | "action_claim"
@@ -2875,7 +2864,6 @@ export type TextCommandResult =
   | GameOverviewResponse
   | ActionMutationResponse
   | BagSummaryResponse
-  | CultivationClaimResponse
   | BreakthroughResponse
   | ExploreEventListResponse
   | ResolveExploreEventResponse

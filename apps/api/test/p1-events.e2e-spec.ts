@@ -3,7 +3,7 @@ import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { PrismaClient } from "@prisma/client";
 import request from "supertest";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { AppModule } from "../src/app.module";
 import { configureApp } from "../src/platform/configure-app";
 
@@ -111,6 +111,40 @@ describe("P1 节日活动、回归和补偿活动", () => {
     expect(eventItems.every((item) => item.bindType === "bound")).toBe(true);
   });
 
+  it("不同幂等键并发领取同一活动时只允许一次状态迁移和奖励发放", async () => {
+    const { token, playerId } = await createEventPlayer(app, "活动并发", "qi");
+    await request(app.getHttpServer())
+      .post("/api/events/progress")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_p1_event_concurrent_progress_${Date.now()}_${randomSuffix()}`)
+      .send({ event_id: "event_p1_jiuzhou_travel", province_id: "ji", count: 3 })
+      .expect(201);
+
+    const responses = await Promise.all([
+      request(app.getHttpServer())
+        .post("/api/events/claim")
+        .set("Authorization", `Bearer ${token}`)
+        .set("Idempotency-Key", `idem_p1_event_concurrent_claim_a_${Date.now()}_${randomSuffix()}`)
+        .send({ event_id: "event_p1_jiuzhou_travel" }),
+      request(app.getHttpServer())
+        .post("/api/events/claim")
+        .set("Authorization", `Bearer ${token}`)
+        .set("Idempotency-Key", `idem_p1_event_concurrent_claim_b_${Date.now()}_${randomSuffix()}`)
+        .send({ event_id: "event_p1_jiuzhou_travel" }),
+    ]);
+
+    expect(responses.filter((response) => response.status === 201)).toHaveLength(1);
+    expect(responses.filter((response) => response.status === 400)).toHaveLength(1);
+    expect(
+      await prisma.eventRewardRecord.count({
+        where: { playerId },
+      }),
+    ).toBe(1);
+    expect(
+      await prisma.playerItem.count({ where: { playerId, sourceType: "event_reward" } }),
+    ).toBeGreaterThan(0);
+  });
+
   it("插件展开态展示活动摘要，活动配置发布校验拒绝付费和非异步模板", async () => {
     const { token } = await createEventPlayer(app, "插件", "qi");
     const panel = await request(app.getHttpServer())
@@ -148,6 +182,55 @@ describe("P1 节日活动、回归和补偿活动", () => {
       .expect(400);
 
     expect(rejected.body.message).toContain("活动配置不能包含");
+  });
+
+  it("活动按十四天周期生成新实例，旧周期结算且进度相互独立", async () => {
+    const previousJwtExpiresIn = process.env.JWT_EXPIRES_IN;
+    process.env.JWT_EXPIRES_IN = "30d";
+    const baseTime = new Date();
+    vi.useFakeTimers({ now: baseTime });
+    try {
+      const { token, playerId } = await createEventPlayer(app, "周期", "qi");
+      await request(app.getHttpServer())
+        .get("/api/events/list")
+        .set("Authorization", `Bearer ${token}`)
+        .expect(200);
+      const first = await prisma.eventInstance.findFirstOrThrow({
+        where: { eventId: "event_p1_jiuzhou_travel", status: "active" },
+      });
+      await request(app.getHttpServer())
+        .post("/api/events/progress")
+        .set("Authorization", `Bearer ${token}`)
+        .set("Idempotency-Key", `idem_p1_event_cycle_progress_${Date.now()}_${randomSuffix()}`)
+        .send({ event_id: "event_p1_jiuzhou_travel", province_id: "ji", count: 1 })
+        .expect(201);
+
+      vi.setSystemTime(new Date(baseTime.getTime() + 14 * 24 * 60 * 60 * 1000));
+      const nextList = await request(app.getHttpServer())
+        .get("/api/events/list")
+        .set("Authorization", `Bearer ${token}`)
+        .expect(200);
+      expect(nextList.body.data.events.length).toBeGreaterThan(0);
+      const instances = await prisma.eventInstance.findMany({
+        where: { eventId: "event_p1_jiuzhou_travel" },
+        orderBy: { startsAt: "asc" },
+      });
+      expect(instances.length).toBeGreaterThanOrEqual(2);
+      expect(instances.find((item) => item.eventInstanceId === first.eventInstanceId)?.status).toBe(
+        "settled",
+      );
+      expect(instances.filter((item) => item.status === "active")).toHaveLength(1);
+      const records = await prisma.eventRecord.findMany({ where: { playerId } });
+      expect(records).toHaveLength(1);
+      expect(records[0].periodKey).toBe(first.cycleKey);
+    } finally {
+      vi.useRealTimers();
+      if (previousJwtExpiresIn === undefined) {
+        process.env.JWT_EXPIRES_IN = undefined;
+      } else {
+        process.env.JWT_EXPIRES_IN = previousJwtExpiresIn;
+      }
+    }
   });
 });
 

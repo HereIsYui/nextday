@@ -34,8 +34,8 @@ import type {
   PlayerItem,
   Prisma,
 } from "@prisma/client";
-import { PrismaService } from "../database/prisma.service";
 import { lockAccountForTransaction } from "../database/player-transaction";
+import { PrismaService } from "../database/prisma.service";
 import { allocateCultivation, getPillCultivationLimit } from "../game/cultivation-progress";
 import { defaultEraId } from "../game/game.constants";
 import { normalizeRewardBundle, toBattleSummary } from "../game/game.mappers";
@@ -380,6 +380,12 @@ export class ProductionService {
       idempotencyKey: input.idempotencyKey,
       requestBody: body,
       handler: async (tx) => {
+        // 幂等事务已经取得玩家锁，必须在锁内重新读取境界和修为，避免服丹与
+        // 探索、奇遇或突破并发时使用事务外的旧快照计算药力上限。
+        const currentPlayer = await tx.player.findUniqueOrThrow({
+          where: { playerId: player.playerId },
+          include: { progress: true },
+        });
         const item = await tx.playerItem.findFirst({
           where: {
             itemInstanceId: body.item_instance_id,
@@ -411,28 +417,25 @@ export class ProductionService {
         const effectValue = Math.floor(
           pillEffect.effect_value * getQualityConfig(quality).multiplier * (effectiveRate / 100),
         );
-        const progress = await tx.playerProgress.findUniqueOrThrow({
-          where: { playerId: player.playerId },
-        });
         const cultivationGain =
           pillEffect.pill_effect === "cultivation"
-            ? Math.min(effectValue, getPillCultivationLimit(player.currentRealm))
+            ? Math.min(effectValue, getPillCultivationLimit(currentPlayer.currentRealm))
             : 0;
         const appliedEffectValue =
           pillEffect.pill_effect === "cultivation" ? cultivationGain : effectValue;
         const allocation = allocateCultivation(
           {
-            currentRealm: player.currentRealm,
-            currentStage: player.currentStage,
-            currentLevel: player.currentLevel,
-            cultivationValue: progress.cultivationValue,
+            currentRealm: currentPlayer.currentRealm,
+            currentStage: currentPlayer.currentStage,
+            currentLevel: currentPlayer.currentLevel,
+            cultivationValue: currentPlayer.progress?.cultivationValue ?? 0n,
           },
           BigInt(cultivationGain),
         );
         if (
-          allocation.currentRealm !== player.currentRealm ||
-          allocation.currentStage !== player.currentStage ||
-          allocation.currentLevel !== player.currentLevel
+          allocation.currentRealm !== currentPlayer.currentRealm ||
+          allocation.currentStage !== currentPlayer.currentStage ||
+          allocation.currentLevel !== currentPlayer.currentLevel
         ) {
           await tx.player.update({
             where: { playerId: player.playerId },
@@ -465,7 +468,7 @@ export class ProductionService {
             sameTierUseCount,
             effectiveRate,
             effectValue: appliedEffectValue,
-            beforeCultivation: progress.cultivationValue,
+            beforeCultivation: currentPlayer.progress?.cultivationValue ?? 0n,
             afterCultivation,
             configVersion: productionConfigVersion,
             idempotencyKey: input.idempotencyKey,
@@ -510,7 +513,7 @@ export class ProductionService {
           same_tier_use_count: sameTierUseCount,
           effective_rate: effectiveRate,
           effect_value: appliedEffectValue,
-          before_cultivation: progress.cultivationValue.toString(),
+          before_cultivation: (currentPlayer.progress?.cultivationValue ?? 0n).toString(),
           after_cultivation: afterCultivation.toString(),
           profile: await this.getProfileByPlayerId(tx, player.playerId),
           pill_effect: pillEffect.pill_effect,
@@ -1934,6 +1937,19 @@ export class ProductionService {
     try {
       return await this.prisma.$transaction(async (tx) => {
         await lockAccountForTransaction(tx, input.accountId);
+        const concurrentRecord = await tx.idempotencyRecord.findUnique({
+          where: { idempotencyKey: input.idempotencyKey },
+        });
+        if (concurrentRecord) {
+          if (
+            concurrentRecord.accountId !== input.accountId ||
+            concurrentRecord.endpoint !== input.endpoint ||
+            concurrentRecord.requestHash !== requestHash
+          ) {
+            throw new BadRequestException("幂等键已被其他请求使用");
+          }
+          return concurrentRecord.responseData as unknown as TResponse;
+        }
         const response = await input.handler(tx);
         await tx.idempotencyRecord.create({
           data: {

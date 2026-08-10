@@ -6,6 +6,7 @@ import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AppModule } from "../src/app.module";
 import { exploreEnemyPools } from "../src/game/game.constants";
+import { getLevelRequirement, getStageLevelCount } from "../src/game/realm-progression.constants";
 import { configureApp } from "../src/platform/configure-app";
 
 describe("M2 核心循环", () => {
@@ -65,24 +66,45 @@ describe("M2 核心循环", () => {
     ).toBe(true);
   });
 
-  it("领取修为支持幂等，且不会重复结算", async () => {
-    const { token } = await createM2Player(app, "修为");
-    const idempotencyKey = `idem_m2_claim_${Date.now()}`;
-
-    const first = await request(app.getHttpServer())
+  it("长期修炼结束后领取支持幂等，旧被动入口不再发放收益", async () => {
+    const { token, playerId } = await createM2Player(app, "修为");
+    await request(app.getHttpServer())
       .post("/api/game/cultivation/claim")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_m2_retired_${Date.now()}`)
+      .expect(404);
+
+    const started = await request(app.getHttpServer())
+      .post("/api/game/actions/start")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_m2_start_cultivation_${Date.now()}`)
+      .send({ action_type: "cultivation" })
+      .expect(201);
+    await prisma.playerActionState.update({
+      where: { playerId },
+      data: { activeActionStartedAt: new Date(Date.now() - 60 * 60 * 1000) },
+    });
+    await request(app.getHttpServer())
+      .post("/api/game/actions/end")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_m2_end_cultivation_${Date.now()}`)
+      .expect(201);
+
+    const idempotencyKey = `idem_m2_claim_${Date.now()}`;
+    const first = await request(app.getHttpServer())
+      .post("/api/game/actions/claim")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", idempotencyKey)
       .expect(201);
     const repeated = await request(app.getHttpServer())
-      .post("/api/game/cultivation/claim")
+      .post("/api/game/actions/claim")
       .set("Authorization", `Bearer ${token}`)
       .set("Idempotency-Key", idempotencyKey)
       .expect(201);
 
-    expect(first.body.data.record_id).toBe(repeated.body.data.record_id);
-    expect(Number(first.body.data.gained_cultivation)).toBeGreaterThanOrEqual(0);
-    expect(first.body.data.completed_task_ids).toContain("novice_claim_cultivation");
+    expect(first.body.data.rewards.cultivation).toBe(repeated.body.data.rewards.cultivation);
+    expect(Number(first.body.data.rewards.cultivation)).toBeGreaterThan(0);
+    expect(started.body.data.action.action_type).toBe("cultivation");
   });
 
   it("长期探索按时间游标自动结算战报、任务和奖励", async () => {
@@ -127,12 +149,15 @@ describe("M2 核心循环", () => {
     expect(battleEnemyNames.every((enemyName: string) => jiEnemyNames.has(enemyName))).toBe(true);
     expect(new Set(battleEnemyNames).size).toBeGreaterThan(1);
     const enemySkillNames = battles.flatMap((battle) =>
-      (Array.isArray(battle.battleLog) ? battle.battleLog : []).filter(
-        (round): round is { actor: string; skill: string } =>
-          typeof round === "object" && round !== null &&
-          typeof (round as { actor?: unknown }).actor === "string" &&
-          typeof (round as { skill?: unknown }).skill === "string",
-      ).map((round) => round.skill),
+      (Array.isArray(battle.battleLog) ? battle.battleLog : [])
+        .filter(
+          (round): round is { actor: string; skill: string } =>
+            typeof round === "object" &&
+            round !== null &&
+            typeof (round as { actor?: unknown }).actor === "string" &&
+            typeof (round as { skill?: unknown }).skill === "string",
+        )
+        .map((round) => round.skill),
     );
     expect(enemySkillNames).not.toContain("山海妖息");
     expect(battles[0]?.battleLog).toBeTruthy();
@@ -225,6 +250,38 @@ describe("M2 核心循环", () => {
     expect(response.body.data.action.action_type).toBe("explore");
   });
 
+  it("不同幂等键并发突破最多提升一个大境界", async () => {
+    const { token, playerId } = await createM2Player(app, "突破并发");
+    const finalLevel = getStageLevelCount(1);
+    await prisma.player.update({
+      where: { playerId },
+      data: { currentRealm: 1, currentStage: 3, currentLevel: finalLevel },
+    });
+    await prisma.playerProgress.update({
+      where: { playerId },
+      data: {
+        cultivationValue: getLevelRequirement(1, 3, finalLevel) + 300n,
+      },
+    });
+
+    const responses = await Promise.all([
+      request(app.getHttpServer())
+        .post("/api/game/cultivation/breakthrough")
+        .set("Authorization", `Bearer ${token}`)
+        .set("Idempotency-Key", `idem_m2_breakthrough_a_${Date.now()}_${randomSuffix()}`),
+      request(app.getHttpServer())
+        .post("/api/game/cultivation/breakthrough")
+        .set("Authorization", `Bearer ${token}`)
+        .set("Idempotency-Key", `idem_m2_breakthrough_b_${Date.now()}_${randomSuffix()}`),
+    ]);
+    expect(responses.every((response) => response.status === 201)).toBe(true);
+    expect(responses.filter((response) => response.body.data.success).length).toBe(1);
+    const player = await prisma.player.findUniqueOrThrow({ where: { playerId } });
+    expect(player.currentRealm).toBe(2);
+    expect(player.currentStage).toBe(1);
+    expect(player.currentLevel).toBe(1);
+  });
+
   it("已完成任务可领取奖励，洞府收取会写入记录", async () => {
     const { token, playerId } = await createM2Player(app, "任务");
 
@@ -256,6 +313,57 @@ describe("M2 核心循环", () => {
       orderBy: { createdAt: "desc" },
     });
     expect(caveRecord?.collectedMinutes).toBeGreaterThan(0);
+  });
+
+  it("不同幂等键并发领取同一任务时只迁移一次并只发一份奖励", async () => {
+    const { token, playerId } = await createM2Player(app, "任务并发");
+    const beforeWallet = await prisma.playerWallet.findUniqueOrThrow({ where: { playerId } });
+    const responses = await Promise.all([
+      request(app.getHttpServer())
+        .post("/api/game/tasks/claim")
+        .set("Authorization", `Bearer ${token}`)
+        .set("Idempotency-Key", `idem_m2_task_concurrent_a_${Date.now()}_${randomSuffix()}`)
+        .send({ task_id: "novice_create_role" }),
+      request(app.getHttpServer())
+        .post("/api/game/tasks/claim")
+        .set("Authorization", `Bearer ${token}`)
+        .set("Idempotency-Key", `idem_m2_task_concurrent_b_${Date.now()}_${randomSuffix()}`)
+        .send({ task_id: "novice_create_role" }),
+    ]);
+
+    expect(responses.filter((response) => response.status === 201)).toHaveLength(1);
+    expect(responses.filter((response) => response.status === 400)).toHaveLength(1);
+    const task = await prisma.playerTaskState.findFirstOrThrow({
+      where: { playerId, taskId: "novice_create_role" },
+    });
+    expect(task.status).toBe("claimed");
+    const afterWallet = await prisma.playerWallet.findUniqueOrThrow({ where: { playerId } });
+    expect(afterWallet.spiritStone - beforeWallet.spiritStone).toBe(100n);
+  });
+
+  it("不同幂等键并发收取洞府时只推进一次时间游标并只发一份奖励", async () => {
+    const { token, playerId } = await createM2Player(app, "洞府并发");
+    await prisma.playerCaveState.update({
+      where: { playerId },
+      data: { lastCollectedAt: new Date(Date.now() - 60 * 60 * 1000) },
+    });
+    const beforeRecords = await prisma.caveCollectRecord.count({ where: { playerId } });
+    const responses = await Promise.all([
+      request(app.getHttpServer())
+        .post("/api/game/cave/collect")
+        .set("Authorization", `Bearer ${token}`)
+        .set("Idempotency-Key", `idem_m2_cave_concurrent_a_${Date.now()}_${randomSuffix()}`),
+      request(app.getHttpServer())
+        .post("/api/game/cave/collect")
+        .set("Authorization", `Bearer ${token}`)
+        .set("Idempotency-Key", `idem_m2_cave_concurrent_b_${Date.now()}_${randomSuffix()}`),
+    ]);
+
+    expect(responses.filter((response) => response.status === 201)).toHaveLength(1);
+    expect(responses.filter((response) => response.status === 400)).toHaveLength(1);
+    expect(await prisma.caveCollectRecord.count({ where: { playerId } })).toBe(beforeRecords + 1);
+    const cave = await prisma.playerCaveState.findUniqueOrThrow({ where: { playerId } });
+    expect(cave.lastCollectedAt.getTime()).toBeGreaterThan(Date.now() - 10_000);
   });
 
   it("洞府没有可领取收益时不写领取记录，也不推进每日任务", async () => {
@@ -319,4 +427,8 @@ async function createM2Player(
     token,
     playerId: createResponse.body.data.profile.player.player_id as string,
   };
+}
+
+function randomSuffix(): string {
+  return Math.random().toString(36).slice(2, 8);
 }

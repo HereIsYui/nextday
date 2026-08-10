@@ -71,6 +71,24 @@ describe("P3 后续桌面 Web 体验闭环", () => {
       .set("Authorization", `Bearer ${token}`)
       .expect(404);
   });
+
+  it("修行境界弹窗接口返回完整小境界和等级，不暴露长内部标识", async () => {
+    const { token } = await createDesktopRoutePlayer(app);
+    const response = await request(app.getHttpServer())
+      .get("/api/game/realm-progression")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(response.body.data.realms).toHaveLength(9);
+    expect(response.body.data.realms[0].stages).toHaveLength(3);
+    expect(response.body.data.realms[0].stages[0].levels).toHaveLength(3);
+    expect(response.body.data.realms[8].stages[0].levels).toHaveLength(12);
+    expect(
+      response.body.data.realms[0].stages[0].levels.every(
+        (level: { cultivation_required: string }) => BigInt(level.cultivation_required) > 0n,
+      ),
+    ).toBe(true);
+  });
 });
 
 async function markCompletedTasksClaimed(prisma: PrismaClient, playerId: string) {

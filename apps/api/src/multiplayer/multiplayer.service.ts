@@ -40,14 +40,17 @@ import type {
 } from "@nextday/shared";
 import type { Player, PlayerActionState, Prisma, SectMember, TowerState } from "@prisma/client";
 import { toAppearanceState } from "../commerce/commerce.mappers";
+import {
+  lockAccountForTransaction,
+  lockResourceForTransaction,
+} from "../database/player-transaction";
 import { PrismaService } from "../database/prisma.service";
-import { lockAccountForTransaction, lockResourceForTransaction } from "../database/player-transaction";
 import { factionUnlockChapter, factionUnlockRealm } from "../factions/factions.constants";
+import { calculateUnifiedCombatPower, getCombatSkillSnapshot } from "../game/combat-skills";
 import { allocateCultivation, calculateCultivationPower } from "../game/cultivation-progress";
 import { defaultEraId, maxOfflineCultivationHours } from "../game/game.constants";
 import { toActionState } from "../game/game.mappers";
 import { incrementPlayerTasks } from "../game/task-progress.utils";
-import { calculateUnifiedCombatPower, getCombatSkillSnapshot } from "../game/combat-skills";
 import { writeJournalFromResponse } from "../journal/journal.utils";
 import {
   buildBossExperience,
@@ -1899,6 +1902,12 @@ export class MultiplayerService implements OnModuleInit, OnModuleDestroy {
     try {
       return await this.prisma.$transaction(async (tx) => {
         await lockAccountForTransaction(tx, input.accountId);
+        const concurrentRecord = await tx.idempotencyRecord.findUnique({
+          where: { idempotencyKey: input.idempotencyKey },
+        });
+        if (concurrentRecord) {
+          return replay(concurrentRecord);
+        }
         const response = await input.handler(tx);
         await tx.idempotencyRecord.create({
           data: {

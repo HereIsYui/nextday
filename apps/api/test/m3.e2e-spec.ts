@@ -151,6 +151,51 @@ describe("M3 生产成长循环", () => {
     expect(rates[10]).toBe(10);
   });
 
+  it("不同幂等键并发服用同一颗丹药时只消费一次并只结算一次修为", async () => {
+    const { token, playerId } = await createM3Player(app, prisma, "服丹并发", "qi");
+    const itemInstanceId = `item_m3_pill_concurrent_${Date.now()}_${randomSuffix()}`;
+    await prisma.playerItem.create({
+      data: {
+        itemInstanceId,
+        playerId,
+        itemId: "pill_nourishing_essence",
+        count: 1n,
+        bindType: "bound",
+        sourceType: "test_seed",
+        metadata: {
+          quality: "middle",
+          pill_effect: "cultivation",
+          pill_type: "cultivation",
+          pill_rank: 1,
+          effect_value: 120,
+        },
+      },
+    });
+    const beforeProgress = await prisma.playerProgress.findUniqueOrThrow({ where: { playerId } });
+    const responses = await Promise.all([
+      request(app.getHttpServer())
+        .post("/api/production/pills/use")
+        .set("Authorization", `Bearer ${token}`)
+        .set("Idempotency-Key", `idem_m3_pill_concurrent_a_${Date.now()}_${randomSuffix()}`)
+        .send({ item_instance_id: itemInstanceId }),
+      request(app.getHttpServer())
+        .post("/api/production/pills/use")
+        .set("Authorization", `Bearer ${token}`)
+        .set("Idempotency-Key", `idem_m3_pill_concurrent_b_${Date.now()}_${randomSuffix()}`)
+        .send({ item_instance_id: itemInstanceId }),
+    ]);
+
+    expect(responses.filter((response) => response.status === 201)).toHaveLength(1);
+    expect(responses.filter((response) => response.status === 400)).toHaveLength(1);
+    expect(await prisma.playerItem.count({ where: { playerId, itemInstanceId } })).toBe(0);
+    const pillUses = await prisma.pillUseRecord.count({
+      where: { playerId, pillType: "cultivation", pillRank: 1 },
+    });
+    expect(pillUses).toBe(1);
+    const afterProgress = await prisma.playerProgress.findUniqueOrThrow({ where: { playerId } });
+    expect(afterProgress.cultivationValue).toBeGreaterThan(beforeProgress.cultivationValue);
+  });
+
   it("炼器不产出九大古宝，铭刻锁定词条后淬炼不会改变锁定词条", async () => {
     const { token, playerId } = await createM3Player(app, prisma, "炼器", "qi");
     const forgeMaterials = [

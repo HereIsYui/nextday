@@ -167,27 +167,37 @@ describe("P1.7 持久修行日志与探索事件链", () => {
 
   it("领取修为后写入可持久读取的修行日志", async () => {
     const { token, playerId } = await createP17Player(app, prisma);
-    await prisma.playerProgress.update({
-      where: { playerId },
-      data: { lastCultivationAt: new Date(Date.now() - 60 * 60 * 1000) },
-    });
-
-    const claimed = await request(app.getHttpServer())
-      .post("/api/game/cultivation/claim")
+    await request(app.getHttpServer())
+      .post("/api/game/actions/start")
       .set("Authorization", `Bearer ${token}`)
-      .set("Idempotency-Key", `idem_p17_cultivation_${Date.now()}_${randomSuffix()}`)
-      .send({})
+      .set("Idempotency-Key", `idem_p17_cultivation_start_${Date.now()}_${randomSuffix()}`)
+      .send({ action_type: "cultivation" })
+      .expect(201);
+    await prisma.playerActionState.update({
+      where: { playerId },
+      data: { activeActionStartedAt: new Date(Date.now() - 60 * 60 * 1000) },
+    });
+    await request(app.getHttpServer())
+      .post("/api/game/actions/end")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_p17_cultivation_end_${Date.now()}_${randomSuffix()}`)
       .expect(201);
 
-    expect(claimed.body.data.experience.title).toBe("收束修为");
-    expect(Number(claimed.body.data.gained_cultivation)).toBeGreaterThan(0);
+    const claimed = await request(app.getHttpServer())
+      .post("/api/game/actions/claim")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_p17_cultivation_${Date.now()}_${randomSuffix()}`)
+      .expect(201);
+
+    expect(claimed.body.data.rewards.cultivation).toBeTruthy();
+    expect(Number(claimed.body.data.rewards.cultivation)).toBeGreaterThan(0);
 
     const journal = await request(app.getHttpServer())
       .get("/api/game/journal?limit=3")
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
-    expect(journal.body.data.entries[0].title).toBe("收束修为");
-    expect(journal.body.data.entries[0].source_type).toBe("领取修为");
+    expect(journal.body.data.entries[0].title).toBe("长期修炼结算");
+    expect(journal.body.data.entries[0].source_type).toBe("长期行动领取");
   });
 
   it("修行日志支持 before 游标分页读取更早记录", async () => {

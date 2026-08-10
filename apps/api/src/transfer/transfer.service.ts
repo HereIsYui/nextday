@@ -24,6 +24,7 @@ import type {
   SectMember,
   TransferRequestRecord,
 } from "@prisma/client";
+import { lockAccountForTransaction } from "../database/player-transaction";
 import { PrismaService } from "../database/prisma.service";
 import { hashRequestBody } from "../platform/utils/hash";
 import {
@@ -575,6 +576,22 @@ export class TransferService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      if (input.accountId) {
+        await lockAccountForTransaction(tx, input.accountId);
+      }
+      const concurrentRecord = await tx.idempotencyRecord.findUnique({
+        where: { idempotencyKey: input.idempotencyKey },
+      });
+      if (concurrentRecord) {
+        if (
+          concurrentRecord.endpoint !== input.endpoint ||
+          concurrentRecord.requestHash !== requestHash ||
+          (input.accountId && concurrentRecord.accountId !== input.accountId)
+        ) {
+          throw new BadRequestException("幂等键已被其他请求使用");
+        }
+        return concurrentRecord.responseData as unknown as TResponse;
+      }
       const response = await input.handler(tx);
       await tx.idempotencyRecord.create({
         data: {

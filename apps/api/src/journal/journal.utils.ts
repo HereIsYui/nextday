@@ -17,6 +17,7 @@ const journalSourceLabels: Record<string, string> = {
   // 只用于读取迁移前的历史日志；当前接口已完全退役。
   "POST /api/game/explore/claim": "探索领取",
   "POST /api/game/actions/settle": "长期探索结算",
+  "POST /api/game/actions/claim": "长期行动领取",
   "POST /api/game/explore/events/resolve": "探索奇遇",
   "POST /api/inner-world/assignments/claim": "内天地收取",
   "POST /api/inner-world/assignments/dispatch": "内天地派驻",

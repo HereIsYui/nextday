@@ -30,8 +30,8 @@ import type {
   SyncVipResponse,
 } from "@nextday/shared";
 import type { GachaPityState, MonthlyCardDrawGrant, Player, Prisma } from "@prisma/client";
-import { PrismaService } from "../database/prisma.service";
 import { lockAccountForTransaction } from "../database/player-transaction";
+import { PrismaService } from "../database/prisma.service";
 import { defaultEraId } from "../game/game.constants";
 import { writeJournalFromResponse } from "../journal/journal.utils";
 import { buildGachaExperience } from "../platform/experience";
@@ -351,8 +351,12 @@ export class CommerceService {
       idempotencyKey: input.idempotencyKey,
       requestBody: body,
       handler: async (tx) => {
-        const vipLevel = verification.vipLevel ?? body.vip_level;
-        const activeDays = verification.activeDays ?? body.active_days ?? 30;
+        // VIP 等级和有效期只能来自订单验证结果，不能回退到客户端提交值。
+        const vipLevel = verification.vipLevel;
+        const activeDays = verification.activeDays;
+        if (vipLevel === undefined || activeDays === undefined) {
+          throw new ForbiddenException("VIP 订单未返回有效等级和期限");
+        }
         const previousVip = await tx.playerVipState.findUnique({
           where: { playerId: player.playerId },
         });
@@ -368,9 +372,7 @@ export class CommerceService {
           };
         }
         const activeUntil =
-          vipLevel > 0
-            ? new Date(Date.now() + activeDays * 24 * 60 * 60 * 1000)
-            : null;
+          vipLevel > 0 ? new Date(Date.now() + activeDays * 24 * 60 * 60 * 1000) : null;
         const vip = await tx.playerVipState.upsert({
           where: { playerId: player.playerId },
           create: {
@@ -1371,6 +1373,19 @@ export class CommerceService {
 
     return this.prisma.$transaction(async (tx) => {
       await lockAccountForTransaction(tx, input.accountId);
+      const concurrentRecord = await tx.idempotencyRecord.findUnique({
+        where: { idempotencyKey: input.idempotencyKey },
+      });
+      if (concurrentRecord) {
+        if (
+          concurrentRecord.accountId !== input.accountId ||
+          concurrentRecord.endpoint !== input.endpoint ||
+          concurrentRecord.requestHash !== requestHash
+        ) {
+          throw new BadRequestException("幂等键已被其他请求使用");
+        }
+        return concurrentRecord.responseData as unknown as TResponse;
+      }
       const response = await input.handler(tx);
       await tx.idempotencyRecord.create({
         data: {
@@ -1419,9 +1434,7 @@ function normalizeClaimMonthlyDailyRequest(
   return { card_type: body.card_type };
 }
 
-function normalizeSyncVipRequest(
-  body: SyncVipRequest,
-): SyncVipRequest & { active_days: number } {
+function normalizeSyncVipRequest(body: SyncVipRequest): SyncVipRequest & { active_days: number } {
   const vipLevel = Math.floor(Number(body?.vip_level ?? 0));
   const activeDays = Math.floor(Number(body?.active_days ?? 30));
   if (!Number.isFinite(vipLevel) || vipLevel < 0 || vipLevel > 4) {

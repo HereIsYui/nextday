@@ -2,26 +2,29 @@
 
 import { GameClient } from "@nextday/game-client";
 import type {
-  ActivityListResponse,
   ActivityDetailResponse,
+  ActivityListResponse,
   AncientTreasureListResponse,
   ApiResponse,
+  AppearanceListResponse,
+  AppearancePlusCatalogResponse,
   BagItemState,
   BagSummaryResponse,
   BattleNarrativeResponse,
+  CollectionSummaryResponse,
   CultivationStatus,
   EntitlementOverviewResponse,
-  AppearanceListResponse,
-  AppearancePlusCatalogResponse,
-  CollectionSummaryResponse,
-  EraMuseumResponse,
   EquipmentListResponse,
+  EraMuseumResponse,
   FactionRoutesResponse,
+  GachaHistoryResponse,
+  GachaPoolListResponse,
   GameOverviewResponse,
   HealthStatus,
   InnerWorldSummaryResponse,
   InnerWorldSupportType,
   LoginResponse,
+  MentorSummaryResponse,
   OfflineActionReward,
   PlayerProfileResponse,
   ProductionCraftMaterialState,
@@ -31,15 +34,12 @@ import type {
   RankListResponse,
   RankType,
   RealmProgressionResponse,
-  SectDetailResponse,
   SectAlignment,
-  SectListResponse,
-  SkillLoadoutResponse,
-  GachaPoolListResponse,
-  GachaHistoryResponse,
-  MentorSummaryResponse,
+  SectDetailResponse,
   SectDiplomacySummaryResponse,
   SectHireListResponse,
+  SectListResponse,
+  SkillLoadoutResponse,
   StoryScrollDetailState,
   StoryScrollListResponse,
   TowerListResponse,
@@ -389,6 +389,8 @@ export default function HomePage() {
   const [productionResult, setProductionResult] = useState<string[]>([]);
   const [productionFormulaName, setProductionFormulaName] = useState("");
   const [productionLastRecordId, setProductionLastRecordId] = useState<string | null>(null);
+  const [productionFormulaScope, setProductionFormulaScope] = useState<"mine" | "public">("mine");
+  const [productionFormulaKeyword, setProductionFormulaKeyword] = useState("");
   const [itemDetail, setItemDetail] = useState<ItemDetail | null>(null);
   const [battleDetail, setBattleDetail] = useState<BattleNarrativeResponse | null>(null);
   const [battleDetailLoading, setBattleDetailLoading] = useState(false);
@@ -483,10 +485,7 @@ export default function HomePage() {
     [command, helpGroups, overview?.provinces],
   );
   const quickCommands = useMemo(() => {
-    const actions = [
-      ...commandSuggestions,
-      ...baseQuickCommands,
-    ];
+    const actions = [...commandSuggestions, ...baseQuickCommands];
     const commandSet = new Set<string>();
     return actions.filter((action) => {
       if (commandSet.has(action.command)) {
@@ -655,7 +654,6 @@ export default function HomePage() {
   }, [hydrating, player?.player_id, refreshChat, token]);
 
   useEffect(() => {
-    const claimable = cultivation?.claimable_cultivation ?? "0";
     if (!token || (!cultivation && !offlineActionReward)) return;
     if (offlineActionReward?.claimable) {
       const key = `${offlineActionReward.action_id}:${offlineActionReward.from_at}:${offlineActionReward.to_at}`;
@@ -663,15 +661,8 @@ export default function HomePage() {
         offlineNoticeKeyRef.current = key;
         setOfflineClaimOpen(true);
       }
-      return;
     }
-    if (!cultivation || BigInt(claimable) <= 0n || activeLongAction) return;
-    const key = `${cultivation.last_cultivation_at}:${claimable}`;
-    if (offlineNoticeKeyRef.current !== key) {
-      offlineNoticeKeyRef.current = key;
-      setOfflineClaimOpen(true);
-    }
-  }, [activeLongAction, cultivation, offlineActionReward, token]);
+  }, [cultivation, offlineActionReward, token]);
 
   const refreshRealmProgression = useCallback(async () => {
     if (!token || realmProgressionLoading) {
@@ -993,7 +984,7 @@ export default function HomePage() {
           try {
             const reward = readResponse(offlineResult.value).reward;
             setOfflineActionReward(reward);
-            if (reward && reward.claimable) {
+            if (reward?.claimable) {
               const noticeKey = `${reward.action_id}:${reward.from_at}:${reward.to_at}`;
               if (offlineNoticeKeyRef.current !== noticeKey) {
                 offlineNoticeKeyRef.current = noticeKey;
@@ -1131,7 +1122,7 @@ export default function HomePage() {
         label: "修为",
         value: cultivation?.cultivation_value ?? progress?.cultivation_value ?? "—",
         detail: cultivation
-          ? `距下一等级 ${cultivation.cultivation_to_next_level} · 可收取 ${cultivation.claimable_cultivation}`
+          ? `距下一等级 ${cultivation.cultivation_to_next_level} · 修为由当前长期行动结算`
           : "等待修行状态",
       },
       {
@@ -1408,7 +1399,9 @@ export default function HomePage() {
 
   function applyMentor() {
     if (!token || !socialMentorPlayerId.trim()) {
-      setFeatureMessage("请从已知关系中选择导师，或输入导师标识。\n标识仅用于请求，不会展示在关系卡片中。");
+      setFeatureMessage(
+        "请从已知关系中选择导师，或输入导师标识。\n标识仅用于请求，不会展示在关系卡片中。",
+      );
       return;
     }
     void runFeatureMutation(
@@ -1751,7 +1744,11 @@ export default function HomePage() {
   function learnFeatureSkill(skillId: string) {
     if (!token) return;
     void runFeatureMutation(
-      () => createClient(token).learnSkill({ skill_id: skillId }, createIdempotencyKey("web_skill_learn")),
+      () =>
+        createClient(token).learnSkill(
+          { skill_id: skillId },
+          createIdempotencyKey("web_skill_learn"),
+        ),
       "技能已掌握",
       "skills",
     );
@@ -1789,6 +1786,8 @@ export default function HomePage() {
     setProductionResult([]);
     setProductionFormulaName("");
     setProductionLastRecordId(null);
+    setProductionFormulaScope("mine");
+    setProductionFormulaKeyword("");
     setOverlayReturnView("tools");
     setActiveOverlay("production");
     setProductionLoading(true);
@@ -1805,6 +1804,53 @@ export default function HomePage() {
       setProductionResult([`材料清单读取失败：${messageFromError(error)}`]);
     } finally {
       setProductionLoading(false);
+    }
+  }
+
+  async function refreshProductionFormulas(
+    scope = productionFormulaScope,
+    keyword = productionFormulaKeyword,
+  ) {
+    if (!token || !productionKind) return;
+    try {
+      const formulas = readResponse(
+        await createClient(token).productionFormulas({
+          kind: productionKind,
+          scope,
+          ...(keyword.trim() ? { keyword: keyword.trim() } : {}),
+        }),
+      ).formulas;
+      setProductionFormulas(formulas);
+    } catch (error) {
+      setProductionResult((current) => [`单方读取失败：${messageFromError(error)}`, ...current]);
+    }
+  }
+
+  async function toggleProductionFormulaVisibility(formula: ProductionFormulaState) {
+    if (!token || productionLoading || productionCrafting || busy || hydrating) return;
+    try {
+      const client = createClient(token);
+      if (formula.visibility === "public") {
+        await client.unpublishProductionFormula(
+          formula.formula_id,
+          createIdempotencyKey("web_formula_unpublish"),
+        );
+      } else {
+        await client.publishProductionFormula(
+          formula.formula_id,
+          createIdempotencyKey("web_formula_publish"),
+        );
+      }
+      setProductionResult((current) => [
+        formula.visibility === "public" ? "单方已取消公开。" : "单方已公开，可被其他修士检索。",
+        ...current,
+      ]);
+      await refreshProductionFormulas();
+    } catch (error) {
+      setProductionResult((current) => [
+        `单方状态更新失败：${messageFromError(error)}`,
+        ...current,
+      ]);
     }
   }
 
@@ -1878,10 +1924,7 @@ export default function HomePage() {
         createIdempotencyKey("web_production_formula_save"),
       );
       setProductionResult((current) => [...current, "单方已保存。"]);
-      const formulas = readResponse(
-        await createClient(token).productionFormulas({ kind: productionKind, scope: "mine" }),
-      ).formulas;
-      setProductionFormulas(formulas);
+      await refreshProductionFormulas("mine", "");
       setProductionFormulaName("");
     } catch (error) {
       setProductionResult((current) => [...current, `保存单方失败：${messageFromError(error)}`]);
@@ -1974,9 +2017,9 @@ export default function HomePage() {
         terminalEntry("success", "九州传音", [
           kind === "start_cultivation"
             ? "已开始长期修炼。"
-              : kind === "start_explore"
-                ? `已开始${result.action?.province_name ?? "州域"}长期探索。`
-                : kind === "end"
+            : kind === "start_explore"
+              ? `已开始${result.action?.province_name ?? "州域"}长期探索。`
+              : kind === "end"
                 ? `行动已结束，${formatRewards(result.rewards)}已自动结算。`
                 : `行动收益已领取：${formatRewards(result.rewards)}。`,
         ]),
@@ -1997,7 +2040,9 @@ export default function HomePage() {
       setBusy(true);
       try {
         const result = readResponse(
-          await createClient(token).claimOfflineAction(createIdempotencyKey("web_offline_action_claim")),
+          await createClient(token).claimOfflineAction(
+            createIdempotencyKey("web_offline_action_claim"),
+          ),
         );
         appendTerminalEntries([
           terminalEntry("success", "离线行动", [`已领取：${formatRewards(result.rewards)}。`]),
@@ -2017,21 +2062,8 @@ export default function HomePage() {
       await handleLongAction("claim");
       return;
     }
-    setBusy(true);
-    try {
-      const result = readResponse(
-        await createClient(token).claimCultivation(createIdempotencyKey("web_cultivation_claim")),
-      );
-      appendTerminalEntries([
-        terminalEntry("success", "离线修为", [`已领取修为 +${result.gained_cultivation}。`]),
-      ]);
-      setOfflineClaimOpen(false);
-      await refreshDashboard(token, true);
-    } catch (error) {
-      setSessionError(messageFromError(error));
-    } finally {
-      setBusy(false);
-    }
+    setOfflineClaimOpen(false);
+    setSessionError("当前没有待领取的长期行动收益，请先开始修炼或探索。");
   }
 
   async function executeCommand(rawCommand: string, options: CommandExecutionOptions = {}) {
@@ -2450,10 +2482,11 @@ export default function HomePage() {
                           {activeLongAction.action_type === "explore"
                             ? `已结算 ${activeLongAction.settled_battle_count ?? 0} 场；在线每小时自动入账，结束时补齐完整分钟。`
                             : activeLongAction.status === "claimable"
-                            ? `已固定收益：${formatRewards(activeLongAction.rewards ?? {})}`
-                            : "修炼与探索互斥；需要收益时手动结束行动。"}
+                              ? `已固定收益：${formatRewards(activeLongAction.rewards ?? {})}`
+                              : "修炼与探索互斥；需要收益时手动结束行动。"}
                         </p>
-                        {activeLongAction.action_type !== "explore" && activeLongAction.status === "claimable" ? (
+                        {activeLongAction.action_type !== "explore" &&
+                        activeLongAction.status === "claimable" ? (
                           <button
                             className="action-card-button"
                             disabled={busy || hydrating}
@@ -2921,7 +2954,7 @@ export default function HomePage() {
                                         ? "法宝管理"
                                         : featureKind === "skills"
                                           ? "技能配置"
-                                      : featureKind === "commerce"
+                                          : featureKind === "commerce"
                                             ? "权益中心"
                                             : featureKind === "social"
                                               ? "社交事务"
@@ -3047,16 +3080,19 @@ export default function HomePage() {
                             </button>
                             <button
                               disabled={
-                                featureLoading || busy || hydrating || event.status !== "active"
-                                || event.event_type === "return_support"
-                                || event.event_type === "compensation"
+                                featureLoading ||
+                                busy ||
+                                hydrating ||
+                                event.status !== "active" ||
+                                event.event_type === "return_support" ||
+                                event.event_type === "compensation"
                               }
                               onClick={() => participateActivity(event.event_id)}
                               type="button"
                             >
                               {event.action_label || "参与一次"}
                             </button>
-                              {event.claimable ? (
+                            {event.claimable ? (
                               <button
                                 disabled={featureLoading || busy || hydrating}
                                 onClick={() => claimActivity(event.event_id)}
@@ -3079,15 +3115,22 @@ export default function HomePage() {
                           </div>
                           <p>{activityDetail.template.description}</p>
                           <p>
-                            周期：{formatDateTime(activityDetail.event.starts_at)} 至 {formatDateTime(activityDetail.event.ends_at)}
-                            · 结算：{formatDateTime(activityDetail.event.settlement_at)}
+                            周期：{formatDateTime(activityDetail.event.starts_at)} 至{" "}
+                            {formatDateTime(activityDetail.event.ends_at)}· 结算：
+                            {formatDateTime(activityDetail.event.settlement_at)}
                           </p>
                           <p>
-                            每次消耗行动令 {activityDetail.template.action_point_cost} · 上限 {activityDetail.template.target_progress} 次
-                            · 资格：{activityDetail.event.event_type === "return_support" || activityDetail.event.event_type === "compensation" ? "需服务端资格" : "开放"}
+                            每次消耗行动令 {activityDetail.template.action_point_cost} · 上限{" "}
+                            {activityDetail.template.target_progress} 次 · 资格：
+                            {activityDetail.event.event_type === "return_support" ||
+                            activityDetail.event.event_type === "compensation"
+                              ? "需服务端资格"
+                              : "开放"}
                           </p>
                           <p>奖励边界：{activityDetail.template.reward_boundary}</p>
-                          <button type="button" onClick={() => setActivityDetail(null)}>收起详情</button>
+                          <button type="button" onClick={() => setActivityDetail(null)}>
+                            收起详情
+                          </button>
                         </article>
                       ) : null}
                     </div>
@@ -3126,7 +3169,12 @@ export default function HomePage() {
                         </div>
                         <div className="feature-card-actions">
                           <button
-                            disabled={!featureData.data.state.unlocked || featureLoading || busy || hydrating}
+                            disabled={
+                              !featureData.data.state.unlocked ||
+                              featureLoading ||
+                              busy ||
+                              hydrating
+                            }
                             onClick={() => upgradeInnerWorld("world")}
                             type="button"
                           >
@@ -3136,7 +3184,12 @@ export default function HomePage() {
                             .filter((creature) => creature.status !== "assigned")
                             .map((creature) => (
                               <button
-                                disabled={!featureData.data.state.unlocked || featureLoading || busy || hydrating}
+                                disabled={
+                                  !featureData.data.state.unlocked ||
+                                  featureLoading ||
+                                  busy ||
+                                  hydrating
+                                }
                                 key={`upgrade_${creature.creature_id}`}
                                 onClick={() => upgradeInnerWorld("creature", creature.creature_id)}
                                 type="button"
@@ -3247,16 +3300,29 @@ export default function HomePage() {
                         <div className="feature-inline-form">
                           <select
                             aria-label="支援类型"
-                            disabled={!featureData.data.state.unlocked || featureLoading || busy || hydrating}
+                            disabled={
+                              !featureData.data.state.unlocked ||
+                              featureLoading ||
+                              busy ||
+                              hydrating
+                            }
                             value={innerSupportType}
-                            onChange={(event) => setInnerSupportType(event.target.value as InnerWorldSupportType)}
+                            onChange={(event) =>
+                              setInnerSupportType(event.target.value as InnerWorldSupportType)
+                            }
                           >
                             <option value="spirit_vein">灵脉支援</option>
                             <option value="tower_supply">九塔补给</option>
                             <option value="secret_realm">秘境支援</option>
                           </select>
                           <button
-                            disabled={!featureData.data.state.unlocked || featureLoading || busy || hydrating || !innerDispatchProvince}
+                            disabled={
+                              !featureData.data.state.unlocked ||
+                              featureLoading ||
+                              busy ||
+                              hydrating ||
+                              !innerDispatchProvince
+                            }
                             onClick={supportInnerWorld}
                             type="button"
                           >
@@ -3352,19 +3418,34 @@ export default function HomePage() {
                                 aria-label="存入宗门仓库的材料"
                                 disabled={featureLoading || busy || hydrating}
                                 value={sectWarehouseItemInstanceId}
-                                onChange={(event) => setSectWarehouseItemInstanceId(event.target.value)}
+                                onChange={(event) =>
+                                  setSectWarehouseItemInstanceId(event.target.value)
+                                }
                               >
                                 <option value="">选择未绑定材料</option>
                                 {(bag?.items ?? [])
-                                  .filter((item) => item.bind_type === "unbound" && item.tradeable && !item.expired)
+                                  .filter(
+                                    (item) =>
+                                      item.bind_type === "unbound" &&
+                                      item.tradeable &&
+                                      !item.expired,
+                                  )
                                   .map((item) => (
-                                    <option key={item.item_instance_id} value={item.item_instance_id}>
+                                    <option
+                                      key={item.item_instance_id}
+                                      value={item.item_instance_id}
+                                    >
                                       {item.name} ×{item.count}
                                     </option>
                                   ))}
                               </select>
                               <button
-                                disabled={featureLoading || busy || hydrating || !sectWarehouseItemInstanceId}
+                                disabled={
+                                  featureLoading ||
+                                  busy ||
+                                  hydrating ||
+                                  !sectWarehouseItemInstanceId
+                                }
                                 onClick={depositSectWarehouse}
                                 type="button"
                               >
@@ -3386,7 +3467,9 @@ export default function HomePage() {
                             <select
                               aria-label="宗门路线"
                               value={sectAlignment}
-                              onChange={(event) => setSectAlignment(event.target.value as SectAlignment)}
+                              onChange={(event) =>
+                                setSectAlignment(event.target.value as SectAlignment)
+                              }
                             >
                               <option value="neutral">中立</option>
                               <option value="immortal">仙门</option>
@@ -3401,27 +3484,27 @@ export default function HomePage() {
                             </button>
                           </div>
                           <div className="feature-card-grid">
-                          {(featureData.data.list?.sects ?? []).map((sect) => (
-                            <article className="feature-card" key={sect.sect_id}>
-                              <div className="feature-card-heading">
-                                <h3>{sect.name}</h3>
-                                <strong>Lv.{sect.level}</strong>
-                              </div>
-                              <p>
-                                {sect.alignment} · 成员 {sect.member_count}/{sect.member_limit}
-                              </p>
-                              <button
-                                disabled={featureLoading || busy || hydrating}
-                                onClick={() => joinSect(sect.sect_id)}
-                                type="button"
-                              >
-                                加入宗门
-                              </button>
-                            </article>
-                          ))}
-                          {(featureData.data.list?.sects ?? []).length === 0 ? (
-                            <p className="empty-copy">当前没有可加入的宗门。</p>
-                          ) : null}
+                            {(featureData.data.list?.sects ?? []).map((sect) => (
+                              <article className="feature-card" key={sect.sect_id}>
+                                <div className="feature-card-heading">
+                                  <h3>{sect.name}</h3>
+                                  <strong>Lv.{sect.level}</strong>
+                                </div>
+                                <p>
+                                  {sect.alignment} · 成员 {sect.member_count}/{sect.member_limit}
+                                </p>
+                                <button
+                                  disabled={featureLoading || busy || hydrating}
+                                  onClick={() => joinSect(sect.sect_id)}
+                                  type="button"
+                                >
+                                  加入宗门
+                                </button>
+                              </article>
+                            ))}
+                            {(featureData.data.list?.sects ?? []).length === 0 ? (
+                              <p className="empty-copy">当前没有可加入的宗门。</p>
+                            ) : null}
                           </div>
                         </div>
                       )}
@@ -3514,7 +3597,9 @@ export default function HomePage() {
                   {featureKind === "ancient" && featureData?.kind === "ancient" ? (
                     <div className="feature-stack">
                       <div className="feature-inline-form">
-                        <span className="empty-copy">使用绑定仙玉抽取古宝，重复获得会转化为残页与灵魄。</span>
+                        <span className="empty-copy">
+                          使用绑定仙玉抽取古宝，重复获得会转化为残页与灵魄。
+                        </span>
                         <button
                           disabled={featureLoading || busy || hydrating}
                           onClick={drawAncientTreasure}
@@ -3525,37 +3610,41 @@ export default function HomePage() {
                       </div>
                       <div className="feature-card-grid">
                         {featureData.data.pools.pools.map((pool) => (
-                          <article className="feature-card feature-card-compact" key={pool.pool_type}>
+                          <article
+                            className="feature-card feature-card-compact"
+                            key={pool.pool_type}
+                          >
                             <div className="feature-card-heading">
                               <h3>{pool.name}</h3>
                               <strong>已抽 {pool.total_draws} 次</strong>
                             </div>
                             <p>
-                              单抽 {pool.single_cost} · 保底 {pool.guarantee_at} 次 · 当前保底进度 {pool.pity_count}
+                              单抽 {pool.single_cost} · 保底 {pool.guarantee_at} 次 · 当前保底进度{" "}
+                              {pool.pity_count}
                             </p>
                             <p>可用方式：{pool.allowed_cost_types.join("、")}</p>
                           </article>
                         ))}
                       </div>
                       <div className="feature-card-grid feature-treasure-grid">
-                      {featureData.data.treasures.map((treasure) => (
-                        <article
-                          className={`feature-card feature-treasure-card${treasure.owned ? " feature-treasure-owned" : ""}`}
-                          key={treasure.treasure_id}
-                        >
-                          <div className="feature-card-heading">
-                            <h3>{treasure.name}</h3>
-                            <strong>{treasure.owned ? "已拥有" : "未解锁"}</strong>
-                          </div>
-                          <p>
-                            星级 {treasure.star_level} · 残页 {treasure.fragment_count} · 灵魄{" "}
-                            {treasure.soul_count}
-                          </p>
-                        </article>
-                      ))}
-                      {featureData.data.treasures.length === 0 ? (
-                        <p className="empty-copy">尚未发现古宝记录。</p>
-                      ) : null}
+                        {featureData.data.treasures.map((treasure) => (
+                          <article
+                            className={`feature-card feature-treasure-card${treasure.owned ? " feature-treasure-owned" : ""}`}
+                            key={treasure.treasure_id}
+                          >
+                            <div className="feature-card-heading">
+                              <h3>{treasure.name}</h3>
+                              <strong>{treasure.owned ? "已拥有" : "未解锁"}</strong>
+                            </div>
+                            <p>
+                              星级 {treasure.star_level} · 残页 {treasure.fragment_count} · 灵魄{" "}
+                              {treasure.soul_count}
+                            </p>
+                          </article>
+                        ))}
+                        {featureData.data.treasures.length === 0 ? (
+                          <p className="empty-copy">尚未发现古宝记录。</p>
+                        ) : null}
                       </div>
                       <div className="feature-subsection">
                         <div className="feature-subsection-heading">
@@ -3584,7 +3673,11 @@ export default function HomePage() {
                         <FeatureStat label="当前权益" value={featureData.data.effective_tier} />
                         <FeatureStat
                           label="VIP"
-                          value={featureData.data.vip.active ? `VIP ${featureData.data.vip.vip_level}` : "未激活"}
+                          value={
+                            featureData.data.vip.active
+                              ? `VIP ${featureData.data.vip.vip_level}`
+                              : "未激活"
+                          }
                         />
                         <FeatureStat
                           label="便利批次"
@@ -3602,12 +3695,18 @@ export default function HomePage() {
                         </div>
                         <div className="feature-card-grid">
                           {featureData.data.monthly_cards.map((card) => (
-                            <article className="feature-card feature-card-compact" key={card.card_type}>
+                            <article
+                              className="feature-card feature-card-compact"
+                              key={card.card_type}
+                            >
                               <div className="feature-card-heading">
                                 <h3>{card.card_type === "small_monthly" ? "小月卡" : "大月卡"}</h3>
                                 <strong>{card.active ? "生效中" : "已失效"}</strong>
                               </div>
-                              <p>剩余 {card.remaining_days} 天 · 到期 {formatDateTime(card.active_until)}</p>
+                              <p>
+                                剩余 {card.remaining_days} 天 · 到期{" "}
+                                {formatDateTime(card.active_until)}
+                              </p>
                               <button
                                 disabled={!card.active || featureLoading || busy || hydrating}
                                 onClick={() => claimMonthlyDaily(card.card_type)}
@@ -3618,7 +3717,9 @@ export default function HomePage() {
                             </article>
                           ))}
                           {featureData.data.monthly_cards.length === 0 ? (
-                            <p className="empty-copy">当前没有生效月卡；购买和 VIP 权益请通过已验证订单开通。</p>
+                            <p className="empty-copy">
+                              当前没有生效月卡；购买和 VIP 权益请通过已验证订单开通。
+                            </p>
                           ) : null}
                         </div>
                       </div>
@@ -3628,9 +3729,18 @@ export default function HomePage() {
                   {featureKind === "collection" && featureData?.kind === "collection" ? (
                     <div className="feature-stack">
                       <div className="feature-stat-grid">
-                        <FeatureStat label="已收藏" value={`${featureData.data.summary.collections.filter((item) => item.owned).length} / ${featureData.data.summary.collections.length}`} />
-                        <FeatureStat label="展示祝福" value={`${featureData.data.summary.blessing_summary.effective_percent}%`} />
-                        <FeatureStat label="纪元记录" value={`${featureData.data.museum.entries.length} 条`} />
+                        <FeatureStat
+                          label="已收藏"
+                          value={`${featureData.data.summary.collections.filter((item) => item.owned).length} / ${featureData.data.summary.collections.length}`}
+                        />
+                        <FeatureStat
+                          label="展示祝福"
+                          value={`${featureData.data.summary.blessing_summary.effective_percent}%`}
+                        />
+                        <FeatureStat
+                          label="纪元记录"
+                          value={`${featureData.data.museum.entries.length} 条`}
+                        />
                       </div>
                       <div className="feature-subsection">
                         <div className="feature-subsection-heading">
@@ -3639,35 +3749,65 @@ export default function HomePage() {
                         </div>
                         <div className="feature-card-grid">
                           {featureData.data.summary.collections.map((item) => (
-                            <article className={`feature-card${item.owned ? " feature-card-owned" : ""}`} key={item.collection_id}>
+                            <article
+                              className={`feature-card${item.owned ? " feature-card-owned" : ""}`}
+                              key={item.collection_id}
+                            >
                               <div className="feature-card-heading">
-                                <div><span className="feature-card-kicker">{item.rarity}</span><h3>{item.name}</h3></div>
+                                <div>
+                                  <span className="feature-card-kicker">{item.rarity}</span>
+                                  <h3>{item.name}</h3>
+                                </div>
                                 <strong>{item.owned ? "已拥有" : "未解锁"}</strong>
                               </div>
-                              <p>{item.source_hint} · 展示等级 {item.display_level}</p>
+                              <p>
+                                {item.source_hint} · 展示等级 {item.display_level}
+                              </p>
                               {item.owned ? (
                                 <div className="feature-card-actions">
                                   {featureData.data.summary.display_slots
-                                    .filter((slot) => slot.allowed_types.includes(item.collection_type))
+                                    .filter((slot) =>
+                                      slot.allowed_types.includes(item.collection_type),
+                                    )
                                     .map((slot) => (
-                                      <button key={slot.slot_id} disabled={featureLoading || busy || hydrating} onClick={() => equipCollectionDisplay(item.collection_id, slot.slot_id)} type="button">
-                                        {slot.equipped_collection_id === item.collection_id ? `已展示·${slot.name}` : `展示到${slot.name}`}
+                                      <button
+                                        key={slot.slot_id}
+                                        disabled={featureLoading || busy || hydrating}
+                                        onClick={() =>
+                                          equipCollectionDisplay(item.collection_id, slot.slot_id)
+                                        }
+                                        type="button"
+                                      >
+                                        {slot.equipped_collection_id === item.collection_id
+                                          ? `已展示·${slot.name}`
+                                          : `展示到${slot.name}`}
                                       </button>
                                     ))}
                                 </div>
                               ) : null}
                             </article>
                           ))}
-                          {featureData.data.summary.collections.length === 0 ? <p className="empty-copy">暂无收藏记录。</p> : null}
+                          {featureData.data.summary.collections.length === 0 ? (
+                            <p className="empty-copy">暂无收藏记录。</p>
+                          ) : null}
                         </div>
                       </div>
                       <div className="feature-subsection">
-                        <div className="feature-subsection-heading"><h3>纪元博物馆</h3><span>公开快照</span></div>
+                        <div className="feature-subsection-heading">
+                          <h3>纪元博物馆</h3>
+                          <span>公开快照</span>
+                        </div>
                         <div className="feature-list">
                           {featureData.data.museum.entries.map((entry) => (
-                            <div className="feature-list-row" key={entry.chronicle_id}><strong>{entry.title}</strong><span>{entry.summary}</span><small>{formatDateTime(entry.created_at)}</small></div>
+                            <div className="feature-list-row" key={entry.chronicle_id}>
+                              <strong>{entry.title}</strong>
+                              <span>{entry.summary}</span>
+                              <small>{formatDateTime(entry.created_at)}</small>
+                            </div>
                           ))}
-                          {featureData.data.museum.entries.length === 0 ? <p className="empty-copy">暂无公开纪元记录。</p> : null}
+                          {featureData.data.museum.entries.length === 0 ? (
+                            <p className="empty-copy">暂无公开纪元记录。</p>
+                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -3676,33 +3816,81 @@ export default function HomePage() {
                   {featureKind === "appearance" && featureData?.kind === "appearance" ? (
                     <div className="feature-stack">
                       <div className="feature-subsection">
-                        <div className="feature-subsection-heading"><h3>基础外观</h3><span>仅改变展示</span></div>
+                        <div className="feature-subsection-heading">
+                          <h3>基础外观</h3>
+                          <span>仅改变展示</span>
+                        </div>
                         <div className="feature-card-grid">
                           {featureData.data.list.appearances.map((item) => (
                             <article className="feature-card" key={item.appearance_id}>
-                              <div className="feature-card-heading"><h3>{item.name}</h3><strong>{item.equipped ? "已装备" : item.owned ? "可装备" : "未领取"}</strong></div>
+                              <div className="feature-card-heading">
+                                <h3>{item.name}</h3>
+                                <strong>
+                                  {item.equipped ? "已装备" : item.owned ? "可装备" : "未领取"}
+                                </strong>
+                              </div>
                               <p>{item.source_type} · 不提供属性加成</p>
                               <div className="feature-card-actions">
-                                {!item.owned ? <button disabled={featureLoading || busy || hydrating} onClick={() => claimAppearance(item.appearance_id)} type="button">领取</button> : null}
-                                {item.owned && !item.equipped ? <button disabled={featureLoading || busy || hydrating} onClick={() => equipAppearance(item.appearance_id)} type="button">装备</button> : null}
+                                {!item.owned ? (
+                                  <button
+                                    disabled={featureLoading || busy || hydrating}
+                                    onClick={() => claimAppearance(item.appearance_id)}
+                                    type="button"
+                                  >
+                                    领取
+                                  </button>
+                                ) : null}
+                                {item.owned && !item.equipped ? (
+                                  <button
+                                    disabled={featureLoading || busy || hydrating}
+                                    onClick={() => equipAppearance(item.appearance_id)}
+                                    type="button"
+                                  >
+                                    装备
+                                  </button>
+                                ) : null}
                               </div>
                             </article>
                           ))}
-                          {featureData.data.list.appearances.length === 0 ? <p className="empty-copy">暂无基础外观。</p> : null}
+                          {featureData.data.list.appearances.length === 0 ? (
+                            <p className="empty-copy">暂无基础外观。</p>
+                          ) : null}
                         </div>
                       </div>
                       <div className="feature-subsection">
-                        <div className="feature-subsection-heading"><h3>展示外观</h3><span>权限由服务端校验</span></div>
+                        <div className="feature-subsection-heading">
+                          <h3>展示外观</h3>
+                          <span>权限由服务端校验</span>
+                        </div>
                         <div className="feature-card-grid">
                           {featureData.data.catalog.appearances.map((item) => (
                             <article className="feature-card" key={item.appearance_id}>
-                              <div className="feature-card-heading"><h3>{item.name}</h3><strong>{item.equipped ? "已装备" : item.owned ? "可装备" : "未拥有"}</strong></div>
-                              <p>{item.preview.subtitle} · {item.preview.sample_text}</p>
+                              <div className="feature-card-heading">
+                                <h3>{item.name}</h3>
+                                <strong>
+                                  {item.equipped ? "已装备" : item.owned ? "可装备" : "未拥有"}
+                                </strong>
+                              </div>
+                              <p>
+                                {item.preview.subtitle} · {item.preview.sample_text}
+                              </p>
                               <small>{item.permission.reason ?? "可装备"}</small>
-                              {item.owned && item.permission.can_equip ? <button disabled={featureLoading || busy || hydrating} onClick={() => equipAppearancePlus(item.appearance_id, item.display_slot)} type="button">装备展示</button> : null}
+                              {item.owned && item.permission.can_equip ? (
+                                <button
+                                  disabled={featureLoading || busy || hydrating}
+                                  onClick={() =>
+                                    equipAppearancePlus(item.appearance_id, item.display_slot)
+                                  }
+                                  type="button"
+                                >
+                                  装备展示
+                                </button>
+                              ) : null}
                             </article>
                           ))}
-                          {featureData.data.catalog.appearances.length === 0 ? <p className="empty-copy">暂无可用展示外观。</p> : null}
+                          {featureData.data.catalog.appearances.length === 0 ? (
+                            <p className="empty-copy">暂无可用展示外观。</p>
+                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -3711,57 +3899,235 @@ export default function HomePage() {
                   {featureKind === "social" && featureData?.kind === "social" ? (
                     <div className="feature-stack">
                       <div className="feature-subsection">
-                        <div className="feature-subsection-heading"><h3>师徒</h3><span>奖励和出师由服务端判定</span></div>
+                        <div className="feature-subsection-heading">
+                          <h3>师徒</h3>
+                          <span>奖励和出师由服务端判定</span>
+                        </div>
                         {featureData.data.mentor.pending_as_mentor.map((relation) => (
                           <div className="feature-list-row" key={relation.mentor_relation_id}>
                             <strong>{relation.apprentice_name} 请求拜师</strong>
                             <span>待审核</span>
-                            <div className="feature-card-actions"><button onClick={() => reviewMentor(relation.mentor_relation_id, "accept")} type="button">同意</button><button onClick={() => reviewMentor(relation.mentor_relation_id, "reject")} type="button">拒绝</button></div>
+                            <div className="feature-card-actions">
+                              <button
+                                onClick={() => reviewMentor(relation.mentor_relation_id, "accept")}
+                                type="button"
+                              >
+                                同意
+                              </button>
+                              <button
+                                onClick={() => reviewMentor(relation.mentor_relation_id, "reject")}
+                                type="button"
+                              >
+                                拒绝
+                              </button>
+                            </div>
                           </div>
                         ))}
                         {featureData.data.mentor.relations.map((relation) => (
                           <div className="feature-list-row" key={relation.mentor_relation_id}>
-                            <strong>{relation.mentor_name} → {relation.apprentice_name}</strong>
+                            <strong>
+                              {relation.mentor_name} → {relation.apprentice_name}
+                            </strong>
                             <span>{relation.status}</span>
                             <div className="feature-card-actions">
-                              {relation.status === "active" && relation.task_summary.claimed !== true ? <button onClick={() => claimMentorTask(relation.mentor_relation_id)} type="button">领取师徒任务</button> : null}
-                              {relation.status === "active" && relation.task_summary.claimed === true ? <button onClick={() => graduateMentor(relation.mentor_relation_id)} type="button">出师</button> : null}
+                              {relation.status === "active" &&
+                              relation.task_summary.claimed !== true ? (
+                                <button
+                                  onClick={() => claimMentorTask(relation.mentor_relation_id)}
+                                  type="button"
+                                >
+                                  领取师徒任务
+                                </button>
+                              ) : null}
+                              {relation.status === "active" &&
+                              relation.task_summary.claimed === true ? (
+                                <button
+                                  onClick={() => graduateMentor(relation.mentor_relation_id)}
+                                  type="button"
+                                >
+                                  出师
+                                </button>
+                              ) : null}
                             </div>
                           </div>
                         ))}
                         <div className="feature-inline-form">
-                          <select aria-label="选择已知导师" value={socialMentorPlayerId} onChange={(event) => setSocialMentorPlayerId(event.target.value)}>
+                          <select
+                            aria-label="选择已知导师"
+                            value={socialMentorPlayerId}
+                            onChange={(event) => setSocialMentorPlayerId(event.target.value)}
+                          >
                             <option value="">选择导师</option>
-                            {featureData.data.mentor.relations.filter((relation) => relation.mentor_player_id !== player?.player_id).map((relation) => <option key={relation.mentor_player_id} value={relation.mentor_player_id}>{relation.mentor_name}</option>)}
+                            {featureData.data.mentor.relations
+                              .filter((relation) => relation.mentor_player_id !== player?.player_id)
+                              .map((relation) => (
+                                <option
+                                  key={relation.mentor_player_id}
+                                  value={relation.mentor_player_id}
+                                >
+                                  {relation.mentor_name}
+                                </option>
+                              ))}
                           </select>
-                          <button disabled={!socialMentorPlayerId || featureLoading || busy || hydrating} onClick={applyMentor} type="button">提交拜师</button>
+                          <button
+                            disabled={!socialMentorPlayerId || featureLoading || busy || hydrating}
+                            onClick={applyMentor}
+                            type="button"
+                          >
+                            提交拜师
+                          </button>
                         </div>
-                        {featureData.data.mentor.relations.length === 0 ? <p className="empty-copy">暂无可操作的师徒关系；导师需先达到收徒条件。</p> : null}
+                        {featureData.data.mentor.relations.length === 0 ? (
+                          <p className="empty-copy">暂无可操作的师徒关系；导师需先达到收徒条件。</p>
+                        ) : null}
                       </div>
                       <div className="feature-subsection">
-                        <div className="feature-subsection-heading"><h3>宗门外交</h3><span>{String(featureData.data.diplomacy.rule.cooldown_hours ?? "周期")} · 由宗主/长老操作</span></div>
+                        <div className="feature-subsection-heading">
+                          <h3>宗门外交</h3>
+                          <span>
+                            {String(featureData.data.diplomacy.rule.cooldown_hours ?? "周期")} ·
+                            由宗主/长老操作
+                          </span>
+                        </div>
                         <div className="feature-inline-form">
-                          <select aria-label="目标宗门" value={socialTargetSectId} onChange={(event) => setSocialTargetSectId(event.target.value)}>
+                          <select
+                            aria-label="目标宗门"
+                            value={socialTargetSectId}
+                            onChange={(event) => setSocialTargetSectId(event.target.value)}
+                          >
                             <option value="">选择目标宗门</option>
-                            {featureData.data.sects.sects.filter((sect) => sect.sect_id !== featureData.data.diplomacy.sect_id).map((sect) => <option key={sect.sect_id} value={sect.sect_id}>{sect.name}</option>)}
+                            {featureData.data.sects.sects
+                              .filter((sect) => sect.sect_id !== featureData.data.diplomacy.sect_id)
+                              .map((sect) => (
+                                <option key={sect.sect_id} value={sect.sect_id}>
+                                  {sect.name}
+                                </option>
+                              ))}
                           </select>
-                          <select aria-label="外交类型" value={socialDiplomacyType} onChange={(event) => setSocialDiplomacyType(event.target.value as typeof socialDiplomacyType)}>
-                            <option value="alliance">结盟</option><option value="hostility">敌对</option><option value="aid">援助</option><option value="defense">防御</option>
+                          <select
+                            aria-label="外交类型"
+                            value={socialDiplomacyType}
+                            onChange={(event) =>
+                              setSocialDiplomacyType(
+                                event.target.value as typeof socialDiplomacyType,
+                              )
+                            }
+                          >
+                            <option value="alliance">结盟</option>
+                            <option value="hostility">敌对</option>
+                            <option value="aid">援助</option>
+                            <option value="defense">防御</option>
                           </select>
-                          <button disabled={!socialTargetSectId || featureLoading || busy || hydrating} onClick={proposeDiplomacy} type="button">发起提案</button>
+                          <button
+                            disabled={!socialTargetSectId || featureLoading || busy || hydrating}
+                            onClick={proposeDiplomacy}
+                            type="button"
+                          >
+                            发起提案
+                          </button>
                         </div>
                         <div className="feature-list">
-                          {featureData.data.diplomacy.records.map((record) => <div className="feature-list-row" key={record.diplomacy_record_id}><strong>{record.source_sect_name} · {record.diplomacy_type} · {record.target_sect_name}</strong><span>{record.status}</span>{record.status === "proposed" && record.target_sect_id === featureData.data.diplomacy.sect_id ? <div className="feature-card-actions"><button onClick={() => reviewDiplomacy(record.diplomacy_record_id, "accept")} type="button">同意</button><button onClick={() => reviewDiplomacy(record.diplomacy_record_id, "reject")} type="button">拒绝</button></div> : null}</div>)}
-                          {featureData.data.diplomacy.records.length === 0 ? <p className="empty-copy">暂无外交记录。</p> : null}
+                          {featureData.data.diplomacy.records.map((record) => (
+                            <div className="feature-list-row" key={record.diplomacy_record_id}>
+                              <strong>
+                                {record.source_sect_name} · {record.diplomacy_type} ·{" "}
+                                {record.target_sect_name}
+                              </strong>
+                              <span>{record.status}</span>
+                              {record.status === "proposed" &&
+                              record.target_sect_id === featureData.data.diplomacy.sect_id ? (
+                                <div className="feature-card-actions">
+                                  <button
+                                    onClick={() =>
+                                      reviewDiplomacy(record.diplomacy_record_id, "accept")
+                                    }
+                                    type="button"
+                                  >
+                                    同意
+                                  </button>
+                                  <button
+                                    onClick={() =>
+                                      reviewDiplomacy(record.diplomacy_record_id, "reject")
+                                    }
+                                    type="button"
+                                  >
+                                    拒绝
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
+                          ))}
+                          {featureData.data.diplomacy.records.length === 0 ? (
+                            <p className="empty-copy">暂无外交记录。</p>
+                          ) : null}
                         </div>
                       </div>
                       <div className="feature-subsection">
-                        <div className="feature-subsection-heading"><h3>宗门雇佣</h3><span>已有委托列表</span></div>
-                        <div className="feature-inline-form"><select aria-label="雇佣类型" value={socialHireType} onChange={(event) => setSocialHireType(event.target.value as typeof socialHireType)}><option value="explore_support">探索支援</option><option value="sect_build">宗门建设</option><option value="tower_supply">九塔补给</option><option value="event_support">活动支援</option></select><button disabled={featureLoading || busy || hydrating || !featureData.data.hire.sect_id} onClick={createSectHire} type="button">发布委托</button></div>
+                        <div className="feature-subsection-heading">
+                          <h3>宗门雇佣</h3>
+                          <span>已有委托列表</span>
+                        </div>
+                        <div className="feature-inline-form">
+                          <select
+                            aria-label="雇佣类型"
+                            value={socialHireType}
+                            onChange={(event) =>
+                              setSocialHireType(event.target.value as typeof socialHireType)
+                            }
+                          >
+                            <option value="explore_support">探索支援</option>
+                            <option value="sect_build">宗门建设</option>
+                            <option value="tower_supply">九塔补给</option>
+                            <option value="event_support">活动支援</option>
+                          </select>
+                          <button
+                            disabled={
+                              featureLoading || busy || hydrating || !featureData.data.hire.sect_id
+                            }
+                            onClick={createSectHire}
+                            type="button"
+                          >
+                            发布委托
+                          </button>
+                        </div>
                         <div className="feature-list">
-                          {featureData.data.hire.open_hires.map((hire) => <div className="feature-list-row" key={hire.hire_record_id}><strong>{hire.hire_type}</strong><span>{hire.employer_sect_name} · {hire.status}</span>{hire.employer_sect_id !== featureData.data.hire.sect_id ? <button onClick={() => acceptSectHire(hire.hire_record_id)} type="button">接取</button> : null}</div>)}
-                          {featureData.data.hire.accepted_hires.map((hire) => <div className="feature-list-row" key={`accepted_${hire.hire_record_id}`}><strong>{hire.hire_type}</strong><span>已接取 · {hire.settlement_status}</span>{hire.status === "accepted" ? <button onClick={() => settleSectHire(hire.hire_record_id)} type="button">结算</button> : null}</div>)}
-                          {featureData.data.hire.open_hires.length === 0 && featureData.data.hire.accepted_hires.length === 0 ? <p className="empty-copy">暂无可接取或待结算雇佣。</p> : null}
+                          {featureData.data.hire.open_hires.map((hire) => (
+                            <div className="feature-list-row" key={hire.hire_record_id}>
+                              <strong>{hire.hire_type}</strong>
+                              <span>
+                                {hire.employer_sect_name} · {hire.status}
+                              </span>
+                              {hire.employer_sect_id !== featureData.data.hire.sect_id ? (
+                                <button
+                                  onClick={() => acceptSectHire(hire.hire_record_id)}
+                                  type="button"
+                                >
+                                  接取
+                                </button>
+                              ) : null}
+                            </div>
+                          ))}
+                          {featureData.data.hire.accepted_hires.map((hire) => (
+                            <div
+                              className="feature-list-row"
+                              key={`accepted_${hire.hire_record_id}`}
+                            >
+                              <strong>{hire.hire_type}</strong>
+                              <span>已接取 · {hire.settlement_status}</span>
+                              {hire.status === "accepted" ? (
+                                <button
+                                  onClick={() => settleSectHire(hire.hire_record_id)}
+                                  type="button"
+                                >
+                                  结算
+                                </button>
+                              ) : null}
+                            </div>
+                          ))}
+                          {featureData.data.hire.open_hires.length === 0 &&
+                          featureData.data.hire.accepted_hires.length === 0 ? (
+                            <p className="empty-copy">暂无可接取或待结算雇佣。</p>
+                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -3779,11 +4145,14 @@ export default function HomePage() {
                             <strong>{equipment.equipped_slot ? "已装备" : "未装备"}</strong>
                           </div>
                           <p>
-                            {equipment.equipment_type} · {equipment.star_level} 星 · 耐久 {equipment.durability}/{equipment.max_durability}
+                            {equipment.equipment_type} · {equipment.star_level} 星 · 耐久{" "}
+                            {equipment.durability}/{equipment.max_durability}
                           </p>
                           <div className="feature-tag-list">
                             {equipment.affixes.map((affix) => (
-                              <span key={affix.affix_id}>{affix.name} +{affix.value}</span>
+                              <span key={affix.affix_id}>
+                                {affix.name} +{affix.value}
+                              </span>
                             ))}
                           </div>
                           <div className="feature-card-actions">
@@ -3837,8 +4206,14 @@ export default function HomePage() {
                                   type="button"
                                 >
                                   <strong>{skill.name}</strong>
-                                  <span>{skill.learned ? skill.description : skill.unlock_reasons.join("、")}</span>
-                                  <small>{selected ? "已编入" : skill.learned ? "点击编入" : "尚未掌握"}</small>
+                                  <span>
+                                    {skill.learned
+                                      ? skill.description
+                                      : skill.unlock_reasons.join("、")}
+                                  </span>
+                                  <small>
+                                    {selected ? "已编入" : skill.learned ? "点击编入" : "尚未掌握"}
+                                  </small>
                                 </button>
                               );
                             })}
@@ -3861,7 +4236,9 @@ export default function HomePage() {
                             ))}
                         </select>
                         <button
-                          disabled={featureLoading || busy || hydrating || skillActiveIds.length === 0}
+                          disabled={
+                            featureLoading || busy || hydrating || skillActiveIds.length === 0
+                          }
                           onClick={saveFeatureSkillLoadout}
                           type="button"
                         >
@@ -3952,6 +4329,37 @@ export default function HomePage() {
                   <p className="empty-copy">
                     选择要投入的材料；材料数量只会在提交时校验，文字指令仍可继续使用。
                   </p>
+                  <div className="feature-inline-form production-formula-toolbar">
+                    <label htmlFor="production-formula-scope">单方来源</label>
+                    <select
+                      id="production-formula-scope"
+                      disabled={productionLoading || productionCrafting || busy || hydrating}
+                      value={productionFormulaScope}
+                      onChange={(event) => {
+                        const scope = event.target.value as "mine" | "public";
+                        setProductionFormulaScope(scope);
+                        void refreshProductionFormulas(scope, productionFormulaKeyword);
+                      }}
+                    >
+                      <option value="mine">我的单方</option>
+                      <option value="public">公开单方</option>
+                    </select>
+                    <input
+                      aria-label="搜索单方"
+                      maxLength={24}
+                      placeholder="搜索名称（可选）"
+                      value={productionFormulaKeyword}
+                      onChange={(event) => setProductionFormulaKeyword(event.target.value)}
+                    />
+                    <button
+                      className="quiet-button"
+                      disabled={productionLoading || productionCrafting || busy || hydrating}
+                      onClick={() => void refreshProductionFormulas()}
+                      type="button"
+                    >
+                      搜索
+                    </button>
+                  </div>
                   {productionResult.length > 0 ? (
                     <output className="production-result">
                       {productionResult.map((line) => (
@@ -3965,11 +4373,15 @@ export default function HomePage() {
                         aria-label="单方名称"
                         maxLength={24}
                         onChange={(event) => setProductionFormulaName(event.target.value)}
-                        placeholder={productionKind === "alchemy" ? "为这次炼丹命名" : "为这次炼器命名"}
+                        placeholder={
+                          productionKind === "alchemy" ? "为这次炼丹命名" : "为这次炼器命名"
+                        }
                         value={productionFormulaName}
                       />
                       <button
-                        disabled={productionCrafting || busy || hydrating || !productionFormulaName.trim()}
+                        disabled={
+                          productionCrafting || busy || hydrating || !productionFormulaName.trim()
+                        }
                         onClick={() => void saveProductionFormula()}
                         type="button"
                       >
@@ -3990,37 +4402,50 @@ export default function HomePage() {
                         {productionFormulas.map((formula) => {
                           const selected = selectedProductionFormulaId === formula.formula_id;
                           return (
-                            <button
-                              className={`production-formula-card${selected ? " production-formula-card-selected" : ""}`}
-                              disabled={productionCrafting}
-                              key={formula.formula_id}
-                              onClick={() => {
-                                setSelectedProductionFormulaId(
-                                  selected ? null : formula.formula_id,
-                                );
-                                setSelectedProductionMaterials({});
-                              }}
-                              type="button"
-                            >
-                              <span className="production-formula-heading">
-                                <strong>{formula.name}</strong>
-                                <small>
-                                  {selected
-                                    ? "已选择"
-                                    : formula.visibility === "public"
-                                      ? "公开"
-                                      : "私有"}
-                                </small>
-                              </span>
-                              <span className="production-formula-materials">
-                                {formula.materials
-                                  .map(
-                                    (material) =>
-                                      `${productionMaterials.find((item) => item.item_id === material.item_id)?.name ?? material.item_id} ×${material.count}`,
-                                  )
-                                  .join("、")}
-                              </span>
-                            </button>
+                            <div className="production-formula-card-wrap" key={formula.formula_id}>
+                              <button
+                                className={`production-formula-card${selected ? " production-formula-card-selected" : ""}`}
+                                disabled={productionCrafting}
+                                onClick={() => {
+                                  setSelectedProductionFormulaId(
+                                    selected ? null : formula.formula_id,
+                                  );
+                                  setSelectedProductionMaterials({});
+                                }}
+                                type="button"
+                              >
+                                <span className="production-formula-heading">
+                                  <strong>{formula.name}</strong>
+                                  <small>
+                                    {selected
+                                      ? "已选择"
+                                      : formula.visibility === "public"
+                                        ? "公开"
+                                        : "私有"}
+                                  </small>
+                                </span>
+                                <span className="production-formula-materials">
+                                  {formula.materials
+                                    .map(
+                                      (material) =>
+                                        `${productionMaterials.find((item) => item.item_id === material.item_id)?.name ?? material.item_id} ×${material.count}`,
+                                    )
+                                    .join("、")}
+                                </span>
+                              </button>
+                              {productionFormulaScope === "mine" ? (
+                                <button
+                                  className="quiet-button production-formula-visibility-button"
+                                  disabled={
+                                    productionLoading || productionCrafting || busy || hydrating
+                                  }
+                                  onClick={() => void toggleProductionFormulaVisibility(formula)}
+                                  type="button"
+                                >
+                                  {formula.visibility === "public" ? "取消公开" : "公开单方"}
+                                </button>
+                              ) : null}
+                            </div>
                           );
                         })}
                       </div>
@@ -4444,7 +4869,7 @@ export default function HomePage() {
                             ? "你只能镇封九塔；补给与守卫仍可参与。"
                             : faction.state.route === "demon"
                               ? "你只能破阵九塔；补给与守卫仍可参与。"
-                          : "散修不能镇封或破阵，但可继续补给与守卫。"}
+                              : "散修不能镇封或破阵，但可继续补给与守卫。"}
                         </span>
                         {faction.state.transfer_available ? (
                           <div className="feature-inline-form">
@@ -4455,9 +4880,16 @@ export default function HomePage() {
                             >
                               <option value="">选择新的道途</option>
                               {faction.routes
-                                .filter((routeOption) => routeOption.route_id !== faction.state.route && routeOption.route_id !== "undecided")
+                                .filter(
+                                  (routeOption) =>
+                                    routeOption.route_id !== faction.state.route &&
+                                    routeOption.route_id !== "undecided",
+                                )
                                 .map((routeOption) => (
-                                  <option key={routeOption.route_id} value={`${routeOption.route_id}:${routeOption.task_chain[0] ?? ""}`}>
+                                  <option
+                                    key={routeOption.route_id}
+                                    value={`${routeOption.route_id}:${routeOption.task_chain[0] ?? ""}`}
+                                  >
                                     转入{routeOption.name}
                                   </option>
                                 ))}
@@ -4497,7 +4929,7 @@ export default function HomePage() {
                     <div className="battle-detail-heading">
                       <span>{battleDetail.battle_type}</span>
                       <h3>{battleDetail.title}</h3>
-                      <small>{battleDetail.battle_id}</small>
+                      <small>本次战斗的完整过程与结算依据</small>
                     </div>
                     <p className="battle-detail-summary">{battleDetail.summary}</p>
                     {battleDetail.result_reason.length > 0 ? (
@@ -4557,31 +4989,20 @@ export default function HomePage() {
               ) : null}
             </UtilityOverlay>
           ) : null}
-          {offlineClaimOpen ? (
+          {offlineClaimOpen && offlineActionReward ? (
             <UtilityOverlay
-              eyebrow={offlineActionReward ? "长期探索" : "离线收益"}
-              title={offlineActionReward ? "探索收益待领取" : "静坐收益待领取"}
+              eyebrow="长期探索"
+              title="离线收益待领取"
               onClose={() => setOfflineClaimOpen(false)}
             >
-              <section
-                className="offline-reward-dialog"
-                aria-label={offlineActionReward ? "离线探索收益" : "离线修为收益"}
-              >
+              <section className="offline-reward-dialog" aria-label="离线探索收益">
                 <p>
-                  {offlineActionReward
-                    ? `离开九州 ${offlineActionReward.offline_minutes} 分钟期间，${offlineActionReward.province_name ?? "州域"}探索已产生待领取收益。`
-                    : "离开九州期间，灵台按当前速率积累了可领取修为。"}
+                  {`离开九州 ${offlineActionReward.offline_minutes} 分钟期间，${offlineActionReward.province_name ?? "州域"}探索已产生待领取收益。`}
                 </p>
                 <div className="offline-reward-value">
-                  {offlineActionReward
-                    ? `探索 ${offlineActionReward.estimated_battle_count} 场待结算 · ${formatRewards(offlineActionReward.rewards)}`
-                    : `修为 +${cultivation?.claimable_cultivation ?? "0"}`}
+                  {`探索 ${offlineActionReward.estimated_battle_count} 场待结算 · ${formatRewards(offlineActionReward.rewards)}`}
                 </div>
-                <small>
-                  {offlineActionReward
-                    ? "探索收益遵守每日 21 场基准，离线最多计算 8 小时。"
-                    : `当前速率：每小时 ${progress?.cultivation_rate_per_hour ?? 0} 修为（最多计算 8 小时）`}
-                </small>
+                <small>探索收益遵守每日 21 场基准，离线最多计算 8 小时。</small>
                 <div className="utility-dialog-actions">
                   <button
                     className="quiet-button"
@@ -4596,7 +5017,7 @@ export default function HomePage() {
                     onClick={() => void handleOfflineClaim()}
                     type="button"
                   >
-                    {offlineActionReward ? "领取探索收益" : "领取修为"}
+                    领取离线收益
                   </button>
                 </div>
               </section>

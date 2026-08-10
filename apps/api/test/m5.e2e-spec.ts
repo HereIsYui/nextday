@@ -90,6 +90,84 @@ describe("M5 商业化与便利边界", () => {
     expect(ownedTreasureCount).toBe(1);
   });
 
+  it("不同幂等键并发领取月卡每日权益时只发放一份", async () => {
+    const { token, playerId } = await createM5Player(app, prisma, "月卡并发", "qi");
+    await request(app.getHttpServer())
+      .post("/api/commerce/monthly-cards/purchase")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_m5_concurrent_purchase_${Date.now()}_${randomSuffix()}`)
+      .send({ card_type: "small_monthly", development_token: process.env.COMMERCE_MOCK_TOKEN })
+      .expect(201);
+
+    const before = await prisma.playerWallet.findUniqueOrThrow({ where: { playerId } });
+    const responses = await Promise.all([
+      request(app.getHttpServer())
+        .post("/api/commerce/monthly-cards/claim-daily")
+        .set("Authorization", `Bearer ${token}`)
+        .set("Idempotency-Key", `idem_m5_concurrent_claim_a_${Date.now()}_${randomSuffix()}`)
+        .send({ card_type: "small_monthly" }),
+      request(app.getHttpServer())
+        .post("/api/commerce/monthly-cards/claim-daily")
+        .set("Authorization", `Bearer ${token}`)
+        .set("Idempotency-Key", `idem_m5_concurrent_claim_b_${Date.now()}_${randomSuffix()}`)
+        .send({ card_type: "small_monthly" }),
+    ]);
+    expect(responses.every((response) => response.status === 201)).toBe(true);
+    expect(responses.filter((response) => response.body.data.claimed).length).toBe(1);
+    const after = await prisma.playerWallet.findUniqueOrThrow({ where: { playerId } });
+    expect(after.jadePaid - before.jadePaid).toBe(30n);
+    expect(after.jadeBound - before.jadeBound).toBe(100n);
+    expect(
+      await prisma.monthlyCardDrawGrant.count({
+        where: {
+          playerId,
+          cardType: "small_monthly",
+          grantDate: new Date().toISOString().slice(0, 10),
+        },
+      }),
+    ).toBe(1);
+  });
+
+  it("不同幂等键并发消耗同一张古宝赠抽时不会重复抽取", async () => {
+    const { token, playerId } = await createM5Player(app, prisma, "古宝并发", "qi");
+    await request(app.getHttpServer())
+      .post("/api/commerce/monthly-cards/purchase")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_m5_gacha_concurrent_purchase_${Date.now()}_${randomSuffix()}`)
+      .send({ card_type: "small_monthly", development_token: process.env.COMMERCE_MOCK_TOKEN })
+      .expect(201);
+    const claimed = await request(app.getHttpServer())
+      .post("/api/commerce/monthly-cards/claim-daily")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `idem_m5_gacha_concurrent_claim_${Date.now()}_${randomSuffix()}`)
+      .send({ card_type: "small_monthly" })
+      .expect(201);
+    const grantId = claimed.body.data.grants[0].grant_id as string;
+
+    const responses = await Promise.all([
+      request(app.getHttpServer())
+        .post("/api/commerce/gacha/draw")
+        .set("Authorization", `Bearer ${token}`)
+        .set("Idempotency-Key", `idem_m5_gacha_concurrent_draw_a_${Date.now()}_${randomSuffix()}`)
+        .send({ pool_type: "ancient_treasure", cost_type: "monthly_grant", grant_id: grantId }),
+      request(app.getHttpServer())
+        .post("/api/commerce/gacha/draw")
+        .set("Authorization", `Bearer ${token}`)
+        .set("Idempotency-Key", `idem_m5_gacha_concurrent_draw_b_${Date.now()}_${randomSuffix()}`)
+        .send({ pool_type: "ancient_treasure", cost_type: "monthly_grant", grant_id: grantId }),
+    ]);
+    expect(responses.filter((response) => response.status === 201)).toHaveLength(1);
+    expect(responses.filter((response) => response.status === 400)).toHaveLength(1);
+    expect(
+      await prisma.gachaRecord.count({
+        where: { playerId, poolType: "ancient_treasure", grantId },
+      }),
+    ).toBe(1);
+    expect(
+      (await prisma.monthlyCardDrawGrant.findUniqueOrThrow({ where: { grantId } })).usedCount,
+    ).toBe(1);
+  });
+
   it("九大古宝池不能用仙玉直抽，只能用残页合成或月卡赠抽", async () => {
     const { token, playerId } = await createM5Player(app, prisma, "古宝", "qi");
     await grantWallet(prisma, playerId, { jadePaid: 1000, jadeBound: 1000 });

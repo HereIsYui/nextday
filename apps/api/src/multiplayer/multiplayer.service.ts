@@ -41,7 +41,7 @@ import type {
 import type { Player, PlayerActionState, Prisma, SectMember, TowerState } from "@prisma/client";
 import { toAppearanceState } from "../commerce/commerce.mappers";
 import { PrismaService } from "../database/prisma.service";
-import { lockAccountForTransaction } from "../database/player-transaction";
+import { lockAccountForTransaction, lockResourceForTransaction } from "../database/player-transaction";
 import { factionUnlockChapter, factionUnlockRealm } from "../factions/factions.constants";
 import { allocateCultivation, calculateCultivationPower } from "../game/cultivation-progress";
 import { defaultEraId, maxOfflineCultivationHours } from "../game/game.constants";
@@ -168,6 +168,7 @@ export class MultiplayerService implements OnModuleInit, OnModuleDestroy {
       idempotencyKey: input.idempotencyKey,
       requestBody: body,
       handler: async (tx) => {
+        await lockResourceForTransaction(tx, `tower:${body.tower_id}`);
         await this.ensureTowerStates(tx);
         await this.reconcileTowerLifecycle(tx);
         const tower = await tx.towerState.findUnique({
@@ -418,6 +419,7 @@ export class MultiplayerService implements OnModuleInit, OnModuleDestroy {
       idempotencyKey: input.idempotencyKey,
       requestBody: body,
       handler: async (tx) => {
+        await lockResourceForTransaction(tx, `world-boss:${body.boss_id}`);
         let boss = await this.ensureBossState(tx);
         const bossBefore = toBossStateSummary(boss);
         const actionState = await this.consumeActionPoints(

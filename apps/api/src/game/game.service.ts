@@ -2140,6 +2140,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
             action.actionPointCap,
             action.actionPoints + rewards.action_points,
           ),
+          lastRecoveredAt: new Date(),
         },
       });
     }

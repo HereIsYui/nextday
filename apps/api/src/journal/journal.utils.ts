@@ -14,6 +14,7 @@ const journalSourceLabels: Record<string, string> = {
   "POST /api/game/cave/collect": "洞府收取",
   "POST /api/game/cultivation/breakthrough": "境界突破",
   "POST /api/game/cultivation/claim": "领取修为",
+  // 只用于读取迁移前的历史日志；当前接口已完全退役。
   "POST /api/game/explore/claim": "探索领取",
   "POST /api/game/actions/settle": "长期探索结算",
   "POST /api/game/explore/events/resolve": "探索奇遇",

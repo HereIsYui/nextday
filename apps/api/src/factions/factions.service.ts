@@ -15,6 +15,7 @@ import type {
 } from "@nextday/shared";
 import type { Player, PlayerFactionState, PlayerProgress, Prisma, Sect } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
+import { lockAccountForTransaction } from "../database/player-transaction";
 import { defaultEraId } from "../game/game.constants";
 import { writeJournalFromResponse } from "../journal/journal.utils";
 import { hashRequestBody } from "../platform/utils/hash";
@@ -387,10 +388,13 @@ export class FactionsService {
     if (wallet.spiritStone < amount) {
       throw new BadRequestException("灵石不足，无法转道");
     }
-    await tx.playerWallet.update({
-      where: { playerId },
+    const updated = await tx.playerWallet.updateMany({
+      where: { playerId, spiritStone: { gte: amount } },
       data: { spiritStone: { decrement: amount } },
     });
+    if (updated.count !== 1) {
+      throw new BadRequestException("灵石不足，无法转道");
+    }
     await tx.walletLog.create({
       data: {
         logId: `wallet_${randomUUID()}`,
@@ -467,6 +471,7 @@ export class FactionsService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      await lockAccountForTransaction(tx, input.accountId);
       const response = await input.handler(tx);
       await tx.idempotencyRecord.create({
         data: {

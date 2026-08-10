@@ -134,6 +134,21 @@ export class CommerceService {
       requestBody: body,
       handler: async (tx) => {
         const now = new Date();
+        if (verification.providerTransactionId) {
+          const existingOrder = await tx.purchaseOrder.findUnique({
+            where: { providerTransactionId: verification.providerTransactionId },
+          });
+          if (existingOrder) {
+            const existingCard = await tx.monthlyCardState.findUniqueOrThrow({
+              where: { playerId_cardType: { playerId: player.playerId, cardType: body.card_type } },
+            });
+            return {
+              order_id: existingOrder.orderId,
+              monthly_card: toMonthlyCardState(existingCard),
+              wallet: await this.getWalletState(tx, player.playerId),
+            };
+          }
+        }
         const previous = await tx.monthlyCardState.findUnique({
           where: { playerId_cardType: { playerId: player.playerId, cardType: body.card_type } },
         });

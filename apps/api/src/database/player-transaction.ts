@@ -14,6 +14,20 @@ export async function lockPlayerForTransaction(
   );
 }
 
+/** 在事务内串行化全局或跨玩家共享资源，例如活动实例、九塔和世界 Boss。 */
+export async function lockResourceForTransaction(
+  tx: Prisma.TransactionClient,
+  resourceKey: string,
+): Promise<void> {
+  if (typeof tx.$executeRaw !== "function") {
+    return;
+  }
+
+  await tx.$executeRaw(
+    Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${resourceKey}, 0))`,
+  );
+}
+
 /** 由账号查找玩家并获取同一把事务锁，供统一幂等包装器使用。 */
 export async function lockAccountForTransaction(
   tx: Prisma.TransactionClient,

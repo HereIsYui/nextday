@@ -3,6 +3,7 @@
 import { GameClient } from "@nextday/game-client";
 import type {
   ActivityListResponse,
+  ActivityDetailResponse,
   AncientTreasureListResponse,
   ApiResponse,
   BagItemState,
@@ -10,6 +11,10 @@ import type {
   BattleNarrativeResponse,
   CultivationStatus,
   EntitlementOverviewResponse,
+  AppearanceListResponse,
+  AppearancePlusCatalogResponse,
+  CollectionSummaryResponse,
+  EraMuseumResponse,
   EquipmentListResponse,
   FactionRoutesResponse,
   GameOverviewResponse,
@@ -30,6 +35,11 @@ import type {
   SectAlignment,
   SectListResponse,
   SkillLoadoutResponse,
+  GachaPoolListResponse,
+  GachaHistoryResponse,
+  MentorSummaryResponse,
+  SectDiplomacySummaryResponse,
+  SectHireListResponse,
   StoryScrollDetailState,
   StoryScrollListResponse,
   TowerListResponse,
@@ -95,7 +105,10 @@ type FeatureKind =
   | "tower"
   | "equipment"
   | "skills"
-  | "commerce";
+  | "commerce"
+  | "social"
+  | "collection"
+  | "appearance";
 
 type FeatureData =
   | { kind: "activity"; data: ActivityListResponse }
@@ -103,11 +116,31 @@ type FeatureData =
   | { kind: "sect"; data: { detail: SectDetailResponse; list: SectListResponse | null } }
   | { kind: "boss"; data: WorldBossResponse }
   | { kind: "rank"; data: RankListResponse }
-  | { kind: "ancient"; data: AncientTreasureListResponse }
+  | {
+      kind: "ancient";
+      data: AncientTreasureListResponse & {
+        pools: GachaPoolListResponse;
+        history: GachaHistoryResponse;
+      };
+    }
   | { kind: "tower"; data: TowerListResponse }
   | { kind: "equipment"; data: EquipmentListResponse }
   | { kind: "skills"; data: SkillLoadoutResponse }
-  | { kind: "commerce"; data: EntitlementOverviewResponse };
+  | { kind: "commerce"; data: EntitlementOverviewResponse }
+  | {
+      kind: "social";
+      data: {
+        mentor: MentorSummaryResponse;
+        diplomacy: SectDiplomacySummaryResponse;
+        hire: SectHireListResponse;
+        sects: SectListResponse;
+      };
+    }
+  | { kind: "collection"; data: { summary: CollectionSummaryResponse; museum: EraMuseumResponse } }
+  | {
+      kind: "appearance";
+      data: { list: AppearanceListResponse; catalog: AppearancePlusCatalogResponse };
+    };
 
 interface ItemDetail {
   name: string;
@@ -188,6 +221,9 @@ const corePlayCommands: CommandAction[] = [
   { label: "炼器", command: "炼器" },
   { label: "九塔", command: "九塔" },
   { label: "权益", command: "权益" },
+  { label: "社交", command: "社交" },
+  { label: "收藏", command: "收藏" },
+  { label: "外观", command: "外观" },
 ];
 
 function featureKindFromCommand(command: string): FeatureKind | null {
@@ -203,6 +239,9 @@ function featureKindFromCommand(command: string): FeatureKind | null {
       装备: "equipment",
       技能: "skills",
       权益: "commerce",
+      社交: "social",
+      收藏: "collection",
+      外观: "appearance",
     }[command] as FeatureKind | undefined) ?? null
   );
 }
@@ -312,6 +351,15 @@ export default function HomePage() {
   const [featureKind, setFeatureKind] = useState<FeatureKind | null>(null);
   const [featureData, setFeatureData] = useState<FeatureData | null>(null);
   const [featureMessage, setFeatureMessage] = useState<string | null>(null);
+  const [activityDetail, setActivityDetail] = useState<ActivityDetailResponse | null>(null);
+  const [socialTargetSectId, setSocialTargetSectId] = useState("");
+  const [socialDiplomacyType, setSocialDiplomacyType] = useState<
+    "alliance" | "hostility" | "aid" | "defense"
+  >("alliance");
+  const [socialHireType, setSocialHireType] = useState<
+    "explore_support" | "sect_build" | "tower_supply" | "event_support"
+  >("explore_support");
+  const [socialMentorPlayerId, setSocialMentorPlayerId] = useState("");
   const [featureRankType, setFeatureRankType] = useState<RankType>("personal");
   const [skillActiveIds, setSkillActiveIds] = useState<string[]>([]);
   const [skillTreasureId, setSkillTreasureId] = useState("");
@@ -1123,6 +1171,7 @@ export default function HomePage() {
       const client = createClient(token);
       switch (kind) {
         case "activity":
+          setActivityDetail(null);
           setFeatureData({ kind, data: readResponse(await client.activityList()) });
           break;
         case "inner_world": {
@@ -1151,7 +1200,21 @@ export default function HomePage() {
           setFeatureData({ kind, data: readResponse(await client.ranks(rankType)) });
           break;
         case "ancient":
-          setFeatureData({ kind, data: readResponse(await client.ancientTreasures()) });
+          {
+            const [treasures, pools, history] = await Promise.all([
+              client.ancientTreasures(),
+              client.gachaPools(),
+              client.gachaHistory(),
+            ]);
+            setFeatureData({
+              kind,
+              data: {
+                ...readResponse(treasures),
+                pools: readResponse(pools),
+                history: readResponse(history),
+              },
+            });
+          }
           break;
         case "tower":
           setFeatureData({ kind, data: readResponse(await client.towers()) });
@@ -1169,6 +1232,48 @@ export default function HomePage() {
         case "commerce":
           setFeatureData({ kind, data: readResponse(await client.commerceOverview()) });
           break;
+        case "social": {
+          const [mentor, diplomacy, hire, sects] = await Promise.all([
+            client.mentorSummary(),
+            client.sectDiplomacySummary(),
+            client.sectHireList(),
+            client.sects(),
+          ]);
+          const sectList = readResponse(sects);
+          setSocialTargetSectId((current) => current || sectList.sects[0]?.sect_id || "");
+          setFeatureData({
+            kind,
+            data: {
+              mentor: readResponse(mentor),
+              diplomacy: readResponse(diplomacy),
+              hire: readResponse(hire),
+              sects: sectList,
+            },
+          });
+          break;
+        }
+        case "collection": {
+          const [summary, museum] = await Promise.all([
+            client.collectionSummary(),
+            client.eraMuseum(),
+          ]);
+          setFeatureData({
+            kind,
+            data: { summary: readResponse(summary), museum: readResponse(museum) },
+          });
+          break;
+        }
+        case "appearance": {
+          const [list, catalog] = await Promise.all([
+            client.appearances(),
+            client.appearancePlusCatalog(),
+          ]);
+          setFeatureData({
+            kind,
+            data: { list: readResponse(list), catalog: readResponse(catalog) },
+          });
+          break;
+        }
       }
     } catch (error) {
       setFeatureMessage(`读取失败：${messageFromError(error)}`);
@@ -1235,6 +1340,192 @@ export default function HomePage() {
         ),
       "活动奖励已领取",
       "activity",
+    );
+  }
+
+  function showActivityDetail(eventId: string) {
+    if (!token || featureLoading || busy || hydrating) return;
+    setFeatureMessage("正在读取活动详情…");
+    setFeatureLoading(true);
+    void createClient(token)
+      .activityDetail(eventId)
+      .then((response) => setActivityDetail(readResponse(response)))
+      .catch((error) => setFeatureMessage(`读取活动详情失败：${messageFromError(error)}`))
+      .finally(() => setFeatureLoading(false));
+  }
+
+  function equipCollectionDisplay(collectionId: string, displaySlot: string) {
+    if (!token) return;
+    void runFeatureMutation(
+      () =>
+        createClient(token).equipCollectionDisplay(
+          { collection_id: collectionId, display_slot: displaySlot },
+          createIdempotencyKey("web_collection_display"),
+        ),
+      "收藏展示位已更新",
+      "collection",
+    );
+  }
+
+  function equipAppearancePlus(appearanceId: string, displaySlot?: string) {
+    if (!token) return;
+    void runFeatureMutation(
+      () =>
+        createClient(token).equipAppearancePlus(
+          { appearance_id: appearanceId, display_slot: displaySlot },
+          createIdempotencyKey("web_appearance_plus_equip"),
+        ),
+      "外观展示已更新",
+      "appearance",
+    );
+  }
+
+  function claimAppearance(appearanceId: string) {
+    if (!token) return;
+    void runFeatureMutation(
+      () =>
+        createClient(token).claimAppearance(
+          { appearance_id: appearanceId },
+          createIdempotencyKey("web_appearance_claim"),
+        ),
+      "外观已领取",
+      "appearance",
+    );
+  }
+
+  function equipAppearance(appearanceId: string) {
+    if (!token) return;
+    void runFeatureMutation(
+      () =>
+        createClient(token).equipAppearance(
+          { appearance_id: appearanceId },
+          createIdempotencyKey("web_appearance_equip"),
+        ),
+      "外观已装备",
+      "appearance",
+    );
+  }
+
+  function applyMentor() {
+    if (!token || !socialMentorPlayerId.trim()) {
+      setFeatureMessage("请从已知关系中选择导师，或输入导师标识。\n标识仅用于请求，不会展示在关系卡片中。");
+      return;
+    }
+    void runFeatureMutation(
+      () =>
+        createClient(token).applyMentor(
+          { mentor_player_id: socialMentorPlayerId.trim() },
+          createIdempotencyKey("web_mentor_apply"),
+        ),
+      "拜师申请已提交",
+      "social",
+    );
+  }
+
+  function reviewMentor(relationId: string, decision: "accept" | "reject") {
+    if (!token) return;
+    void runFeatureMutation(
+      () =>
+        createClient(token).reviewMentor(
+          { mentor_relation_id: relationId, decision },
+          createIdempotencyKey("web_mentor_review"),
+        ),
+      decision === "accept" ? "已收下徒弟" : "已拒绝拜师申请",
+      "social",
+    );
+  }
+
+  function claimMentorTask(relationId: string) {
+    if (!token) return;
+    void runFeatureMutation(
+      () =>
+        createClient(token).claimMentorTask(
+          { mentor_relation_id: relationId },
+          createIdempotencyKey("web_mentor_task"),
+        ),
+      "师徒任务奖励已领取",
+      "social",
+    );
+  }
+
+  function graduateMentor(relationId: string) {
+    if (!token) return;
+    void runFeatureMutation(
+      () =>
+        createClient(token).graduateMentor(
+          { mentor_relation_id: relationId },
+          createIdempotencyKey("web_mentor_graduate"),
+        ),
+      "师徒关系已出师",
+      "social",
+    );
+  }
+
+  function proposeDiplomacy() {
+    if (!token || !socialTargetSectId) {
+      setFeatureMessage("请选择目标宗门。");
+      return;
+    }
+    void runFeatureMutation(
+      () =>
+        createClient(token).proposeSectDiplomacy(
+          { target_sect_id: socialTargetSectId, diplomacy_type: socialDiplomacyType },
+          createIdempotencyKey("web_sect_diplomacy_propose"),
+        ),
+      "外交提案已提交",
+      "social",
+    );
+  }
+
+  function reviewDiplomacy(recordId: string, decision: "accept" | "reject") {
+    if (!token) return;
+    void runFeatureMutation(
+      () =>
+        createClient(token).reviewSectDiplomacy(
+          { diplomacy_record_id: recordId, decision },
+          createIdempotencyKey("web_sect_diplomacy_review"),
+        ),
+      decision === "accept" ? "外交关系已建立" : "外交提案已拒绝",
+      "social",
+    );
+  }
+
+  function createSectHire() {
+    if (!token) return;
+    void runFeatureMutation(
+      () =>
+        createClient(token).createSectHire(
+          { hire_type: socialHireType },
+          createIdempotencyKey("web_sect_hire_create"),
+        ),
+      "宗门雇佣委托已发布",
+      "social",
+    );
+  }
+
+  function acceptSectHire(hireRecordId: string) {
+    if (!token) return;
+    void runFeatureMutation(
+      () =>
+        createClient(token).acceptSectHire(
+          { hire_record_id: hireRecordId },
+          createIdempotencyKey("web_sect_hire_accept"),
+        ),
+      "已接取宗门雇佣",
+      "social",
+    );
+  }
+
+  function settleSectHire(hireRecordId: string) {
+    if (!token) return;
+    void runFeatureMutation(
+      () =>
+        createClient(token).settleSectHire(
+          { hire_record_id: hireRecordId },
+          createIdempotencyKey("web_sect_hire_settle"),
+        ),
+      "宗门雇佣奖励已结算",
+      "social",
     );
   }
 
@@ -1928,6 +2219,9 @@ export default function HomePage() {
     setFeatureKind(null);
     setFeatureData(null);
     setFeatureMessage(null);
+    setActivityDetail(null);
+    setSocialTargetSectId("");
+    setSocialMentorPlayerId("");
     setProductionKind(null);
     setProductionMaterials([]);
     setProductionFormulas([]);
@@ -2627,9 +2921,15 @@ export default function HomePage() {
                                         ? "法宝管理"
                                         : featureKind === "skills"
                                           ? "技能配置"
-                                          : featureKind === "commerce"
+                                      : featureKind === "commerce"
                                             ? "权益中心"
-                                            : "九塔行动"
+                                            : featureKind === "social"
+                                              ? "社交事务"
+                                              : featureKind === "collection"
+                                                ? "收藏博物馆"
+                                                : featureKind === "appearance"
+                                                  ? "外观展示"
+                                                  : "九塔行动"
                           : activeOverlay === "production"
                             ? "材料选择"
                             : activeOverlay === "faction"
@@ -2739,15 +3039,24 @@ export default function HomePage() {
                           </div>
                           <div className="feature-card-actions">
                             <button
+                              disabled={featureLoading || busy || hydrating}
+                              onClick={() => showActivityDetail(event.event_id)}
+                              type="button"
+                            >
+                              查看规则
+                            </button>
+                            <button
                               disabled={
                                 featureLoading || busy || hydrating || event.status !== "active"
+                                || event.event_type === "return_support"
+                                || event.event_type === "compensation"
                               }
                               onClick={() => participateActivity(event.event_id)}
                               type="button"
                             >
                               {event.action_label || "参与一次"}
                             </button>
-                            {event.claimable ? (
+                              {event.claimable ? (
                               <button
                                 disabled={featureLoading || busy || hydrating}
                                 onClick={() => claimActivity(event.event_id)}
@@ -2761,6 +3070,25 @@ export default function HomePage() {
                       ))}
                       {featureData.data.events.length === 0 ? (
                         <p className="empty-copy">当前周期暂无活动。</p>
+                      ) : null}
+                      {activityDetail ? (
+                        <article className="feature-card feature-detail-card">
+                          <div className="feature-card-heading">
+                            <h3>{activityDetail.template.name} · 活动详情</h3>
+                            <strong>{activityDetail.event.status}</strong>
+                          </div>
+                          <p>{activityDetail.template.description}</p>
+                          <p>
+                            周期：{formatDateTime(activityDetail.event.starts_at)} 至 {formatDateTime(activityDetail.event.ends_at)}
+                            · 结算：{formatDateTime(activityDetail.event.settlement_at)}
+                          </p>
+                          <p>
+                            每次消耗行动令 {activityDetail.template.action_point_cost} · 上限 {activityDetail.template.target_progress} 次
+                            · 资格：{activityDetail.event.event_type === "return_support" || activityDetail.event.event_type === "compensation" ? "需服务端资格" : "开放"}
+                          </p>
+                          <p>奖励边界：{activityDetail.template.reward_boundary}</p>
+                          <button type="button" onClick={() => setActivityDetail(null)}>收起详情</button>
+                        </article>
                       ) : null}
                     </div>
                   ) : null}
@@ -3195,6 +3523,20 @@ export default function HomePage() {
                           抽取一次
                         </button>
                       </div>
+                      <div className="feature-card-grid">
+                        {featureData.data.pools.pools.map((pool) => (
+                          <article className="feature-card feature-card-compact" key={pool.pool_type}>
+                            <div className="feature-card-heading">
+                              <h3>{pool.name}</h3>
+                              <strong>已抽 {pool.total_draws} 次</strong>
+                            </div>
+                            <p>
+                              单抽 {pool.single_cost} · 保底 {pool.guarantee_at} 次 · 当前保底进度 {pool.pity_count}
+                            </p>
+                            <p>可用方式：{pool.allowed_cost_types.join("、")}</p>
+                          </article>
+                        ))}
+                      </div>
                       <div className="feature-card-grid feature-treasure-grid">
                       {featureData.data.treasures.map((treasure) => (
                         <article
@@ -3214,6 +3556,24 @@ export default function HomePage() {
                       {featureData.data.treasures.length === 0 ? (
                         <p className="empty-copy">尚未发现古宝记录。</p>
                       ) : null}
+                      </div>
+                      <div className="feature-subsection">
+                        <div className="feature-subsection-heading">
+                          <h3>最近抽取</h3>
+                          <span>{featureData.data.history.records.length} 条</span>
+                        </div>
+                        <div className="feature-list">
+                          {featureData.data.history.records.slice(0, 8).map((record) => (
+                            <div className="feature-list-row" key={record.gacha_id}>
+                              <strong>{record.result.result_name}</strong>
+                              <span>{record.result.duplicate ? "重复转化" : "新获得"}</span>
+                              <small>{formatDateTime(record.created_at)}</small>
+                            </div>
+                          ))}
+                          {featureData.data.history.records.length === 0 ? (
+                            <p className="empty-copy">暂无抽取记录。</p>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
                   ) : null}
@@ -3260,6 +3620,148 @@ export default function HomePage() {
                           {featureData.data.monthly_cards.length === 0 ? (
                             <p className="empty-copy">当前没有生效月卡；购买和 VIP 权益请通过已验证订单开通。</p>
                           ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {featureKind === "collection" && featureData?.kind === "collection" ? (
+                    <div className="feature-stack">
+                      <div className="feature-stat-grid">
+                        <FeatureStat label="已收藏" value={`${featureData.data.summary.collections.filter((item) => item.owned).length} / ${featureData.data.summary.collections.length}`} />
+                        <FeatureStat label="展示祝福" value={`${featureData.data.summary.blessing_summary.effective_percent}%`} />
+                        <FeatureStat label="纪元记录" value={`${featureData.data.museum.entries.length} 条`} />
+                      </div>
+                      <div className="feature-subsection">
+                        <div className="feature-subsection-heading">
+                          <h3>收藏总览</h3>
+                          <span>展示位不会增加战力</span>
+                        </div>
+                        <div className="feature-card-grid">
+                          {featureData.data.summary.collections.map((item) => (
+                            <article className={`feature-card${item.owned ? " feature-card-owned" : ""}`} key={item.collection_id}>
+                              <div className="feature-card-heading">
+                                <div><span className="feature-card-kicker">{item.rarity}</span><h3>{item.name}</h3></div>
+                                <strong>{item.owned ? "已拥有" : "未解锁"}</strong>
+                              </div>
+                              <p>{item.source_hint} · 展示等级 {item.display_level}</p>
+                              {item.owned ? (
+                                <div className="feature-card-actions">
+                                  {featureData.data.summary.display_slots
+                                    .filter((slot) => slot.allowed_types.includes(item.collection_type))
+                                    .map((slot) => (
+                                      <button key={slot.slot_id} disabled={featureLoading || busy || hydrating} onClick={() => equipCollectionDisplay(item.collection_id, slot.slot_id)} type="button">
+                                        {slot.equipped_collection_id === item.collection_id ? `已展示·${slot.name}` : `展示到${slot.name}`}
+                                      </button>
+                                    ))}
+                                </div>
+                              ) : null}
+                            </article>
+                          ))}
+                          {featureData.data.summary.collections.length === 0 ? <p className="empty-copy">暂无收藏记录。</p> : null}
+                        </div>
+                      </div>
+                      <div className="feature-subsection">
+                        <div className="feature-subsection-heading"><h3>纪元博物馆</h3><span>公开快照</span></div>
+                        <div className="feature-list">
+                          {featureData.data.museum.entries.map((entry) => (
+                            <div className="feature-list-row" key={entry.chronicle_id}><strong>{entry.title}</strong><span>{entry.summary}</span><small>{formatDateTime(entry.created_at)}</small></div>
+                          ))}
+                          {featureData.data.museum.entries.length === 0 ? <p className="empty-copy">暂无公开纪元记录。</p> : null}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {featureKind === "appearance" && featureData?.kind === "appearance" ? (
+                    <div className="feature-stack">
+                      <div className="feature-subsection">
+                        <div className="feature-subsection-heading"><h3>基础外观</h3><span>仅改变展示</span></div>
+                        <div className="feature-card-grid">
+                          {featureData.data.list.appearances.map((item) => (
+                            <article className="feature-card" key={item.appearance_id}>
+                              <div className="feature-card-heading"><h3>{item.name}</h3><strong>{item.equipped ? "已装备" : item.owned ? "可装备" : "未领取"}</strong></div>
+                              <p>{item.source_type} · 不提供属性加成</p>
+                              <div className="feature-card-actions">
+                                {!item.owned ? <button disabled={featureLoading || busy || hydrating} onClick={() => claimAppearance(item.appearance_id)} type="button">领取</button> : null}
+                                {item.owned && !item.equipped ? <button disabled={featureLoading || busy || hydrating} onClick={() => equipAppearance(item.appearance_id)} type="button">装备</button> : null}
+                              </div>
+                            </article>
+                          ))}
+                          {featureData.data.list.appearances.length === 0 ? <p className="empty-copy">暂无基础外观。</p> : null}
+                        </div>
+                      </div>
+                      <div className="feature-subsection">
+                        <div className="feature-subsection-heading"><h3>展示外观</h3><span>权限由服务端校验</span></div>
+                        <div className="feature-card-grid">
+                          {featureData.data.catalog.appearances.map((item) => (
+                            <article className="feature-card" key={item.appearance_id}>
+                              <div className="feature-card-heading"><h3>{item.name}</h3><strong>{item.equipped ? "已装备" : item.owned ? "可装备" : "未拥有"}</strong></div>
+                              <p>{item.preview.subtitle} · {item.preview.sample_text}</p>
+                              <small>{item.permission.reason ?? "可装备"}</small>
+                              {item.owned && item.permission.can_equip ? <button disabled={featureLoading || busy || hydrating} onClick={() => equipAppearancePlus(item.appearance_id, item.display_slot)} type="button">装备展示</button> : null}
+                            </article>
+                          ))}
+                          {featureData.data.catalog.appearances.length === 0 ? <p className="empty-copy">暂无可用展示外观。</p> : null}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {featureKind === "social" && featureData?.kind === "social" ? (
+                    <div className="feature-stack">
+                      <div className="feature-subsection">
+                        <div className="feature-subsection-heading"><h3>师徒</h3><span>奖励和出师由服务端判定</span></div>
+                        {featureData.data.mentor.pending_as_mentor.map((relation) => (
+                          <div className="feature-list-row" key={relation.mentor_relation_id}>
+                            <strong>{relation.apprentice_name} 请求拜师</strong>
+                            <span>待审核</span>
+                            <div className="feature-card-actions"><button onClick={() => reviewMentor(relation.mentor_relation_id, "accept")} type="button">同意</button><button onClick={() => reviewMentor(relation.mentor_relation_id, "reject")} type="button">拒绝</button></div>
+                          </div>
+                        ))}
+                        {featureData.data.mentor.relations.map((relation) => (
+                          <div className="feature-list-row" key={relation.mentor_relation_id}>
+                            <strong>{relation.mentor_name} → {relation.apprentice_name}</strong>
+                            <span>{relation.status}</span>
+                            <div className="feature-card-actions">
+                              {relation.status === "active" && relation.task_summary.claimed !== true ? <button onClick={() => claimMentorTask(relation.mentor_relation_id)} type="button">领取师徒任务</button> : null}
+                              {relation.status === "active" && relation.task_summary.claimed === true ? <button onClick={() => graduateMentor(relation.mentor_relation_id)} type="button">出师</button> : null}
+                            </div>
+                          </div>
+                        ))}
+                        <div className="feature-inline-form">
+                          <select aria-label="选择已知导师" value={socialMentorPlayerId} onChange={(event) => setSocialMentorPlayerId(event.target.value)}>
+                            <option value="">选择导师</option>
+                            {featureData.data.mentor.relations.filter((relation) => relation.mentor_player_id !== player?.player_id).map((relation) => <option key={relation.mentor_player_id} value={relation.mentor_player_id}>{relation.mentor_name}</option>)}
+                          </select>
+                          <button disabled={!socialMentorPlayerId || featureLoading || busy || hydrating} onClick={applyMentor} type="button">提交拜师</button>
+                        </div>
+                        {featureData.data.mentor.relations.length === 0 ? <p className="empty-copy">暂无可操作的师徒关系；导师需先达到收徒条件。</p> : null}
+                      </div>
+                      <div className="feature-subsection">
+                        <div className="feature-subsection-heading"><h3>宗门外交</h3><span>{String(featureData.data.diplomacy.rule.cooldown_hours ?? "周期")} · 由宗主/长老操作</span></div>
+                        <div className="feature-inline-form">
+                          <select aria-label="目标宗门" value={socialTargetSectId} onChange={(event) => setSocialTargetSectId(event.target.value)}>
+                            <option value="">选择目标宗门</option>
+                            {featureData.data.sects.sects.filter((sect) => sect.sect_id !== featureData.data.diplomacy.sect_id).map((sect) => <option key={sect.sect_id} value={sect.sect_id}>{sect.name}</option>)}
+                          </select>
+                          <select aria-label="外交类型" value={socialDiplomacyType} onChange={(event) => setSocialDiplomacyType(event.target.value as typeof socialDiplomacyType)}>
+                            <option value="alliance">结盟</option><option value="hostility">敌对</option><option value="aid">援助</option><option value="defense">防御</option>
+                          </select>
+                          <button disabled={!socialTargetSectId || featureLoading || busy || hydrating} onClick={proposeDiplomacy} type="button">发起提案</button>
+                        </div>
+                        <div className="feature-list">
+                          {featureData.data.diplomacy.records.map((record) => <div className="feature-list-row" key={record.diplomacy_record_id}><strong>{record.source_sect_name} · {record.diplomacy_type} · {record.target_sect_name}</strong><span>{record.status}</span>{record.status === "proposed" && record.target_sect_id === featureData.data.diplomacy.sect_id ? <div className="feature-card-actions"><button onClick={() => reviewDiplomacy(record.diplomacy_record_id, "accept")} type="button">同意</button><button onClick={() => reviewDiplomacy(record.diplomacy_record_id, "reject")} type="button">拒绝</button></div> : null}</div>)}
+                          {featureData.data.diplomacy.records.length === 0 ? <p className="empty-copy">暂无外交记录。</p> : null}
+                        </div>
+                      </div>
+                      <div className="feature-subsection">
+                        <div className="feature-subsection-heading"><h3>宗门雇佣</h3><span>已有委托列表</span></div>
+                        <div className="feature-inline-form"><select aria-label="雇佣类型" value={socialHireType} onChange={(event) => setSocialHireType(event.target.value as typeof socialHireType)}><option value="explore_support">探索支援</option><option value="sect_build">宗门建设</option><option value="tower_supply">九塔补给</option><option value="event_support">活动支援</option></select><button disabled={featureLoading || busy || hydrating || !featureData.data.hire.sect_id} onClick={createSectHire} type="button">发布委托</button></div>
+                        <div className="feature-list">
+                          {featureData.data.hire.open_hires.map((hire) => <div className="feature-list-row" key={hire.hire_record_id}><strong>{hire.hire_type}</strong><span>{hire.employer_sect_name} · {hire.status}</span>{hire.employer_sect_id !== featureData.data.hire.sect_id ? <button onClick={() => acceptSectHire(hire.hire_record_id)} type="button">接取</button> : null}</div>)}
+                          {featureData.data.hire.accepted_hires.map((hire) => <div className="feature-list-row" key={`accepted_${hire.hire_record_id}`}><strong>{hire.hire_type}</strong><span>已接取 · {hire.settlement_status}</span>{hire.status === "accepted" ? <button onClick={() => settleSectHire(hire.hire_record_id)} type="button">结算</button> : null}</div>)}
+                          {featureData.data.hire.open_hires.length === 0 && featureData.data.hire.accepted_hires.length === 0 ? <p className="empty-copy">暂无可接取或待结算雇佣。</p> : null}
                         </div>
                       </div>
                     </div>

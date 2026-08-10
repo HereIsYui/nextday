@@ -15,8 +15,9 @@ describe("M9 MVP 总体验收与小纪元演练", () => {
   let prisma: PrismaClient;
 
   beforeAll(async () => {
-    process.env.JWT_SECRET = process.env.JWT_SECRET || "m9-test-secret";
-    process.env.ADMIN_DEV_TOKEN = process.env.ADMIN_DEV_TOKEN || adminToken;
+    // 测试文件在同一 Vitest 进程中运行，必须固定本文件的密钥，避免复用其他测试的环境变量。
+    process.env.JWT_SECRET = "m9-test-secret";
+    process.env.ADMIN_DEV_TOKEN = adminToken;
 
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],

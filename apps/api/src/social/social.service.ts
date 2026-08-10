@@ -30,6 +30,7 @@ import type {
   SectMember,
 } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
+import { lockAccountForTransaction, lockPlayerForTransaction } from "../database/player-transaction";
 import { hashRequestBody } from "../platform/utils/hash";
 import {
   diplomacyBoundary,
@@ -126,6 +127,15 @@ export class SocialService {
       idempotencyKey: input.idempotencyKey,
       requestBody: body,
       handler: async (tx) => {
+        const existing = await tx.mentorRelationRecord.findFirst({
+          where: {
+            apprenticePlayerId: apprentice.playerId,
+            status: { in: ["pending", "active"] },
+          },
+        });
+        if (existing) {
+          throw new BadRequestException("已有申请中或进行中的师徒关系");
+        }
         const relation = await tx.mentorRelationRecord.create({
           data: {
             mentorRelationId: `mentor_relation_${randomUUID()}`,
@@ -186,8 +196,8 @@ export class SocialService {
       idempotencyKey: input.idempotencyKey,
       requestBody: body,
       handler: async (tx) => {
-        const updated = await tx.mentorRelationRecord.update({
-          where: { mentorRelationId: relation.mentorRelationId },
+        const updatedResult = await tx.mentorRelationRecord.updateMany({
+          where: { mentorRelationId: relation.mentorRelationId, status: "pending" },
           data: {
             status: body.decision === "accept" ? "active" : "rejected",
             taskSummary: buildMentorTaskSummary(
@@ -195,6 +205,12 @@ export class SocialService {
             ) as Prisma.InputJsonValue,
             riskSummary: socialRiskSummary("normal") as Prisma.InputJsonValue,
           },
+        });
+        if (updatedResult.count !== 1) {
+          throw new BadRequestException("该申请已处理");
+        }
+        const updated = await tx.mentorRelationRecord.findUniqueOrThrow({
+          where: { mentorRelationId: relation.mentorRelationId },
         });
         const names = await this.mentorNames(updated, tx);
 
@@ -238,18 +254,25 @@ export class SocialService {
       idempotencyKey: input.idempotencyKey,
       requestBody: body,
       handler: async (tx) => {
-        const taskSummary = taskSummaryFromRecord(relation);
-        const alreadyClaimed = taskSummary.claimed === true;
-        const rewards = alreadyClaimed ? undefined : mentorTaskReward();
-        if (!alreadyClaimed) {
-          await this.changeSpiritStone(tx, relation.apprenticePlayerId, 80n, {
-            sourceType: "mentor_task",
-            sourceId: relation.mentorRelationId,
-            idempotencyKey: `${input.idempotencyKey}:spirit_stone`,
-          });
-        }
-        const updated = await tx.mentorRelationRecord.update({
+        await lockPlayerForTransaction(tx, relation.apprenticePlayerId);
+        const current = await tx.mentorRelationRecord.findUniqueOrThrow({
           where: { mentorRelationId: relation.mentorRelationId },
+        });
+        if (current.status !== "active") {
+          throw new BadRequestException("师徒关系尚未建立或已结束");
+        }
+        const taskSummary = taskSummaryFromRecord(current);
+        if (taskSummary.claimed === true) {
+          throw new BadRequestException("师徒任务已领取");
+        }
+        const rewards = mentorTaskReward();
+        await this.changeSpiritStone(tx, current.apprenticePlayerId, 80n, {
+          sourceType: "mentor_task",
+          sourceId: current.mentorRelationId,
+          idempotencyKey: `${input.idempotencyKey}:spirit_stone`,
+        });
+        const updatedResult = await tx.mentorRelationRecord.updateMany({
+          where: { mentorRelationId: current.mentorRelationId, status: "active" },
           data: {
             taskSummary: {
               ...taskSummary,
@@ -257,6 +280,12 @@ export class SocialService {
               claimed_at: new Date().toISOString(),
             } as Prisma.InputJsonValue,
           },
+        });
+        if (updatedResult.count !== 1) {
+          throw new BadRequestException("师徒任务已领取");
+        }
+        const updated = await tx.mentorRelationRecord.findUniqueOrThrow({
+          where: { mentorRelationId: current.mentorRelationId },
         });
         const names = await this.mentorNames(updated, tx);
 
@@ -305,12 +334,19 @@ export class SocialService {
       idempotencyKey: input.idempotencyKey,
       requestBody: body,
       handler: async (tx) => {
-        const updated = await tx.mentorRelationRecord.update({
-          where: { mentorRelationId: relation.mentorRelationId },
+        await lockPlayerForTransaction(tx, relation.apprenticePlayerId);
+        const updatedResult = await tx.mentorRelationRecord.updateMany({
+          where: { mentorRelationId: relation.mentorRelationId, status: "active" },
           data: {
             status: "graduated",
             cooldownUntil: new Date(Date.now() + 72 * 60 * 60 * 1000),
           },
+        });
+        if (updatedResult.count !== 1) {
+          throw new BadRequestException("该师徒关系已处理");
+        }
+        const updated = await tx.mentorRelationRecord.findUniqueOrThrow({
+          where: { mentorRelationId: relation.mentorRelationId },
         });
         const names = await this.mentorNames(updated, tx);
 
@@ -400,6 +436,17 @@ export class SocialService {
       idempotencyKey: input.idempotencyKey,
       requestBody: body,
       handler: async (tx) => {
+        const existing = await tx.sectDiplomacyRecord.findFirst({
+          where: {
+            sourceSectId: member.sectId,
+            targetSectId: body.target_sect_id,
+            diplomacyType: body.diplomacy_type,
+            status: { in: ["proposed", "active"] },
+          },
+        });
+        if (existing) {
+          throw new BadRequestException("已有相同外交状态或提案");
+        }
         const record = await tx.sectDiplomacyRecord.create({
           data: {
             diplomacyRecordId: `sect_diplomacy_${randomUUID()}`,
@@ -461,8 +508,8 @@ export class SocialService {
       idempotencyKey: input.idempotencyKey,
       requestBody: body,
       handler: async (tx) => {
-        const updated = await tx.sectDiplomacyRecord.update({
-          where: { diplomacyRecordId: record.diplomacyRecordId },
+        const updatedResult = await tx.sectDiplomacyRecord.updateMany({
+          where: { diplomacyRecordId: record.diplomacyRecordId, status: "proposed" },
           data: {
             status: body.decision === "accept" ? "active" : "rejected",
             approvalSummary: {
@@ -472,6 +519,12 @@ export class SocialService {
               boundary: diplomacyBoundary,
             } as Prisma.InputJsonValue,
           },
+        });
+        if (updatedResult.count !== 1) {
+          throw new BadRequestException("该外交提案已处理");
+        }
+        const updated = await tx.sectDiplomacyRecord.findUniqueOrThrow({
+          where: { diplomacyRecordId: record.diplomacyRecordId },
         });
         const state = await this.mapDiplomacyRecord(updated, tx);
 
@@ -596,14 +649,20 @@ export class SocialService {
       idempotencyKey: input.idempotencyKey,
       requestBody: body,
       handler: async (tx) => {
-        const updated = await tx.sectHireRecord.update({
-          where: { hireRecordId: record.hireRecordId },
+        const updatedResult = await tx.sectHireRecord.updateMany({
+          where: { hireRecordId: record.hireRecordId, status: "open" },
           data: {
             status: "accepted",
             helperSectId: member.sectId,
             helperPlayerId: player.playerId,
             riskStatus: "normal",
           },
+        });
+        if (updatedResult.count !== 1) {
+          throw new BadRequestException("该雇佣委托已被接取");
+        }
+        const updated = await tx.sectHireRecord.findUniqueOrThrow({
+          where: { hireRecordId: record.hireRecordId },
         });
         const state = await this.mapHireRecord(updated, tx);
 
@@ -645,13 +704,8 @@ export class SocialService {
       idempotencyKey: input.idempotencyKey,
       requestBody: body,
       handler: async (tx) => {
-        await this.changeSpiritStone(tx, player.playerId, BigInt(rule.reward.spirit_stone), {
-          sourceType: "sect_hire",
-          sourceId: record.hireRecordId,
-          idempotencyKey: `${input.idempotencyKey}:spirit_stone`,
-        });
-        const updated = await tx.sectHireRecord.update({
-          where: { hireRecordId: record.hireRecordId },
+        const claimed = await tx.sectHireRecord.updateMany({
+          where: { hireRecordId: record.hireRecordId, status: "accepted" },
           data: {
             status: "settled",
             settlementStatus: "settled",
@@ -659,6 +713,17 @@ export class SocialService {
             rewardEscrowSummary: buildHireEscrow(rule, "settled") as Prisma.InputJsonValue,
             settledAt: new Date(),
           },
+        });
+        if (claimed.count !== 1) {
+          throw new BadRequestException("该雇佣已结算");
+        }
+        await this.changeSpiritStone(tx, player.playerId, BigInt(rule.reward.spirit_stone), {
+          sourceType: "sect_hire",
+          sourceId: record.hireRecordId,
+          idempotencyKey: `${input.idempotencyKey}:spirit_stone`,
+        });
+        const updated = await tx.sectHireRecord.findUniqueOrThrow({
+          where: { hireRecordId: record.hireRecordId },
         });
         const state = await this.mapHireRecord(updated, tx);
 
@@ -859,6 +924,7 @@ export class SocialService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      await lockAccountForTransaction(tx, input.accountId);
       const response = await input.handler(tx);
       await tx.idempotencyRecord.create({
         data: {

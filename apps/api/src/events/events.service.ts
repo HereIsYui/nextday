@@ -465,6 +465,7 @@ export class EventsService {
             actionState.actionPointCap,
             actionState.actionPoints + (rewards.action_points ?? 0),
           ),
+          lastRecoveredAt: new Date(),
         },
       });
     }

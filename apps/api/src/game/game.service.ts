@@ -1703,6 +1703,9 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
         }
       }
     } catch (error) {
+      if (this.isDestroyed) {
+        return;
+      }
       this.logger.error(
         "扫描待触发或待自动结算的探索奇遇失败",
         error instanceof Error ? error.stack : String(error),
@@ -1714,6 +1717,9 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
 
   private async refreshExploreEventLifecycle(input: { accountId: string; playerId: string }) {
     await this.prisma.$transaction(async (tx) => {
+      // 自动奇遇结算同样属于玩家资源写操作，必须与手动选择、行动结算和其他奖励领取
+      // 使用同一把玩家锁，避免不同幂等键并发读到相同修为/物品状态。
+      await lockPlayerForTransaction(tx, input.playerId);
       const now = new Date();
       const activeRecord = await this.findActiveExploreRecord(tx, input.playerId);
       const record = activeRecord;
@@ -2024,9 +2030,11 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       (sum, item) => sum + item.affixes.reduce((affixSum, affix) => affixSum + affix.value, 0),
       0,
     );
-    const loadout =
-      combatSnapshot?.loadout ??
-      (await tx.playerSkillLoadout.findUnique({ where: { playerId: player.playerId } }));
+    // 快照中的 null 代表预览时确实没有技能编组，不能用 ?? 回退到领取时的新编组。
+    // 只有没有提供快照时，才读取当前技能配置。
+    const loadout = combatSnapshot
+      ? combatSnapshot.loadout
+      : await tx.playerSkillLoadout.findUnique({ where: { playerId: player.playerId } });
     const skillSnapshot = getCombatSkillSnapshot({
       route: player.route,
       loadout,
@@ -2579,11 +2587,19 @@ async function buildOfflineActionReward(
       result === "win"
         ? selectExploreLoot(province.province_id, record.recordId, battleIndex, enemy.enemyId)
         : null;
-    mergeRewards(rewards, {
-      cultivation: String(getExploreCultivationReward(player.currentRealm, result)),
-      spirit_stone: result === "win" ? "35" : "8",
-      items: loot ? [{ item_id: loot.itemId, name: loot.name, count: 1, bind_type: "bound" }] : [],
-    });
+    mergeRewards(
+      rewards,
+      applyExploreRewardBoost(
+        {
+          cultivation: String(getExploreCultivationReward(player.currentRealm, result)),
+          spirit_stone: result === "win" ? "35" : "8",
+          items: loot
+            ? [{ item_id: loot.itemId, name: loot.name, count: 1, bind_type: "bound" }]
+            : [],
+        },
+        record.exploreBoostPercent,
+      ),
+    );
   }
   return {
     action_id: record.recordId,

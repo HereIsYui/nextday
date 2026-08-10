@@ -199,6 +199,15 @@ describe("长期探索结算", () => {
 
   it("离线探索领取沿用预览时的境界和战斗配置", async () => {
     const { token, playerId } = await createPlayer(app, "快照配置");
+    await prisma.playerProductionEffect.create({
+      data: {
+        effectId: `effect_long_snapshot_${Date.now()}`,
+        playerId,
+        effectType: "explore_boost",
+        effectValue: 20,
+        remainingUses: 1,
+      },
+    });
     const started = await request(app.getHttpServer())
       .post("/api/game/actions/start")
       .set("Authorization", `Bearer ${token}`)
@@ -231,6 +240,60 @@ describe("长期探索结算", () => {
       .send({})
       .expect(201);
     expect(claimed.body.data.rewards).toEqual(previewRewards);
+  });
+
+  it("离线探索预览时没有技能编组，领取不会读取后来新增的编组", async () => {
+    const { token, playerId } = await createPlayer(app, "快照技能");
+    await prisma.playerProgress.update({
+      where: { playerId },
+      data: { chapterId: 2 },
+    });
+    await prisma.playerProvinceProgress.update({
+      where: { playerId_provinceId: { playerId, provinceId: "yan" } },
+      data: { unlocked: true },
+    });
+
+    const started = await request(app.getHttpServer())
+      .post("/api/game/actions/start")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `long_start_${Date.now()}_snapshot_skill`)
+      .send({ action_type: "explore", province_id: "yan" })
+      .expect(201);
+    const recordId = started.body.data.action.action_id as string;
+    const lastActiveAt = new Date(Date.now() - 4 * 60 * 60_000);
+    await prisma.exploreActionRecord.update({
+      where: { recordId },
+      data: { lastSettledAt: lastActiveAt, lastActiveAt },
+    });
+
+    await request(app.getHttpServer())
+      .get("/api/game/actions/offline-reward")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    // 预览时没有 PlayerSkillLoadout；领取前新增高攻击编组，实际战报仍应使用默认编组快照。
+    await prisma.playerSkillLoadout.create({
+      data: {
+        playerId,
+        activeSkillIds: ["skill_leihuo_yin"],
+        treasureSkillId: "skill_leihuo_yin",
+        autoPriority: ["skill_leihuo_yin"],
+      },
+    });
+
+    await request(app.getHttpServer())
+      .post("/api/game/actions/offline-reward/claim")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `long_claim_${Date.now()}_snapshot_skill`)
+      .send({})
+      .expect(201);
+
+    const battles = await prisma.battleLog.findMany({
+      where: { playerId, battleType: "explore" },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(battles.length).toBeGreaterThan(0);
+    expect(JSON.stringify(battles[0]?.battleLog)).not.toContain("雷火印");
   });
 
   it("长期修炼离线收益领取后继续修炼且不会重复发放", async () => {

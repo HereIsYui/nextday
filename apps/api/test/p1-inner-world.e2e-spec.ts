@@ -54,6 +54,23 @@ describe("P1 内天地派驻系统", () => {
     expect(rejected.body.message).toContain("内天地需");
   });
 
+  it("首次并发读取内天地只初始化一组生灵", async () => {
+    const { token, playerId } = await createP1InnerWorldPlayer(app, prisma, "初始化并发", "qi");
+    const responses = await Promise.all([
+      request(app.getHttpServer())
+        .get("/api/inner-world/summary")
+        .set("Authorization", `Bearer ${token}`),
+      request(app.getHttpServer())
+        .get("/api/inner-world/summary")
+        .set("Authorization", `Bearer ${token}`),
+    ]);
+
+    expect(responses.every((response) => response.status === 200)).toBe(true);
+    expect(responses[0]?.body.data.creatures).toHaveLength(3);
+    expect(responses[1]?.body.data.creatures).toHaveLength(3);
+    expect(await prisma.innerWorldCreature.count({ where: { playerId } })).toBe(3);
+  });
+
   it("化神或第四章后可异步派驻，重复幂等键不重复创建派驻", async () => {
     const { token, playerId } = await createUnlockedInnerWorldPlayer(app, prisma, "派驻", "qi");
 

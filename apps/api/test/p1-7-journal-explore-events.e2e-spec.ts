@@ -163,6 +163,38 @@ describe("P1.7 持久修行日志与探索事件链", () => {
     });
   });
 
+  it("不同幂等键并发选择同一奇遇只结算一次", async () => {
+    const { token, playerId } = await createP17Player(app, prisma);
+    const event = await createTriggeredExploreEvent(app, prisma, token);
+    const choice = event.choices[0];
+    const beforeJournalCount = await prisma.playerJournalEntry.count({
+      where: { playerId, sourceType: "探索奇遇" },
+    });
+
+    const responses = await Promise.all([
+      request(app.getHttpServer())
+        .post("/api/game/explore/events/resolve")
+        .set("Authorization", `Bearer ${token}`)
+        .set("Idempotency-Key", `idem_p17_event_concurrent_a_${Date.now()}_${randomSuffix()}`)
+        .send({ choice_id: choice.choice_id, event_id: event.event_id }),
+      request(app.getHttpServer())
+        .post("/api/game/explore/events/resolve")
+        .set("Authorization", `Bearer ${token}`)
+        .set("Idempotency-Key", `idem_p17_event_concurrent_b_${Date.now()}_${randomSuffix()}`)
+        .send({ choice_id: choice.choice_id, event_id: event.event_id }),
+    ]);
+
+    expect(responses.filter((response) => response.status === 201)).toHaveLength(1);
+    expect(responses.filter((response) => response.status === 400)).toHaveLength(1);
+    const stored = await prisma.exploreEventRecord.findUniqueOrThrow({
+      where: { eventId: event.event_id },
+    });
+    expect(stored.status).toBe("resolved");
+    expect(
+      await prisma.playerJournalEntry.count({ where: { playerId, sourceType: "探索奇遇" } }),
+    ).toBe(beforeJournalCount + 1);
+  });
+
   it("领取修为后写入可持久读取的修行日志", async () => {
     const { token, playerId } = await createP17Player(app, prisma);
     await request(app.getHttpServer())

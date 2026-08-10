@@ -25,7 +25,10 @@ import type {
   PlayerProgress,
   Prisma,
 } from "@prisma/client";
-import { lockAccountForTransaction } from "../database/player-transaction";
+import {
+  lockAccountForTransaction,
+  lockPlayerForTransaction,
+} from "../database/player-transaction";
 import { PrismaService } from "../database/prisma.service";
 import { defaultEraId, provinceConfigs } from "../game/game.constants";
 import { writeJournalFromResponse } from "../journal/journal.utils";
@@ -63,33 +66,39 @@ export class InnerWorldService {
 
   async getSummary(accountId: string): Promise<InnerWorldSummaryResponse> {
     const player = await this.requirePlayer(accountId);
-    await this.ensureInnerWorldState(player.playerId);
-    return this.buildSummary(player.playerId);
+    return this.prisma.$transaction(async (tx) => {
+      await lockPlayerForTransaction(tx, player.playerId);
+      await this.ensureInnerWorldState(player.playerId, tx);
+      return this.buildSummary(player.playerId, tx);
+    });
   }
 
   async getAssignments(accountId: string): Promise<InnerWorldAssignmentListResponse> {
     const player = await this.requirePlayer(accountId);
-    await this.ensureInnerWorldState(player.playerId);
-    const [assignments, supports] = await Promise.all([
-      this.prisma.innerWorldAssignment.findMany({
-        where: { playerId: player.playerId },
-        include: { creature: true },
-        orderBy: { startedAt: "desc" },
-        take: 12,
-      }),
-      this.prisma.innerWorldSupportRecord.findMany({
-        where: { playerId: player.playerId },
-        orderBy: { createdAt: "desc" },
-        take: 12,
-      }),
-    ]);
+    return this.prisma.$transaction(async (tx) => {
+      await lockPlayerForTransaction(tx, player.playerId);
+      await this.ensureInnerWorldState(player.playerId, tx);
+      const [assignments, supports] = await Promise.all([
+        tx.innerWorldAssignment.findMany({
+          where: { playerId: player.playerId },
+          include: { creature: true },
+          orderBy: { startedAt: "desc" },
+          take: 12,
+        }),
+        tx.innerWorldSupportRecord.findMany({
+          where: { playerId: player.playerId },
+          orderBy: { createdAt: "desc" },
+          take: 12,
+        }),
+      ]);
 
-    return {
-      assignments: assignments.map((assignment) =>
-        toInnerWorldAssignmentState(assignment, assignment.creature),
-      ),
-      support_records: supports.map(toInnerWorldSupportRecordState),
-    };
+      return {
+        assignments: assignments.map((assignment) =>
+          toInnerWorldAssignmentState(assignment, assignment.creature),
+        ),
+        support_records: supports.map(toInnerWorldSupportRecordState),
+      };
+    });
   }
 
   async dispatch(input: {

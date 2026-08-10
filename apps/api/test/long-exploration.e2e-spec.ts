@@ -58,6 +58,10 @@ describe("长期探索结算", () => {
 
     expect(current.body.data.action.settled_minutes).toBe(120);
     expect(current.body.data.action.settled_battle_count).toBe(1);
+    expect(current.body.data.action.rewards).toMatchObject({
+      cultivation: expect.any(String),
+      spirit_stone: expect.any(String),
+    });
     expect(await prisma.battleLog.count({ where: { playerId, battleType: "explore" } })).toBe(1);
     const settlements = await prisma.actionSettlementRecord.findMany({
       where: { playerId, actionId: recordId },
@@ -158,6 +162,11 @@ describe("长期探索结算", () => {
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
     expect(current.body.data.action.offline_reward.offline_minutes).toBe(480);
+    expect(
+      current.body.data.action.offline_reward.estimated_win_count +
+        current.body.data.action.offline_reward.estimated_lose_count,
+    ).toBe(current.body.data.action.offline_reward.estimated_battle_count);
+    expect(current.body.data.action.offline_reward.rewards.items).toEqual(expect.any(Array));
 
     const preview = await request(app.getHttpServer())
       .get("/api/game/actions/offline-reward")
@@ -181,6 +190,41 @@ describe("长期探索结算", () => {
     });
     expect(settlement.source).toBe("offline");
     expect(settlement.effectiveMinutes).toBe(480);
+  });
+
+  it("在线结算按完整分钟推进，59 分钟不结算、60 分钟推进游标", async () => {
+    const { token, playerId } = await createPlayer(app, "分钟边界");
+    const started = await request(app.getHttpServer())
+      .post("/api/game/actions/start")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", `long_start_${Date.now()}_minute_boundary`)
+      .send({ action_type: "explore", province_id: "ji" })
+      .expect(201);
+    const recordId = started.body.data.action.action_id as string;
+    const now = new Date();
+    await prisma.exploreActionRecord.update({
+      where: { recordId },
+      data: { lastSettledAt: new Date(now.getTime() - 59 * 60_000), lastActiveAt: now },
+    });
+    const beforeBatch = await request(app.getHttpServer())
+      .get("/api/game/actions/current")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(beforeBatch.body.data.action.settled_minutes).toBe(0);
+    expect(
+      await prisma.actionSettlementRecord.count({ where: { playerId, actionId: recordId } }),
+    ).toBe(0);
+
+    await prisma.exploreActionRecord.update({
+      where: { recordId },
+      data: { lastSettledAt: new Date(now.getTime() - 60 * 60_000), lastActiveAt: now },
+    });
+    const afterBatch = await request(app.getHttpServer())
+      .get("/api/game/actions/current")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(afterBatch.body.data.action.settled_minutes).toBe(60);
+    expect(afterBatch.body.data.action.last_settled_at).toBeTruthy();
   });
 
   it("不同请求并发补算同一在线窗口只生成一份战报与奖励", async () => {

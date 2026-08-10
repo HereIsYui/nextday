@@ -34,6 +34,7 @@ import type {
   RankListResponse,
   RankType,
   RealmProgressionResponse,
+  RewardBundle,
   SectAlignment,
   SectDetailResponse,
   SectDiplomacySummaryResponse,
@@ -121,6 +122,7 @@ type FeatureData =
       data: AncientTreasureListResponse & {
         pools: GachaPoolListResponse;
         history: GachaHistoryResponse;
+        commerce: EntitlementOverviewResponse;
       };
     }
   | { kind: "tower"; data: TowerListResponse }
@@ -361,6 +363,10 @@ export default function HomePage() {
   >("explore_support");
   const [socialMentorPlayerId, setSocialMentorPlayerId] = useState("");
   const [featureRankType, setFeatureRankType] = useState<RankType>("personal");
+  const [ancientCostType, setAncientCostType] = useState<"monthly_grant" | "ancient_page">(
+    "monthly_grant",
+  );
+  const [ancientGrantId, setAncientGrantId] = useState("");
   const [skillActiveIds, setSkillActiveIds] = useState<string[]>([]);
   const [skillTreasureId, setSkillTreasureId] = useState("");
   const [innerDispatchCreature, setInnerDispatchCreature] = useState("");
@@ -1192,19 +1198,27 @@ export default function HomePage() {
           break;
         case "ancient":
           {
-            const [treasures, pools, history] = await Promise.all([
+            const [treasures, pools, history, commerce] = await Promise.all([
               client.ancientTreasures(),
               client.gachaPools(),
               client.gachaHistory(),
+              client.commerceOverview(),
             ]);
+            const commerceData = readResponse(commerce);
+            const grants = commerceData.available_monthly_grants.filter(
+              (grant) => grant.used_count < grant.draw_count,
+            );
+            setAncientGrantId(grants[0]?.grant_id || "");
             setFeatureData({
               kind,
               data: {
                 ...readResponse(treasures),
                 pools: readResponse(pools),
                 history: readResponse(history),
+                commerce: commerceData,
               },
             });
+            void refreshBag(token);
           }
           break;
         case "tower":
@@ -1686,12 +1700,15 @@ export default function HomePage() {
 
   function drawAncientTreasure() {
     if (!token) return;
+    const body = {
+      pool_type: "ancient_treasure" as const,
+      cost_type: ancientCostType,
+      ...(ancientCostType === "monthly_grant" && ancientGrantId
+        ? { grant_id: ancientGrantId }
+        : {}),
+    };
     void runFeatureMutation(
-      () =>
-        createClient(token).gachaDraw(
-          { pool_type: "ancient_treasure", cost_type: "bound_jade" },
-          createIdempotencyKey("web_ancient_draw"),
-        ),
+      () => createClient(token).gachaDraw(body, createIdempotencyKey("web_ancient_draw")),
       "古宝抽取已结算",
       "ancient",
     );
@@ -3598,14 +3615,70 @@ export default function HomePage() {
                     <div className="feature-stack">
                       <div className="feature-inline-form">
                         <span className="empty-copy">
-                          使用绑定仙玉抽取古宝，重复获得会转化为残页与灵魄。
+                          九大古宝只接受月卡赠抽或古宝残页，重复获得会转化为残页与灵魄。
                         </span>
+                        <select
+                          aria-label="古宝抽取方式"
+                          value={ancientCostType}
+                          onChange={(event) =>
+                            setAncientCostType(
+                              event.target.value as "monthly_grant" | "ancient_page",
+                            )
+                          }
+                        >
+                          <option
+                            disabled={featureData.data.commerce.available_monthly_grants.every(
+                              (grant) => grant.used_count >= grant.draw_count,
+                            )}
+                            value="monthly_grant"
+                          >
+                            月卡赠抽（
+                            {featureData.data.commerce.available_monthly_grants.reduce(
+                              (sum, grant) =>
+                                sum + Math.max(0, grant.draw_count - grant.used_count),
+                              0,
+                            )}
+                            次）
+                          </option>
+                          <option value="ancient_page">
+                            古宝残页（
+                            {bagDisplayItems.find((item) => item.item_id === "ancient_page")
+                              ?.count ?? "0"}
+                            ）
+                          </option>
+                        </select>
+                        {ancientCostType === "monthly_grant" ? (
+                          <select
+                            aria-label="月卡赠抽批次"
+                            value={ancientGrantId}
+                            onChange={(event) => setAncientGrantId(event.target.value)}
+                          >
+                            {featureData.data.commerce.available_monthly_grants
+                              .filter((grant) => grant.used_count < grant.draw_count)
+                              .map((grant) => (
+                                <option key={grant.grant_id} value={grant.grant_id}>
+                                  {grant.card_type === "small_monthly" ? "小月卡" : "大月卡"} · 剩余{" "}
+                                  {grant.draw_count - grant.used_count} 次
+                                </option>
+                              ))}
+                            {featureData.data.commerce.available_monthly_grants.every(
+                              (grant) => grant.used_count >= grant.draw_count,
+                            ) ? (
+                              <option value="">暂无可用赠抽</option>
+                            ) : null}
+                          </select>
+                        ) : null}
                         <button
-                          disabled={featureLoading || busy || hydrating}
+                          disabled={
+                            featureLoading ||
+                            busy ||
+                            hydrating ||
+                            (ancientCostType === "monthly_grant" && !ancientGrantId)
+                          }
                           onClick={drawAncientTreasure}
                           type="button"
                         >
-                          抽取一次
+                          {featureLoading ? "抽取中…" : "抽取一次"}
                         </button>
                       </div>
                       <div className="feature-card-grid">
@@ -3655,8 +3728,14 @@ export default function HomePage() {
                           {featureData.data.history.records.slice(0, 8).map((record) => (
                             <div className="feature-list-row" key={record.gacha_id}>
                               <strong>{record.result.result_name}</strong>
-                              <span>{record.result.duplicate ? "重复转化" : "新获得"}</span>
-                              <small>{formatDateTime(record.created_at)}</small>
+                              <span>
+                                {record.result.duplicate ? "重复转化" : "新获得"} ·{" "}
+                                {record.cost_type === "monthly_grant" ? "月卡赠抽" : "古宝残页"}
+                              </span>
+                              <small>
+                                保底 {record.pity_before} → {record.pity_after} ·{" "}
+                                {formatDateTime(record.created_at)}
+                              </small>
                             </div>
                           ))}
                           {featureData.data.history.records.length === 0 ? (
@@ -5000,7 +5079,7 @@ export default function HomePage() {
                   {`离开九州 ${offlineActionReward.offline_minutes} 分钟期间，${offlineActionReward.province_name ?? "州域"}探索已产生待领取收益。`}
                 </p>
                 <div className="offline-reward-value">
-                  {`探索 ${offlineActionReward.estimated_battle_count} 场待结算 · ${formatRewards(offlineActionReward.rewards)}`}
+                  {`探索 ${offlineActionReward.estimated_battle_count} 场待结算（胜 ${offlineActionReward.estimated_win_count} · 败 ${offlineActionReward.estimated_lose_count}） · ${formatRewards(offlineActionReward.rewards)}`}
                 </div>
                 <small>探索收益遵守每日 21 场基准，离线最多计算 8 小时。</small>
                 <div className="utility-dialog-actions">
@@ -5324,11 +5403,7 @@ function pillQualityLabel(quality: NonNullable<BagSummaryResponse["items"][numbe
   );
 }
 
-function formatRewards(rewards: {
-  cultivation?: string;
-  spirit_stone?: string;
-  action_points?: number;
-}): string {
+function formatRewards(rewards: RewardBundle): string {
   const parts: string[] = [];
   if (rewards.cultivation && rewards.cultivation !== "0")
     parts.push(`修为 +${rewards.cultivation}`);
@@ -5336,6 +5411,18 @@ function formatRewards(rewards: {
     parts.push(`灵石 +${rewards.spirit_stone}`);
   if (typeof rewards.action_points === "number" && rewards.action_points !== 0)
     parts.push(`行动令 +${rewards.action_points}`);
+  const itemCounts = new Map<string, { name: string; count: number }>();
+  for (const item of rewards.items ?? []) {
+    const key = `${item.item_id}:${item.bind_type}`;
+    const current = itemCounts.get(key);
+    itemCounts.set(key, {
+      name: current?.name ?? item.name,
+      count: (current?.count ?? 0) + item.count,
+    });
+  }
+  for (const item of itemCounts.values()) {
+    parts.push(`${item.name} +${item.count}`);
+  }
   return parts.join("，") || "暂无可见资源";
 }
 

@@ -579,6 +579,8 @@ export interface OfflineActionReward {
   from_at: string;
   to_at: string;
   estimated_battle_count: number;
+  estimated_win_count: number;
+  estimated_lose_count: number;
   rewards: RewardBundle;
   claimable: boolean;
 }
@@ -715,8 +717,6 @@ export interface RewardBundle {
 
 export interface ExploreRequest {
   province_id: string;
-  /** @deprecated 仅用于识别旧客户端请求，服务端会明确拒绝。 */
-  count?: never;
 }
 
 export type ExploreEventStatus = "pending" | "resolved" | "expired";

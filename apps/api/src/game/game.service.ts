@@ -212,9 +212,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       const snapshot = state.activeActionOfflineSnapshot;
       return {
         reward:
-          snapshot && typeof snapshot === "object"
-            ? (snapshot as unknown as OfflineActionReward)
-            : null,
+          snapshot && typeof snapshot === "object" ? normalizeOfflineActionReward(snapshot) : null,
       };
     });
   }
@@ -814,9 +812,9 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
         : null;
     const offlineReward =
       exploreRecord?.offlineSnapshot && typeof exploreRecord.offlineSnapshot === "object"
-        ? (exploreRecord.offlineSnapshot as unknown as OfflineActionReward)
+        ? normalizeOfflineActionReward(exploreRecord.offlineSnapshot)
         : state.activeActionOfflineSnapshot && typeof state.activeActionOfflineSnapshot === "object"
-          ? (state.activeActionOfflineSnapshot as unknown as OfflineActionReward)
+          ? normalizeOfflineActionReward(state.activeActionOfflineSnapshot)
           : null;
     return {
       action_id: state.activeActionId,
@@ -829,9 +827,13 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
       can_end: !state.activeActionEndedAt,
       can_claim: Boolean(state.activeActionEndedAt),
       rewards:
-        state.activeActionRewardSnapshot && typeof state.activeActionRewardSnapshot === "object"
-          ? normalizeRewardBundle(state.activeActionRewardSnapshot)
-          : null,
+        state.activeActionType === "explore" &&
+        exploreRecord?.rewardSnapshot &&
+        typeof exploreRecord.rewardSnapshot === "object"
+          ? normalizeRewardBundle(exploreRecord.rewardSnapshot)
+          : state.activeActionRewardSnapshot && typeof state.activeActionRewardSnapshot === "object"
+            ? normalizeRewardBundle(state.activeActionRewardSnapshot)
+            : null,
       settled_minutes: exploreRecord?.settledMinutes ?? 0,
       settled_battle_count: exploreRecord?.settledBattleCount ?? 0,
       last_settled_at:
@@ -2398,6 +2400,8 @@ async function buildOfflineActionReward(
     0,
     Math.floor((totalMinutes * standardDailyExploreBattles) / 1_440) - previousBattles,
   );
+  let estimatedWinCount = 0;
+  let estimatedLoseCount = 0;
   const rewards: RewardBundle = { cultivation: "0", spirit_stone: "0", items: [] };
   const config = provinceConfigs.find((item) => item.provinceId === province.province_id);
   const equipments = await tx.equipmentInstance.findMany({
@@ -2432,6 +2436,11 @@ async function buildOfflineActionReward(
       skillSnapshot,
     });
     const result = playerPower >= enemy.enemyPower ? "win" : "lose";
+    if (result === "win") {
+      estimatedWinCount += 1;
+    } else {
+      estimatedLoseCount += 1;
+    }
     const loot =
       result === "win"
         ? selectExploreLoot(province.province_id, record.recordId, battleIndex, enemy.enemyId)
@@ -2452,6 +2461,8 @@ async function buildOfflineActionReward(
       Math.min(now.getTime(), fromAt.getTime() + offlineMinutes * 60_000),
     ).toISOString(),
     estimated_battle_count: estimatedBattleCount,
+    estimated_win_count: estimatedWinCount,
+    estimated_lose_count: estimatedLoseCount,
     rewards,
     claimable: true,
   };
@@ -2463,6 +2474,30 @@ function normalizeOfflineSnapshotMinutes(value: Prisma.JsonValue): number {
   }
   const minutes = Number((value as Record<string, unknown>).offline_minutes ?? 0);
   return Number.isFinite(minutes) ? Math.max(0, Math.floor(minutes)) : 0;
+}
+
+function normalizeOfflineActionReward(value: Prisma.JsonValue): OfflineActionReward {
+  const record =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  const numberValue = (key: string): number => {
+    const parsed = Number(record[key] ?? 0);
+    return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
+  };
+  return {
+    action_id: String(record.action_id ?? ""),
+    action_type: record.action_type === "cultivation" ? "cultivation" : "explore",
+    province_name: typeof record.province_name === "string" ? record.province_name : null,
+    offline_minutes: numberValue("offline_minutes"),
+    from_at: String(record.from_at ?? ""),
+    to_at: String(record.to_at ?? ""),
+    estimated_battle_count: numberValue("estimated_battle_count"),
+    estimated_win_count: numberValue("estimated_win_count"),
+    estimated_lose_count: numberValue("estimated_lose_count"),
+    rewards: normalizeRewardBundle(record.rewards as Prisma.JsonValue),
+    claimable: record.claimable !== false,
+  };
 }
 
 function normalizeResolveExploreEventRequest(

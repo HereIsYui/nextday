@@ -510,7 +510,6 @@ export interface ExploreEventConfig {
   title: string;
   description: string;
   prerequisiteHint: string;
-  routeStepHint: string;
   choices: ExploreEventChoiceConfig[];
 }
 
@@ -543,7 +542,6 @@ export const exploreEventConfigs: ExploreEventConfig[] = [
     ],
     prerequisiteHint: "探索进行中可能出现。",
     rarity: "common",
-    routeStepHint: "新手主线建议优先补足炼丹材料。",
   },
   {
     eventType: "ruin_echo",
@@ -551,7 +549,6 @@ export const exploreEventConfigs: ExploreEventConfig[] = [
     title: "遗迹残响",
     description: "半截古碑陷在土中，碑面纹路仍有微弱回声。",
     prerequisiteHint: "探索遗迹、古战场和塔影附近时更常见。",
-    routeStepHint: "适合把探索收获转向炼器材料。",
     choices: [
       {
         choiceId: "copy",
@@ -580,8 +577,7 @@ export const exploreEventConfigs: ExploreEventConfig[] = [
     rarity: "uncommon",
     title: "散修商队",
     description: "几名散修在岔路边整顿行囊，愿以见闻换一点脚程。",
-    prerequisiteHint: "行动令探索次数越多，越容易遇到散修往来。",
-    routeStepHint: "适合补灵石或炼器粗材，让生产链路继续推进。",
+    prerequisiteHint: "长期探索穿行商路时更容易遇到散修往来。",
     choices: [
       {
         choiceId: "trade",
@@ -612,7 +608,6 @@ export const exploreEventConfigs: ExploreEventConfig[] = [
     title: "塔裂余波",
     description: "远处塔影一震，裂隙余波卷起尘沙，又很快归于平静。",
     prerequisiteHint: "当前州域九塔有裂隙波动时更常见。",
-    routeStepHint: "新手主线会引导你把余波接到玄铁塔镇封。",
     choices: [
       {
         choiceId: "stabilize",
@@ -643,7 +638,6 @@ export const exploreEventConfigs: ExploreEventConfig[] = [
     title: "封泉暗涌",
     description: "岩缝中有一眼细泉被旧符封住，泉声很轻，却牵动气海。",
     prerequisiteHint: "低阶州域连续探索途中小概率出现。",
-    routeStepHint: "适合在第一次探索途中补修为或丹材。",
     choices: [
       {
         choiceId: "drink",
@@ -686,7 +680,6 @@ export const exploreEventConfigs: ExploreEventConfig[] = [
     title: "弃炉余温",
     description: "一只废弃小丹炉还留着余温，炉壁内有未散尽的草木气。",
     prerequisiteHint: "探索采药路线或洞府材料不足时更容易被推荐。",
-    routeStepHint: "适合把探索收获衔接到第一炉丹。",
     choices: [
       {
         choiceId: "collect_dust",
@@ -724,7 +717,6 @@ export const exploreEventConfigs: ExploreEventConfig[] = [
     title: "妖踪横径",
     description: "泥地上留下新鲜妖兽足印，通往一片低矮林坡。",
     prerequisiteHint: "任何普通探索途中都可能出现。",
-    routeStepHint: "适合让战斗与材料收益产生选择差异。",
     choices: [
       {
         choiceId: "pursue",
@@ -755,7 +747,6 @@ export const exploreEventConfigs: ExploreEventConfig[] = [
     title: "旧刃藏匣",
     description: "倒塌石龛里压着一只旧匣，匣中铁意未散。",
     prerequisiteHint: "探索古战场、山川矿脉或冀州塔影附近时小概率出现。",
-    routeStepHint: "适合把第一段探索转向炼器目标。",
     choices: [
       {
         choiceId: "smelt",

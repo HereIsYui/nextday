@@ -170,7 +170,6 @@ describe("P1-9 新手 30 分钟体验与玩法厚度", () => {
 
     for (const event of exploreEventConfigs) {
       expect(event.prerequisiteHint.length).toBeGreaterThan(0);
-      expect(event.routeStepHint.length).toBeGreaterThan(0);
       expect(event.choices.length).toBeGreaterThanOrEqual(2);
       for (const choice of event.choices) {
         expect(choice.outcomeHint?.length ?? 0).toBeGreaterThan(0);
@@ -187,7 +186,7 @@ describe("P1-9 新手 30 分钟体验与玩法厚度", () => {
 
     expect(event.rarity).toBeTruthy();
     expect(event.prerequisite_hint).toBeTruthy();
-    expect(event.route_step_hint).toBeTruthy();
+    expect(Object.hasOwn(event, "route_step_hint")).toBe(false);
     expect(event.choices[0].outcome_hint).toBeTruthy();
 
     const overview = await request(app.getHttpServer())
@@ -222,9 +221,11 @@ describe("P1-9 新手 30 分钟体验与玩法厚度", () => {
       .get("/api/game/overview")
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
-    expect(overview.body.data.tasks.find(
-      (task: { task_id: string }) => task.task_id === "chapter_first_30_minutes",
-    )).toMatchObject({ status: "in_progress" });
+    expect(
+      overview.body.data.tasks.find(
+        (task: { task_id: string }) => task.task_id === "chapter_first_30_minutes",
+      ),
+    ).toMatchObject({ status: "in_progress" });
   });
 
   it("生产接口只公开可投炉材料，不再暴露默认丹方和器方", async () => {
@@ -316,9 +317,11 @@ describe("P1-9 新手 30 分钟体验与玩法厚度", () => {
       (task: { task_id: string }) => task.task_id === "chapter_first_30_minutes",
     );
     expect(chapterTask.status).toBe("completed");
-    expect(overview.body.data.tasks.find(
-      (task: { task_id: string }) => task.task_id === "chapter_first_30_minutes",
-    )).toMatchObject({ status: "completed" });
+    expect(
+      overview.body.data.tasks.find(
+        (task: { task_id: string }) => task.task_id === "chapter_first_30_minutes",
+      ),
+    ).toMatchObject({ status: "completed" });
   });
 });
 
@@ -331,7 +334,6 @@ async function triggerEventAndClaimExplore(
   event_id: string;
   prerequisite_hint?: string;
   rarity?: string;
-  route_step_hint?: string;
 }> {
   const started = await request(app.getHttpServer())
     .post("/api/game/actions/start")

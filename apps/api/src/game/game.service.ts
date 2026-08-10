@@ -2789,7 +2789,6 @@ function toExploreEventState(record: ExploreEventRecord): ExploreEventState {
     title: record.title,
     description: record.description,
     prerequisite_hint: config?.prerequisiteHint ?? "探索进行中可能出现。",
-    route_step_hint: config?.routeStepHint ?? "处理后可继续推进今日修行。",
     status: normalizeExploreEventStatus(record.status),
     choices: choices.map((choice) => ({
       choice_id: choice.choiceId,

@@ -739,7 +739,6 @@ export interface ExploreEventState {
   title: string;
   description: string;
   prerequisite_hint?: string;
-  route_step_hint?: string;
   status: ExploreEventStatus;
   choices: ExploreEventChoice[];
   selected_choice_id: string | null;
